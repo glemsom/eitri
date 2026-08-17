@@ -12,13 +12,104 @@ import (
 // copies the selected plain-text range to the clipboard. Selection is
 // hand-rolled from raw mouse cell state over the wrapped-lines transcript,
 // built on bubbletea v2's per-type mouse messages (tea.MouseClickMsg /
-// MouseMotionMsg / MouseReleaseMsg).
+// MouseMotionMsg / MouseReleaseMsg). Since issue #306 the same mouse routing
+// also owns the right-rail drag-resize — a left press on the rail's border
+// column starts a width drag (see railDragFor), which is decided BEFORE the
+// drag-select hit-test so the two gestures never overlap.
 //
 // Coordinates are tracked in *content* space, not screen space: line indexes
 // the full rendered history content (the same line array the persisted
 // viewport owns) and col indexes the cell within that line's plain text. That
 // keeps a selection stable while the user scrolls mid-drag, and lets the copy
 // read exactly the plain cells the user sees (no partial-code artifacts).
+
+// railDrag is one in-progress mouse drag resizing the right rail (issue #306):
+// startWidth is the rail width when the press landed and startX the press
+// column, so each motion computes newWidth = startWidth + (pointerX - startX)
+// and applies it live through setRailWidth. It is tracked on the Model (not the
+// Transcript) because it is pointer-button state, not transcript surface state:
+// the transcript only ever sees the resulting setRailWidth writes, exactly like
+// the drag-select state.
+type railDrag struct {
+	startWidth int
+	startX     int
+}
+
+// minRailWidth is the narrowest the drag may shrink the rail to: the rail needs
+// enough columns to stay a legible pane, so the drag stops at minRailWidth even
+// when the pointer keeps pulling left (issue #306).
+const minRailWidth = 10
+
+// maxRailWidth returns the widest the drag may grow the rail to: half the
+// current terminal width, so the rail never dominates the surface. It is a
+// function (not a constant) because the terminal resizes at runtime.
+func maxRailWidth(terminalWidth int) int {
+	return terminalWidth / 2
+}
+
+// railBorderHitZone is how close (in columns) a left press must land to the
+// rail's left border to start a rail drag: 2 cells either side of the border
+// column. A press further into the rail (or left of it, on the transcript)
+// falls through to the existing drag-select / click paths (issue #306).
+const railBorderHitZone = 2
+
+// railBorderColumn returns the screen column of the rail's left border: the
+// terminal width minus the rail's current width (the rail strip occupies the
+// rightmost railWidthOrDefault columns, and its left border is the first of
+// them).
+func (t Transcript) railBorderColumn() int {
+	return t.width - t.railWidthOrDefault()
+}
+
+// railDragFor reports whether a left press at (x,y) starts a rail drag, and the
+// drag state it starts with. A press starts a rail drag only when it lands
+// within railBorderHitZone columns of the rail's left border and on a row the
+// rail occupies (above the fixed bottom band, see inScrollRegion). Where it
+// starts is decided here so a border press can never begin a text selection
+// (issue #306).
+func (m Model) railDragFor(x, y int) (railDrag, bool) {
+	if !m.tx.railVisible() || m.tx.width <= 0 {
+		return railDrag{}, false
+	}
+	border := m.tx.railBorderColumn()
+	if x < border-railBorderHitZone || x > border+railBorderHitZone {
+		return railDrag{}, false
+	}
+	if !m.inScrollRegion(y) {
+		return railDrag{}, false
+	}
+	return railDrag{startWidth: m.tx.railWidthOrDefault(), startX: x}, true
+}
+
+// inScrollRegion reports whether a screen row y falls inside the history scroll
+// region: the rows above the fixed bottom band. Both the rail-drag hit test and
+// the drag-select coordinate mapping guard against events that land on the
+// band, so the boundary is decided once here and the two never drift (issue
+// #306).
+func (m Model) inScrollRegion(y int) bool {
+	return y >= 0 && y < m.tx.height-m.bandHeight()
+}
+
+// clampRailWidth clamps a requested rail width to the drag's legal range: the
+// minRailWidth floor and a max of (a) half the terminal width and (b) what the
+// transcript's 20-column readable floor allows — transcriptWidth floors at
+// width-railWidth-1 >= 20, i.e. railWidth <= width-21, so a drag on a small
+// terminal can never push the transcript below readable (issue #306).
+const minTranscriptWidth = 20
+
+func clampRailWidth(w, terminalWidth int) int {
+	max := maxRailWidth(terminalWidth)
+	if capW := terminalWidth - minTranscriptWidth - 1; capW < max {
+		max = capW
+	}
+	if w < minRailWidth {
+		return minRailWidth
+	}
+	if w > max {
+		return max
+	}
+	return w
+}
 
 // dragSelect is one in-progress click-drag selection over the history
 // viewport. anchor is the content cell where the drag started; end tracks the
@@ -57,11 +148,19 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 		m.tx.navigateMouse(msg)
 		return
 	case tea.MouseClickMsg:
-		// A left-button press starts a drag selection over the history.
+		// A left-button press either starts a rail-width drag (issue #306) or a
+		// drag selection over the history: the rail-border hit-test runs first
+		// so a press on the border column starts the width drag, never a text
+		// selection.
 		if m.settings != nil || m.prompting {
 			return
 		}
 		if msg.Button != tea.MouseLeft {
+			return
+		}
+		if d, ok := m.railDragFor(msg.X, msg.Y); ok {
+			m.railDrag = &d
+			m.tx.dragSel = nil
 			return
 		}
 		line, col, ok := m.mouseToContent(msg.X, msg.Y)
@@ -74,6 +173,15 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 			endLine: line, endCol: col,
 		}
 	case tea.MouseMotionMsg:
+		// A live rail drag resizes the rail with the pointer; the width is
+		// applied immediately via setRailWidth so the transcript re-wraps and
+		// the rail re-renders every motion (issue #306). Motion is only
+		// delivered while a button is held, so railDrag nil here means the
+		// holding button is not a border press.
+		if m.railDrag != nil {
+			m.tx.setRailWidth(clampRailWidth(m.railDrag.startWidth+(msg.X-m.railDrag.startX), m.tx.width))
+			return
+		}
 		if m.tx.dragSel == nil {
 			return
 		}
@@ -85,6 +193,13 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 		m.tx.dragSel.endCol = col
 		m.tx.dragSel.moved = true
 	case tea.MouseReleaseMsg:
+		// Releasing a rail drag keeps the width already applied live during
+		// motion; it only clears the drag state, so it never triggers the
+		// drag-select copy or tool-entry click paths (issue #306).
+		if m.railDrag != nil {
+			m.railDrag = nil
+			return
+		}
 		d := m.tx.dragSel
 		m.tx.dragSel = nil
 		if d == nil {
@@ -121,8 +236,7 @@ func (m *Model) mouseToContent(x, y int) (line, col int, ok bool) {
 	// The scroll region occupies the rows above the fixed bottom band; mirror
 	// renderPane's region math so screen rows map to the viewport's visible
 	// lines exactly.
-	bandLines := m.bandHeight()
-	if y < 0 || y >= m.tx.height-bandLines {
+	if !m.inScrollRegion(y) {
 		return 0, 0, false
 	}
 	row := y

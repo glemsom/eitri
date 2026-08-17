@@ -342,6 +342,11 @@ type Model struct {
 	// the OSC 52 fallback (issue #201) so a failing system-clipboard path still
 	// copies through an OSC 52-capable terminal.
 	clipboard func(text string) error
+	// railDrag tracks an in-progress right-rail width drag (issue #306):
+	// non-nil only while the left-button press that started it is held. It
+	// lives on the Model because it is pointer-button state; the Transcript
+	// only sees the resulting setRailWidth writes.
+	railDrag *railDrag
 }
 
 // NewModel builds a bare chat-only model (no Settings surface), the historical
@@ -601,6 +606,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.tx.width = msgi.Width
 		m.tx.height = msgi.Height
+		// A resize moves the rail's border column, so an in-progress width drag
+		// would keep computing deltas against the stale press position; drop the
+		// drag state so the next border press re-anchors at the new border
+		// (issue #306).
+		m.railDrag = nil
 		m.syncWidths()
 		m.tx.layout.dirty = true // width change re-wraps the transcript rows
 		return m, nil
