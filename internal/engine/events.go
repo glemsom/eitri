@@ -77,7 +77,7 @@ type ToolCallEvent struct {
 // downstream. It also carries the full result (Result) so a collapse
 // always has an expand path (the lossless-recovery invariant is satisfied
 // end-to-end). File line-delta and before/after content live on the TUI side
-	// of the seam, computed by the delta observer.
+// of the seam, computed by the delta observer.
 //
 // The byte-cap split: the Message the provider actually receives
 // carries the byte-capped form — the bytes that land in message

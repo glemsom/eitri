@@ -178,8 +178,9 @@ func evict(cfg *CompactionConfig, messages []provider.Message) (body, tail []pro
 }
 
 // generateSummary produces the anchored `## Objective` / `## Next Move` summary
-// of the evicted body via a separate non-tool provider call. It returns "" for a fail-safe skip: a provider error, or a body too large
-// to leave room for the summary round-trip. The summary is capped at
+// of the evicted body via a separate non-tool provider call. It returns
+// "" for a fail-safe skip: a provider error, or a body too large to
+// leave room for the summary round-trip. The summary is capped at
 // SummaryMaxTokens.
 func (e *Engine) generateSummary(ctx context.Context, req RunRequest, cfg *CompactionConfig, body []provider.Message) string {
 	bodyText := renderBody(body)
@@ -246,8 +247,9 @@ func (e *Engine) generateSummary(ctx context.Context, req RunRequest, cfg *Compa
 }
 
 // isSkillMessage reports whether a message belongs to a skill activation and so
-// is ring-fenced from eviction when Prune is enabled. An assistant message that carries a tool call naming the built-in
-// "skill" tool, or the matching tool result, is protected.
+// is ring-fenced from eviction when Prune is enabled. An assistant
+// message that carries a tool call naming the built-in "skill" tool,
+// or the matching tool result, is protected.
 func isSkillMessage(m provider.Message) bool {
 	if m.Role == provider.RoleAssistant {
 		for _, tc := range m.ToolCalls {
@@ -283,8 +285,9 @@ func renderBody(messages []provider.Message) string {
 
 // estimateTokens is a deterministic token approximation (chars/4) used for
 // compaction budgeting, covering the tail-budget content that matters for the
-// eviction decision: assistant answer text and reasoning_content. It is stable across runs so the engine is testable
-// deterministically at the seam.
+// eviction decision: assistant answer text and reasoning_content. It is
+// stable across runs so the engine is testable deterministically at the
+// seam.
 func estimateTokens(m provider.Message) int {
 	return estimateString(m.Content) + estimateString(m.ReasoningContent)
 }

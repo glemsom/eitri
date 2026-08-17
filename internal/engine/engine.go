@@ -34,7 +34,7 @@ type TranscriptWriter interface {
 
 // Engine is a run engine bound to a provider and a transcript sink. A caller
 // may subscribe to the engine's live event stream via SetListener; the engine
-	// pushes one typed Event per streamed observation. Unsubscribed
+// pushes one typed Event per streamed observation. Unsubscribed
 // (batch/headless) runs push nothing and are byte-identical to before.
 type Engine struct {
 	provider   provider.Provider
@@ -355,7 +355,6 @@ type AgentOptions struct {
 // the ones the provider will honor — required controls the provider cannot honor
 // fail here, before any wire call, while unsupported optional controls are
 // dropped. It is the seam generation-control-aware special turns consult before streaming.
-// consult before streaming.
 func (e *Engine) NegotiateGenerationControls(ctx context.Context, reqs []provider.ControlRequirement) ([]provider.GenerationControl, error) {
 	return provider.NegotiateGenerationControls(ctx, e.provider, reqs)
 }
