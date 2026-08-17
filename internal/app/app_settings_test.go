@@ -34,7 +34,7 @@ func recordedProvider(t *testing.T, reqs *[]provider.Request, finish bool) provi
 
 // TestRunSettingsRespectsPersistedConfig verifies settings saved to config
 // round-trip and drive a subsequent run: a Custom model + max-effort persisted
-// in config.json are used by the engine on the next batch run (T12).
+// in config.json are used by the engine on the next batch run.
 func TestRunSettingsRespectsPersistedConfig(t *testing.T) {
 	dir := t.TempDir()
 	dataDir := filepath.Join(dir, ".eitri")
@@ -75,7 +75,7 @@ func TestRunSettingsRespectsPersistedConfig(t *testing.T) {
 // TestRunBatchHonorsMaxTurnsFromConfig verifies the persisted max_turns cap is
 // honored by the engine in batch: with a low cap and no continuation hook (the
 // batch default), the run auto-denies with ErrMaxTurns instead of looping
-// forever (T12).
+// forever.
 func TestRunBatchHonorsMaxTurnsFromConfig(t *testing.T) {
 	dir := t.TempDir()
 	dataDir := filepath.Join(dir, ".eitri")

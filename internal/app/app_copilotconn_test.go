@@ -15,7 +15,7 @@ import (
 // TestCopilotConnectPersistsFreshToken drives the TUI-side device-flow handshake
 // end to end against a stub OAuth server: it starts the flow, surfaces the user
 // code, polls to completion, and persists the fresh token set to config so a
-// later batch run reuses it without re-auth (T11 acceptance criterion (c)).
+// later batch run reuses it without re-auth.
 func TestCopilotConnectPersistsFreshToken(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

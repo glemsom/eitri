@@ -16,8 +16,8 @@ type mockTranscript struct{}
 func (mockTranscript) WriteTranscript([]byte) error { return nil }
 
 // TestFeedTelemetryBridgesUsageEvent asserts the engine's per-turn UsageEvent
-// is forwarded through the telemetry bridge into the TUI status-strip channel
-// (issue #86), read-only against the run.
+// is forwarded through the telemetry bridge into the TUI status-strip channel,
+// read-only against the run.
 func TestFeedTelemetryBridgesUsageEvent(t *testing.T) {
 	e := engine.New(provider.NewScripted(func(_ context.Context, _ provider.Request) (provider.Stream, error) {
 		return provider.StreamFunc(
@@ -52,8 +52,7 @@ func TestFeedTelemetryBridgesUsageEvent(t *testing.T) {
 }
 
 // TestFeedTelemetryBridgesTurnEvent asserts a turn Start boundary is forwarded
-// as a TelemetryTurn update (issue #86), so the strip's turns/max stays fresh
-// turn over turn.
+// as a TelemetryTurn update, so the strip's turns/max stays fresh turn over turn.
 func TestFeedTelemetryBridgesTurnEvent(t *testing.T) {
 	e := engine.New(provider.NewScripted(func(_ context.Context, _ provider.Request) (provider.Stream, error) {
 		return provider.StreamFunc(
@@ -84,7 +83,7 @@ func TestFeedTelemetryBridgesTurnEvent(t *testing.T) {
 // AnswerStream deltas are forwarded through the single engine listener into the
 // TUI streaming pane's channel as answer-kind updates, in stream order, while
 // ReasoningStream deltas are forwarded as reasoning-kind updates — reasoning is
-// never leaked into a stream update tagged as answer (issues #83, #85).
+// never leaked into a stream update tagged as answer.
 func TestFeedEngineEventsBridgesAnswerDelta(t *testing.T) {
 	e := engine.New(provider.NewScripted(func(_ context.Context, _ provider.Request) (provider.Stream, error) {
 		return provider.StreamFunc(
@@ -104,8 +103,7 @@ func TestFeedEngineEventsBridgesAnswerDelta(t *testing.T) {
 	}
 
 	// Drain the stream: collect the deltas delivered into the streaming pane,
-	// tagging reasoning vs answer so the two channels never cross (issue #83
-	// / #85 AC4).
+	// tagging reasoning vs answer so the two channels never cross.
 	var answers, reasonings []string
 loop:
 	for {
@@ -134,7 +132,7 @@ loop:
 		}
 	}
 	// The reasoning delta is delivered as its own reasoning-kind update, not
-	// squeezed into the answer channel (issue #85 AC4).
+	// squeezed into the answer channel.
 	if len(reasonings) != 1 || reasonings[0] != "(thinking not for the answer pane)" {
 		t.Errorf("reasoning deltas = %v, want the single thinking chunk", reasonings)
 	}
@@ -161,9 +159,9 @@ func scriptedToolEditTurn() *provider.Scripted {
 
 // TestFeedEngineEventsBridgesToolEvents asserts the engine's ToolCallEvent and
 // ToolResultEvent are forwarded through the single engine listener into the TUI
-// tool feed's channel as a paired Start+Result carrying the full result (issue
-// #84) and the file line-delta metadata computed by the TUI-side delta observer
-// (issue #174), read-only against the run.
+// tool feed's channel as a paired Start+Result carrying the full result and the
+// file line-delta metadata computed by the TUI-side delta observer, read-only
+// against the run.
 func TestFeedEngineEventsBridgesToolEvents(t *testing.T) {
 	e := engine.New(scriptedToolEditTurn(), mockTranscript{})
 	feed := tui.NewToolFeed()

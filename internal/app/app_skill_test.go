@@ -151,7 +151,7 @@ func TestBatchSkillThroughEngineSeam(t *testing.T) {
 }
 
 // TestTUISlashSkillThroughEngineSeam verifies the TUI slash-command activation
-// path (T9b) runs through the same `skill` tool the batch engine uses (T8): the
+// path runs through the same `skill` tool the batch engine uses: the
 // SkillsSurface built by skillSurface drives reg.Run(ctx, "skill", ...) and
 // returns the wrapped agentskills-io payload, and the catalog reflects the skill
 // as active.
@@ -200,8 +200,8 @@ func TestTUISlashSkillThroughEngineSeam(t *testing.T) {
 	if !strings.Contains(payload, "<skill_content name=\"tui-skill\">") || !strings.Contains(payload, "Do the tui thing") {
 		t.Fatalf("slash activation payload wrong:\n%s", payload)
 	}
-	// The catalog reflects the skill as active; the rail shows no skill state
-	// (issue #188), so there is no panel accessor to check.
+	// The catalog reflects the skill as active; the rail shows no skill state,
+	// so there is no panel accessor to check.
 	if !skills.IsActive("tui-skill") {
 		t.Fatalf("tui-skill not marked active after slash activation")
 	}
@@ -300,13 +300,13 @@ func TestDiscoverSkillsUserGlobalRoot(t *testing.T) {
 	}
 }
 
-// TestTUISlashHiddenSkillThroughEngineSeamWithArgs closes AC criterion 4 of
-// issue #240: a hidden (disable-model-invocation) command skill must remain
-// slash-activatable WITH args through the real engine/skill surface, and the
-// trailing args must be threaded verbatim to the TUI Turn seam as a follow-up
-// user turn. The TUI-level tests (TestModel_slashSkillWithArgs et al.) exercise
-// the same flow against a fake my-skill surface, and TestTUISlashListsHiddenSkill
-// proves the hidden skill surfaces + bare activation at the app level — but
+// TestTUISlashHiddenSkillThroughEngineSeamWithArgs verifies a hidden
+// (disable-model-invocation) command skill must remain slash-activatable WITH
+// args through the real engine/skill surface, and the trailing args must be
+// threaded verbatim to the TUI Turn seam as a follow-up user turn. The
+// TUI-level tests (TestModel_slashSkillWithArgs et al.) exercise the same flow
+// against a fake my-skill surface, and TestTUISlashListsHiddenSkill proves the
+// hidden skill surfaces + bare activation at the app level — but
 // neither drives a hidden skill's args path end to end. This test wires a real
 // SkillsSurface built by skillSurface from the discovered hidden skill and a
 // recording Turn stub, then types `/improve-codebase-architecture <args>` and
@@ -421,7 +421,7 @@ func TestTUISlashHiddenSkillThroughEngineSeamWithArgs(t *testing.T) {
 // assertions are stable. It is the app-package twin of the tui test helper
 // resize; the tui helpers are package-private, so the app tests that drive a
 // real tui.Model through its exported Update/View reproduce the minimal
-// keystroke logic here (issue #240).
+// keystroke logic here.
 func appTestResize(t *testing.T, m tui.Model) tui.Model {
 	t.Helper()
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
@@ -451,8 +451,8 @@ func appTestSubmitAndWait(t *testing.T, m tui.Model) tui.Model {
 
 // appTestRunSubmitted executes a submitted command synchronously, unwrapping a
 // tea.BatchMsg, delivering each resulting message, and threading any follow-up
-// command so a skill-args turn (queued by the skillDoneMsg handler, issue #239)
-// chains through to its Turn seam invocation.
+// command so a skill-args turn (queued by the skillDoneMsg handler) chains
+// through to its Turn seam invocation.
 func appTestRunSubmitted(t *testing.T, m tui.Model, cmd tea.Cmd) tui.Model {
 	t.Helper()
 	if cmd == nil {
@@ -495,7 +495,7 @@ func appTestANSIStrip(s string) string {
 
 // captureSkillRequests records every provider.Request the engine issues for the
 // slash-args turn, so a test can assert the injected skill body is present in the
-// request Messages (issue #260).
+// request Messages.
 type captureSkillRequests struct {
 	reqs []provider.Request
 }

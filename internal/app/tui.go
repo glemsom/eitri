@@ -33,22 +33,20 @@ func runEngineTurn(e *engine.Engine, cfg func() config.Config, reg *tools.Regist
 			return tui.TurnResult{}, err
 		}
 		// Reasoning rides the same turn seam as the answer so the TUI can render
-		// it as a collapsible block (T9b); batch still suppresses it on stdout
-		// unless -v.
+		// it as a collapsible block; batch still suppresses it on stdout unless -v.
 		return tui.TurnResult{Answer: res.Answer, Reasoning: res.Reasoning}, nil
 	}
 }
 
 // runTUI launches the interactive fullscreen TUI on the shared engine and
-// blocks until the user quits. It renders through the alternate screen (T1
-// pivot, issue #119): a full-terminal viewport where every frame is a clean
-// repaint into the alt buffer, so the transcript re-flows cleanly on resize
-// with no stale primary-buffer residue. The Settings surface (ctrl+s) is seeded
-// from the loaded config and provider model discovery, and persists edits back
-// through the config layer (T12). The right context rail
-// (ctrl+b, issue #88) is seeded with the run's static provider/model/effort and
-// session context (id + temp path). sessionTemp is the host-form ephemeral /tmp
-// root for this run's session (ADR-0002).
+// blocks until the user quits. It renders through the alternate screen: a
+// full-terminal viewport where every frame is a clean repaint into the alt
+// buffer, so the transcript re-flows cleanly on resize with no stale
+// primary-buffer residue. The Settings surface (ctrl+s) is seeded from the
+// loaded config and provider model discovery, and persists edits back through
+// the config layer. The right context rail is seeded with the run's static
+// provider/model/effort and session context (id + temp path). sessionTemp is
+// the host-form ephemeral /tmp root for this run's session.
 func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey string, p provider.Provider, cfgPath string, skills *tools.Catalog, workspace string, sessionTemp string) error {
 	effort := cfg.ReasoningEffort
 	if !cfg.ThinkingEnabled {
@@ -56,18 +54,18 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 	}
 	te := tui.NewTelemetry(cfg.Model, effort, cfg.ThinkingEnabled, cfg.MaxTurns)
 	stream := tui.NewStreamer()
-	// The right context rail (issue #88): a fixed-width state pane beside the
+	// The right context rail: a fixed-width state pane beside the
 	// transcript, seeded with the run's static provider/model/effort/session
 	// context and fed live STATS from the telemetry surface below.
 	rail := tui.NewRail(cfg.Provider, cfg.Model, effort, cfg.ThinkingEnabled, sessionKey, sessionTemp)
 	// The workspace's checked-out branch joins the CONTEXT section (statusline
 	// telemetry, benchmark §4.1): a pure .git/HEAD read, no subprocess.
 	rail.SetBranch(tui.GitBranch(workspace))
-	// The live tool-call feed (issue #84): engine tool events render as compact,
+	// The live tool-call feed: engine tool events render as compact,
 	// collapsed `⊕ tool  args` one-liners in the transcript that expand on
 	// demand to the full result.
 	tools := tui.NewToolFeed()
-	// File line-delta + card-diff content (issue #174): a TUI-side observer
+	// File line-delta + card-diff content: a TUI-side observer
 	// fed by the engine's tool-call event stream snapshots each edit/write
 	// target on tool-call start and diffs it on tool result, so the `⊕ edit
 	// path [+N,-M]` tag and the expanded card's inline diff compute entirely
@@ -76,18 +74,18 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 	observer := tui.NewDeltaObserver(fileDeltaResolver(reg))
 	// Subscribe the live status strip, the streaming answer pane, and the tool
 	// feed to the engine's per-turn usage/turn/compaction events, AnswerStream
-	// deltas, and tool call/result events (issues #86, #83, #84). Read-only: it
-	// only forwards telemetry, answer text, and tool events and never pauses the
-	// running agent loop.
+	// deltas, and tool call/result events. Read-only: it only forwards
+	// telemetry, answer text, and tool events and never pauses the running
+	// agent loop.
 	feedEngineEvents(e, te, stream, tools, observer)
 	currentCfg := cfg
 	m := tui.NewModelCfg(tui.Dependencies{
-		// On-demand provider model discovery for the Settings panel (issue #89
-		// AC2): the provider's GET /v1/models list is fetched when the panel
-		// opens, with loading/error states surfaced instead of failing silently.
+		// On-demand provider model discovery for the Settings panel:
+		// the provider's GET /v1/models list is fetched when the panel opens,
+		// with loading/error states surfaced instead of failing silently.
 		DiscoverModels: discoveredModels(cfgPath),
-		// The workspace directory is surfaced as read-only project state (issue
-		// #82 AC1): the run operates here, shown as a header above the transcript.
+		// The workspace directory is surfaced as read-only project state:
+		// the run operates here, shown as a header above the transcript.
 		WorkspacePath: workspace,
 		Config:        cfg,
 		Save:          func(c config.Config) error { return config.Save(c, cfgPath) },
@@ -103,7 +101,7 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 		Stream:    stream,
 		Tools:     tools,
 		Rail:      rail,
-		// The run's provider thinking-suppression capability (issue #265 AC-3):
+		// The run's provider thinking-suppression capability:
 		// the Settings panel warns when thinking is off but the provider cannot
 		// actually silence reasoning on the wire. The seam is derived here from
 		// the concrete provider via the generation-control negotiation seam, so
@@ -111,10 +109,9 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 		// (view-only runs never warn).
 		ThinkingSuppression: thinkingSuppression(p),
 		// `/skillname` slash activation sits on the same catalog the batch
-		// engine uses (T8): activation runs the `skill` tool through the
-		// registry, so a slash activation behaves identically to a model-
-		// invoked one (ticket #35). The rail
-		// shows no skills panel (issue #188); the surface only feeds slash
+		// engine uses: activation runs the `skill` tool through the registry,
+		// so a slash activation behaves identically to a model-invoked one.
+		// The rail shows no skills panel; the surface only feeds slash
 		// completion and activation.
 		Skills: skillSurface(reg, skills),
 		Login: func(ctx context.Context, onCode func(tui.LoginCode)) (config.Config, error) {
@@ -133,15 +130,15 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 }
 
 // feedEngineEvents wires the engine's live event stream into the TUI's status
-// strip, streaming answer pane, and tool feed (issues #86, #83, and #84). It
-// forwards per-turn usage, turn boundaries, and the compaction marker into the
-// strip's buffered channel, each AnswerStream delta into the streaming pane's
-// channel, and each tool call/result into the tool feed's channel — all
-// delivered non-blocking so a busy run never stalls. The delta observer (issue
-// #174) is fed the paired tool start/result events so the feed's entries carry
-// the file line-delta and before/after content computed entirely on the TUI
-// side of the engine seam. The TUI stays decoupled from the engine:
-// engine.Event is translated here into UI-facing updates.
+// strip, streaming answer pane, and tool feed. It forwards per-turn usage, turn
+// boundaries, and the compaction marker into the strip's buffered channel, each
+// AnswerStream delta into the streaming pane's channel, and each tool
+// call/result into the tool feed's channel — all delivered non-blocking so a
+// busy run never stalls. The delta observer is fed the paired tool
+// start/result events so the feed's entries carry the file line-delta and
+// before/after content computed entirely on the TUI side of the engine seam.
+// The TUI stays decoupled from the engine: engine.Event is translated here
+// into UI-facing updates.
 func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, stream *tui.Streamer, toolFeed *tui.ToolFeed, obs *tui.DeltaObserver) {
 	teCh := te.UpdateChan()
 	sCh := stream.UpdateChan()
@@ -155,14 +152,14 @@ func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, stream *tui.Streamer,
 			case engine.ReasoningStream:
 				// Reasoning rides the same stream seam as the answer but tagged as a
 				// reasoning delta, so the TUI grows a distinct thinking block and
-				// never merges it into the answer (issue #85).
+				// never merges it into the answer.
 				pushStream(sCh, tui.StreamUpdate{Kind: tui.ReasoningStream, Delta: ev.Delta})
 			}
 		case engine.UsageEvent:
 			pushTelemetry(teCh, tui.TelemetryUpdate{Kind: tui.TelemetryUsage,
 				Hit: ev.Usage.PromptCacheHitTokens, Miss: ev.Usage.PromptCacheMissTokens, Output: ev.Usage.CompletionTokens,
 				// Live per-turn context-window size: the provider's PromptTokens,
-				// recomputed each request, so it shrinks after a compaction (issue #267).
+				// recomputed each request, so it shrinks after a compaction.
 				Ctx: ev.Usage.PromptTokens})
 		case engine.TurnEvent:
 			if ev.Start {
@@ -172,12 +169,12 @@ func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, stream *tui.Streamer,
 			pushTelemetry(teCh, tui.TelemetryUpdate{Kind: tui.TelemetryCompacted})
 		case engine.ToolCallEvent:
 			// Snapshot the target file's pre-edit state before the tool runs; the
-			// paired result diffs it (issue #174).
+			// paired result diffs it.
 			obs.Start(ev.ID, ev.Name, ev.Arguments)
 			pushTool(tCh, tui.ToolUpdate{Start: &tui.ToolStart{Name: ev.Name, Args: ev.Arguments}})
 		case engine.ToolResultEvent:
 			// The line delta, before/after content, and host path come from the
-			// TUI-side observer's diff, not from the engine seam (issue #174).
+			// TUI-side observer's diff, not from the engine seam.
 			added, removed, before, after, path := obs.Result(ev.ID, ev.Name)
 			pushTool(tCh, tui.ToolUpdate{Result: &tui.ToolResult{
 				Name: ev.Name, Result: ev.Result, BytesDropped: ev.BytesDropped,
@@ -247,10 +244,10 @@ func skillSurface(reg *tools.Registry, c *tools.Catalog) *tui.SkillsSurface {
 }
 
 // discoveredModels surfaces the draft config's provider model ids via the
-// optional ModelLister capability, as an on-demand seam for the Settings panel
-// (issue #89 AC2). It builds the draft's provider so switching provider inside
-// Settings re-discovers against that provider before Save. A provider without
-// the capability returns a clean ErrNoDiscovery rather than failing TUI boot;
+// optional ModelLister capability, as an on-demand seam for the Settings panel.
+// It builds the draft's provider so switching provider inside Settings
+// re-discovers against that provider before Save. A provider without the
+// capability returns a clean ErrNoDiscovery rather than failing TUI boot;
 // the panel renders it as discovery error state.
 func discoveredModels(cfgPath string) func(ctx context.Context, cfg config.Config) ([]string, error) {
 	return func(ctx context.Context, cfg config.Config) ([]string, error) {
@@ -271,13 +268,12 @@ func discoveredModels(cfgPath string) func(ctx context.Context, cfg config.Confi
 }
 
 // thinkingSuppression reports whether the run's provider can actually suppress
-// reasoning on the wire when thinking is off (issue #265). It consults the
-// provider's declared generation controls through NegotiateGenerationControls
-// and returns whether thinking_suppression is in the honored set. A nil
-// provider (or one without the capability surface) assumes support so a
-// view-only run never spurs the settings warning; negotiation failure also
-// degrades to supported (the toggle stays unfettered rather than falsely
-// warning).
+// reasoning on the wire when thinking is off. It consults the provider's
+// declared generation controls through NegotiateGenerationControls and returns
+// whether thinking_suppression is in the honored set. A nil provider (or one
+// without the capability surface) assumes support so a view-only run never
+// spurs the settings warning; negotiation failure also degrades to supported
+// (the toggle stays unfettered rather than falsely warning).
 func thinkingSuppression(p provider.Provider) func() bool {
 	return func() bool {
 		if p == nil {
@@ -302,11 +298,10 @@ func thinkingSuppression(p provider.Provider) func() bool {
 // can exercise the boot path without a real terminal; the production default
 // runs the interactive TUI.
 var runProgram = func(m tui.Model) error {
-	// The TUI takes over the full terminal via the alternate screen (T1 pivot,
-	// issue #119) and mouse-cell-motion mode — declared declaratively on the
-	// model's tea.View (View sets v.AltScreen and v.MouseMode) per bubbletea v2
-	// (pass 1, issue #145). The transcript scrolls with the wheel over the
-	// history viewport (issue #120 AC1) and click-drags select (issue #124).
+	// The TUI takes over the full terminal via the alternate screen and
+	// mouse-cell-motion mode — declared declaratively on the model's tea.View
+	// (View sets v.AltScreen and v.MouseMode) per bubbletea v2. The transcript
+	// scrolls with the wheel over the history viewport and click-drags select.
 	p := tea.NewProgram(m)
 	_, err := p.Run()
 	return err

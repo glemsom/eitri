@@ -15,7 +15,7 @@ import (
 )
 
 // GitHub's Copilot OAuth token endpoint: same host as the device-flow handshake,
-// reused for the non-interactive refresh path batch is allowed to take (T11).
+// reused for the non-interactive refresh path batch is allowed to take.
 const copilotTokenURL = "https://github.com/login/oauth/access_token"
 
 // copilotRefresh returns a provider.RefreshFunc that renews a Copilot
@@ -69,10 +69,10 @@ func copilotRefresh(httpc *http.Client) func(ctx context.Context, refreshToken s
 
 // CopilotConnect runs the TUI-side GitHub device-flow handshake end to end:
 // it starts the flow, presents the user code + verification URI to stdErr, polls
-// to completion, and persists the fresh token set to config (T11,
-// acceptance criterion (c)). It is the interactive re-auth surface driveable by
-// the TUI; batch never calls it. onCode is called with the code to display once
-// the flow starts (nil → the code is printed to stderr).
+// to completion, and persists the fresh token set to config. It is the
+// interactive re-auth surface driveable by the TUI; batch never calls it. onCode
+// is called with the code to display once the flow starts (nil → the code is
+// printed to stderr).
 // newDeviceFlow constructs the device-flow client; package-level seam so tests stub the GitHub endpoints.
 var newDeviceFlow = provider.NewDeviceFlow
 

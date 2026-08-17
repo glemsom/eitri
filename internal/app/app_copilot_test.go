@@ -14,7 +14,7 @@ import (
 // TestRunBatchCopilotNoCredentialErrorsReauth drives the batch path with a
 // Copilot provider that has no stored token and no refresh path: the run must
 // fail cleanly with a re-auth-in-TUI message and never attempt the interactive
-// device flow (T11 acceptance criterion (b) at the app/engine seam).
+// device flow.
 func TestRunBatchCopilotNoCredentialErrorsReauth(t *testing.T) {
 	cp := provider.NewCopilot(config.CopilotConfig{}, "https://unused.invalid/chat/completions",
 		http.DefaultClient, nil, nil)
