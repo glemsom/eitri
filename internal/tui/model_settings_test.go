@@ -12,7 +12,7 @@ import (
 )
 
 // TestModel_OpenSettingsRendersSurface verifies ctrl+s opens the Settings
-// surface, which renders the provider/model and knob rows (T12).
+// surface, which renders the provider/model and knob rows .
 func TestModel_OpenSettingsRendersSurface(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -90,7 +90,7 @@ func TestModel_SettingsAdjustedValuePersists(t *testing.T) {
 
 // TestModel_SettingsEffortSelectingMediumPersists verifies a reasoning-effort
 // tier selected in the panel (medium) persists to config through the Save seam
-// (issue #74 acceptance criteria).
+// .
 func TestModel_SettingsEffortSelectingMediumPersists(t *testing.T) {
 	var saved config.Config
 	m := NewModelCfg(Dependencies{
@@ -150,7 +150,7 @@ func TestModel_SettingsPathsBackspaceEdits(t *testing.T) {
 }
 
 // TestModel_SettingsPathsSpaceTypesASpace asserts a space key types a literal
-// space in the free-form paths field (parity pass 2, issue #146): bubbletea v2
+// space in the free-form paths field (parity pass 2, ): bubbletea v2
 // reports a space key's String() as "space", not " ", so the field must
 // append the key's Text to keep a hand-written path with spaces intact.
 func TestModel_SettingsPathsSpaceTypesASpace(t *testing.T) {
@@ -184,7 +184,7 @@ func TestModel_SettingsPathsSpaceTypesASpace(t *testing.T) {
 
 // TestModel_SettingsThinkingTogglePersists verifies flipping the reasoning
 // mode off in the panel persists ThinkingEnabled=false through the Save seam
-// while retaining the effort dial (issue #56).
+// while retaining the effort dial .
 func TestModel_SettingsThinkingTogglePersists(t *testing.T) {
 	var saved config.Config
 	m := NewModelCfg(Dependencies{
@@ -223,7 +223,7 @@ func TestModel_SettingsThinkingTogglePersists(t *testing.T) {
 }
 
 // TestModel_SettingsDiscoveryLoadsAsync verifies the settings panel reports a
-// loading state then folds in on-demand provider model discovery (issue #89
+// loading state then folds in on-demand provider model discovery (
 // AC2): opening settings with no pre-seeded list and a DiscoverModels seam
 // starts discovery, which delives the model list back through the model loop.
 func TestModel_SettingsDiscoveryLoadsAsync(t *testing.T) {
@@ -262,7 +262,7 @@ func TestModel_SettingsDiscoveryLoadsAsync(t *testing.T) {
 }
 
 // TestModel_SettingsDiscoveryErrorState verifies model discovery that fails
-// returns an error state in the panel rather than failing silently (issue #89
+// returns an error state in the panel rather than failing silently (
 // AC2), while the configured model still stays usable.
 func TestModel_SettingsDiscoveryErrorState(t *testing.T) {
 	m := NewModelCfg(Dependencies{
@@ -300,7 +300,7 @@ func TestModel_SettingsDiscoveryErrorState(t *testing.T) {
 }
 
 // TestModel_SettingsThemeSelectingPersists verifies a theme selected in the
-// panel (light) persists to config through the Save seam (issue #130 AC4).
+// panel (light) persists to config through the Save seam .
 func TestModel_SettingsProviderChangeStartsDiscoveryForDraftProvider(t *testing.T) {
 	var providers []string
 	m := NewModelCfg(Dependencies{
@@ -376,7 +376,7 @@ func TestModel_SettingsThemeSelectingPersists(t *testing.T) {
 
 // TestSettingsView_ThinkingSuppressionWarning verifies the settings panel warns
 // when thinking is off AND the run's provider cannot actually suppress
-// reasoning on the wire (issue #265 AC-3): the warning renders only when the
+// reasoning on the wire: the warning renders only when the
 // seam is wired, reports false, and thinking is off. A nil seam (unknown
 // provider) assumes support and renders nothing; a supporting provider or a
 // thinking-on run never warns.
@@ -414,7 +414,7 @@ func TestSettingsView_ThinkingSuppressionWarning(t *testing.T) {
 
 // TestModel_SettingsWiringSurfacesThinkingSuppression verifies the Model wires
 // the run's provider thinking-suppression seam into the settings form when the
-// panel opens (issue #265 AC-3), so the warning reflects the real capability.
+// panel opens, so the warning reflects the real capability.
 func TestModel_SettingsWiringSurfacesThinkingSuppression(t *testing.T) {
 	cfg := cfgFixture()
 	cfg.ThinkingEnabled = false

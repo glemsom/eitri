@@ -8,7 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// Hardware caret policy (issue #168): the composer's caret is the terminal's
+// Hardware caret policy: the composer's caret is the terminal's
 // hardware cursor — not the reverse-video software cell bubbles v2 paints by
 // default — and it must track the true edit position across every composer
 // state. Its shape and blink follow the explicit caret style policy (issue
@@ -44,7 +44,7 @@ func caret(t *testing.T, m Model) tea.Cursor {
 }
 
 // newline inserts a line break in the composer the way legacy terminals
-// deliver Shift+Enter — the line-feed byte surfaced as KeyCtrlJ (issue #121
+// deliver Shift+Enter — the line-feed byte surfaced as KeyCtrlJ (
 // AC2).
 func newline(t *testing.T, m Model) Model {
 	t.Helper()
@@ -55,7 +55,7 @@ func newline(t *testing.T, m Model) Model {
 // TestComposer_HardwareCaretReplacesSoftwareCell asserts the composer paints no
 // reverse-video caret cell while focused — the character under the caret is
 // plain text — and the frame attaches the terminal's hardware caret instead
-// (issue #168 AC1).
+// .
 func TestComposer_HardwareCaretReplacesSoftwareCell(t *testing.T) {
 	m := caretModel(t)
 	m = typeText(t, m, "hi")
@@ -66,12 +66,12 @@ func TestComposer_HardwareCaretReplacesSoftwareCell(t *testing.T) {
 }
 
 // TestComposer_CaretStylePolicy asserts the explicit caret style policy
-// (issue #170): the composer's hardware caret is a steady (non-blinking) block,
+//: the composer's hardware caret is a steady (non-blinking) block,
 // requested deliberately rather than inherited from the textarea default or the
 // terminal's own settings. A terminal that ignores the shape request falls back
 // to its own default block caret — still visible, never hidden.
 //
-// The policy does not force a caret color (issue #272): the caret renders in the
+// The policy does not force a caret color: the caret renders in the
 // terminal's configured cursor color, so Eitri never overwrites it with a fixed
 // white. Color stays nil so the renderer emits no SetCursorColor sequence.
 func TestComposer_CaretStylePolicy(t *testing.T) {
@@ -90,7 +90,7 @@ func TestComposer_CaretStylePolicy(t *testing.T) {
 
 // TestComposer_CaretTracksTyping asserts the hardware caret follows the edit
 // position on a single line: at the prompt end when empty, then one column per
-// typed rune, on the composer's bottom row (issue #168 AC2). The bottom row is
+// typed rune, on the composer's bottom row . The bottom row is
 // the rendered frame's last row — the band is pinned to the bottom.
 func TestComposer_CaretTracksTyping(t *testing.T) {
 	m := caretModel(t)
@@ -118,7 +118,7 @@ func TestComposer_CaretTracksWrappedDraft(t *testing.T) {
 }
 
 // TestComposer_CaretTracksMultiLineDraft asserts the caret follows the edit
-// line as the composer grows within the band (issue #168 AC2): each new line
+// line as the composer grows within the band: each new line
 // pushes the band up a row, the caret sits on the new line's visible row, and
 // cursor navigation moves it within the grown composer.
 func TestComposer_CaretTracksMultiLineDraft(t *testing.T) {
@@ -137,7 +137,7 @@ func TestComposer_CaretTracksMultiLineDraft(t *testing.T) {
 
 // TestComposer_CaretTracksInternalScroll asserts the caret never goes stale
 // when the draft exceeds the composer's bound and the band scrolls internally
-// (issue #168 AC2): with more draft rows than maxComposerRows, the caret stays
+//: with more draft rows than maxComposerRows, the caret stays
 // on the visible row that renders the edit line, at the correct column,
 // instead of drifting above the band.
 func TestComposer_CaretTracksInternalScroll(t *testing.T) {
@@ -156,7 +156,7 @@ func TestComposer_CaretTracksInternalScroll(t *testing.T) {
 
 // TestComposer_CaretAbsentOnNonComposerSurfaces asserts no hardware caret is
 // attached when the Settings surface or the continuation prompt is up — the
-// composer is not on screen there (issue #168 scope; full hiding is #169).
+// composer is not on screen there .
 func TestComposer_CaretAbsentOnNonComposerSurfaces(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -181,8 +181,8 @@ func TestComposer_CaretAbsentOnNonComposerSurfaces(t *testing.T) {
 // TestComposer_CaretHiddenWhileBusy asserts no hardware caret is attached while
 // an agent turn is running — the composer is on screen but inert, its keys are
 // ignored (ticket #57), so a blinking caret would promise editability the
-// surface does not have (issue #169 AC2). The caret returns as soon as the
-// turn completes and the composer regains the editing surface (issue #169 AC3).
+// surface does not have . The caret returns as soon as the
+// turn completes and the composer regains the editing surface .
 func TestComposer_CaretHiddenWhileBusy(t *testing.T) {
 	m := newStreamingModel()
 	m = resize(t, m)
@@ -202,7 +202,7 @@ func TestComposer_CaretHiddenWhileBusy(t *testing.T) {
 // #276) keeps the composer editable surface intact: the hardware caret stays
 // attached through the keypress and the focus never leaves the composer. The
 // panel that used to steal keys on ctrl+d is gone, so nothing can detach the
-// caret (issue #169's panel-specific behavior is obsolete with the panel).
+// caret .
 func TestComposer_CaretStaysAttachedOnCtrlD(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {

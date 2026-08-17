@@ -11,7 +11,7 @@ import (
 )
 
 // TestModel_slashSettingsOpensSurface verifies the `/settings` slash command
-// opens the Settings surface (issue #87 AC1), routing to the same settings
+// opens the Settings surface, routing to the same settings
 // panel ctrl+s opens — never sent as a chat prompt to the engine seam.
 func TestModel_slashSettingsOpensSurface(t *testing.T) {
 	var prompted string
@@ -43,9 +43,9 @@ func TestModel_slashSettingsOpensSurface(t *testing.T) {
 
 // TestModel_slashCompletionListsCommands verifies typing `/` surfaces a
 // completion list combining the built-in `/settings`, `/copy`, and `/login`
-// commands with any matching skill (issue #87 AC1/AC3): the list is visible
+// commands with any matching skill: the list is visible
 // without forcing a tab, and a plain prompt that merely starts with `/` is
-// still sent normally (issue #87 AC4) so slash handling never swallows user
+// still sent normally so slash handling never swallows user
 // input.
 func TestModel_slashCompletionListsCommands(t *testing.T) {
 	m := NewModelCfg(Dependencies{
@@ -70,7 +70,7 @@ func TestModel_slashCompletionListsCommands(t *testing.T) {
 	}
 
 	// A non-command slash line (e.g. a real path) still submits as a normal
-	// prompt: slash handling must not compete with typing (issue #87 AC4), so
+	// prompt: slash handling must not compete with typing, so
 	// only known built-ins (`/settings`, `/copy`, `/login`) and detected
 	// `/skillname` commands are intercepted.
 	var prompted string
@@ -96,7 +96,7 @@ func TestModel_slashCompletionListsCommands(t *testing.T) {
 
 // TestModel_slashTabCyclesSettingsAndSkills verifies tab on a bare `/` walks the
 // full completion list — the built-in `/settings`, `/copy`, and `/login`
-// commands ahead of any matching skill (issue #87 AC1 / #123 AC2) — filling
+// commands ahead of any matching skill — filling
 // the composer candidate-by-candidate.
 func TestModel_slashTabCyclesSettingsAndSkills(t *testing.T) {
 	m := NewModelCfg(Dependencies{
@@ -173,7 +173,7 @@ func TestModel_slashLoginRunsLoginFlow(t *testing.T) {
 }
 
 // TestModel_slashCompletionDismissedOnEmptyLine verifies emptying the composer
-// line dismisses the slash-completion list on the next render (issue #241): the
+// line dismisses the slash-completion list on the next render: the
 // list appears when a bare `/` is typed, then disappears once the line is
 // deleted back to empty. The completion list and its reserved rows must key off
 // the current composer value, not a stale `/...` prefix.

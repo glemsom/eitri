@@ -15,10 +15,10 @@ var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 // broken by Glamour's per-word styling runs.
 func plain(s string) string { return ansiRe.ReplaceAllString(s, "") }
 
-// This file covers the T1 alt-screen pivot's resize behaviour (issue #119): the
+// This file covers the T1 alt-screen pivot's resize behaviour: the
 // TUI renders through the alternate screen, so every frame is a clean repaint
 // and a resize re-flows the transcript with no duplicated or scattered lines.
-// The former per-width-bucket scroll-cache (ADR-0006 decision 4 / T03) that
+// The former per-width-bucket scroll-cache that
 // existed to compensate for the primary buffer is gone; each render rebuilds the
 // history and lets the native viewport clip it, so a resize cannot leave stale
 // residue.

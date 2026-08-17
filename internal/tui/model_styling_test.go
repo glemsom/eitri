@@ -11,7 +11,7 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// The T4 styling pass (issue #122) gives the TUI its modern look: visually
+// The T4 styling pass gives the TUI its modern look: visually
 // distinct user vs agent messages, consistent emoji markers, a coherent
 // bottom band, and a single-agent-accent palette centralized in lipgloss.
 // These tests assert that look through the render seam — renderHistory /
@@ -52,7 +52,7 @@ func TestModel_stylingNoRoleLabels(t *testing.T) {
 }
 
 // TestModel_stylingAgentPaneBordered asserts assistant answers render as a
-// left-bordered pane, visually distinct from the user chip (issue #122 AC1:
+// left-bordered pane, visually distinct from the user chip (:
 // "left-bordered agent panes").
 func TestModel_stylingAgentPaneBordered(t *testing.T) {
 	m := NewModelCfg(Dependencies{
@@ -75,7 +75,7 @@ func TestModel_stylingAgentPaneBordered(t *testing.T) {
 
 // TestModel_stylingToolOutcomeMarkers asserts a completed tool entry carries a
 // ✓ outcome tag and a failed one a ✗ tag, next to the persistent ⊕ tool glyph
-// (issue #122 AC2: "tool outcome (✓/✗)").
+// ").
 func TestModel_stylingToolOutcomeMarkers(t *testing.T) {
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{
@@ -111,7 +111,7 @@ func TestModel_stylingToolOutcomeMarkers(t *testing.T) {
 }
 
 // TestModel_stylingErrorMarker asserts a failing turn renders with the ⚠ error
-// marker inside a bordered agent pane (issue #122 AC2: "errors (⚠)"), so an
+// marker inside a bordered agent pane "), so an
 // error is as readable as a normal answer.
 func TestModel_stylingErrorMarker(t *testing.T) {
 	m := NewModelCfg(Dependencies{
@@ -137,11 +137,11 @@ func TestModel_stylingErrorMarker(t *testing.T) {
 }
 
 // TestModel_stylingToolCategoryColors asserts tool entries render with the
-// per-category hue from the theme palette (issue #181 AC1): shell tools in the
+// per-category hue from the theme palette: shell tools in the
 // shell color, file tools in the file color, web tools in the web color and
 // skill activations in the skill color, while an unknown tool keeps the
 // generic faint line. The ⊕ glyph stays on every entry — meaning never rides
-// on color alone (issue #181 AC5).
+// on color alone .
 func TestModel_stylingToolCategoryColors(t *testing.T) {
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{
@@ -198,10 +198,10 @@ func TestModel_stylingToolCategoryColors(t *testing.T) {
 }
 
 // TestModel_stylingThinkingDistinct asserts the thinking hint renders as a
-// visually distinct treatment from the assistant answer body (issue #181
+// visually distinct treatment from the assistant answer body (
 // AC2): the collapsed 🤔 line carries the accent hue and italic, while the
 // answer text itself stays plain — the 🤔 glyph plus the accent+italic pair
-// mark the hint, never color alone (issue #181 AC5).
+// mark the hint, never color alone .
 func TestModel_stylingThinkingDistinct(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -231,7 +231,7 @@ func TestModel_stylingThinkingDistinct(t *testing.T) {
 }
 
 // TestModel_stylingThinkingMarker asserts the thinking block keeps its 🤔
-// marker (issue #122 AC2: "thinking (🤔)") on the collapsed hint line.
+// marker ") on the collapsed hint line.
 func TestModel_stylingThinkingMarker(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -254,7 +254,7 @@ func TestModel_stylingThinkingMarker(t *testing.T) {
 
 // TestModel_stylingBandCoherent asserts the bottom band reads as one coherent
 // region: a top border separates it from the transcript, and it still carries
-// the live status strip and the composer (issue #122 AC3).
+// the live status strip and the composer .
 func TestModel_stylingBandCoherent(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
@@ -288,7 +288,7 @@ func TestModel_stylingBandCoherent(t *testing.T) {
 // one centralized lipgloss style set: the user chip and the agent pane both
 // carry the single agent accent, the error pane uses the semantic error color,
 // and every color is a hex value lipgloss adapts to any color profile — so the
-// surface degrades safely on a non-truecolor terminal (issue #122 AC4/AC5).
+// surface degrades safely on a non-truecolor terminal .
 // cellBGFill resolves an ANSI line into per-cell booleans: whether the bubble
 // background is active at each display column. It walks SGR sequences tracking
 // background state (resets clear it; a 48;2/48;5/40-47/100-107 sets it), which
@@ -414,7 +414,7 @@ func TestModel_stylingPaletteCentralized(t *testing.T) {
 	// to a concrete color.RGBA value (ANSI colors stay ansi.BasicColor /
 	// ANSIColor), so a hex palette entry is detectable by its concrete type and
 	// adapts to any color profile (256-color floor in a terminal), never
-	// truecolor-only (issue #122 AC4/AC5).
+	// truecolor-only .
 	for name, c := range map[string]color.Color{
 		"accent": defaultTheme.accent,
 		"error":  defaultTheme.error,
@@ -426,11 +426,11 @@ func TestModel_stylingPaletteCentralized(t *testing.T) {
 	}
 
 	// Color downsampling on a non-truecolor terminal moved to the output layer
-	// in lipgloss v2 / bubbletea v2 (issue #148): Render() always emits
+	// in lipgloss v2 / bubbletea v2: Render() always emits
 	// full-fidelity ANSI, and Bubble Tea v2 downsamples to the terminal's color
 	// profile at render time — so the model's view content carries truecolor
 	// sequences by design. The 256-color downsampling parity check is part of
-	// the v2 migration audit (issue #149 AC3, manual TUI smoke test), not a
+	// the v2 migration audit, not a
 	// Render()-level assertion.
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {

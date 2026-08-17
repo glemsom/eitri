@@ -5,7 +5,7 @@ import (
 )
 
 // Streamer bridges the engine's live answer-text event stream into the TUI's
-// rendering loop (issue #83). The app's engine listener writes each streamed
+// rendering loop . The app's engine listener writes each streamed
 // AnswerStream delta here, and the model drains it on the UI goroutine via a
 // waiting command, re-rendering the in-progress assistant message in place —
 // so the user watches the Markdown render grow token by token rather than a
@@ -20,7 +20,7 @@ type Streamer struct {
 // StreamKind identifies which stream a StreamUpdate carries: chain-of-thought
 // reasoning or assistant answer text. The two are kept apart
 // — reasoning is never merged into the answer — so the TUI can render the
-// thinking stream as its own collapsible block (issue #85).
+// thinking stream as its own collapsible block .
 type StreamKind int
 
 const (
@@ -65,7 +65,7 @@ type streamDeltaMsg struct {
 // streamWait returns a command that blocks until the next streamed delta
 // arrives on the engine-seam channel, then delivers it to the UI loop as a
 // streamDeltaMsg. The model re-issues it after each delta so the in-progress
-// streams keep growing (issue #83). When the channel closes it returns nil so
+// streams keep growing . When the channel closes it returns nil so
 // the polling stops.
 func streamWait(s *Streamer) tea.Cmd {
 	return func() tea.Msg {
