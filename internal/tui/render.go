@@ -137,9 +137,8 @@ func thinkingHeader(th Theme, reasoning, effort string) string {
 	return th.thinkingStyle.Render(hint) + "\n"
 }
 
-// bandHints returns the keybinding hint strip for the status row (benchmark
-// §4.4: one consistent hint system from the central keymap). Hints are the
-// real, wired bindings — never advertised keys that no-op. It sits on the
+// bandHints returns the keybinding hint strip for the status row. Hints are
+// the real, wired bindings — never advertised keys that no-op. It sits on the
 // value-only render surface (issue #208) so the hint set stays table-testable
 // without a live model (issue #210); model.go's renderBand is the only
 // *Model-free site.
