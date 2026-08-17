@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -93,6 +94,11 @@ type Turn func(ctx context.Context, prompt string, payload string) (TurnResult, 
 type TurnResult struct {
 	Answer    string
 	Reasoning string
+	// Stopped is true when the turn was aborted by the user (via the TUI's
+	// cancel handle) rather than failing: the engine's stop sentinel is mapped
+	// to this by the app adapter, so the TUI never imports the engine package
+	// to tell a stop from an error.
+	Stopped bool
 }
 
 // message is one committed line of the conversation log.
@@ -122,6 +128,10 @@ type message struct {
 	// block independent of the mode, and the effective expansion computed at
 	// render time resolves it.
 	thinkingCollapsed bool
+	// stopped is true when this assistant message is the partial output of a
+	// user-stopped turn: it renders with the stopped marker and a distinct
+	// pane, never as an error, and keeps whatever content had already streamed.
+	stopped bool
 }
 
 type turnDoneMsg struct {
@@ -129,6 +139,10 @@ type turnDoneMsg struct {
 	answer    string
 	reasoning string
 	err       error
+	// stopped is true when the turn was aborted by the user: the partial
+	// answer/reasoning fields carry what had been produced, and the UI keeps
+	// it on screen marked as stopped instead of dropping it as an error.
+	stopped bool
 }
 
 // telemetryUpdateMsg carries one queued live telemetry update from the engine
@@ -305,6 +319,17 @@ type Model struct {
 	continueReq  chan struct{}
 	continueResp chan bool
 	prompting    bool
+
+	// turnCancel is the per-turn cancel handle: startTurn installs it (the
+	// cancelable context the turn goroutine runs on), the esc keypress invokes
+	// it to abort the in-flight turn, and turnDoneMsg clears it. It lives on
+	// the Model so the value copies Bubble Tea makes share the same handle,
+	// exactly like the continuation channels.
+	turnCancel context.CancelFunc
+	// turnCtx is the cancelable context current turn goroutine runs on; nil
+	// while idle. esc cancels it, which is how the stop reaches the engine's
+	// provider wire and any running tool.
+	turnCtx context.Context
 
 	// skills is the live list backing the slash-command completion, refreshed
 	// from the Dependencies snapshot at construction.
@@ -629,6 +654,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msgi.String() {
 		case "ctrl+c":
 			return m, tea.Quit
+		case "esc":
+			// esc while a turn runs stops it: the cancel handle aborts the
+			// in-flight turn at the context boundary (the provider wire and any
+			// running tool see the cancellation; the engine surfaces the stop).
+			// The partial reply already on screen stays, marked as stopped. esc
+			// while idle remains a no-op (vim-normal mode is gone).
+			if m.tx.busy {
+				m.stopTurn()
+			}
+			return m, nil
 		case "ctrl+s":
 			return m.startSettings()
 		case "pgup", "home":
@@ -800,9 +835,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case turnDoneMsg:
 		m.tx.busy = false
 		m.tx.spinner = 0
+		m.turnCancel = nil
+		m.turnCtx = nil
 		m.tx.layout.dirty = true // the turn's answer/error and busy end change the transcript
 		m.syncComposerRail()
 		wasStreaming := m.curStream >= 0 && m.curStream < len(m.tx.messages)
+		if msgi.stopped {
+			// A stopped turn keeps the partial output already on screen, marked
+			// as stopped rather than rendered as an error: the engine preserves
+			// the partial answer in its stop outcome, and any streamed deltas
+			// had already landed in the in-progress message. A stop arriving
+			// before the first delta appends the partial message itself.
+			m.tx.layout.dirty = true
+			if wasStreaming {
+				m.tx.messages[m.curStream].content = msgi.answer
+				m.tx.messages[m.curStream].reasoning = msgi.reasoning
+				m.tx.messages[m.curStream].streaming = false
+				m.tx.messages[m.curStream].stopped = true
+				m.curStream = -1
+			} else if msgi.answer != "" || msgi.reasoning != "" {
+				m.tx.messages = append(m.tx.messages, message{role: "eitri", content: msgi.answer, reasoning: msgi.reasoning, stopped: true, thinkingRequested: m.deps.Config.ThinkingEnabled})
+			}
+			return m, nil
+		}
 		if msgi.err != nil {
 			// A streaming turn aborting with an error drops the partial reply and
 			// renders the error in its place; the incremental buffer is advisory.
@@ -1050,16 +1105,36 @@ func (s *settingsForm) save(m *Model) {
 	m.settings = nil
 }
 
-// turnCmd reports a turn's completion back to the model.
+// turnCmd reports a turn's completion back to the model. The closure runs on
+// the cancelable context startTurn installed (turnCtx/turnCancel), so pressing
+// esc mid-turn aborts the engine work at the context boundary and the turn
+// returns the cancellation as a stopped result rather than an error.
 func (m Model) turnCmd(prompt string, payload string) tea.Cmd {
 	return tea.Cmd(func() tea.Msg {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := m.turnCtx
+		if ctx == nil {
+			// Defensive fallback for a command dispatched before startTurn ran
+			// (should not happen; startTurn installs the handle first).
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithCancel(context.Background())
+			defer cancel()
+		} else {
+			// Release the per-turn context once the turn finishes naturally;
+			// esc releases it earlier via the cancel handle.
+			defer m.turnCancel()
+		}
 		res, err := m.turn(ctx, prompt, payload)
 		if err != nil {
+			// A wholesale context canceled from the turn means the user stopped
+			// it; the engine maps its own stop to TurnResult.Stopped, and a
+			// stand-in turn that just returns context.Canceled is treated the
+			// same way: partial output stays, marked stopped, never an error.
+			if errors.Is(err, context.Canceled) {
+				return turnDoneMsg{prompt: prompt, stopped: true, answer: res.Answer, reasoning: res.Reasoning}
+			}
 			return turnDoneMsg{prompt: prompt, err: err}
 		}
-		return turnDoneMsg{prompt: prompt, answer: res.Answer, reasoning: res.Reasoning}
+		return turnDoneMsg{prompt: prompt, answer: res.Answer, reasoning: res.Reasoning, stopped: res.Stopped}
 	})
 }
 
@@ -1070,6 +1145,10 @@ func (m Model) turnCmd(prompt string, payload string) tea.Cmd {
 // command, shared by the composer submit path and the skillDoneMsg args branch
 // (issue #239) so a follow-up args turn behaves exactly like a normal user turn.
 func (m *Model) startTurn(prompt string, payload string) tea.Cmd {
+	// Install the per-turn cancel handle BEFORE the turn command is dispatched:
+	// the closure captures this context, and esc invokes the stored cancel func
+	// to abort the running turn.
+	m.turnCtx, m.turnCancel = context.WithCancel(context.Background())
 	m.tx.messages = append(m.tx.messages, message{role: "you", content: prompt})
 	m.tx.busy = true
 	m.curStream = -1
@@ -1087,6 +1166,17 @@ func (m *Model) startTurn(prompt string, payload string) tea.Cmd {
 		return tea.Batch(m.turnCmd(prompt, payload), streamWait(m.stream), spinnerTick())
 	}
 	return m.turnCmd(prompt, payload)
+}
+
+// stopTurn aborts the in-flight turn by canceling the per-turn context
+// installed in startTurn. The cancellation threads through the Turn seam to the
+// engine, which kills the provider stream / running tool at the context
+// boundary and surfaces the stop; turnDoneMsg then marks the partial output
+// stopped and clears the handle. It is a no-op when nothing is running.
+func (m *Model) stopTurn() {
+	if m.turnCancel != nil {
+		m.turnCancel()
+	}
 }
 
 // appendStreamDelta grows the in-progress assistant message by one streamed
@@ -1535,7 +1625,13 @@ func (m Model) renderBand(b *strings.Builder) {
 		if m.tx.busy {
 			statusRow = m.tx.theme.bandStatusStyle.Render(busyLine(m.tx.spinner)) + "  "
 		}
-		statusRow += m.tx.theme.statusStyle.Render(bandHints())
+		hints := bandHints()
+		if m.tx.busy {
+			// esc stops the running turn; it is a real binding only while a turn
+			// runs, so the idle hint set stays unchanged.
+			hints += g(" · ", " . ") + "esc stop"
+		}
+		statusRow += m.tx.theme.statusStyle.Render(hints)
 		// The status strip is edge-to-edge with the rest of the band (issue
 		// #232 AC1): pad it to the full band width so it runs under the rail's
 		// right column instead of stopping short. The separator and composer

@@ -21,6 +21,12 @@ import (
 // It bounds runaway agent loops.
 var ErrMaxTurns = errors.New("maximum turn limit reached")
 
+// ErrStopped is the dedicated stop sentinel: it wraps context.Canceled so a
+// caller distinguishes a user-stopped turn (esc in the TUI) from a failure
+// with errors.Is(err, context.Canceled), while the wrapped cause keeps the
+// sentinel from matching unrelated errors.
+var ErrStopped = fmt.Errorf("turn stopped: %w", context.Canceled)
+
 // TranscriptWriter records the run's on-disk trail (the T1b session sink).
 type TranscriptWriter interface {
 	WriteTranscript(line []byte) error
@@ -104,6 +110,12 @@ func systemPromptHead() []provider.Message {
 // separate channel (never merged into the answer) and the run is recorded on
 // the transcript sink.
 func (e *Engine) Run(ctx context.Context, req RunRequest) (Result, error) {
+	// A canceled context refuses to open a provider stream and surfaces the
+	// stop sentinel immediately; the stream drain below does the same for a
+	// stop that lands mid-flight.
+	if ctx.Err() != nil {
+		return Result{}, ErrStopped
+	}
 	s, err := e.provider.Stream(ctx, provider.Request{
 		Model:           req.Model,
 		Messages:        append(systemPromptHead(), provider.Message{Role: provider.RoleUser, Content: req.Prompt}),
@@ -116,7 +128,7 @@ func (e *Engine) Run(ctx context.Context, req RunRequest) (Result, error) {
 		return Result{}, err
 	}
 
-	return e.drain(s, req.Prompt, 0)
+	return e.drain(ctx, s, req.Prompt, 0)
 }
 
 // drain streams s to completion, accumulating the assistant answer, reasoning,
@@ -124,14 +136,26 @@ func (e *Engine) Run(ctx context.Context, req RunRequest) (Result, error) {
 // returning the finished Result. It is the shared tail of every non-tool turn
 // (Run, RunJSONObjectMode, RunSamplingPolicy) so the stream-drain loop and the
 // transcript write are authored once instead of copied per turn type.
-func (e *Engine) drain(s provider.Stream, prompt string, turn int) (Result, error) {
+func (e *Engine) drain(ctx context.Context, s provider.Stream, prompt string, turn int) (Result, error) {
 	e.emit(TurnEvent{Turn: turn, Start: true})
 	var res Result
 	var endReason string
 	for {
 		c, err := s.Next()
 		if err != nil {
-			return res, closeErr(err)
+			ce := closeErr(err)
+			if ce == nil {
+				break
+			}
+			// A provider stream that dies because its wire context was canceled
+			// is a user stop, not a failure: preserve the partial content and
+			// write the stopped record instead of surfacing the raw transport
+			// error.
+			if e.stopped(ctx) {
+				e.finishStopped(res, prompt, turn)
+				return res, ErrStopped
+			}
+			return res, ce
 		}
 		if c.Content != "" {
 			res.Answer += c.Content
@@ -156,6 +180,24 @@ func (e *Engine) drain(s provider.Stream, prompt string, turn int) (Result, erro
 		_ = e.transcript.WriteTranscript(fmt.Appendf(nil, "=== %s ===\n%s\n", prompt, res.Answer))
 	}
 	return res, nil
+}
+
+// stopped reports whether the caller's context was canceled, the condition that
+// turns a stream/tool error into a user stop rather than a failure.
+func (e *Engine) stopped(ctx context.Context) bool {
+	return ctx.Err() != nil
+}
+
+// finishStopped emits the turn-ending event and the stopped transcript record
+// for a run aborted by cancellation. The record carries the same header shape
+// as a clean run plus the partial content accumulated so far, with the stopped
+// marker so the session trail distinguishes an aborted run from a clean one; a
+// clean run's record bytes are unchanged.
+func (e *Engine) finishStopped(res Result, prompt string, turn int) {
+	e.emit(TurnEvent{Turn: turn, EndReason: "stopped"})
+	if e.transcript != nil {
+		_ = e.transcript.WriteTranscript(fmt.Appendf(nil, "=== %s ===\n%s\n[stopped]\n", prompt, res.Answer))
+	}
 }
 
 // jsonObjectSuffix is appended to a JSON Object Mode prompt when the caller's
@@ -204,7 +246,7 @@ func (e *Engine) RunJSONObjectMode(ctx context.Context, req RunRequest) (Result,
 		return Result{}, err
 	}
 
-	return e.drain(s, req.Prompt, 0)
+	return e.drain(ctx, s, req.Prompt, 0)
 }
 
 // RunSamplingPolicy runs a Sampling Policy special turn (issue #61): an internal, non-tool turn that requests temperature- or
@@ -235,7 +277,7 @@ func (e *Engine) RunSamplingPolicy(ctx context.Context, req RunRequest, policy p
 		return Result{}, err
 	}
 
-	return e.drain(s, req.Prompt, 0)
+	return e.drain(ctx, s, req.Prompt, 0)
 }
 
 // ToolExecutor executes an agent tool call. The tools registry implements it;
@@ -324,6 +366,11 @@ func (e *Engine) NegotiateGenerationControls(ctx context.Context, reqs []provide
 // resubmits until the model stops calling tools. Result.Answer/Reasoning/Usage
 // reflect the final, tool-free turn.
 func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions) (Result, error) {
+	// A stop landing before any turn runs refuses to wire fresh provider work
+	// and surfaces the stop sentinel immediately.
+	if ctx.Err() != nil {
+		return Result{}, ErrStopped
+	}
 	// Build the message head once from a conditional skill prefix (issue #260):
 	// the system prompt sits at [0], the slash-activated skill payload (when
 	// present) follows as a second RoleSystem message, then the user args. The
@@ -334,7 +381,15 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 			provider.Message{Role: provider.RoleSystem, Content: *req.SkillInject})
 	}
 	messages = append(messages, provider.Message{Role: provider.RoleUser, Content: req.Prompt})
-	var final Result
+	var (
+		final Result
+		// stopContent/stopReasoning accumulate the partial output of every turn
+		// streamed before a stop, so a canceled tool-loop run keeps the assistant
+		// text it had already produced (the final answer surfaces only the last
+		// turn's content).
+		stopContent   string
+		stopReasoning string
+	)
 
 	// Optionally opt this agent loop into provider-side Tool Schema Enforcement
 	// (issue #62): pre-flight the control as an optional requirement so an
@@ -357,6 +412,15 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 	}
 
 	for turn := 0; ; turn++ {
+		// The cancellation boundary between turns: once the caller's context is
+		// canceled the loop must not open another provider stream or run another
+		// tool; the output accumulated so far becomes the stopped result.
+		if ctx.Err() != nil {
+			final.Answer = stopContent
+			final.Reasoning = stopReasoning
+			return final, ErrStopped
+		}
+		var content, reasoning string
 		if opts.MaxTurns > 0 && turn >= opts.MaxTurns {
 			// The cap is reached. Batch/headless (no hook) auto-denies: stop.
 			// Interactive callers may grant another budget via CanContinue.
@@ -404,7 +468,6 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		// overflowed-and-retried turn carried no streamed output and emits no
 		// Start, so the event stream never pairs a Start without a matching End.
 		e.emit(TurnEvent{Turn: turn, Start: true})
-		var content, reasoning string
 		var done provider.Chunk
 		for {
 			c, err := s.Next()
@@ -412,6 +475,17 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 				break
 			}
 			if err != nil {
+				// A provider stream that dies because the caller canceled the turn
+				// is a stop: keep the partial content, write the stopped record,
+				// and refuse to resubmit past the cancellation boundary.
+				if e.stopped(ctx) {
+					stopContent += content
+					stopReasoning += reasoning
+					final.Answer = stopContent
+					final.Reasoning = stopReasoning
+					e.finishStopped(final, req.Prompt, turn)
+					return final, ErrStopped
+				}
 				return final, err
 			}
 			if c.Content != "" {
@@ -455,6 +529,13 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		assistant.ToolCalls = done.ToolCalls
 		messages = append(messages, assistant)
 		for _, tc := range done.ToolCalls {
+			if e.stopped(ctx) {
+				stopContent += content
+				stopReasoning += reasoning
+				final.Answer = stopContent
+				final.Reasoning = stopReasoning
+				return final, ErrStopped
+			}
 			e.emit(ToolCallEvent{Turn: turn, ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments})
 			result := execToolCall(ctx, opts, tc)
 			// Shared byte-cap at the tool-result boundary (issue #286): every tool
