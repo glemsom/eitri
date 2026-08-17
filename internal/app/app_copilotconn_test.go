@@ -64,3 +64,46 @@ func TestCopilotConnectPersistsFreshToken(t *testing.T) {
 		t.Fatalf("persisted config %q missing the fresh access token", raw)
 	}
 }
+
+// TestCopilotConnectRetriesAuthorizationPending verifies the interactive
+// Copilot login path keeps polling after GitHub reports authorization_pending,
+// instead of surfacing that interim state as a terminal user-visible error.
+func TestCopilotConnectRetriesAuthorizationPending(t *testing.T) {
+	var polls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/login/device/code" {
+			_, _ = w.Write([]byte(`{"device_code":"dev-x","user_code":"ZZ-AA","verification_uri":"https://github.com/login/device","expires_in":900,"interval":0}`))
+			return
+		}
+		polls++
+		if polls == 1 {
+			_, _ = w.Write([]byte(`{"error":"authorization_pending"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"access_token":"tui-fresh-access","refresh_token":"tui-fresh-refresh","expires_in":28800}`))
+	}))
+	defer srv.Close()
+
+	orig := newDeviceFlow
+	newDeviceFlow = func(h *http.Client, _ map[string]string) *provider.DeviceFlow {
+		return provider.NewDeviceFlow(h, map[string]string{
+			"code":  srv.URL + "/login/device/code",
+			"token": srv.URL + "/login/oauth/access_token",
+		})
+	}
+	defer func() { newDeviceFlow = orig }()
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.json")
+	cfg, err := CopilotConnect(context.Background(), cfgPath, srv.Client(), nil)
+	if err != nil {
+		t.Fatalf("CopilotConnect() error = %v, want nil after pending->success", err)
+	}
+	if polls != 2 {
+		t.Fatalf("poll count = %d, want 2", polls)
+	}
+	if cfg.Copilot.AccessToken != "tui-fresh-access" {
+		t.Fatalf("copilot access token = %q, want tui-fresh-access", cfg.Copilot.AccessToken)
+	}
+}

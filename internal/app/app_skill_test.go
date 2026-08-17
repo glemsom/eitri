@@ -550,7 +550,7 @@ func TestTUISlashArgsPutsSkillInProviderContext(t *testing.T) {
 	}), mockTranscript{})
 
 	cfg := config.Default()
-	turn := runEngineTurn(e, cfg, reg, "sess-"+t.Name(), nil)
+	turn := runEngineTurn(e, func() config.Config { return cfg }, reg, "sess-"+t.Name(), nil)
 	m := tui.NewModelCfg(tui.Dependencies{
 		Turn:   turn,
 		Skills: surface,

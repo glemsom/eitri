@@ -235,7 +235,8 @@ func Run(opts Options) error {
 			return err
 		}
 	}
-	e := engine.New(p, sess)
+	liveProvider := newHotProvider(p)
+	e := engine.New(liveProvider, sess)
 	key := sess.GUID() // opt into the session-scoped prompt cache (T6)
 
 	// Build the interactive TUI run when no batch prompt is given. It sits on
@@ -249,7 +250,7 @@ func Run(opts Options) error {
 		if err := tuiBootError(currentTUIEnv()); err != nil {
 			return err
 		}
-		return runTUI(e, cfg, reg, key, p, cfgPath, skills, workspace, tempHost)
+		return runTUI(e, cfg, reg, key, liveProvider, cfgPath, skills, workspace, tempHost)
 	}
 
 	res, err := runAgent(e, cfg, reg, key, opts.Prompt, nil, nil)

@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/glemsom/eitri/internal/config"
 )
 
 // TestModel_slashSettingsOpensSurface verifies the `/settings` slash command
@@ -40,10 +42,11 @@ func TestModel_slashSettingsOpensSurface(t *testing.T) {
 }
 
 // TestModel_slashCompletionListsCommands verifies typing `/` surfaces a
-// completion list combining the built-in `/settings` command with any matching
-// detected skill (issue #87 AC1/AC3): the list is visible without forcing a
-// tab, and a plain prompt that merely starts with `/` is still sent normally
-// (issue #87 AC4) so slash handling never swallows user input.
+// completion list combining the built-in `/settings`, `/copy`, and `/login`
+// commands with any matching skill (issue #87 AC1/AC3): the list is visible
+// without forcing a tab, and a plain prompt that merely starts with `/` is
+// still sent normally (issue #87 AC4) so slash handling never swallows user
+// input.
 func TestModel_slashCompletionListsCommands(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
@@ -56,11 +59,11 @@ func TestModel_slashCompletionListsCommands(t *testing.T) {
 	})
 	m = resize(t, m)
 
-	// A bare `/` lists the built-in settings command and the detected skills.
+	// A bare `/` lists the built-in commands and the detected skills.
 	m = typeText(t, m, "/")
 	content := view(m)
-	if !strings.Contains(content, "/settings") {
-		t.Errorf("bare `/` completion should list /settings, got: %q", content)
+	if !strings.Contains(content, "/settings") || !strings.Contains(content, "/copy") || !strings.Contains(content, "/login") {
+		t.Errorf("bare `/` completion should list built-in commands, got: %q", content)
 	}
 	if !strings.Contains(content, "/review") || !strings.Contains(content, "/plan") {
 		t.Errorf("bare `/` completion should list detected skills, got: %q", content)
@@ -68,7 +71,8 @@ func TestModel_slashCompletionListsCommands(t *testing.T) {
 
 	// A non-command slash line (e.g. a real path) still submits as a normal
 	// prompt: slash handling must not compete with typing (issue #87 AC4), so
-	// `/<skillname>` and `/settings` are the only inputs intercepted.
+	// only known built-ins (`/settings`, `/copy`, `/login`) and detected
+	// `/skillname` commands are intercepted.
 	var prompted string
 	m = NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
@@ -91,9 +95,9 @@ func TestModel_slashCompletionListsCommands(t *testing.T) {
 }
 
 // TestModel_slashTabCyclesSettingsAndSkills verifies tab on a bare `/` walks the
-// full completion list — the built-in `/settings` and `/copy` commands ahead of
-// any matching skill (issue #87 AC1 / #123 AC2) — filling the composer
-// candidate-by-candidate.
+// full completion list — the built-in `/settings`, `/copy`, and `/login`
+// commands ahead of any matching skill (issue #87 AC1 / #123 AC2) — filling
+// the composer candidate-by-candidate.
 func TestModel_slashTabCyclesSettingsAndSkills(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
@@ -105,7 +109,7 @@ func TestModel_slashTabCyclesSettingsAndSkills(t *testing.T) {
 	m = typeText(t, m, "/")
 
 	// First tab picks `/settings` (first built-in); the second tab advances to
-	// the `/copy` built-in; a third reaches the matching skill.
+	// `/copy`; the third hits `/login`; the fourth reaches the matching skill.
 	m = keypress(t, m, "tab")
 	if got := m.composer.Value(); got != "/settings" {
 		t.Fatalf("first tab completion = %q, want /settings", got)
@@ -115,12 +119,56 @@ func TestModel_slashTabCyclesSettingsAndSkills(t *testing.T) {
 		t.Fatalf("second tab completion = %q, want /copy", got)
 	}
 	m = keypress(t, m, "tab")
+	if got := m.composer.Value(); got != "/login" {
+		t.Fatalf("third tab completion = %q, want /login", got)
+	}
+	m = keypress(t, m, "tab")
 	if got := m.composer.Value(); got != "/review" {
-		t.Fatalf("third tab completion = %q, want /review", got)
+		t.Fatalf("fourth tab completion = %q, want /review", got)
 	}
 	// The completed line renders with the selected candidate marked up.
 	if !strings.Contains(view(m), "▸ /review") {
 		t.Fatalf("completion selection marker missing, got: %q", view(m))
+	}
+}
+
+// TestModel_slashLoginRunsLoginFlow verifies `/login` routes to the built-in
+// login seam instead of the engine, surfaces the device-flow code, and applies
+// the returned config for later turns.
+func TestModel_slashLoginRunsLoginFlow(t *testing.T) {
+	var prompted string
+	var applied config.Config
+	m := NewModelCfg(Dependencies{
+		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
+			prompted = prompt
+			return TurnResult{Answer: "ok"}, nil
+		},
+		Config: config.Config{Provider: "github-copilot"},
+		Login: func(_ context.Context, onCode func(LoginCode)) (config.Config, error) {
+			onCode(LoginCode{UserCode: "ZZ-AA", VerificationURI: "https://github.com/login/device"})
+			return config.Config{Provider: "github-copilot", Copilot: config.CopilotConfig{AccessToken: "fresh"}}, nil
+		},
+		SaveBack: func(c config.Config) { applied = c },
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "/login")
+	m = submitAndWait(t, m)
+
+	if prompted != "" {
+		t.Fatalf("`/login` must not reach engine seam, got prompt %q", prompted)
+	}
+	if m.deps.Config.Copilot.AccessToken != "fresh" {
+		t.Fatalf("model config access token = %q, want fresh", m.deps.Config.Copilot.AccessToken)
+	}
+	if applied.Copilot.AccessToken != "fresh" {
+		t.Fatalf("applied config access token = %q, want fresh", applied.Copilot.AccessToken)
+	}
+	content := plain(view(m))
+	if !strings.Contains(content, "https://github.com/login/device") || !strings.Contains(content, "ZZ-AA") {
+		t.Fatalf("login flow note missing device code, got: %q", content)
+	}
+	if !strings.Contains(content, "login") || !strings.Contains(content, "saved") {
+		t.Fatalf("login success note missing, got: %q", content)
 	}
 }
 

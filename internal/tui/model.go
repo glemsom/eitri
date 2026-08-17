@@ -146,6 +146,22 @@ type skillDoneMsg struct {
 	args    string
 }
 
+// loginCodeMsg reports the human-visible device-flow code for an in-flight
+// `/login` command, plus the channel waiter should block on for the next login
+// event. The model renders the code immediately, then re-issues the wait so
+// the eventual completion still lands.
+type loginCodeMsg struct {
+	code LoginCode
+	next <-chan tea.Msg
+}
+
+// loginDoneMsg reports the result of one built-in `/login` command. On
+// success it carries the fresh config persisted by the login seam.
+type loginDoneMsg struct {
+	cfg config.Config
+	err error
+}
+
 // discoverDoneMsg reports the outcome of an on-demand provider model discovery
 // started when the Settings surface opened (issue #89 AC2). models is the
 // discovered list on success; err carries the failure otherwise.
@@ -169,6 +185,13 @@ type SkillItem struct {
 type SkillsSurface struct {
 	Items    []SkillItem
 	Activate func(ctx context.Context, name string) (string, error)
+}
+
+// LoginCode is the human-visible device-flow challenge surfaced by `/login`:
+// the verification URL to open and the short user code to enter there.
+type LoginCode struct {
+	UserCode        string
+	VerificationURI string
 }
 
 // Dependencies wires a Model to its environment: the conversation Turn, model
@@ -195,9 +218,14 @@ type Dependencies struct {
 	// Save persists a Settings edit to the config layer. When nil, Settings can
 	// still be opened/dismissed but saving is a no-op (view-only).
 	Save func(config.Config) error
-	// SaveBack, when non-nil, is invoked with updated settings after Save so
-	// the app can refresh its in-process view.
+	// SaveBack, when non-nil, is invoked after an in-TUI config mutation
+	// succeeds (Settings Save or `/login`) so the app can refresh its in-process
+	// config/provider view.
 	SaveBack func(config.Config)
+	// Login, when non-nil, backs the built-in `/login` slash command. The seam
+	// may surface a device-flow code via onCode, then returns the fresh config
+	// once the login completed and persisted.
+	Login func(ctx context.Context, onCode func(LoginCode)) (config.Config, error)
 	// Skills, when non-nil, backs the slash-command surface: `/skillname`
 	// activation and the `/` completion list. Nil disables `/skillname`
 	// commands (no skills). The right rail never renders skills (issue #188).
@@ -682,12 +710,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.syncComposerHeight()
 			m.slashIdx = 0
 			m.slashPrefix = ""
-			// A slash command routes to its handler instead of the engine (issue
-			// #87 AC1): `/settings` opens the Settings surface; `/skillname`
-			// activates that skill via the T8 run, surfacing the
-			// result rather than sending the raw command as a chat prompt. Any
-			// other `/...` line is a normal prompt and is sent to the engine seam
-			// unchanged (issue #87 AC4: slash handling never swallows input).
+			// A built-in slash command routes to its handler instead of the
+			// engine: `/settings` opens Settings, `/copy` copies the transcript,
+			// `/login` runs interactive provider login, and `/skillname`
+			// activates that skill via the T8 run, surfacing the result rather
+			// than sending the raw command as a chat prompt. Any other `/...`
+			// line is a normal prompt and is sent to the engine seam unchanged
+			// (issue #87 AC4: slash handling never swallows input).
 			if prompt == "/settings" {
 				return m.startSettings()
 			}
@@ -697,6 +726,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if prompt == "/copy" {
 				m.copyTranscript()
 				return m, nil
+			}
+			// /login runs the provider-backed interactive login seam (Copilot's
+			// device flow today) and surfaces the code/result inside the TUI
+			// instead of sending `/login` as a normal prompt.
+			if prompt == "/login" {
+				return m.startLogin()
 			}
 			if name, args, ok := slashCommand(prompt, m.skills); ok {
 				return m.activateSkill(name, args)
@@ -848,6 +883,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.startTurn(msgi.args, msgi.payload)
 			return m, cmd
 		}
+		return m, nil
+
+	case loginCodeMsg:
+		m.tx.messages = append(m.tx.messages, message{role: "eitri", content: fmt.Sprintf("Open %s and enter code: %s", msgi.code.VerificationURI, msgi.code.UserCode)})
+		m.tx.layout.dirty = true
+		return m, loginWait(msgi.next)
+
+	case loginDoneMsg:
+		if msgi.err != nil {
+			m.tx.messages = append(m.tx.messages, message{role: "eitri", content: failurePrefix() + msgi.err.Error()})
+			m.tx.layout.dirty = true
+			return m, nil
+		}
+		m.deps.Config = msgi.cfg
+		if m.deps.SaveBack != nil {
+			m.deps.SaveBack(msgi.cfg)
+		}
+		m.tx.messages = append(m.tx.messages, message{role: "eitri", content: "login saved"})
+		m.tx.layout.dirty = true
 		return m, nil
 	}
 
@@ -1138,6 +1192,18 @@ func (m Model) activateSkill(name, args string) (tea.Model, tea.Cmd) {
 	return m, skillCmd(m.deps.Skills.Activate, name, args)
 }
 
+// startLogin runs the built-in `/login` command through the interactive login
+// seam and renders its code/result as assistant notes.
+func (m Model) startLogin() (tea.Model, tea.Cmd) {
+	m.tx.messages = append(m.tx.messages, message{role: "you", content: "/login"})
+	m.tx.layout.dirty = true
+	if m.deps.Login == nil {
+		m.tx.messages = append(m.tx.messages, message{role: "eitri", content: failurePrefix() + "no login flow available"})
+		return m, nil
+	}
+	return m, loginCmd(m.deps.Login)
+}
+
 // discoverCmd runs one on-demand provider model discovery off the main loop and
 // reports its result (issue #89 AC2). It keeps the provider seam (Models) off
 // the UI goroutine so discovery latency never blocks rendering.
@@ -1165,11 +1231,40 @@ func skillCmd(activate func(ctx context.Context, name string) (string, error), n
 	})
 }
 
+// loginCmd runs the interactive login seam off the main loop. Device-flow code
+// arrivals are forwarded immediately as loginCodeMsg values; completion lands
+// as a final loginDoneMsg.
+func loginCmd(login func(ctx context.Context, onCode func(LoginCode)) (config.Config, error)) tea.Cmd {
+	ch := make(chan tea.Msg, 2)
+	go func() {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		cfg, err := login(ctx, func(code LoginCode) {
+			ch <- loginCodeMsg{code: code, next: ch}
+		})
+		ch <- loginDoneMsg{cfg: cfg, err: err}
+		close(ch)
+	}()
+	return loginWait(ch)
+}
+
+// loginWait blocks for the next in-flight login event, returning nil once the
+// login goroutine has finished and closed the channel.
+func loginWait(ch <-chan tea.Msg) tea.Cmd {
+	return func() tea.Msg {
+		msg, ok := <-ch
+		if !ok {
+			return nil
+		}
+		return msg
+	}
+}
+
 // slashCandidates returns the ordered slash-command completion candidates for
-// the current composer value (issue #87 AC1): the built-in `/settings` command
-// first, then every detected skill whose name starts with the `/...` partial.
-// A partial of "" means a bare `/`, listing every command & skill. It returns
-// nil when the value does not start with `/`.
+// the current composer value (issue #87 AC1): the built-in `/settings`,
+// `/copy`, and `/login` commands first, then every detected skill whose name
+// starts with the `/...` partial. A partial of "" means a bare `/`, listing
+// every command & skill. It returns nil when the value does not start with `/`.
 func slashCandidates(value string, skills []SkillItem) []string {
 	if !strings.HasPrefix(value, "/") {
 		return nil
@@ -1181,6 +1276,9 @@ func slashCandidates(value string, skills []SkillItem) []string {
 	}
 	if partial == "" || strings.HasPrefix("copy", partial) {
 		cands = append(cands, "/copy")
+	}
+	if partial == "" || strings.HasPrefix("login", partial) {
+		cands = append(cands, "/login")
 	}
 	for _, it := range skills {
 		// The built-in /settings command owns the `settings` name; a skill of
@@ -1196,8 +1294,8 @@ func slashCandidates(value string, skills []SkillItem) []string {
 }
 
 // completeSlashCommand fills the composer with the next slash-command completion
-// candidate, cycling deterministicly through the built-in `/settings` command
-// and matching detected skills (issue #87 AC1). The candidate list is driven off
+// candidate, cycling deterministicly through the built-in commands and
+// matching detected skills (issue #87 AC1). The candidate list is driven off
 // slashPrefix (the raw prefix the user typed, captured on edit), so repeated
 // tabs walk the whole list even after one candidate is filled in — the fill
 // never narrows the list of remaining options. The selection (slashIdx) moves
@@ -1533,7 +1631,7 @@ func (m Model) composerPreRows() int {
 }
 
 // renderSlashCompletion appends the slash-command completion list to the view
-// above the composer (issue #87 AC1): the built-in `/settings` command plus any
+// above the composer (issue #87 AC1): the built-in slash commands plus any
 // matching detected skills. It marks the candidate currently in the composer
 // (tab-filled or typed) as selected; on a bare prefix it points at the next
 // tab-cycling candidate (slashIdx) as a forward hint. It renders nothing for a

@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -17,15 +19,16 @@ import (
 // batch, so a TUI greeting round-trips through the engine exactly like batch
 // canContinue enables interactive max-turns
 // continuation (nil auto-denies, the batch default).
-func runEngineTurn(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey string, canContinue func() bool) tui.Turn {
+func runEngineTurn(e *engine.Engine, cfg func() config.Config, reg *tools.Registry, sessionKey string, canContinue func() bool) tui.Turn {
 	return func(ctx context.Context, prompt string, payload string) (tui.TurnResult, error) {
+		cur := cfg()
 		// Thread a plain payload from the Turn seam into the engine as a *string:
 		// an empty payload stays nil at the runAgent boundary (no injection).
 		var skillInject *string
 		if payload != "" {
 			skillInject = &payload
 		}
-		res, err := runAgent(e, cfg, reg, sessionKey, prompt, skillInject, canContinue)
+		res, err := runAgent(e, cur, reg, sessionKey, prompt, skillInject, canContinue)
 		if err != nil {
 			return tui.TurnResult{}, err
 		}
@@ -77,6 +80,7 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 	// only forwards telemetry, answer text, and tool events and never pauses the
 	// running agent loop.
 	feedEngineEvents(e, te, stream, tools, observer)
+	currentCfg := cfg
 	m := tui.NewModelCfg(tui.Dependencies{
 		// On-demand provider model discovery for the Settings panel (issue #89
 		// AC2): the provider's GET /v1/models list is fetched when the panel
@@ -87,7 +91,15 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 		WorkspacePath: workspace,
 		Config:        cfg,
 		Save:          func(c config.Config) error { return config.Save(c, cfgPath) },
-		Telemetry:     te,
+		SaveBack: func(c config.Config) {
+			currentCfg = c
+			if np, err := buildProvider(c, cfgPath); err == nil {
+				if hp, ok := p.(*hotProvider); ok {
+					hp.Set(np)
+				}
+			}
+		},
+		Telemetry: te,
 		Stream:        stream,
 		Tools:         tools,
 		Rail:          rail,
@@ -105,8 +117,18 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 		// shows no skills panel (issue #188); the surface only feeds slash
 		// completion and activation.
 		Skills: skillSurface(reg, skills),
+		Login: func(ctx context.Context, onCode func(tui.LoginCode)) (config.Config, error) {
+			if currentCfg.Provider != provider.ProviderCopilot {
+				return config.Config{}, fmt.Errorf("login is only available for provider %q", provider.ProviderCopilot)
+			}
+			return CopilotConnect(ctx, cfgPath, http.DefaultClient, func(cd provider.DeviceCode) {
+				if onCode != nil {
+					onCode(tui.LoginCode{UserCode: cd.UserCode, VerificationURI: cd.VerificationURI})
+				}
+			})
+		},
 	})
-	m.SetTurn(runEngineTurn(e, cfg, reg, sessionKey, m.ContinueHook()))
+	m.SetTurn(runEngineTurn(e, func() config.Config { return currentCfg }, reg, sessionKey, m.ContinueHook()))
 	return runProgram(m)
 }
 

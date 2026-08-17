@@ -87,9 +87,24 @@ func CopilotConnect(ctx context.Context, cfgPath string, httpc *http.Client, onC
 	} else {
 		fmt.Fprintf(os.Stderr, "Open https://github.com/login/device and enter code: %s\n", cd.UserCode)
 	}
-	tok, err := flow.Poll(ctx, cd.DeviceCode)
-	if err != nil {
-		return config.Config{}, err
+	interval := time.Duration(cd.Interval) * time.Second
+	if interval <= 0 {
+		interval = time.Second
+	}
+	var tok config.CopilotConfig
+	for {
+		tok, err = flow.Poll(ctx, cd.DeviceCode)
+		if err == nil {
+			break
+		}
+		if !provider.IsAuthorizationPending(err) {
+			return config.Config{}, err
+		}
+		select {
+		case <-ctx.Done():
+			return config.Config{}, ctx.Err()
+		case <-time.After(interval):
+		}
 	}
 
 	cfg, err := config.Load(cfgPath)
