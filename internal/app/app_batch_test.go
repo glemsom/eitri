@@ -76,7 +76,7 @@ func TestRunBatchVerboseShowsThinking(t *testing.T) {
 }
 
 // TestRunBatchWritesTranscript verifies the batch answer lands on the session
-// transcript via the T1b sink.
+// transcript.
 func TestRunBatchWritesTranscript(t *testing.T) {
 	dir := t.TempDir()
 	dataDir := filepath.Join(dir, ".eitri")

@@ -12,8 +12,7 @@ import (
 
 // stubTUI replaces the TUI program launcher with a no-op and reports a normal
 // interactive host terminal, letting boot-path tests exercise Run without a
-// real terminal and without tripping the non-interactive guard (T7, issue
-// #125).
+// real terminal and without tripping the non-interactive guard.
 func stubTUI(t *testing.T) {
 	t.Helper()
 	stubTUIEnv(t, interactiveEnv)

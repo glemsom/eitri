@@ -211,7 +211,7 @@ func scriptedBrowserTurn() *provider.Scripted {
 
 // scriptedEditTurn drives a scripted provider through one edit tool call on a
 // workspace file, then confirms. It exercises the app's real edit tool path
-// end-to-end against the shared registry path resolution (issue #174).
+// end-to-end against the shared registry path resolution.
 func scriptedEditTurn(ws string) *provider.Scripted {
 	return provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
 		hasTool := false
@@ -236,13 +236,11 @@ func scriptedEditTurn(ws string) *provider.Scripted {
 }
 
 // TestBatchEditToolReportsLineDelta drives a real edit tool call through the
-// app's shared registry and asserts the TUI-side delta observer (issue #174)
-// computes the same before/after line delta the engine's ToolDelta seam used
-// to report (issue #84 AC3, removed in issue #175): the file gains two lines
-// as one is swapped for three, so the observer reports +2, -0. The observer is
-// fed from the engine's event stream (ToolCallEvent → pre-edit snapshot,
-// ToolResultEvent → diff) exactly as the app's TUI listener wires it, and the
-// engine itself carries no ToolDelta seam — the batch run stays byte-identical.
+// app's shared registry and asserts the TUI-side delta observer computes the
+// same before/after line delta: the file gains two lines as one is swapped for
+// three, so the observer reports +2, -0. The observer is fed from the engine's
+// event stream (ToolCallEvent → pre-edit snapshot, ToolResultEvent → diff)
+// exactly as the app's TUI listener wires it.
 func TestBatchEditToolReportsLineDelta(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -263,7 +261,7 @@ func TestBatchEditToolReportsLineDelta(t *testing.T) {
 		Runner:    tools.RealRunner,
 	})
 	// The observer's path-resolution seam is the same wiring runTUI uses: the
-	// registry's shared path translator + workspace root (issue #174).
+	// registry's shared path translator + workspace root.
 	obs := tui.NewDeltaObserver(fileDeltaResolver(reg))
 	e := engine.New(scriptedEditTurn(ws), mockTranscript{})
 	var gotAdded, gotRemoved int
@@ -305,8 +303,7 @@ func TestBatchEditToolReportsLineDelta(t *testing.T) {
 		t.Errorf("edit delta = +%d-%d, want +2-0", gotAdded, gotRemoved)
 	}
 	// The observer must also report the real before/after file content and host
-	// path so the TUI can render the expanded card's inline diff (issue #90 /
-	// #174 / #275).
+	// path so the TUI can render the expanded card's inline diff.
 	if gotBefore != "a\nb\n" || gotAfter != "a\nb\nc\nd\n" {
 		t.Errorf("content = before %q after %q, want a\nb\n -> a\nb\nc\nd\n", gotBefore, gotAfter)
 	}

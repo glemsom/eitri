@@ -37,24 +37,24 @@ const (
 )
 
 // ErrMissingBwrap is returned when the bubblewrap (bwrap) executable cannot be
-// found on the host. Per ADR-0001 decision 3, bwrap is a hard prerequisite:
-// Eitri never falls back to unsandboxed execution.
+// found on the host. Bwrap is a hard prerequisite: Eitri never falls back to
+// unsandboxed execution.
 var ErrMissingBwrap = errors.New("bubblewrap (bwrap) is required but was not found; install bubblewrap to continue")
 
 // ErrTUINotInteractive is returned when the interactive TUI cannot render into
 // the host terminal — stdout is not a TTY, TERM is unset or "dumb", or the
-// window is below the minimum width. It directs the user to batch mode (T7,
-// issue #125), so a non-interactive context never gets TUI reflow written into
-// a pipe or a dumb terminal.
+// window is below the minimum width. It directs the user to batch mode, so a
+// non-interactive context never gets TUI reflow written into a pipe or a dumb
+// terminal.
 var ErrTUINotInteractive = errors.New("the interactive TUI requires an interactive terminal: stdout must be a TTY, TERM must be set (not \"dumb\"), and the window must be at least 80 columns wide; run in batch mode instead: eitri -b \"<prompt>\"")
 
 // minTUIWidth is the narrowest terminal (in columns) the full-screen TUI
 // renders into; below it the transcript is squeezed unusably, so the TUI is
-// refused in favor of batch mode (T7, issue #125).
+// refused in favor of batch mode.
 const minTUIWidth = 80
 
-// tuiEnv captures the host-terminal facts the TUI boot guard reads (T7, issue
-// #125). width is the terminal width in columns; 0 means unknown.
+// tuiEnv captures the host-terminal facts the TUI boot guard reads.
+// width is the terminal width in columns; 0 means unknown.
 type tuiEnv struct {
 	stdoutTTY bool
 	term      string
@@ -83,8 +83,7 @@ var currentTUIEnv = func() tuiEnv {
 // tuiBootError decides whether the interactive TUI can render into the host
 // context: nil when it can, ErrTUINotInteractive when stdout is not a TTY,
 // TERM is unset or a dumb terminfo (any case, incl. dumb-* variants), or the
-// window is narrower than minTUIWidth (T7, issue #125). An unknown width (0)
-// never refuses.
+// window is narrower than minTUIWidth. An unknown width (0) never refuses.
 func tuiBootError(env tuiEnv) error {
 	switch {
 	case !env.stdoutTTY:
@@ -98,8 +97,7 @@ func tuiBootError(env tuiEnv) error {
 }
 
 // isDumbTerm reports whether TERM denotes a non-interactive termcap: unset,
-// "dumb", or a dumb-* variant (e.g. dumb-16color), case-insensitively (T7,
-// issue #125).
+// "dumb", or a dumb-* variant (e.g. dumb-16color), case-insensitively.
 func isDumbTerm(term string) bool {
 	lower := strings.ToLower(term)
 	return lower == "" || lower == "dumb" || strings.HasPrefix(lower, "dumb-")
@@ -197,7 +195,7 @@ func Run(opts Options) error {
 	}
 
 	// Build the shared tool registry wired to this run's workspace + session
-	// temp so bash/read/write/edit resolve the same path namespace (ADR-0002).
+	// temp so bash/read/write/edit resolve the same path namespace.
 	// Both the registry and the sandbox mount agree on the temp host root.
 	guid := tools.GUID(sess.GUID())
 	workspace, err := os.Getwd()
@@ -219,12 +217,12 @@ func Run(opts Options) error {
 		Browser:       opts.Browser,
 		Skills:        skills,
 	})
-	// Session temp is ephemeral per run and removed when the run ends (ADR-0002).
+	// Session temp is ephemeral per run and removed when the run ends.
 	tempHost := tools.HostTempFor(guid)
 	defer func() { _ = os.RemoveAll(tempHost) }()
 
 	// Build the provider the saved config selects (opencode-go, github-copilot,
-	// or custom-openai) and honor it across both run kinds (T11).
+	// or custom-openai) and honor it across both run kinds.
 	// Tests inject a deterministic provider via Options.Provider; production
 	// builds it from the loaded config + env credentials.
 	p := opts.Provider
@@ -237,15 +235,14 @@ func Run(opts Options) error {
 	}
 	liveProvider := newHotProvider(p)
 	e := engine.New(liveProvider, sess)
-	key := sess.GUID() // opt into the session-scoped prompt cache (T6)
+	key := sess.GUID() // opt into the session-scoped prompt cache
 
 	// Build the interactive TUI run when no batch prompt is given. It sits on
 	// the same engine, session transcript, and tool registry as batch.
-	// First the non-interactive guard (T7, issue #125) checks the
-	// host terminal: piped stdout, a dumb/unset TERM, or a sub-threshold window
-	// refuses the full-screen TUI with a message pointing at batch mode, so no
-	// TUI reflow is ever written into a pipe or a dumb terminal. The batch
-	// entrant below is untouched.
+	// First the non-interactive guard checks the host terminal: piped stdout,
+	// a dumb/unset TERM, or a sub-threshold window refuses the full-screen TUI
+	// with a message pointing at batch mode, so no TUI reflow is ever written
+	// into a pipe or a dumb terminal. The batch entrant below is untouched.
 	if opts.Prompt == "" {
 		if err := tuiBootError(currentTUIEnv()); err != nil {
 			return err
@@ -307,8 +304,8 @@ func (stderrWarner) Warnf(format string, args ...any) {
 func runAgent(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey, prompt string, skillInject *string, canContinue func() bool) (engine.Result, error) {
 	compaction := &engine.CompactionConfig{Fraction: cfg.CompactionFraction}
 	// Thinking off means non-thinking runs: the provider request carries no
-	// thinking toggle and no reasoning_effort, like the compaction summarizer
-	// (spec §6 / #55). Effort is only meaningful when thinking is on.
+	// thinking toggle and no reasoning_effort, like the compaction summarizer.
+	// Effort is only meaningful when thinking is on.
 	effort := cfg.ReasoningEffort
 	if !cfg.ThinkingEnabled {
 		effort = ""
@@ -318,7 +315,7 @@ func runAgent(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionK
 		Prompt:          prompt,
 		SkillInject:     skillInject,
 		SessionKey:      sessionKey,
-		ThinkingEnabled: cfg.ThinkingEnabled, // deepseek thinking default-on (spec §6)
+		ThinkingEnabled: cfg.ThinkingEnabled,
 		ReasoningEffort: effort,
 	}, engine.AgentOptions{
 		Tools:      providerTools(reg.Definitions()),
@@ -334,24 +331,23 @@ func runAgent(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionK
 			}
 			// Carries whether the result is the line-compressor's compressed
 			// form, so the engine's byte-cap merges the "+N more" tail only for
-			// genuinely compressed output (issue #286 review).
+			// genuinely compressed output.
 			return engine.ToolExecResult{Text: res.Text, Compressed: res.Compressed}, nil
 		}),
 		MaxTurns:    cfg.MaxTurns,
 		CanContinue: canContinue,
-		// Session compaction (T10): auto-compact at the configured fraction;
-		// a [compacted] marker is surfaced read-only on each event (spec §7).
+		// Session compaction: auto-compact at the configured fraction;
+		// a [compacted] marker is surfaced read-only on each event.
 		Compaction:  compaction,
 		OnCompacted: func() { fmt.Fprint(os.Stderr, "[compacted]\n") },
 	})
 }
 
 // fileDeltaResolver builds the TUI delta observer's path-resolution seam from
-// the shared registry (issue #174): it resolves a tool-argument path to its
-// host form via the registry's path translator, absolutizing a workspace-
-// relative model path against the workspace root so the observer reads the
-// same file the tool writes (which the validator resolved against the
-// workspace).
+// the shared registry: it resolves a tool-argument path to its host form via
+// the registry's path translator, absolutizing a workspace-relative model path
+// against the workspace root so the observer reads the same file the tool
+// writes (which the validator resolved against the workspace).
 func fileDeltaResolver(reg *tools.Registry) func(sandboxPath string) string {
 	return func(p string) string {
 		host, _ := reg.PathTranslator().SandboxToHost(p)
@@ -366,10 +362,10 @@ func fileDeltaResolver(reg *tools.Registry) func(sandboxPath string) string {
 }
 
 // providerTools maps the registry's definitions to provider Chat-Completions
-// Tool objects via the single per-dialect serializer (provider.ReExpress, T5/#10):
+// Tool objects via the single per-dialect serializer (provider.ReExpress):
 // one canonical JSON-Schema per tool is re-expressed per dialect, never
 // hand-copied per provider. Only the Chat dialect is emitted today — the engine
-// and every current provider talk the Chat-Completions wire (§2 of the spec).
+// and every current provider talk the Chat-Completions wire.
 func providerTools(defs []tools.Definition) []provider.Tool {
 	canonical := make([]provider.DialectDefinition, 0, len(defs))
 	for _, d := range defs {
@@ -388,13 +384,13 @@ func providerTools(defs []tools.Definition) []provider.Tool {
 const ProviderKeyEnv = "OPENCODE_API_KEY"
 
 // ProviderURLEnv optionally overrides the Chat-Completions endpoint Eitri
-// talks to, for local testing and custom OpenAI-compatible endpoints (the
-// latter formalized in T11). It defaults to OpenCode Go.
+// talks to, for local testing and custom OpenAI-compatible endpoints.
+// It defaults to OpenCode Go.
 const ProviderURLEnv = "EITRI_PROVIDER_URL"
 
 // buildProvider builds the provider the saved config selects via the shared
-// factory (provider.FromConfig, T11): it honors cfg.Provider across TUI and
-// batch and wires the Copilot non-interactive refresh + token persistence into
+// factory (provider.FromConfig): it honors cfg.Provider across TUI and batch
+// and wires the Copilot non-interactive refresh + token persistence into
 // the config file so a renewed device-flow session is reused by later runs.
 func buildProvider(cfg config.Config, cfgPath string) (provider.Provider, error) {
 	return provider.FromConfig(cfg, provider.ProviderEnv{
