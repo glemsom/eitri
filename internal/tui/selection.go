@@ -34,14 +34,6 @@ import (
 type railDrag struct {
 	startWidth int
 	startX     int
-	// moved reports whether the pointer dragged between the press and release;
-	// a border press+release with no motion is a clean click (arms the
-	// double-click window, issue #308).
-	moved bool
-	// wasReset marks a drag started by a double-click reset press, so its
-	// release does not re-arm the double-click window (the double-click is
-	// already consumed; a third click starts a fresh pair).
-	wasReset bool
 }
 
 // doubleClickWindow is how close (in time) two clean border clicks must land
@@ -177,21 +169,37 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 			return
 		}
 		if d, ok := m.railDragFor(msg.X, msg.Y); ok {
+			// A border press whose predecessor is still inside the window is the
+			// second click of a double-click: snap the rail back to its default
+			// width through the same setRailWidth path a drag uses, so the
+			// transcript re-wraps and scroll/follow survive. The press still
+			// starts a drag anchored at the default width, so a hold-and-drag
+			// after the reset resizes from home; the reset consumes the window
+			// (borderClick cleared) so a third press starts a fresh pair. Any
+			// press elsewhere — on the transcript or off the border — is an
+			// unrelated gesture and disarms the window first (issue #308).
 			if !m.borderClick.IsZero() && m.now().Sub(m.borderClick) <= doubleClickWindow {
-				// Second clean border click inside the window: snap the rail back
-				// to its default width through the same setRailWidth path a drag
-				// uses, so the transcript re-wraps and scroll/follow survive. The
-				// press still starts a drag anchored at the default width, so a
-				// hold-and-drag after the reset resizes from home (issue #308).
 				m.tx.setRailWidth(clampRailWidth(defaultRailWidth, m.tx.width))
-				m.railDrag = &railDrag{startWidth: defaultRailWidth, startX: msg.X, wasReset: true}
+				m.railDrag = &railDrag{startWidth: defaultRailWidth, startX: msg.X}
 				m.tx.dragSel = nil
+				m.borderClick = time.Time{}
 				return
 			}
+			// First press of a pair (or a stale one outside the window): arm the
+			// double-click window now. The window is measured press-to-press,
+			// the standard double-click interval; motion between press and
+			// release clears the arm below, so only a press+release with no
+			// drag can complete the pair.
+			m.borderClick = m.now()
 			m.railDrag = &d
 			m.tx.dragSel = nil
 			return
 		}
+		// A press outside the border's hit zone is an unrelated gesture
+		// (history drag-select); it disarms any armed border double-click
+		// window so an intervening transcript interaction can never pair with
+		// a later border click into an accidental reset (issue #308 AC2).
+		m.borderClick = time.Time{}
 		line, col, ok := m.mouseToContent(msg.X, msg.Y)
 		if !ok {
 			m.tx.dragSel = nil
@@ -208,7 +216,10 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 		// delivered while a button is held, so railDrag nil here means the
 		// holding button is not a border press.
 		if m.railDrag != nil {
-			m.railDrag.moved = true
+			// Motion between press and release means this border gesture is a
+			// drag, not a click — clear the armed double-click window so the
+			// drag's press can never pair with a later press into a reset.
+			m.borderClick = time.Time{}
 			m.tx.setRailWidth(clampRailWidth(m.railDrag.startWidth+(msg.X-m.railDrag.startX), m.tx.width))
 			return
 		}
@@ -227,13 +238,11 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 		// motion; it only clears the drag state, so it never triggers the
 		// drag-select copy or tool-entry click paths (issue #306).
 		if m.railDrag != nil {
-			// A clean border click (press+release, no motion, not a reset press)
-			// arms the double-click window: the next border press within
-			// doubleClickWindow of this release is its double-click (issue
-			// #308).
-			if !m.railDrag.moved && !m.railDrag.wasReset {
-				m.borderClick = m.now()
-			}
+			// The first press already armed the window; release leaves the arm
+			// intact when the gesture was a clean click (no motion cleared it,
+			// and a reset press cleared it via the reset branch), and there is
+			// nothing to re-arm here. The drag state ends so the next border
+			// press can be evaluated against the armed window.
 			m.railDrag = nil
 			return
 		}

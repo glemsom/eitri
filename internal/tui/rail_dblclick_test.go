@@ -10,7 +10,7 @@ import (
 // This file covers the rail double-click reset seam (issue #308): two clean
 // clicks on the rail border inside the double-click window snap the rail back
 // to its default width, so a dragged-too-far rail is one gesture away from
-// home. Single-click drag-resize,vhistory drag-select, and stale clicks far
+// home. Single-click drag-resize, history drag-select, and stale clicks far
 // apart are untouched.
 
 // railDblModel builds a sized model with a telemetry strip and a wired rail,
@@ -27,8 +27,7 @@ func railDblModel(t *testing.T) Model {
 // increments to simulate the passage of time between clicks.
 var fakeNow = time.Unix(1_700_000_000, 0)
 
-// advanceNow moves the injected clock forward by d (typically a window step).
-func advanceNow(m Model, d time.Duration) Model {
+func setNow(m Model, d time.Duration) Model {
 	m.now = func() time.Time { return fakeNow.Add(d) }
 	return m
 }
@@ -105,7 +104,7 @@ func TestRailDbl_staleFirstClickExpires(t *testing.T) {
 
 	// Let the window elapse, then press again: no reset, and the press starts a
 	// drag (railDrag set) that a motion then applies.
-	m = advanceNow(m, doubleClickWindow+time.Millisecond)
+	m = setNow(m, doubleClickWindow+time.Millisecond)
 	m = mustUpdate(t, m, railDragMsg("press", border, row))
 	if got := m.tx.railWidthOrDefault(); got == defaultRailWidth {
 		t.Fatal("expired click must not reset the rail")
@@ -113,12 +112,13 @@ func TestRailDbl_staleFirstClickExpires(t *testing.T) {
 	if m.railDrag == nil {
 		t.Fatal("press after the window must start a normal rail drag")
 	}
-	// Drag left from the dragged width (60, clamped at the terminal cap): a
-	// fresh drag anchored at the current width, proving the expired click did
-	// not reset to default.
+	// Drag left from the dragged width (clamped at the terminal cap of
+	// terminalWidth/2): a fresh drag anchored at the current width, proving
+	// the expired click did not reset to default.
+	from := m.tx.railWidthOrDefault()
 	m = mustUpdate(t, m, railDragMsg("motion", border-5, row))
-	if got := m.tx.railWidthOrDefault(); got != 60-5 {
-		t.Errorf("motion after expired click must drag from current width: got %d, want %d", got, 60-5)
+	if got := m.tx.railWidthOrDefault(); got != from-5 {
+		t.Errorf("motion after expired click must drag from current width: got %d, want %d", got, from-5)
 	}
 }
 
@@ -147,6 +147,70 @@ func TestRailDbl_secondClickWithoutReleaseStartsDrag(t *testing.T) {
 	m = mustUpdate(t, m, railDragMsg("motion", border+8, row))
 	if got := m.tx.railWidthOrDefault(); got != defaultRailWidth+8 {
 		t.Errorf("drag after reset must resize from default: width %d, want %d", got, defaultRailWidth+8)
+	}
+}
+
+// TestRailDbl_thirdPressAfterResetStartsFreshPair asserts the double-click
+// reset consumes the window: a third border press right after a reset (even
+// one that ends in a clean click) must not re-reset, because the reset cleared
+// the armed window and the new press starts a fresh pair (issue #308 AC2).
+func TestRailDbl_thirdPressAfterResetStartsFreshPair(t *testing.T) {
+	m := railDblModel(t)
+	m = railDragPressMotion(t, m, 40) // drag off default so a reset is visible
+
+	border := m.tx.railBorderColumn()
+	row := 0
+
+	// Double-click: press+release, then press (reset fires).
+	m = mustUpdate(t, m, railDragMsg("press", border, row))
+	m = mustUpdate(t, m, railDragMsg("release", border, row))
+	m = mustUpdate(t, m, railDragMsg("press", border, row))
+	if got := m.tx.railWidthOrDefault(); got != defaultRailWidth {
+		t.Fatalf("double-click must reset, got %d", got)
+	}
+
+	// Release the reset press, then a third press inside the old window: it
+	// must NOT reset again (it is the first press of a fresh pair) and must
+	// start a normal drag from the default width.
+	m = mustUpdate(t, m, railDragMsg("release", border, row))
+	border = m.tx.railBorderColumn() // reset moved the border back to default
+	m = mustUpdate(t, m, railDragMsg("press", border, row))
+	if got := m.tx.railWidthOrDefault(); got != defaultRailWidth {
+		t.Errorf("third press must not re-reset: width %d, want %d", got, defaultRailWidth)
+	}
+	if m.railDrag == nil {
+		t.Fatal("third press must start a normal rail drag")
+	}
+}
+
+// TestRailDbl_interveningOffBorderPressDisarms asserts an unrelated press
+// between the two border clicks disarms the double-click window: after a clean
+// border click, a press on the history content (drag-select) followed by a
+// border press must NOT reset — the intervening gesture proves the two border
+// clicks were not a double-click (issue #308 AC2).
+func TestRailDbl_interveningOffBorderPressDisarms(t *testing.T) {
+	m := railDblModel(t)
+	m = railDragPressMotion(t, m, 40) // drag off default so a reset is visible
+
+	border := m.tx.railBorderColumn()
+	row := 0
+
+	m = mustUpdate(t, m, railDragMsg("press", border, row))
+	m = mustUpdate(t, m, railDragMsg("release", border, row))
+
+	// A press on the history content (far from the border) is an unrelated
+	// gesture: it must disarm the armed window.
+	m = mustUpdate(t, m, railDragMsg("press", border-10, row))
+	m = mustUpdate(t, m, railDragMsg("release", border-10, row))
+
+	// A border press right after: must NOT reset (disarmed), and must start a
+	// normal drag.
+	m = mustUpdate(t, m, railDragMsg("press", border, row))
+	if got := m.tx.railWidthOrDefault(); got == defaultRailWidth {
+		t.Fatal("intervening off-border press must disarm the double-click window")
+	}
+	if m.railDrag == nil {
+		t.Fatal("border press after disarm must start a normal rail drag")
 	}
 }
 
