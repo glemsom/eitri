@@ -252,7 +252,24 @@ func settingsView(f settingsForm) string {
 		{"Theme", f.cfg.Theme},
 		{"Writable", f.pathBuf},
 	}
+	sections := []struct {
+		label string
+		start int
+	}{
+		{"model", fieldProvider},
+		{"behavior", fieldThinking},
+		{"appearance", fieldTheme},
+	}
+	emit := func(label string) {
+		b.WriteString(th.statusStyle.Render("   " + hr() + " " + label + " " + hr()))
+		b.WriteString("\n")
+	}
 	for i, r := range rows {
+		for _, sec := range sections {
+			if i == sec.start {
+				emit(sec.label)
+			}
+		}
 		name := r.name
 		if f.field == i {
 			name = "\u25b8 " + name

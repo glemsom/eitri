@@ -11,7 +11,7 @@ func helpView(th Theme) string {
 	var b strings.Builder
 
 	// COMMANDS section
-	b.WriteString(th.headerStyle.Render("COMMANDS"))
+	b.WriteString(th.headerStyle.Render(sectionEmoji("COMMANDS") + " COMMANDS"))
 	b.WriteString("\n")
 	commands := []struct{ cmd, desc string }{
 		{"/settings", "open settings panel"},
@@ -20,14 +20,13 @@ func helpView(th Theme) string {
 		{"/help", "show this help message"},
 	}
 	for _, c := range commands {
-		b.WriteString(th.statusStyle.Render("  " + c.cmd + "  " + c.desc))
+		b.WriteString(th.statusStyle.Render("  " + commandEmoji(c.cmd) + " " + c.cmd + "  " + c.desc))
 		b.WriteString("\n")
 	}
 
-	b.WriteString("\n")
-
+	b.WriteString("\n" + hr() + "\n")
 	// KEYBINDINGS section
-	b.WriteString(th.headerStyle.Render("KEYBINDINGS"))
+	b.WriteString(th.headerStyle.Render(sectionEmoji("KEYBINDINGS") + " KEYBINDINGS"))
 	b.WriteString("\n")
 	keybindings := []struct{ key, desc string }{
 		{"ctrl+s", "open settings"},
@@ -45,10 +44,9 @@ func helpView(th Theme) string {
 		b.WriteString("\n")
 	}
 
-	b.WriteString("\n")
-
+	b.WriteString("\n" + hr() + "\n")
 	// CONCEPTS section
-	b.WriteString(th.headerStyle.Render("CONCEPTS"))
+	b.WriteString(th.headerStyle.Render(sectionEmoji("CONCEPTS") + " CONCEPTS"))
 	b.WriteString("\n")
 	concepts := []struct{ name, desc string }{
 		{"ctrl+e mode", "expand/collapse all tool result cards"},

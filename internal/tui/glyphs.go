@@ -54,3 +54,43 @@ func toolGlyph(name string) string {
 	}
 	return g("⊕", "+")
 }
+
+// brandMark returns the ⚒ brand glyph with its "+" ASCII fallback.
+func brandMark() string { return g("⚒", "+") }
+
+// hr returns a horizontal-rule separator (──) with its "--" ASCII fallback.
+func hr() string { return g("──", "--") }
+
+// promptHint returns the 💬 glyph for the prompt hint line.
+func promptHint() string { return g("💬", ">") }
+
+// keyHint returns the ⌨ glyph for the keybinding hint line.
+func keyHint() string { return g("⌨", "k") }
+
+// sectionEmoji returns the emoji prefix for a help section header.
+func sectionEmoji(name string) string {
+	switch name {
+	case "COMMANDS":
+		return g("🔧", "$")
+	case "KEYBINDINGS":
+		return g("⌨", "k")
+	case "CONCEPTS":
+		return g("📖", "<")
+	}
+	return ""
+}
+
+// commandEmoji returns the category emoji prefix for a help command row.
+func commandEmoji(cmd string) string {
+	switch cmd {
+	case "/settings":
+		return g("⚙", "*")
+	case "/copy":
+		return g("📋", "#")
+	case "/login":
+		return g("🔑", "+")
+	case "/help":
+		return g("❓", "?")
+	}
+	return ""
+}

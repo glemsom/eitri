@@ -108,9 +108,11 @@ func tokenEstimate(s string) int {
 // the first launch reads as a designed surface. One accent, no decoration —
 // the restrained brand treatment, not a logo wall.
 func idleWelcome(th Theme) string {
-	return th.headerStyle.Render("Eitri") + th.statusStyle.Render(g(" — ", " - ")+"your terminal coding agent") + "\n" +
-		th.statusStyle.Render("  ask me to fix a bug, refactor code, explain a system, or run the tests") + "\n" +
-		th.statusStyle.Render("  ctrl+s settings · /help for commands & keybindings") + "\n"
+	return th.headerStyle.Render(hr()) + "\n" +
+		th.headerStyle.Render(brandMark() + " Eitri") + th.statusStyle.Render(g(" — ", " - ")+"your terminal coding agent") + "\n" +
+		th.headerStyle.Render(hr()) + "\n" +
+		th.statusStyle.Render("  " + promptHint() + " ask me to fix a bug, refactor code, explain a system, or run the tests") + "\n" +
+		th.statusStyle.Render("  " + keyHint() + " ctrl+s settings · /help for commands & keybindings") + "\n"
 }
 
 // promptView renders the interactive max-turns continuation prompt.
