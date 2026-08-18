@@ -367,22 +367,6 @@ type Model struct {
 	// the OSC 52 fallback so a failing system-clipboard path still
 	// copies through an OSC 52-capable terminal.
 	clipboard func(text string) error
-	// railDrag tracks an in-progress right-rail width drag:
-	// non-nil only while the left-button press that started it is held. It
-	// lives on the Model because it is pointer-button state; the Transcript
-	// only sees the resulting setRailWidth writes.
-	railDrag *railDrag
-
-	// borderClick is the timestamp of a border press that is the first click
-	// of a potential double-click pair. Paired with now, it recognizes the
-	// rail's double-click reset: a second border press within
-	// doubleClickWindow of the first resets the rail to the default width. The
-	// arm is cleared by motion (drag), by an off-border press, and by the
-	// reset itself, so only two clean border presses can pair.
-	borderClick time.Time
-	// now is the clock the double-click window reads, injectable so tests pin
-	// the time between clicks. Defaults to time.Now.
-	now func() time.Time
 }
 
 // NewModel builds a bare chat-only model (no Settings surface), the historical
@@ -480,7 +464,6 @@ func NewModelCfg(d Dependencies) Model {
 		curStream:    -1,
 		toolFeed:     d.Tools,
 		clipboard:    newClipboard(d),
-		now:          time.Now,
 	}
 	// The layout starts stale, but the pointer share means the Transcript's
 	// first hit-test builds it lazily; the explicit dirty below keeps the
@@ -643,11 +626,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.tx.width = msgi.Width
 		m.tx.height = msgi.Height
-		// A resize moves the rail's border column, so an in-progress width drag
-		// would keep computing deltas against the stale press position; drop the
-		// drag state so the next border press re-anchors at the new border
-		// .
-		m.railDrag = nil
 		m.syncWidths()
 		m.tx.layout.dirty = true // width change re-wraps the transcript rows
 		return m, nil
@@ -1465,16 +1443,14 @@ func (m *Model) completeSlashCommand() {
 }
 
 // View renders the conversation plus composer as a tea.View (bubbletea v2).
-// The view declares the alternate screen and mouse-cell-motion mode as fields
-// (pass 1, ): every frame is a clean full-surface repaint into the
-// alt buffer, so a resize never duplicates or scatters text — the settings that
-// v1 pushed through program options (tea.WithAltScreen,
-// tea.WithMouseCellMotion) live here declaratively.
+// The view declares the alternate screen as a field (pass 1, ): every frame
+// is a clean full-surface repaint into the alt buffer, so a resize never
+// duplicates or scatters text — the settings that v1 pushed through program
+// options (tea.WithAltScreen) live here declaratively.
 func (m Model) View() tea.View {
 	content := m.viewString()
 	v := tea.NewView(content)
 	v.AltScreen = true
-	v.MouseMode = tea.MouseModeCellMotion
 	// The composer's caret is the terminal's hardware cursor: the
 	// textarea's software caret cell is disabled, so the frame attaches the
 	// caret at the composer's true edit cell instead.
