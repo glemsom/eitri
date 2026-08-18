@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/glemsom/eitri/internal/constants"
 	"github.com/glemsom/eitri/internal/provider"
 )
 
@@ -15,11 +16,11 @@ import (
 // toy-sized conversation).
 func compactCfg() *CompactionConfig {
 	return &CompactionConfig{
-		Fraction:         DefaultCompactionFraction,
+		Fraction:         constants.DefaultCompactionFraction,
 		ContextWindow:    1000,
-		TailTurns:        DefaultTailTurns,
+		TailTurns:        constants.DefaultTailTurns,
 		KeepRecentTokens: 4,
-		SummaryMaxTokens: DefaultSummaryMaxTokens,
+		SummaryMaxTokens: constants.DefaultSummaryMaxTokens,
 	}
 }
 
@@ -172,8 +173,8 @@ func TestCompactionSummaryHonorsGenerationBudget(t *testing.T) {
 	if len(summary.Tools) != 0 {
 		t.Fatalf("summary request carried tools, want a non-tool special turn")
 	}
-	if summary.MaxOutputTokens != DefaultSummaryMaxTokens {
-		t.Fatalf("summary MaxOutputTokens = %d, want %d (SummaryMaxTokens)", summary.MaxOutputTokens, DefaultSummaryMaxTokens)
+	if summary.MaxOutputTokens != constants.DefaultSummaryMaxTokens {
+		t.Fatalf("summary MaxOutputTokens = %d, want %d (SummaryMaxTokens)", summary.MaxOutputTokens, constants.DefaultSummaryMaxTokens)
 	}
 	// Ordinary agent/tool turns must not carry a generation budget.
 	for i, r := range h.requests {

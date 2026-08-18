@@ -10,15 +10,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/glemsom/eitri/internal/constants"
 )
 
 // Defaults for session and provider behavior.
 const (
 	// DefaultMaxTurns is the cap on loop iterations per run.
 	DefaultMaxTurns = 250
-	// DefaultCompactionFraction is the context-utilization trigger for
-	// auto-compaction.
-	DefaultCompactionFraction = 0.8
 	// DefaultReasoningEffort is the per-session reasoning setting.
 	DefaultReasoningEffort = "low"
 	// DefaultTheme is the Markdown render theme when unset or unknown; "ascii" is
@@ -76,7 +75,7 @@ func Default() Config {
 		ReasoningEffort:    DefaultReasoningEffort,
 		ThinkingEnabled:    DefaultThinkingEnabled,
 		MaxTurns:           DefaultMaxTurns,
-		CompactionFraction: DefaultCompactionFraction,
+		CompactionFraction: constants.DefaultCompactionFraction,
 		Theme:              DefaultTheme,
 	}
 }

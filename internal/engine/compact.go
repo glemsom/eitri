@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/glemsom/eitri/internal/constants"
 	"github.com/glemsom/eitri/internal/provider"
 )
 
@@ -11,20 +12,6 @@ import (
 // proactively at a configurable fraction of the context window and
 // emergently on a provider context-overflow, keeping a verbatim tail and
 // folding the evicted body into an anchored summary re-injected at the head.
-const (
-	// DefaultCompactionFraction is the default context-utilization trigger.
-	DefaultCompactionFraction = 0.8
-	// DefaultContextWindow is deepseek-v4-flash's ~1M-token context.
-	DefaultContextWindow = 1 << 20
-	// DefaultTailTurns is the hard floor of assistant+user pairs preserved
-	// verbatim (never evicted even if over the soft budget).
-	DefaultTailTurns = 2
-	// DefaultKeepRecentTokens is the soft token budget for the verbatim tail,
-	// reasoning_content included.
-	DefaultKeepRecentTokens = 8000
-	// DefaultSummaryMaxTokens caps the anchored LLM summary.
-	DefaultSummaryMaxTokens = 4096
-)
 
 // CompactionConfig configures the unified session compaction engine. Zero
 // values fall back to the defaults. Prune, when true, ring-fences
@@ -41,19 +28,19 @@ type CompactionConfig struct {
 // defaults fills zero fields with the defaults.
 func (c *CompactionConfig) defaults() {
 	if c.Fraction <= 0 {
-		c.Fraction = DefaultCompactionFraction
+		c.Fraction = constants.DefaultCompactionFraction
 	}
 	if c.ContextWindow <= 0 {
-		c.ContextWindow = DefaultContextWindow
+		c.ContextWindow = constants.DefaultContextWindow
 	}
 	if c.TailTurns <= 0 {
-		c.TailTurns = DefaultTailTurns
+		c.TailTurns = constants.DefaultTailTurns
 	}
 	if c.KeepRecentTokens <= 0 {
-		c.KeepRecentTokens = DefaultKeepRecentTokens
+		c.KeepRecentTokens = constants.DefaultKeepRecentTokens
 	}
 	if c.SummaryMaxTokens <= 0 {
-		c.SummaryMaxTokens = DefaultSummaryMaxTokens
+		c.SummaryMaxTokens = constants.DefaultSummaryMaxTokens
 	}
 }
 
@@ -64,7 +51,7 @@ func shouldCompact(cfg *CompactionConfig, usage *provider.Usage) bool {
 		return false
 	}
 	if cfg.Fraction <= 0 {
-		cfg.Fraction = DefaultCompactionFraction
+		cfg.Fraction = constants.DefaultCompactionFraction
 	}
 	return usage.PromptTokens >= int(float64(cfg.ContextWindow)*cfg.Fraction)
 }

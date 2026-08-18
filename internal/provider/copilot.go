@@ -168,10 +168,7 @@ func (cp *CopilotProvider) do(ctx context.Context, tok, url string, body []byte)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+tok)
-	client := cp.http
-	if client == nil {
-		client = http.DefaultClient
-	}
+	client := resolveClient(cp.http)
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		return nil, err
@@ -227,10 +224,7 @@ func (cp *CopilotProvider) Models(ctx context.Context) ([]ModelInfo, error) {
 		return nil, err
 	}
 	httpReq.Header.Set("Authorization", "Bearer "+tok)
-	client := cp.http
-	if client == nil {
-		client = http.DefaultClient
-	}
+	client := resolveClient(cp.http)
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		return nil, err

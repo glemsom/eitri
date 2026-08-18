@@ -41,10 +41,7 @@ func (o *OpenAICompatible) Models(ctx context.Context) ([]ModelInfo, error) {
 		return nil, err
 	}
 	httpReq.Header.Set("Authorization", "Bearer "+o.apiKey)
-	client := o.http
-	if client == nil {
-		client = http.DefaultClient
-	}
+	client := resolveClient(o.http)
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		return nil, err
@@ -147,10 +144,7 @@ func (o *OpenAICompatible) Stream(ctx context.Context, req Request) (Stream, err
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+o.apiKey)
 
-	client := o.http
-	if client == nil {
-		client = http.DefaultClient
-	}
+	client := resolveClient(o.http)
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		return nil, err

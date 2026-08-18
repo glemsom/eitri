@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/glemsom/eitri/internal/constants"
 )
 
 // maxLines caps the number of kept lines before the tail is truncated with an
@@ -26,7 +28,7 @@ const maxLines = 200
 // prompt token is ~3.5 bytes, so a capped result is ~18K tokens, small next to
 // the ~1M-token context — while staying far under the session-cache head that
 // must remain byte-stable. It is a single constant, not per-tool limits.
-const DefaultByteCap = 64 << 10
+const DefaultByteCap = constants.DefaultByteCap
 
 // ansiRE matches ANSI/CSI escape sequences that noisy CLI tools emit for
 // color and progress (e.g. `\x1b[31m`, `\x1b[2K`). Stripped deterministically
