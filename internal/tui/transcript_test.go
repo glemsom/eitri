@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -592,4 +593,178 @@ func layoutBuildsOf(tx Transcript) int {
 		return 0
 	}
 	return tx.layout.builds
+}
+
+// TestRenderHistory_streamingAssistantUsesDimmedPane asserts that a
+// streaming assistant message renders with the dimmed streaming pane style
+// instead of the full agent pane style (issue #352 AC1): the left-bordered
+// pane uses streamingPaneStyle while the turn is still in-flight.
+func TestRenderHistory_streamingAssistantUsesDimmedPane(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	th := themeFor(config.DefaultTheme)
+
+	render := func(streaming bool) string {
+		var hist strings.Builder
+		tx := Transcript{
+			theme:           th,
+			configTheme:     config.DefaultTheme,
+			workspacePath:   "/tmp/acme",
+			messages:        []message{{role: "eitri", content: "partial", streaming: streaming}},
+			reasoningEffort: "medium",
+			width:           80,
+			height:          12,
+			histFollow:      true,
+			histViewport:    newHistoryViewport(),
+		}
+		tx.renderHistory(&hist, nil, nil)
+		return hist.String()
+	}
+
+	streaming := render(true)
+	completed := render(false)
+
+	// Both renders must contain the message content.
+	if !strings.Contains(ansiStrip(streaming), "partial") {
+		t.Fatalf("streaming render must contain message content, got: %q", streaming)
+	}
+	if !strings.Contains(ansiStrip(completed), "partial") {
+		t.Fatalf("completed render must contain message content, got: %q", completed)
+	}
+
+	// The streaming pane must use a different border color than the completed
+	// pane: identical ANSI output means the streaming branch was not taken.
+	if streaming == completed {
+		t.Errorf("streaming pane must differ from completed pane (streaming branch not taken)")
+	}
+
+	// Verify the border foreground color matches streamingPaneStyle, not
+	// agentPaneStyle. Extract the first 24-bit color from the rendered border
+	// line and compare it against the expected theme style.
+	streamingColor := borderColorCode(streaming)
+	agentColor := borderColorCode(completed)
+	if streamingColor == agentColor {
+		t.Errorf("streaming border color %q must differ from completed border color %q", streamingColor, agentColor)
+	}
+
+	expectedStreamColor := borderColorStr(th.streamingPaneStyle)
+	if streamingColor != expectedStreamColor {
+		t.Errorf("streaming border must use streamingPaneStyle color %q, got %q", expectedStreamColor, streamingColor)
+	}
+}
+
+// TestRenderHistory_completedAssistantUsesAgentPane asserts that a completed
+// (non-streaming) assistant message renders with the full agent pane style
+// (issue #352 AC2): no regression from the streaming pane change.
+func TestRenderHistory_completedAssistantUsesAgentPane(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	th := themeFor(config.DefaultTheme)
+	var hist strings.Builder
+	tx := Transcript{
+		theme:           th,
+		configTheme:     config.DefaultTheme,
+		workspacePath:   "/tmp/acme",
+		messages:        []message{{role: "eitri", content: "done", streaming: false}},
+		reasoningEffort: "medium",
+		width:           80,
+		height:          12,
+		histFollow:      true,
+		histViewport:    newHistoryViewport(),
+	}
+	tx.renderHistory(&hist, nil, nil)
+	rendered := hist.String()
+
+	if !strings.Contains(ansiStrip(rendered), "done") {
+		t.Fatalf("completed render must contain message content, got: %q", rendered)
+	}
+
+	// Verify the border foreground color matches agentPaneStyle.
+	gotColor := borderColorCode(rendered)
+	expectedColor := borderColorStr(th.agentPaneStyle)
+	if gotColor != expectedColor {
+		t.Errorf("completed assistant border must use agentPaneStyle color %q, got %q", expectedColor, gotColor)
+	}
+}
+
+// TestRenderHistory_streamingErrorPrefixUsesDimmedErrorPane asserts that a
+// streaming assistant message with the error prefix renders with the dimmed
+// streaming error pane style (issue #352 AC3): error-prefix messages that are
+// still streaming use streamingErrorPaneStyle, not the full errorPaneStyle.
+func TestRenderHistory_streamingErrorPrefixUsesDimmedErrorPane(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	th := themeFor(config.DefaultTheme)
+
+	render := func(streaming bool) string {
+		var hist strings.Builder
+		tx := Transcript{
+			theme:           th,
+			configTheme:     config.DefaultTheme,
+			workspacePath:   "/tmp/acme",
+			messages:        []message{{role: "eitri", content: failurePrefix() + "broke", streaming: streaming}},
+			reasoningEffort: "medium",
+			width:           80,
+			height:          12,
+			histFollow:      true,
+			histViewport:    newHistoryViewport(),
+		}
+		tx.renderHistory(&hist, nil, nil)
+		return hist.String()
+	}
+
+	streaming := render(true)
+	completed := render(false)
+
+	// Both renders must contain the error prefix.
+	if !strings.Contains(ansiStrip(streaming), failurePrefix()) {
+		t.Fatalf("streaming error render must contain the error prefix, got: %q", streaming)
+	}
+	if !strings.Contains(ansiStrip(completed), failurePrefix()) {
+		t.Fatalf("completed error render must contain the error prefix, got: %q", completed)
+	}
+
+	// Streaming error pane must differ from completed error pane.
+	streamingColor := borderColorCode(streaming)
+	completedColor := borderColorCode(completed)
+	if streamingColor == completedColor {
+		t.Errorf("streaming error border color %q must differ from completed error border color %q", streamingColor, completedColor)
+	}
+
+	// Verify streaming error uses streamingErrorPaneStyle.
+	expectedColor := borderColorStr(th.streamingErrorPaneStyle)
+	if streamingColor != expectedColor {
+		t.Errorf("streaming error must use streamingErrorPaneStyle color %q, got %q", expectedColor, streamingColor)
+	}
+}
+
+// borderColorCode extracts the first 24-bit ANSI foreground color from a
+// rendered string. It looks for the pattern \x1b[38;2;R;G;Bm and returns
+// "R;G;B" for comparison.
+func borderColorCode(s string) string {
+	// Find the first occurrence of a border line: a line starting with the
+	// pane style's ANSI color code for the left border.
+	for _, line := range strings.Split(s, "\n") {
+		if strings.Contains(line, g("\u2502", "|")) {
+			// Extract the first 24-bit color code from this line.
+			start := strings.Index(line, "\x1b[38;2;")
+			if start == -1 {
+				continue
+			}
+			end := strings.IndexByte(line[start+len("\x1b[38;2;"):], 'm')
+			if end == -1 {
+				continue
+			}
+			return line[start+len("\x1b[38;2;") : start+len("\x1b[38;2;")+end]
+		}
+	}
+	return ""
+}
+
+// borderColorStr extracts the border foreground color from a lipgloss style
+// as "R;G;B" for comparison with borderColorCode.
+func borderColorStr(style lipgloss.Style) string {
+	c := style.GetBorderLeftForeground()
+	if c == nil {
+		return ""
+	}
+	r, g2, b, _ := c.RGBA()
+	return fmt.Sprintf("%d;%d;%d", r>>8, g2>>8, b>>8)
 }

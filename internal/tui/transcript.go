@@ -349,7 +349,13 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 				// underneath, so it reads as deliberately aborted.
 				pane = t.theme.stoppedPaneStyle
 			} else if strings.HasPrefix(msg.content, failurePrefix()) {
-				pane = t.theme.errorPaneStyle
+				if msg.streaming {
+					pane = t.theme.streamingErrorPaneStyle
+				} else {
+					pane = t.theme.errorPaneStyle
+				}
+			} else if msg.streaming {
+				pane = t.theme.streamingPaneStyle
 			}
 			pane = pane.Border(lipgloss.Border{Left: g("│", "|")})
 			emit(fmt.Sprintf("%s\n", pane.Render(strings.TrimRight(md, "\n"))))
