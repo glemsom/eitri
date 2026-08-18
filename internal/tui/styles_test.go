@@ -283,6 +283,61 @@ func TestThemeFor_mapsConfigNames(t *testing.T) {
 	}
 }
 
+// TestTheme_streamingPaneStyle asserts the streaming pane style exists and
+// carries a dimmed accent border (issue #351 AC4): the streaming pane uses the
+// same borderedPane constructor as the agent pane but with the accent dimmed to
+// 0.45, so the in-progress answer is visually distinct from a completed one.
+func TestTheme_streamingPaneStyle(t *testing.T) {
+	th := defaultTheme
+	if got := th.streamingPaneStyle.GetBorderLeftForeground(); got == nil {
+		t.Fatal("streaming pane style border foreground is nil")
+	}
+	// The streaming border must differ from the agent pane border (dimmed vs
+	// full accent) so the two are visually distinct.
+	if got := th.streamingPaneStyle.GetBorderLeftForeground(); got == th.accent {
+		t.Errorf("streaming pane border foreground must differ from agent pane accent, got same %v", got)
+	}
+}
+
+// TestTheme_streamingErrorPaneStyle asserts the streaming error pane style
+// exists and carries a dimmed error border (issue #351 AC4): streaming
+// error-prefix messages use a dimmed error border, visually distinct from the
+// streaming accent pane and the full error pane.
+func TestTheme_streamingErrorPaneStyle(t *testing.T) {
+	th := defaultTheme
+	if got := th.streamingErrorPaneStyle.GetBorderLeftForeground(); got == nil {
+		t.Fatal("streaming error pane style border foreground is nil")
+	}
+	// Must differ from the full error pane border (dimmed vs full error).
+	if got := th.streamingErrorPaneStyle.GetBorderLeftForeground(); got == th.error {
+		t.Errorf("streaming error pane border foreground must differ from error pane, got same %v", got)
+	}
+}
+
+// TestTheme_streamingPaneDistinctAcrossThemes asserts default, dracula, and
+// tokyo-night themes all produce distinct streaming pane colors (issue #351
+// AC5): each theme's streaming pane border carries its own palette's dimmed
+// accent, so the streaming state stays theme-consistent.
+func TestTheme_streamingPaneDistinctAcrossThemes(t *testing.T) {
+	themes := map[string]Theme{
+		"default":     defaultTheme,
+		"dracula":     newDraculaTheme(),
+		"tokyo-night": newTokyoNightTheme(),
+	}
+	seen := map[color.Color]string{}
+	for name, th := range themes {
+		got := th.streamingPaneStyle.GetBorderLeftForeground()
+		if got == nil {
+			t.Errorf("%s: streaming pane border foreground is nil", name)
+			continue
+		}
+		if prev, dup := seen[got]; dup {
+			t.Errorf("%s streaming pane color %v collides with %s", name, got, prev)
+		}
+		seen[got] = name
+	}
+}
+
 // TestModel_themeSeam asserts the TUI chrome renders through the model's theme
 // seam (issue #178 AC2/AC4): swapping the model's theme for one with a
 // distinct accent re-colors the agent pane border, the default accent never
