@@ -1,0 +1,21 @@
+[1;38;2;131;165;152mCOMMANDS[m
+[2m  /settings  open settings panel[m
+[2m  /copy  copy transcript to clipboard[m
+[2m  /login  interactive provider login[m
+[2m  /help  show this help message[m
+
+[1;38;2;131;165;152mKEYBINDINGS[m
+[2m  ctrl+s  open settings[m
+[2m  ctrl+o  copy transcript[m
+[2m  ctrl+e  toggle expanded view[m
+[2m  tab  toggle thinking[m
+[2m  shift+enter  insert newline[m
+[2m  ?  show help[m
+[2m  pgup/pgdn  scroll history[m
+[2m  ctrl+shift+[  narrow pane[m
+[2m  ctrl+shift+]  widen pane[m
+
+[1;38;2;131;165;152mCONCEPTS[m
+[2m  ctrl+e mode  expand/collapse all tool result cards[m
+[2m  drag-select  click and drag to select text[m
+[2m  right rail  stats, context, and model info[m
