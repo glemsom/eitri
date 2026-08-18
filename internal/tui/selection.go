@@ -2,7 +2,6 @@ package tui
 
 import (
 	"strings"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -13,117 +12,13 @@ import (
 // selected plain-text range to the clipboard. Selection is hand-rolled from
 // raw mouse cell state over the wrapped-lines transcript, built on bubbletea
 // v2's per-type mouse messages (tea.MouseClickMsg / MouseMotionMsg /
-// MouseReleaseMsg). The same mouse routing also owns the right-rail
-// drag-resize — a left press on the rail's border column starts a width drag
-// (see railDragFor), which is decided BEFORE the drag-select hit-test so the
-// two gestures never overlap.
+// MouseReleaseMsg).
 //
 // Coordinates are tracked in *content* space, not screen space: line indexes
 // the full rendered history content (the same line array the persisted
 // viewport owns) and col indexes the cell within that line's plain text. That
 // keeps a selection stable while the user scrolls mid-drag, and lets the copy
 // read exactly the plain cells the user sees (no partial-code artifacts).
-
-// railDrag is one in-progress mouse drag resizing the right rail: startWidth
-// is the rail width when the press landed and startX the press column, so each
-// motion computes newWidth = startWidth - (pointerX - startX) and applies it
-// live through setRailWidth. It is tracked on the Model (not the Transcript)
-// because it is pointer-button state, not transcript surface state: the
-// transcript only ever sees the resulting setRailWidth writes, exactly like the
-// drag-select state.
-type railDrag struct {
-	startWidth int
-	startX     int
-}
-
-// doubleClickWindow is how close (in time) two clean border clicks must land
-// to count as a double-click reset. Standard double-click intervals are tens
-// to hundreds of milliseconds; 500ms is the usual desktop cutoff.
-const doubleClickWindow = 500 * time.Millisecond
-
-// minRailWidth is the narrowest the drag may shrink the rail to: the rail
-// needs enough columns to stay a legible pane, so the drag stops at
-// minRailWidth even when the pointer keeps pulling left.
-const minRailWidth = 10
-
-// maxRailWidth returns the widest the drag may grow the rail to: half the
-// current terminal width, so the rail never dominates the surface. It is a
-// function (not a constant) because the terminal resizes at runtime.
-func maxRailWidth(terminalWidth int) int {
-	return terminalWidth / 2
-}
-
-// railBorderHitZone is how close (in columns) a left press must land to the
-// rail's left border to start a rail drag: 2 cells either side of the border
-// column. A press further into the rail (or left of it, on the transcript)
-// falls through to the existing drag-select / click paths.
-const railBorderHitZone = 2
-
-// railBorderColumn returns the screen column of the rail's left border: the
-// terminal width minus the rail's current width (the rail strip occupies the
-// rightmost railWidthOrDefault columns, and its left border is the first of
-// them).
-func (t Transcript) railBorderColumn() int {
-	return t.width - t.railWidthOrDefault()
-}
-
-// railDragFor reports whether a left press at (x,y) starts a rail drag, and the
-// drag state it starts with. A press starts a rail drag only when it lands
-// within railBorderHitZone columns of the rail's left border and on a row the
-// rail occupies (above the fixed bottom band, see inScrollRegion). Where it
-// starts is decided here so a border press can never begin a text selection.
-func (m Model) railDragFor(x, y int) (railDrag, bool) {
-	if !m.tx.railVisible() || m.tx.width <= 0 {
-		return railDrag{}, false
-	}
-	border := m.tx.railBorderColumn()
-	if x < border-railBorderHitZone || x > border+railBorderHitZone {
-		return railDrag{}, false
-	}
-	if !m.inScrollRegion(y) {
-		return railDrag{}, false
-	}
-	return railDrag{startWidth: m.tx.railWidthOrDefault(), startX: x}, true
-}
-
-// disarmBorderClick clears any armed border double-click window. Called when
-// a gesture proves the two border presses were not a double-click: the reset
-// consumed it, the press ended in a drag, or an unrelated press landed
-// elsewhere. A zero value is the "no arm" state, so the next border press
-// starts a fresh pair.
-func (m *Model) disarmBorderClick() {
-	m.borderClick = time.Time{}
-}
-
-// inScrollRegion reports whether a screen row y falls inside the history scroll
-// region: the rows above the fixed bottom band. Both the rail-drag hit test and
-// the drag-select coordinate mapping guard against events that land on the
-// band, so the boundary is decided once here and the two never drift.
-func (m Model) inScrollRegion(y int) bool {
-	return y >= 0 && y < m.tx.height-m.bandHeight()
-}
-
-// clampRailWidth clamps a requested rail width to the drag's legal range: the
-// minRailWidth floor and a max of (a) half the terminal width and (b) what the
-// transcript's 20-column readable floor allows — transcriptWidth floors at
-// width-railWidth-1 >= 20, i.e. railWidth <= width-21, so a drag on a small
-// terminal can never push the transcript below readable.
-const minTranscriptWidth = 20
-
-func clampRailWidth(w, terminalWidth int) int {
-	max := maxRailWidth(terminalWidth)
-	if capW := terminalWidth - minTranscriptWidth - 1; capW < max {
-		max = capW
-	}
-	if w < minRailWidth {
-		return minRailWidth
-	}
-	if w > max {
-		return max
-	}
-	return w
-}
-
 // dragSelect is one in-progress click-drag selection over the history
 // viewport. anchor is the content cell where the drag started; end tracks the
 // live drag cell. moved reports whether the pointer actually dragged, so a
@@ -160,45 +55,12 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 		m.tx.navigateMouse(msg)
 		return
 	case tea.MouseClickMsg:
-		// A left-button press either starts a rail-width drag or a drag selection
-		// over the history: the rail-border hit-test runs first so a press on the
-		// border column starts the width drag, never a text selection. A second
-		// clean border click inside the double-click window resets the rail to its
-		// default width instead: the reset uses the same setRailWidth path as a
-		// drag, so the transcript re-wraps and scroll/follow survive exactly as
-		// they do after a drag.
 		if m.settings != nil || m.prompting {
 			return
 		}
 		if msg.Button != tea.MouseLeft {
 			return
 		}
-		if d, ok := m.railDragFor(msg.X, msg.Y); ok {
-			// A border press whose predecessor is still inside the window is the
-			// second click of a double-click: snap the rail to the default width
-			// and consume the window, so a third press starts a fresh pair. The
-			// press still starts a drag anchored at the default width, so a
-			// hold-and-drag after the reset resizes from home.
-			if !m.borderClick.IsZero() && m.now().Sub(m.borderClick) <= doubleClickWindow {
-				m.tx.setRailWidth(clampRailWidth(defaultRailWidth, m.tx.width))
-				m.railDrag = &railDrag{startWidth: defaultRailWidth, startX: msg.X}
-				m.tx.dragSel = nil
-				m.disarmBorderClick()
-				return
-			}
-			// First press of a pair (or a stale one): arm the window now. Motion
-			// between press and release clears the arm, so only a clean
-			// press+release can complete the pair.
-			m.borderClick = m.now()
-			m.railDrag = &d
-			m.tx.dragSel = nil
-			return
-		}
-		// A press outside the border's hit zone is an unrelated gesture
-		// (history drag-select); it disarms any armed border double-click
-		// window so an intervening transcript interaction can never pair with
-		// a later border click into an accidental reset.
-		m.disarmBorderClick()
 		line, col, ok := m.mouseToContent(msg.X, msg.Y)
 		if !ok {
 			m.tx.dragSel = nil
@@ -209,19 +71,6 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 			endLine: line, endCol: col,
 		}
 	case tea.MouseMotionMsg:
-		// A live rail drag resizes the rail with the pointer; the width is
-		// applied immediately via setRailWidth so the transcript re-wraps and
-		// the rail re-renders every motion. Motion is only delivered while a
-		// button is held, so railDrag nil here means the holding button is not
-		// a border press.
-		if m.railDrag != nil {
-			// Motion between press and release means this border gesture is a
-			// drag, not a click — disarm the window so the drag's press can
-			// never pair with a later press into a reset.
-			m.disarmBorderClick()
-			m.tx.setRailWidth(clampRailWidth(m.railDrag.startWidth-(msg.X-m.railDrag.startX), m.tx.width))
-			return
-		}
 		if m.tx.dragSel == nil {
 			return
 		}
@@ -233,18 +82,6 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 		m.tx.dragSel.endCol = col
 		m.tx.dragSel.moved = true
 	case tea.MouseReleaseMsg:
-		// Releasing a rail drag keeps the width already applied live during
-		// motion; it only clears the drag state, so it never triggers the
-		// drag-select copy or tool-entry click paths.
-		if m.railDrag != nil {
-			// The first press already armed the window; release leaves the arm
-			// intact when the gesture was a clean click (no motion cleared it,
-			// and a reset press cleared it via the reset branch), and there is
-			// nothing to re-arm here. The drag state ends so the next border
-			// press can be evaluated against the armed window.
-			m.railDrag = nil
-			return
-		}
 		d := m.tx.dragSel
 		m.tx.dragSel = nil
 		if d == nil {
@@ -262,6 +99,12 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 			m.tx.toggleToolEntry(idx)
 		}
 	}
+}
+
+// inScrollRegion reports whether a screen row y falls inside the history scroll
+// region: the rows above the fixed bottom band.
+func (m Model) inScrollRegion(y int) bool {
+	return y >= 0 && y < m.tx.height-m.bandHeight()
 }
 
 // mouseToContent maps a screen cell to history-content coordinates: line is
