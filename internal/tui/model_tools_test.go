@@ -134,7 +134,7 @@ func TestModel_toolFeedDrainsLiveUpdates(t *testing.T) {
 }
 
 // TestModel_stylingToolHeadSplitsLabelAndArgs asserts the tool entry head
-// splits into a category-colored per-tool glyph tool` label and a dimmed (faint) command
+// splits into a category-colored per-tool-glyph `tool` label and a dimmed (faint) command
 // detail — color marks the tool kind while the args recede, so a busy session
 // reads calmly (benchmark §4.1 tool-cards: label + dimmed path). The ✓
 // outcome marker keeps its own hue.

@@ -194,7 +194,7 @@ func TestToolLog_ReviewKeepsMostRecentState(t *testing.T) {
 }
 
 // TestToolLog_HeadForms asserts the shared head builders render the compact
-// per-tool glyph tool  args` head in its three forms — plain args, the read `:start-end`
+// per-tool-glyph `tool  args` head in its three forms — plain args, the read `:start-end`
 // range, and the file-edit `[+N, −M]` delta tag (issue #204, #84, #208 US4).
 func TestToolLog_HeadForms(t *testing.T) {
 	cases := []struct {
