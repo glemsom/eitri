@@ -111,7 +111,7 @@ func TestToolLog_RenderWritesEntryWithRowRanges(t *testing.T) {
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
 
 	got, rows := l.Render(defaultTheme, false, time.Time{}, 80, 0)
-	if !strings.Contains(got, "⊕ bash") {
+	if !strings.Contains(got, "🔧 bash") {
 		t.Errorf("Render must emit the tool head, got %q", got)
 	}
 	if len(rows) != 1 {
@@ -131,7 +131,7 @@ func TestToolLog_PlainTextRendersEntry(t *testing.T) {
 	l.Apply(ToolUpdate{Result: &ToolResult{Name: "read", Result: "one\ntwo\n", Lines: 2}})
 
 	out := l.PlainText(0)
-	if !strings.Contains(out, "⊕ read  a.txt") {
+	if !strings.Contains(out, "📖 read  a.txt") {
 		t.Errorf("PlainText must include the head, got %q", out)
 	}
 	if !strings.Contains(out, "  one") || !strings.Contains(out, "  two") {
@@ -154,7 +154,7 @@ func TestToolLog_PlainTextCollapsedAndExpanded(t *testing.T) {
 		Before: "a", After: "b", Path: "a.go", Added: 1, Removed: 1}})
 
 	out := l.PlainText(0)
-	if out != "⊕ bash  ls\n⊕ edit  a.go  [+1, −1]\n  change\n" {
+	if out != "🔧 bash  ls\n✂️ edit  a.go  [+1, −1]\n  change\n" {
 		t.Errorf("PlainText shape mismatch, got %q", out)
 	}
 }
@@ -194,7 +194,7 @@ func TestToolLog_ReviewKeepsMostRecentState(t *testing.T) {
 }
 
 // TestToolLog_HeadForms asserts the shared head builders render the compact
-// `⊕ tool  args` head in its three forms — plain args, the read `:start-end`
+// per-tool glyph tool  args` head in its three forms — plain args, the read `:start-end`
 // range, and the file-edit `[+N, −M]` delta tag (issue #204, #84, #208 US4).
 func TestToolLog_HeadForms(t *testing.T) {
 	cases := []struct {
@@ -205,17 +205,17 @@ func TestToolLog_HeadForms(t *testing.T) {
 		{
 			name:  "plain args",
 			entry: toolEntry{name: "bash", args: `{"command":"ls"}`},
-			want:  "⊕ bash  ls",
+			want:  "🔧 bash  ls",
 		},
 		{
 			name:  "read range",
 			entry: toolEntry{name: "read", args: `{"path":"a.txt","start_line":3,"end_line":7}`},
-			want:  "⊕ read  a.txt:3-7",
+			want:  "📖 read  a.txt:3-7",
 		},
 		{
 			name:  "edit delta",
 			entry: toolEntry{name: "edit", args: `{"path":"a.go"}`, added: 2, removed: 1},
-			want:  "⊕ edit  a.go  [+2, −1]",
+			want:  "✂️ edit  a.go  [+2, −1]",
 		},
 	}
 	for _, c := range cases {
@@ -309,7 +309,7 @@ func TestToolLog_RenderOutcomeElapsedAndTruncation(t *testing.T) {
 	// sub-second ms between Apply (which stamps doneAt) and SetStart only shave
 	// the fractional part, so the 105s window reads deterministically as 1m 44s.
 	got, _ := l.Render(defaultTheme, false, time.Now(), 80, 0)
-	if !strings.Contains(got, "⊕ bash") {
+	if !strings.Contains(got, "🔧 bash") {
 		t.Errorf("head missing, got %q", got)
 	}
 	if !strings.Contains(got, "1m 44s") {

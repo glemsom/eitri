@@ -488,7 +488,7 @@ func TestTranscript_toggleExpandAllEmptyLogIsNoOp(t *testing.T) {
 	// entry.
 	var b strings.Builder
 	tx.renderHistory(&b, nil, nil)
-	if strings.Contains(b.String(), "⊕ bash") {
+	if strings.Contains(b.String(), "🔧 bash") {
 		t.Errorf("empty log must render no tool entries, got: %q", b.String())
 	}
 	if tx.expandAll != true {

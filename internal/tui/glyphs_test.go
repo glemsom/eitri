@@ -29,6 +29,37 @@ func TestGlyph_charter(t *testing.T) {
 	}
 }
 
+// TestToolGlyph_charter asserts every tool-specific glyph pair in toolGlyph
+// has both a UTF-8 form and an ASCII fallback, and both degrade correctly
+// under EITRI_ASCII_GLYPHS.
+func TestToolGlyph_charter(t *testing.T) {
+	cases := []struct {
+		name  string
+		utf8  string
+		ascii string
+	}{
+		{"bash", "🔧", "$"},
+		{"read", "📖", "<"},
+		{"write", "✏️", ">"},
+		{"edit", "✂️", "~"},
+		{"web_fetch", "🌐", "w"},
+		{"open_in_browser", "🌍", "W"},
+		{"skill", "⚡", "s"},
+		{"unknown", "⊕", "+"},
+	}
+	for _, c := range cases {
+		if got := toolGlyph(c.name); got != c.utf8 {
+			t.Errorf("toolGlyph(%q) without override = %q, want %q", c.name, got, c.utf8)
+		}
+	}
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	for _, c := range cases {
+		if got := toolGlyph(c.name); got != c.ascii {
+			t.Errorf("toolGlyph(%q) with override = %q, want %q", c.name, got, c.ascii)
+		}
+	}
+}
+
 // TestToolEntry_asciiGlyphs asserts a whole tool entry degrades: the label
 // becomes "+ name", the outcome "ok"/"X", and the pane border "|" — no
 // non-ASCII glyph leaks under the forced fallback.
@@ -47,7 +78,7 @@ func TestToolEntry_asciiGlyphs(t *testing.T) {
 	m = toolResult(t, m, ToolResult{Name: "bash", Result: "ok (1ms)", Lines: 1})
 
 	content := plain(view(m))
-	if !strings.Contains(content, "+ bash") {
+	if !strings.Contains(content, "$ bash") {
 		t.Errorf("ASCII tool label missing, got: %q", content)
 	}
 	if strings.Contains(content, "⊕") || strings.Contains(content, "✓") || strings.Contains(content, "│") {

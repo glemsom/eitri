@@ -48,7 +48,7 @@ func TestModel_toolEditEntryRenders(t *testing.T) {
 	}})
 
 	content := view(m)
-	if !strings.Contains(content, "⊕ edit") {
+	if !strings.Contains(content, "✂️ edit") {
 		t.Errorf("expected a one-line edit entry, got: %q", content)
 	}
 	if !strings.Contains(content, "internal/main.go") {
@@ -84,7 +84,7 @@ func TestModel_toolEntryCollapsedThenExpandable(t *testing.T) {
 	}})
 
 	content := view(m)
-	if !strings.Contains(content, "⊕ bash") {
+	if !strings.Contains(content, "🔧 bash") {
 		t.Errorf("expected a one-line bash entry, got: %q", content)
 	}
 	if !strings.Contains(content, "+3 more") {
@@ -134,7 +134,7 @@ func TestModel_toolFeedDrainsLiveUpdates(t *testing.T) {
 }
 
 // TestModel_stylingToolHeadSplitsLabelAndArgs asserts the tool entry head
-// splits into a category-colored `⊕ tool` label and a dimmed (faint) command
+// splits into a category-colored per-tool glyph tool` label and a dimmed (faint) command
 // detail — color marks the tool kind while the args recede, so a busy session
 // reads calmly (benchmark §4.1 tool-cards: label + dimmed path). The ✓
 // outcome marker keeps its own hue.
@@ -151,12 +151,12 @@ func TestModel_stylingToolHeadSplitsLabelAndArgs(t *testing.T) {
 	m = toolStart(t, m, "bash", `{"command":"go test ./..."}`)
 	m = toolResult(t, m, ToolResult{Name: "bash", Result: "ok (1ms)", Lines: 1})
 
-	line := lineContaining(view(m), "⊕ bash")
+	line := lineContaining(view(m), "🔧 bash")
 	if line == "" {
 		t.Fatalf("tool head row missing, got: %q", view(m))
 	}
 	// The label carries the shell category hue and the args the faint style.
-	if !strings.Contains(line, "\x1b[38;2;224;175;104m⊕ bash\x1b[m\x1b[2m  go test ./...") {
+	if !strings.Contains(line, "\x1b[38;2;224;175;104m🔧 bash\x1b[m\x1b[2m  go test ./...") {
 		t.Errorf("tool head must color the label and dim the args, got line: %q", line)
 	}
 }
@@ -206,7 +206,7 @@ func TestModel_toolArgsTruncateToWidth(t *testing.T) {
 	m = toolStart(t, m, "web_fetch", `{"url":"https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After"}`)
 	m = toolResult(t, m, ToolResult{Name: "web_fetch", Result: "error: fetch failed", Lines: 1})
 
-	line := lineContaining(view(m), "⊕ web_fetch")
+	line := lineContaining(view(m), "🌐 web_fetch")
 	if line == "" {
 		t.Fatalf("tool row missing, got: %q", view(m))
 	}

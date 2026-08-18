@@ -31,3 +31,26 @@ func failurePrefix() string { return g("⚠ ", "! ") }
 // appends it under the stopped message's pane so the aborted turn reads as
 // deliberately stopped, never as an error.
 func stoppedMarker() string { return g("⏹ stopped", "! stopped") }
+
+// toolGlyph maps a tool name to its per-tool emoji glyph, with an ASCII
+// fallback. Unknown or future tools return the generic ⊕/+, preserving the
+// fallback contract so color alone never carries meaning.
+func toolGlyph(name string) string {
+	switch name {
+	case "bash":
+		return g("🔧", "$")
+	case "read":
+		return g("📖", "<")
+	case "write":
+		return g("✏️", ">")
+	case "edit":
+		return g("✂️", "~")
+	case "web_fetch":
+		return g("🌐", "w")
+	case "open_in_browser":
+		return g("🌍", "W")
+	case "skill":
+		return g("⚡", "s")
+	}
+	return g("⊕", "+")
+}

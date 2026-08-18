@@ -8,7 +8,7 @@ import (
 
 // TestModel_readRangeShownInEntryHead asserts a `read` call invoked with
 // explicit start_line/end_line limits renders the invoked range in the one-line
-// entry head alongside the path hint — `⊕ read path:start-end` (
+// entry head alongside the path hint — `📖 read path:start-end` (
 // AC1) — so a range-limited read is distinguishable at a glance from a
 // whole-file dump.
 func TestModel_readRangeShownInEntryHead(t *testing.T) {
@@ -29,7 +29,7 @@ func TestModel_readRangeShownInEntryHead(t *testing.T) {
 	}})
 
 	content := view(m)
-	if !strings.Contains(content, "⊕ read") {
+	if !strings.Contains(content, "📖 read") {
 		t.Errorf("expected a one-line read entry, got: %q", content)
 	}
 	if !strings.Contains(content, "internal/main.go:12-340") {
