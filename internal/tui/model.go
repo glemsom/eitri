@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -300,7 +299,7 @@ type Dependencies struct {
 // in the native viewport the Transcript owns.
 type Model struct {
 	composer textarea.Model
-	turn     Turn
+	td       *TurnDispatch
 	deps     Dependencies
 
 	// tx is the owned transcript surface: the single owner of the
@@ -319,17 +318,6 @@ type Model struct {
 	continueReq  chan struct{}
 	continueResp chan bool
 	prompting    bool
-
-	// turnCancel is the per-turn cancel handle: startTurn installs it (the
-	// cancelable context the turn goroutine runs on), the esc keypress invokes
-	// it to abort the in-flight turn, and turnDoneMsg clears it. It lives on
-	// the Model so the value copies Bubble Tea makes share the same handle,
-	// exactly like the continuation channels.
-	turnCancel context.CancelFunc
-	// turnCtx is the cancelable context current turn goroutine runs on; nil
-	// while idle. esc cancels it, which is how the stop reaches the engine's
-	// provider wire and any running tool.
-	turnCtx context.Context
 
 	// skills is the live list backing the slash-command completion, refreshed
 	// from the Dependencies snapshot at construction.
@@ -352,10 +340,6 @@ type Model struct {
 
 	// stream is the live answer-text stream ; nil disables streaming.
 	stream *Streamer
-	// curStream is the index into messages of the in-progress, incrementally
-	// rendering assistant message being grown by AnswerStream deltas. It is -1
-	// when no assistant reply is currently streaming.
-	curStream int
 
 	// toolFeed is the live tool-call stream ; nil disables tool
 	// entries.
@@ -453,7 +437,7 @@ func NewModelCfg(d Dependencies) Model {
 
 	m := Model{
 		composer:     comp,
-		turn:         d.Turn,
+		td:           NewTurnDispatch(d.Turn),
 		deps:         d,
 		tx:           transcript,
 		continueReq:  make(chan struct{}, 1),
@@ -461,13 +445,13 @@ func NewModelCfg(d Dependencies) Model {
 		skills:       skillSnapshot(d),
 		telemetry:    d.Telemetry,
 		stream:       d.Stream,
-		curStream:    -1,
 		toolFeed:     d.Tools,
 		clipboard:    newClipboard(d),
 	}
 	// The layout starts stale, but the pointer share means the Transcript's
 	// first hit-test builds it lazily; the explicit dirty below keeps the
 	// semantic explicit .
+	m.td.SetThinkingEnabled(d.Config.ThinkingEnabled)
 	m.tx.layout.dirty = true
 	// An unknown hand-edited theme warns once on startup via the status strip,
 	// naming the fallback, instead of failing silently: the renderer still
@@ -518,9 +502,9 @@ func newHistoryViewport() *viewport.Model {
 	return &v
 }
 
-// SetTurn swaps the conversation Turn (used at boot to wire the engine seam
-// after the Model is constructed).
-func (m *Model) SetTurn(t Turn) { m.turn = t }
+// SetTurnDispatch wires the TurnDispatch that owns the turn state machine.
+// It is used at boot to wire the engine seam after the Model is constructed.
+func (m *Model) SetTurnDispatch(td *TurnDispatch) { m.td = td }
 
 // ContinueHook returns the interactive continuation hook wired to this Model's
 // prompt channels. Pass it as the engine's CanContinue so a cap hit pauses and
@@ -776,9 +760,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// by default; per-turn expansion, ). Toggling the newest
 			// assistant block lets the user watch that turn's reasoning on demand.
 			// The messages and layout belong to the owned Transcript .
-			if m.curStream >= 0 && m.curStream < len(m.tx.messages) {
+			if m.td.s.curStream >= 0 && m.td.s.curStream < len(m.tx.messages) {
 				// During a stream, target the in-progress assistant message.
-				m.tx.toggleThinking(m.curStream)
+				m.tx.toggleThinking(m.td.s.curStream)
 			} else {
 				// Otherwise toggle the most recent assistant (eitri) message.
 				for i := len(m.tx.messages) - 1; i >= 0; i-- {
@@ -846,63 +830,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case turnDoneMsg:
-		m.tx.busy = false
-		m.tx.spinner = 0
-		m.turnCancel = nil
-		m.turnCtx = nil
-		m.tx.layout.dirty = true // the turn's answer/error and busy end change the transcript
+		m.td.handleTurnDone(&m.tx, msgi)
 		m.syncComposerRail()
-		wasStreaming := m.curStream >= 0 && m.curStream < len(m.tx.messages)
-		if msgi.stopped {
-			// A stopped turn keeps the partial output already on screen, marked
-			// as stopped rather than rendered as an error: the engine preserves
-			// the partial answer in its stop outcome, and any streamed deltas
-			// had already landed in the in-progress message. A stop arriving
-			// before the first delta appends the partial message itself.
-			m.tx.layout.dirty = true
-			if wasStreaming {
-				m.tx.messages[m.curStream].content = msgi.answer
-				m.tx.messages[m.curStream].reasoning = msgi.reasoning
-				m.tx.messages[m.curStream].streaming = false
-				m.tx.messages[m.curStream].stopped = true
-				m.curStream = -1
-			} else if msgi.answer != "" || msgi.reasoning != "" {
-				m.tx.messages = append(m.tx.messages, message{role: "eitri", content: msgi.answer, reasoning: msgi.reasoning, stopped: true, thinkingRequested: m.deps.Config.ThinkingEnabled})
-			}
-			return m, nil
-		}
-		if msgi.err != nil {
-			// A streaming turn aborting with an error drops the partial reply and
-			// renders the error in its place; the incremental buffer is advisory.
-			m.curStream = -1
-			m.tx.messages = append(m.tx.messages, message{role: "eitri", content: failurePrefix() + msgi.err.Error(), thinkingRequested: m.deps.Config.ThinkingEnabled})
-			return m, nil
-		}
-		if wasStreaming {
-			// Streaming turn: reconcile the incremental buffer with the full
-			// answer. When every delta already arrived the contents match, so
-			// this is a no-op visual diff (no flicker, no lost selection); when
-			// the last delta raced past completion, the full answer guarantees a
-			// correct final render .
-			m.tx.messages[m.curStream].content = msgi.answer
-			m.tx.messages[m.curStream].reasoning = msgi.reasoning
-			m.tx.messages[m.curStream].streaming = false
-			// Auto-collapse the thinking block once the turn's final answer lands
-			//: if the user expanded it mid-reasoning to watch, it
-			// settles back to the one-line hint so the styled answer takes focus.
-			// The Ctrl+E expanded-view mode overrides this (issue
-			// #274): while the mode is ON the reasoning block stays expanded;
-			// the reset only fires when the mode is OFF.
-			if !m.tx.expandAll {
-				m.tx.messages[m.curStream].thinkingExpanded = false
-			}
-			m.curStream = -1
-		} else {
-			m.tx.messages = append(m.tx.messages, message{role: "eitri", content: msgi.answer, reasoning: msgi.reasoning, thinkingRequested: m.deps.Config.ThinkingEnabled})
-			return m, nil
-		}
 		return m, nil
-
 	case clockTickMsg:
 		// One-second telemetry refresh: re-issue the tick and re-render so the
 		// session-elapsed timer in the status strip stays live.
@@ -1118,105 +1048,31 @@ func (s *settingsForm) save(m *Model) {
 	m.settings = nil
 }
 
-// turnCmd reports a turn's completion back to the model. The closure runs on
-// the cancelable context startTurn installed (turnCtx/turnCancel), so pressing
-// esc mid-turn aborts the engine work at the context boundary and the turn
-// returns the cancellation as a stopped result rather than an error.
-func (m Model) turnCmd(prompt string, payload string) tea.Cmd {
-	return tea.Cmd(func() tea.Msg {
-		ctx := m.turnCtx
-		if ctx == nil {
-			// Defensive fallback for a command dispatched before startTurn ran
-			// (should not happen; startTurn installs the handle first).
-			var cancel context.CancelFunc
-			ctx, cancel = context.WithCancel(context.Background())
-			defer cancel()
-		} else {
-			// Release the per-turn context once the turn finishes naturally;
-			// esc releases it earlier via the cancel handle.
-			defer m.turnCancel()
-		}
-		res, err := m.turn(ctx, prompt, payload)
-		if err != nil {
-			// A wholesale context canceled from the turn means the user stopped
-			// it; the engine maps its own stop to TurnResult.Stopped, and a
-			// stand-in turn that just returns context.Canceled is treated the
-			// same way: partial output stays, marked stopped, never an error.
-			if errors.Is(err, context.Canceled) {
-				return turnDoneMsg{prompt: prompt, stopped: true, answer: res.Answer, reasoning: res.Reasoning}
-			}
-			return turnDoneMsg{prompt: prompt, err: err}
-		}
-		return turnDoneMsg{prompt: prompt, answer: res.Answer, reasoning: res.Reasoning, stopped: res.Stopped}
-	})
-}
-
-// startTurn appends a user message and dispatches it as a turn through the
-// engine, mirroring the composer submit path (busy/anchor/rail set up; stream-
-// batched when a live answer stream is attached). It is the single place that
-// turns a prompt into a "you" message + busy state and returns the dispatch
-// command, shared by the composer submit path and the skillDoneMsg args branch
-// so a follow-up args turn behaves exactly like a normal user turn.
+// startTurn delegates to the TurnDispatch, which installs the per-turn
+// cancel handle, appends a user message, marks busy, resets the stream
+// cursor, and anchors the tool log. Model adds the stream/spinner batch
+// and syncs the composer rail.
 func (m *Model) startTurn(prompt string, payload string) tea.Cmd {
-	// Install the per-turn cancel handle BEFORE the turn command is dispatched:
-	// the closure captures this context, and esc invokes the stored cancel func
-	// to abort the running turn.
-	m.turnCtx, m.turnCancel = context.WithCancel(context.Background())
-	m.tx.messages = append(m.tx.messages, message{role: "you", content: prompt})
-	m.tx.busy = true
-	m.curStream = -1
-	m.tx.layout.dirty = true // a new turn appended to the transcript
+	m.td.startTurn(&m.tx, prompt, payload)
 	m.syncComposerRail()
-	// Anchor new tool calls to this turn's prompt so entries interleave
-	// after it . The log belongs to the owned Transcript.
-	m.tx.log.SetAnchor(len(m.tx.messages) - 1)
 	// With a live answer stream, the composer turn and the stream waiter run
-	// concurrently so the reply grows in place as deltas arrive ;
-	// the spinner tick rides the same batch so the busy indicator animates
-	// . The non-streaming fallback keeps the single turn
-	// command — tests drive it synchronously.
+	// concurrently so the reply grows in place as deltas arrive;
+	// the spinner tick rides the same batch so the busy indicator animates.
+	// The non-streaming fallback keeps the single turn command.
 	if m.stream != nil {
-		return tea.Batch(m.turnCmd(prompt, payload), streamWait(m.stream), spinnerTick())
+		return tea.Batch(m.td.turnCmd(prompt, payload), streamWait(m.stream), spinnerTick())
 	}
-	return m.turnCmd(prompt, payload)
+	return m.td.turnCmd(prompt, payload)
 }
 
-// stopTurn aborts the in-flight turn by canceling the per-turn context
-// installed in startTurn. The cancellation threads through the Turn seam to the
-// engine, which kills the provider stream / running tool at the context
-// boundary and surfaces the stop; turnDoneMsg then marks the partial output
-// stopped and clears the handle. It is a no-op when nothing is running.
-func (m *Model) stopTurn() {
-	if m.turnCancel != nil {
-		m.turnCancel()
-	}
-}
+// stopTurn delegates to the TurnDispatch, which cancels the per-turn
+// context. It is a no-op when nothing is running.
+func (m *Model) stopTurn() { m.td.stopTurn() }
 
-// appendStreamDelta grows the in-progress assistant message by one streamed
-// delta . It returns no additional command. On the first delta
-// of a turn it appends a new assistant message and records its index as the
-// current stream target; subsequent deltas extend that same message in place so
-// the Markdown/thinking render grows token by token. Reasoning deltas accumulate
-// onto the message's reasoning buffer and the answer deltas onto its content
-// buffer; the two never interleave.
+// appendStreamDelta delegates to the TurnDispatch, which grows the
+// in-progress assistant message by one streamed delta.
 func (m *Model) appendStreamDelta(kind StreamKind, delta string) {
-	if delta == "" {
-		return
-	}
-	if m.curStream >= 0 && m.curStream < len(m.tx.messages) && m.tx.messages[m.curStream].streaming {
-		if kind == ReasoningStream {
-			m.tx.messages[m.curStream].reasoning += delta
-		} else {
-			m.tx.messages[m.curStream].content += delta
-		}
-		return
-	}
-	if kind == ReasoningStream {
-		m.tx.messages = append(m.tx.messages, message{role: "eitri", reasoning: delta, streaming: true, thinkingRequested: m.deps.Config.ThinkingEnabled})
-	} else {
-		m.tx.messages = append(m.tx.messages, message{role: "eitri", content: delta, streaming: true, thinkingRequested: m.deps.Config.ThinkingEnabled})
-	}
-	m.curStream = len(m.tx.messages) - 1
+	m.td.appendStreamDelta(&m.tx, kind, delta)
 }
 
 // skillSnapshot captures the detected skills at construction so the slash

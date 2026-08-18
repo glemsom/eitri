@@ -133,7 +133,9 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 			})
 		},
 	})
-	m.SetTurn(runEngineTurn(e, func() config.Config { return currentCfg }, reg, sessionKey, m.ContinueHook()))
+	td := tui.NewTurnDispatch(runEngineTurn(e, func() config.Config { return currentCfg }, reg, sessionKey, m.ContinueHook()))
+	td.SetThinkingEnabled(cfg.ThinkingEnabled)
+	m.SetTurnDispatch(td)
 	return runProgram(m)
 }
 

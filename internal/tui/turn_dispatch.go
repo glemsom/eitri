@@ -24,6 +24,10 @@ type turnState struct {
 type TurnDispatch struct {
 	s    *turnState
 	turn Turn
+	// thinkingEnabled records whether the current run requested chain-of-thought.
+	// New messages created by handleTurnDone and appendStreamDelta carry this
+	// flag so the transcript renderer shows reasoning only for turns that asked.
+	thinkingEnabled bool
 }
 
 // NewTurnDispatch creates a TurnDispatch with the given engine seam.
@@ -46,6 +50,10 @@ func (d *TurnDispatch) startTurn(tx *Transcript, prompt, payload string) tea.Cmd
 	tx.log.SetAnchor(len(tx.messages) - 1)
 	return d.turnCmd(prompt, payload)
 }
+
+// SetThinkingEnabled updates the thinking flag for new messages created by
+// appendStreamDelta and handleTurnDone.
+func (d *TurnDispatch) SetThinkingEnabled(v bool) { d.thinkingEnabled = v }
 
 // stopTurn cancels the in-flight turn's context. It is a no-op when nothing
 // is running.
@@ -102,9 +110,9 @@ func (d *TurnDispatch) appendStreamDelta(tx *Transcript, kind StreamKind, delta 
 		return
 	}
 	if kind == ReasoningStream {
-		tx.messages = append(tx.messages, message{role: "eitri", reasoning: delta, streaming: true})
+		tx.messages = append(tx.messages, message{role: "eitri", reasoning: delta, streaming: true, thinkingRequested: d.thinkingEnabled})
 	} else {
-		tx.messages = append(tx.messages, message{role: "eitri", content: delta, streaming: true})
+		tx.messages = append(tx.messages, message{role: "eitri", content: delta, streaming: true, thinkingRequested: d.thinkingEnabled})
 	}
 	d.s.curStream = len(tx.messages) - 1
 }
@@ -135,7 +143,7 @@ func (d *TurnDispatch) handleTurnDone(tx *Transcript, msg turnDoneMsg) (stopped 
 			tx.messages[d.s.curStream].stopped = true
 			d.s.curStream = -1
 		} else if msg.answer != "" || msg.reasoning != "" {
-			tx.messages = append(tx.messages, message{role: "eitri", content: msg.answer, reasoning: msg.reasoning, stopped: true})
+			tx.messages = append(tx.messages, message{role: "eitri", content: msg.answer, reasoning: msg.reasoning, stopped: true, thinkingRequested: d.thinkingEnabled})
 		}
 		return true, nil
 	}
@@ -143,7 +151,7 @@ func (d *TurnDispatch) handleTurnDone(tx *Transcript, msg turnDoneMsg) (stopped 
 		// A streaming turn aborting with an error drops the partial reply and
 		// renders the error in its place.
 		d.s.curStream = -1
-		tx.messages = append(tx.messages, message{role: "eitri", content: failurePrefix() + msg.err.Error()})
+		tx.messages = append(tx.messages, message{role: "eitri", content: failurePrefix() + msg.err.Error(), thinkingRequested: d.thinkingEnabled})
 		return false, msg.err
 	}
 	if wasStreaming {
@@ -158,7 +166,7 @@ func (d *TurnDispatch) handleTurnDone(tx *Transcript, msg turnDoneMsg) (stopped 
 		}
 		d.s.curStream = -1
 	} else {
-		tx.messages = append(tx.messages, message{role: "eitri", content: msg.answer, reasoning: msg.reasoning})
+		tx.messages = append(tx.messages, message{role: "eitri", content: msg.answer, reasoning: msg.reasoning, thinkingRequested: d.thinkingEnabled})
 	}
 	return false, nil
 }
