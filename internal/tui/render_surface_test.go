@@ -42,7 +42,7 @@ func TestRender_idleWelcome(t *testing.T) {
 			name: "brand-and-hints",
 			want: "Eitri - your terminal coding agent\n" +
 				"  ask me to fix a bug, refactor code, explain a system, or run the tests\n" +
-				"  ctrl+s settings · / for commands\n",
+				"  ctrl+s settings · /help for commands & keybindings\n",
 		},
 	}
 	for _, c := range cases {
