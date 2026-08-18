@@ -595,27 +595,33 @@ func layoutBuildsOf(tx Transcript) int {
 	return tx.layout.builds
 }
 
+// newStreamPaneTestTranscript builds a Transcript with the standard test
+// fixture fields (theme, workspace, dimensions) and the given messages.
+func newStreamPaneTestTranscript(th Theme, msgs []message) Transcript {
+	return Transcript{
+		theme:           th,
+		configTheme:     config.DefaultTheme,
+		workspacePath:   "/tmp/acme",
+		messages:        msgs,
+		reasoningEffort: "medium",
+		width:           80,
+		height:          12,
+		histFollow:      true,
+		histViewport:    newHistoryViewport(),
+	}
+}
+
 // TestRenderHistory_streamingAssistantUsesDimmedPane asserts that a
 // streaming assistant message renders with the dimmed streaming pane style
-// instead of the full agent pane style (issue #352 AC1): the left-bordered
-// pane uses streamingPaneStyle while the turn is still in-flight.
+// instead of the full agent pane style: the left-bordered pane uses
+// streamingPaneStyle while the turn is still in-flight.
 func TestRenderHistory_streamingAssistantUsesDimmedPane(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 
 	render := func(streaming bool) string {
 		var hist strings.Builder
-		tx := Transcript{
-			theme:           th,
-			configTheme:     config.DefaultTheme,
-			workspacePath:   "/tmp/acme",
-			messages:        []message{{role: "eitri", content: "partial", streaming: streaming}},
-			reasoningEffort: "medium",
-			width:           80,
-			height:          12,
-			histFollow:      true,
-			histViewport:    newHistoryViewport(),
-		}
+		tx := newStreamPaneTestTranscript(th, []message{{role: "eitri", content: "partial", streaming: streaming}})
 		tx.renderHistory(&hist, nil, nil)
 		return hist.String()
 	}
@@ -653,23 +659,13 @@ func TestRenderHistory_streamingAssistantUsesDimmedPane(t *testing.T) {
 }
 
 // TestRenderHistory_completedAssistantUsesAgentPane asserts that a completed
-// (non-streaming) assistant message renders with the full agent pane style
-// (issue #352 AC2): no regression from the streaming pane change.
+// (non-streaming) assistant message renders with the full agent pane style:
+// no regression from the streaming pane change.
 func TestRenderHistory_completedAssistantUsesAgentPane(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 	var hist strings.Builder
-	tx := Transcript{
-		theme:           th,
-		configTheme:     config.DefaultTheme,
-		workspacePath:   "/tmp/acme",
-		messages:        []message{{role: "eitri", content: "done", streaming: false}},
-		reasoningEffort: "medium",
-		width:           80,
-		height:          12,
-		histFollow:      true,
-		histViewport:    newHistoryViewport(),
-	}
+	tx := newStreamPaneTestTranscript(th, []message{{role: "eitri", content: "done", streaming: false}})
 	tx.renderHistory(&hist, nil, nil)
 	rendered := hist.String()
 
@@ -687,25 +683,15 @@ func TestRenderHistory_completedAssistantUsesAgentPane(t *testing.T) {
 
 // TestRenderHistory_streamingErrorPrefixUsesDimmedErrorPane asserts that a
 // streaming assistant message with the error prefix renders with the dimmed
-// streaming error pane style (issue #352 AC3): error-prefix messages that are
-// still streaming use streamingErrorPaneStyle, not the full errorPaneStyle.
+// streaming error pane style: error-prefix messages that are still streaming
+// use streamingErrorPaneStyle, not the full errorPaneStyle.
 func TestRenderHistory_streamingErrorPrefixUsesDimmedErrorPane(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 
 	render := func(streaming bool) string {
 		var hist strings.Builder
-		tx := Transcript{
-			theme:           th,
-			configTheme:     config.DefaultTheme,
-			workspacePath:   "/tmp/acme",
-			messages:        []message{{role: "eitri", content: failurePrefix() + "broke", streaming: streaming}},
-			reasoningEffort: "medium",
-			width:           80,
-			height:          12,
-			histFollow:      true,
-			histViewport:    newHistoryViewport(),
-		}
+		tx := newStreamPaneTestTranscript(th, []message{{role: "eitri", content: failurePrefix() + "broke", streaming: streaming}})
 		tx.renderHistory(&hist, nil, nil)
 		return hist.String()
 	}
