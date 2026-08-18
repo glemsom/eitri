@@ -38,7 +38,7 @@ func setNow(m Model, d time.Duration) Model {
 // behave like a fresh no-op drag.
 func TestRailDbl_fastSecondPressResetsToDefault(t *testing.T) {
 	m := railDblModel(t)
-	m = railDragPressMotion(t, m, 40) // drag the rail well past default
+	m = railDragPressMotion(t, m, 40) // drag the rail well below default
 	if got := m.tx.railWidthOrDefault(); got == defaultRailWidth {
 		t.Fatalf("precondition: rail must be dragged off default, got %d", got)
 	}
@@ -71,16 +71,16 @@ func TestRailDbl_singleDragClickDoesNotReset(t *testing.T) {
 	m = mustUpdate(t, m, railDragMsg("press", border, row))
 	m = mustUpdate(t, m, railDragMsg("motion", border+10, row))
 	m = mustUpdate(t, m, railDragMsg("release", border+10, row))
-	if got := m.tx.railWidthOrDefault(); got != defaultRailWidth+10 {
-		t.Fatalf("precondition: drag must keep width %d, got %d", defaultRailWidth+10, got)
+	if got := m.tx.railWidthOrDefault(); got != defaultRailWidth-10 {
+		t.Fatalf("precondition: drag must keep width %d, got %d", defaultRailWidth-10, got)
 	}
 
 	// A second clean click (or drag) right after must NOT reset: no arm is set
 	// because the first gesture had motion, so the width stays.
 	m = mustUpdate(t, m, railDragMsg("press", border, row))
 	m = mustUpdate(t, m, railDragMsg("release", border, row))
-	if got := m.tx.railWidthOrDefault(); got != defaultRailWidth+10 {
-		t.Errorf("drag-then-click must not reset: width %d, want %d", got, defaultRailWidth+10)
+	if got := m.tx.railWidthOrDefault(); got != defaultRailWidth-10 {
+		t.Errorf("drag-then-click must not reset: width %d, want %d", got, defaultRailWidth-10)
 	}
 }
 
@@ -116,8 +116,8 @@ func TestRailDbl_staleFirstClickExpires(t *testing.T) {
 	// the expired click did not reset to default.
 	from := m.tx.railWidthOrDefault()
 	m = mustUpdate(t, m, railDragMsg("motion", border-5, row))
-	if got := m.tx.railWidthOrDefault(); got != from-5 {
-		t.Errorf("motion after expired click must drag from current width: got %d, want %d", got, from-5)
+	if got := m.tx.railWidthOrDefault(); got != from+5 {
+		t.Errorf("motion after expired click must drag from current width: got %d, want %d", got, from+5)
 	}
 }
 
@@ -144,8 +144,8 @@ func TestRailDbl_secondClickWithoutReleaseStartsDrag(t *testing.T) {
 	}
 	// Holding and dragging after the reset resizes from the default width.
 	m = mustUpdate(t, m, railDragMsg("motion", border+8, row))
-	if got := m.tx.railWidthOrDefault(); got != defaultRailWidth+8 {
-		t.Errorf("drag after reset must resize from default: width %d, want %d", got, defaultRailWidth+8)
+	if got := m.tx.railWidthOrDefault(); got != defaultRailWidth-8 {
+		t.Errorf("drag after reset must resize from default: width %d, want %d", got, defaultRailWidth-8)
 	}
 }
 

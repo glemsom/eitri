@@ -92,11 +92,11 @@ func TestRailDrag_resizesLiveAndKeepsWidth(t *testing.T) {
 		t.Fatalf("press must not resize: rail width %d, want %d", got, startW)
 	}
 
-	// Motion right by 8: the rail grows to startW+8 live, and the layout is
+	// Motion right by 8: the rail shrinks to startW-8 live, and the layout is
 	// marked dirty so the next render re-wraps the transcript.
 	m = mustUpdate(t, m, railDragMsg("motion", border+8, row))
-	if got := m.tx.railWidthOrDefault(); got != startW+8 {
-		t.Fatalf("motion +8: rail width %d, want %d", got, startW+8)
+	if got := m.tx.railWidthOrDefault(); got != startW-8 {
+		t.Fatalf("motion +8: rail width %d, want %d", got, startW-8)
 	}
 	if !m.tx.layout.dirty {
 		t.Error("rail drag motion must mark the layout dirty (transcript re-wrap)")
@@ -104,8 +104,8 @@ func TestRailDrag_resizesLiveAndKeepsWidth(t *testing.T) {
 
 	// Motion left by 3 from there: width follows the pointer both ways.
 	m = mustUpdate(t, m, railDragMsg("motion", border+5, row))
-	if got := m.tx.railWidthOrDefault(); got != startW+5 {
-		t.Errorf("motion back to +5: rail width %d, want %d", got, startW+5)
+	if got := m.tx.railWidthOrDefault(); got != startW-5 {
+		t.Errorf("motion back to +5: rail width %d, want %d", got, startW-5)
 	}
 
 	// Release keeps the width: the drag state clears and the width stays.
@@ -113,8 +113,8 @@ func TestRailDrag_resizesLiveAndKeepsWidth(t *testing.T) {
 	if m.railDrag != nil {
 		t.Error("release must clear the rail drag state")
 	}
-	if got := m.tx.railWidthOrDefault(); got != startW+5 {
-		t.Errorf("release must keep the dragged width: got %d, want %d", got, startW+5)
+	if got := m.tx.railWidthOrDefault(); got != startW-5 {
+		t.Errorf("release must keep the dragged width: got %d, want %d", got, startW-5)
 	}
 	if m.savedMsg != "" {
 		t.Errorf("rail drag release must not trigger the copy/tool-click paths, got band note %q", m.savedMsg)
@@ -128,23 +128,23 @@ func TestRailDrag_resizesLiveAndKeepsWidth(t *testing.T) {
 func TestRailDrag_clampsAtMinAndMax(t *testing.T) {
 	m := railDragModel(t)
 
-	// Drag far left: the requested delta (60 columns) is clamped to the 10-col
+	// Drag far right: the requested delta (70 columns) is clamped to the 10-col
 	// floor, not to a negative or zero-width rail.
-	m = railDragPressMotion(t, m, -60)
+	m = railDragPressMotion(t, m, 70)
 	if got := m.tx.railWidthOrDefault(); got != minRailWidth {
-		t.Errorf("drag far left: rail width %d, want min %d", got, minRailWidth)
+		t.Errorf("drag far right: rail width %d, want min %d", got, minRailWidth)
 	}
 
-	// Fresh drag far right from the (now min) width: the requested width (70
+	// Fresh drag far left from the (now min) width: the requested width (70
 	// columns wider) is clamped to half the terminal width at 120 columns.
-	m = railDragPressMotion(t, m, 70)
+	m = railDragPressMotion(t, m, -70)
 	if got, want := m.tx.railWidthOrDefault(), 120/2; got != want {
-		t.Errorf("drag far right: rail width %d, want terminal-width cap %d", got, want)
+		t.Errorf("drag far left: rail width %d, want terminal-width cap %d", got, want)
 	}
 
 	// Drag back toward the border: the width follows the pointer down from the
 	// cap.
-	m = railDragPressMotion(t, m, -5)
+	m = railDragPressMotion(t, m, 5)
 	if got, want := m.tx.railWidthOrDefault(), 120/2-5; got != want {
 		t.Errorf("drag back: rail width %d, want %d", got, want)
 	}
@@ -164,7 +164,7 @@ func TestRailDrag_clampsToTranscriptFloor(t *testing.T) {
 	row := 0 // any real rail row: above the fixed bottom band, overlaying the workspace header
 
 	m = mustUpdate(t, m, railDragMsg("press", border, row))
-	m = mustUpdate(t, m, railDragMsg("motion", border+50, row))
+	m = mustUpdate(t, m, railDragMsg("motion", border-50, row))
 	if got, want := m.tx.railWidthOrDefault(), 40-minTranscriptWidth-1; got != want {
 		t.Errorf("drag on a 40-col terminal: rail width %d, want transcript-floor cap %d", got, want)
 	}
@@ -249,7 +249,7 @@ func TestRailDrag_bandStaysEdgeToEdge(t *testing.T) {
 	for name, target := range map[string]int{"min": minRailWidth, "max": 120 / 2} {
 		t.Run(name, func(t *testing.T) {
 			m := railDragModel(t)
-			dx := target - defaultRailWidth
+			dx := defaultRailWidth - target
 			m = railDragPressMotion(t, m, dx)
 			if got := m.tx.railWidthOrDefault(); got != target {
 				t.Fatalf("setup: rail width %d, want %d", got, target)
@@ -307,7 +307,7 @@ func TestRailDrag_midDragResizeDropsStaleState(t *testing.T) {
 		t.Fatal("border press must start a rail drag")
 	}
 	m = mustUpdate(t, m, railDragMsg("motion", border+8, row))
-	if got := m.tx.railWidthOrDefault(); got != defaultRailWidth+8 {
+	if got := m.tx.railWidthOrDefault(); got != defaultRailWidth-8 {
 		t.Fatalf("precondition: motion must resize the rail, got %d", got)
 	}
 
@@ -319,7 +319,7 @@ func TestRailDrag_midDragResizeDropsStaleState(t *testing.T) {
 	if m.railDrag != nil {
 		t.Error("window resize mid-drag must clear the rail drag state")
 	}
-	if got := m.tx.railWidthOrDefault(); got != defaultRailWidth+8 {
+	if got := m.tx.railWidthOrDefault(); got != defaultRailWidth-8 {
 		t.Errorf("resize must keep the dragged width, got %d", got)
 	}
 }
@@ -356,8 +356,8 @@ func TestRailDrag_ac3RewrapsLiveKeepsScrollPosition(t *testing.T) {
 	if m.railDrag == nil {
 		t.Fatal("border press must start a rail drag")
 	}
-	m = mustUpdate(t, m, railDragMsg("motion", border+40, 0))
-	m = mustUpdate(t, m, railDragMsg("release", border+40, 0))
+	m = mustUpdate(t, m, railDragMsg("motion", border-40, 0))
+	m = mustUpdate(t, m, railDragMsg("release", border-40, 0))
 
 	// Re-wrap proof: the transcript width shrank and the layout is dirty at
 	// release (the re-wrap happens live during the drag, issue #306 AC3).
