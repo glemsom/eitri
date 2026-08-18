@@ -74,7 +74,7 @@ func TestModel_stylingAgentPaneBordered(t *testing.T) {
 }
 
 // TestModel_stylingToolOutcomeMarkers asserts a completed tool entry carries a
-// ✓ outcome tag and a failed one a ✗ tag, next to the persistent ⊕ tool glyph
+// ✓ outcome tag and a failed one a ✗ tag, next to the per-tool glyph
 // ").
 func TestModel_stylingToolOutcomeMarkers(t *testing.T) {
 	feed := NewToolFeed()
@@ -88,12 +88,12 @@ func TestModel_stylingToolOutcomeMarkers(t *testing.T) {
 	m = typeText(t, m, "go")
 	m = submitAndWait(t, m)
 
-	// A successful tool: ⊕ glyph kept, ✓ outcome tag added.
+	// A successful tool: per-tool glyph kept, ✓ outcome tag added.
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"true"}`}})
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Result: &ToolResult{Name: "bash", Result: "done\n"}})
 	content := view(m)
-	if !strings.Contains(content, "⊕ bash") {
-		t.Errorf("tool glyph ⊕ must remain, got: %q", content)
+	if !strings.Contains(content, "🔧 bash") {
+		t.Errorf("tool glyph 🔧 must remain, got: %q", content)
 	}
 	if !strings.Contains(content, "✓") {
 		t.Errorf("completed tool should carry a ✓ outcome tag, got: %q", content)
@@ -140,7 +140,7 @@ func TestModel_stylingErrorMarker(t *testing.T) {
 // per-category hue from the theme palette: shell tools in the
 // shell color, file tools in the file color, web tools in the web color and
 // skill activations in the skill color, while an unknown tool keeps the
-// generic faint line. The ⊕ glyph stays on every entry — meaning never rides
+// generic faint line. The per-tool glyph stays on every entry — meaning never rides
 // on color alone .
 func TestModel_stylingToolCategoryColors(t *testing.T) {
 	feed := NewToolFeed()
@@ -168,18 +168,28 @@ func TestModel_stylingToolCategoryColors(t *testing.T) {
 		{"open_in_browser", "\x1b[38;2;187;154;247m"}, // web
 		{"skill", "\x1b[38;2;255;135;215m"},           // skill #FF87D7
 	}
+	toolGlyphs := map[string]string{
+		"bash":            "🔧",
+		"read":            "📖",
+		"write":           "✏️",
+		"edit":            "✂️",
+		"web_fetch":       "🌐",
+		"open_in_browser": "🌍",
+		"skill":           "⚡",
+	}
 	for _, tc := range cases {
 		m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: tc.tool, Args: "{}"}})
 		m = feedToolUpdate(t, &m, feed, ToolUpdate{Result: &ToolResult{Name: tc.tool, Result: "done"}})
-		line := lineContaining(view(m), "⊕ "+tc.tool)
+		glyph := toolGlyphs[tc.tool]
+		line := lineContaining(view(m), glyph+" "+tc.tool)
 		if line == "" {
-			t.Fatalf("expected ⊕ %s entry, got: %q", tc.tool, view(m))
+			t.Fatalf("expected %s %s entry, got: %q", glyph, tc.tool, view(m))
 		}
 		if !strings.Contains(line, tc.hue) {
-			t.Errorf("⊕ %s entry = %q, want category hue %q", tc.tool, line, tc.hue)
+			t.Errorf("%s %s entry = %q, want category hue %q", glyph, tc.tool, line, tc.hue)
 		}
-		if !strings.Contains(line, "⊕") {
-			t.Errorf("⊕ %s entry lost its glyph, got: %q", tc.tool, line)
+		if !strings.Contains(line, glyph) {
+			t.Errorf("%s %s entry lost its glyph, got: %q", glyph, tc.tool, line)
 		}
 	}
 

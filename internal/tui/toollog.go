@@ -278,7 +278,8 @@ func (l toolLog) AtLine(line int, rows []toolRowRange) (idx int, collapsed bool,
 // toolEntryLabel renders the category-colored `⊕ tool` label part of the
 // entry head.
 func toolEntryLabel(te toolEntry) string {
-	return g("⊕ ", "+ ") + te.name
+	glyph := toolGlyph(te.name)
+	return glyph + " " + te.name
 }
 
 // toolEntryArgs renders the dimmed detail part of the entry head: the display

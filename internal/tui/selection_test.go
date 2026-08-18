@@ -722,7 +722,7 @@ func TestClickToExpand_togglesToolEntry(t *testing.T) {
 	}
 	headRow := -1
 	for i, r := range rows {
-		if strings.Contains(r, "⊕ bash") {
+		if strings.Contains(r, "🔧 bash") {
 			headRow = i
 			break
 		}
