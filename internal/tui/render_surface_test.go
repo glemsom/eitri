@@ -11,7 +11,7 @@ import (
 // every helper's .Render call echoes its input verbatim. This fixes the value
 // surface as a plain-text data-in → string-out mapping, letting the tests in
 // this file assert the exact hint/header/welcome strings without coupling them
-// to any particular palette (issue #210).
+// to any particular palette.
 //
 // The tests force the ASCII glyph fallback via EITRI_ASCII_GLYPHS so the
 // decorative separators (· vs ".") are deterministic regardless of locale.
@@ -29,7 +29,7 @@ func renderSurfaceTestTheme() Theme {
 // brand line, the capability hint, and the keybinding strip, exactly as
 // render.go concatenates them. It pins the value-only signature
 // idleWelcome(th Theme) string and watches that the welcome never reaches a
-// live *Model (issue #210).
+// live *Model.
 func TestRender_idleWelcome(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := renderSurfaceTestTheme()
@@ -57,7 +57,7 @@ func TestRender_idleWelcome(t *testing.T) {
 }
 
 // TestRender_promptView table-tests the max-turns continuation prompt: the
-// title, the question, and the y/n/esc binding row (issue #210).
+// title, the question, and the y/n/esc binding row.
 func TestRender_promptView(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := renderSurfaceTestTheme()
@@ -130,9 +130,8 @@ func TestRender_thinkingHeader(t *testing.T) {
 
 // TestRender_bandHints pins the status-strip keybinding hint set: only the
 // regular bindings are advertised — ctrl+s settings, ctrl+o copy, ctrl+e
-// expand, shift+enter newline. The vim-normal hint set went with vim mode
-// (issue #309). The review-open hint set (enter diff / o browser / ctrl+d
-// close) went with the modal review panel (issue #276), and the released
+// expand, shift+enter newline. The review-open hint set (enter diff / o
+// browser / ctrl+d close) went with the modal review panel, and the released
 // Ctrl+D key is deliberately never advertised.
 func TestRender_bandHints(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
@@ -145,7 +144,7 @@ func TestRender_bandHints(t *testing.T) {
 }
 
 // TestRender_idleWelcome_brandMark asserts the welcome screen contains the
-// ⚒ brand mark, horizontal rules, and emoji-decorated hint lines (issue #356).
+// ⚒ brand mark, horizontal rules, and emoji-decorated hint lines.
 func TestRender_idleWelcome_brandMark(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := renderSurfaceTestTheme()
@@ -159,7 +158,7 @@ func TestRender_idleWelcome_brandMark(t *testing.T) {
 }
 
 // TestHelpView_glyphs asserts the help view contains section emoji and rule
-// separators (issue #356).
+// separators.
 func TestHelpView_glyphs(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := renderSurfaceTestTheme()

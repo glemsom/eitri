@@ -9,10 +9,10 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// This file covers the T6 drag-select copy seam (issue #124): a click-drag
+// This file covers the T6 drag-select copy seam: a click-drag
 // over the history viewport highlights a cell range, and releasing the drag
 // copies the selected plain-text range to the clipboard through the same seam
-// as Ctrl+O and /copy (issue #123). Selection is hand-rolled from raw mouse
+// as Ctrl+O and /copy. Selection is hand-rolled from raw mouse
 // cell state over the wrapped-lines transcript — no bubbles v2 upgrade. Tests
 // drive the tui.Model Update seam with tea.MouseMsg events and assert on the
 // clipboard seam and the rendered View(), never on internal caches.
@@ -50,7 +50,7 @@ func TestAnsiStrip_RemovesEscapeSequences(t *testing.T) {
 // plain cells [from,to] of an ANSI-styled line in reverse-video escapes while
 // preserving every original byte outside the range: cells before the range,
 // after it, and all escape sequences keep their exact bytes, so the surrounding
-// styling never breaks (issue #124 AC1, no partial-code artifacts).
+// styling never breaks (no partial-code artifacts).
 func TestHighlightRange_WrapsOnlySelectedCells(t *testing.T) {
 	cases := []struct {
 		line       string
@@ -140,8 +140,8 @@ func historyContentRows(m Model) (rows []string, top int) {
 	return rows, vp.YOffset()
 }
 
-// dragMsg builds a mouse event for the drag-select seam (issue #124) in
-// bubbletea v2's per-type mouse message shape (pass 2, issue #146): a left
+// dragMsg builds a mouse event for the drag-select seam in
+// bubbletea v2's per-type mouse message shape (pass 2): a left
 // press becomes a MouseClickMsg, motion a MouseMotionMsg, and release a
 // MouseReleaseMsg.
 func dragMsg(action string, x, y int) tea.Msg {
@@ -157,7 +157,7 @@ func dragMsg(action string, x, y int) tea.Msg {
 
 // TestDragSelect_copiesSelectedRange asserts a click-drag over a transcript
 // row copies exactly the selected plain cells to the clipboard on release
-// (issue #124 AC2): press anchors the range, motion extends it, release copies
+// : press anchors the range, motion extends it, release copies
 // through the same seam as Ctrl+O, and the band reports the copy.
 func TestDragSelect_copiesSelectedRange(t *testing.T) {
 	var copied string
@@ -198,7 +198,7 @@ func TestDragSelect_copiesSelectedRange(t *testing.T) {
 
 // TestDragSelect_multilineRangeJoinsRows asserts a drag spanning two rows
 // copies the visible plain slices joined by a newline — the wrapped-lines
-// behaviour (issue #124 AC3): the copied snippet is exactly the characters
+// behaviour: the copied snippet is exactly the characters
 // shown on screen for the selected cells, with no escape residue.
 func TestDragSelect_multilineRangeJoinsRows(t *testing.T) {
 	var copied string
@@ -233,7 +233,7 @@ func TestDragSelect_multilineRangeJoinsRows(t *testing.T) {
 		t.Fatalf("need prompt and answer rows, got %q", rows)
 	}
 	// Drag from mid startRow to mid endRow in display-column space; the
-	// expected text is derived from the visible surface alone (issue #261:
+	// expected text is derived from the visible surface alone (
 	// width-aware, rune-safe, so it is read via the display cells and sliced by
 	// runes).
 	startCol := 3
@@ -256,7 +256,7 @@ func TestDragSelect_multilineRangeJoinsRows(t *testing.T) {
 	}
 }
 
-// --- Slice B: width-aware, rune-safe selection (issue #261) -----------------
+// --- Slice B: width-aware, rune-safe selection ---
 
 // TestColToRuneIndex_WidthAware asserts colToRuneIndex maps a display-width
 // column (the mouse cell space) to a rune index into the plain line, so wide
@@ -293,7 +293,7 @@ func TestColToRuneIndex_WidthAware(t *testing.T) {
 // displayCol returns the display-width column of the byte index b within row.
 // Rows may carry multibyte prefix glyphs (e.g. the │ separator), whose display
 // width differs from their byte offset, so drag tests must convert byte
-// offsets to display columns before treating them as mouse X (issue #261).
+// offsets to display columns before treating them as mouse X.
 func displayCol(row string, b int) int {
 	return lipgloss.Width(row[:b])
 }
@@ -301,7 +301,7 @@ func displayCol(row string, b int) int {
 // runeRangeFromDisplay returns the plain runes of row covering the inclusive
 // display-cell range [fromDisp, toDisp]; a negative toDisp means through the
 // end of the row. Drag tests derive the expected copy from the visible display
-// surface this way (issue #261: width-aware, rune-safe).
+// surface this way (width-aware, rune-safe).
 func runeRangeFromDisplay(row string, fromDisp, toDisp int) string {
 	rs := []rune(row)
 	if len(rs) == 0 {
@@ -326,7 +326,7 @@ func runeRangeFromDisplay(row string, fromDisp, toDisp int) string {
 
 // reverseVideoSpans returns the plain text of every contiguous reverse-video
 // (SGR 7) run in s, in order — a way for tests to assert a drag highlights
-// exactly the intended runes and no others (issue #261: no under-coverage, no
+// exactly the intended runes and no others (no under-coverage, no
 // leak into neighbouring rows).
 func reverseVideoSpans(s string) []string {
 	rs := []rune(s)
@@ -356,14 +356,14 @@ func reverseVideoSpans(s string) []string {
 	return spans
 }
 
-// TestDragSelect_wideCharCopyMatchesHighlight is the issue #261 regression: a
+// TestDragSelect_wideCharCopyMatchesHighlight is the width-aware regression: a
 // drag over a transcript row containing a wide CJK character must copy exactly
 // the marked runes and highlight exactly the cells they cover. The answer row
 // renders as "│   ab你defg": 4 ASCII display cells of prefix, then the answer
 // where 你 occupies two display cells but is one rune. Dragging display columns
 // 4..9 covers runes [4,8] = "ab你de" (a, b, 你, d, e).
 // newWideAnswerModel builds a model whose transcript answer row is the wide/CJK
-// string "ab你defg" (issue #261), wires the clipboard to record into *copied, and
+// string "ab你defg", wires the clipboard to record into *copied, and
 // returns the model plus the answer row's cell coordinates ready for a drag.
 func newWideAnswerModel(t *testing.T, copied *string) (m Model, rows []string, top, answerRow int) {
 	m = NewModelCfg(Dependencies{
@@ -431,7 +431,7 @@ func TestDragSelect_boundaryInsideWideCharNoPanic(t *testing.T) {
 
 // TestDragSelect_wrappedLinesCopyMatchesDisplay asserts a drag across a
 // soft-wrapped transcript row copies the per-row slices joined with newlines,
-// reproducing exactly the wrapped rows the user saw (issue #124 AC3: no
+// reproducing exactly the wrapped rows the user saw (no
 // partial-code artifacts from wrapped lines or ANSI styling).
 func TestDragSelect_wrappedLinesCopyMatchesDisplay(t *testing.T) {
 	var copied string
@@ -466,7 +466,7 @@ func TestDragSelect_wrappedLinesCopyMatchesDisplay(t *testing.T) {
 	c0 := strings.Index(rows[first], "word")
 	c1 := strings.Index(rows[second], "word") + len("word")
 	// The mouse reports display-width columns; convert the byte offsets and
-	// derive the expected copy from the visible display cells (issue #261:
+	// derive the expected copy from the visible display cells (
 	// width-aware, rune-safe).
 	firstDisp := displayCol(rows[first], c0)
 	secondEndDisp := displayCol(rows[second], c1)
@@ -487,7 +487,7 @@ func TestDragSelect_wrappedLinesCopyMatchesDisplay(t *testing.T) {
 
 // TestDragSelect_backwardsDragCopiesSameRange asserts dragging from the end
 // cell back to the start cell copies the same normalized range as the forward
-// drag (issue #124 AC2: selection is direction-independent).
+// drag (selection is direction-independent).
 func TestDragSelect_backwardsDragCopiesSameRange(t *testing.T) {
 	var copied string
 	m := NewModelCfg(Dependencies{
@@ -521,9 +521,9 @@ func TestDragSelect_backwardsDragCopiesSameRange(t *testing.T) {
 
 // TestDragSelect_highlightsDuringDrag asserts the dragged cell range renders
 // highlighted (reverse video) while the drag is in progress, and the highlight
-// is gone after release (issue #124 AC1). The whole surface is scanned for
+// is gone after release. The whole surface is scanned for
 // the reverse-video marker: the composer paints no software caret cell
-// anymore, so no row needs excluding (issue #168).
+// anymore, so no row needs excluding.
 func TestDragSelect_highlightsDuringDrag(t *testing.T) {
 	m := dragModel(t, "plain answer")
 	rows, top := historyContentRows(m)
@@ -578,7 +578,7 @@ func TestDragSelect_plainClickCopiesNothing(t *testing.T) {
 
 // TestDragSelect_ignoresBandAndComposer asserts a press over the fixed bottom
 // band never starts a selection and drag events never disturb the composer
-// input (issue #124 AC4: selection does not interfere with composer input).
+// input (selection does not interfere with composer input).
 func TestDragSelect_ignoresBandAndComposer(t *testing.T) {
 	m := dragModel(t, "plain answer")
 	bandLines := m.bandHeight()
@@ -605,7 +605,7 @@ func TestDragSelect_ignoresBandAndComposer(t *testing.T) {
 
 // TestDragSelect_scrolledViewportMapsRows asserts the screen-to-content mapping
 // holds after the user scrolls up: a drag over a visible row copies that row's
-// plain text even though it is no longer the first content row (issue #124
+// plain text even though it is no longer the first content row (
 // AC3 — selection reads the rendered transcript, not a fixed offset).
 func TestDragSelect_scrolledViewportMapsRows(t *testing.T) {
 	var copied string
@@ -643,7 +643,7 @@ func TestDragSelect_scrolledViewportMapsRows(t *testing.T) {
 	}
 	col := strings.Index(rows[target], "answer")
 	// The mouse X is a display-width column; the byte offset differs for rows
-	// with multibyte prefix glyphs (issue #261). "answer" is pure ASCII, so
+	// with multibyte prefix glyphs. "answer" is pure ASCII, so
 	// its display width equals its rune count.
 	disp := displayCol(rows[target], col)
 	want := "answer"

@@ -6,17 +6,17 @@ import (
 	"time"
 )
 
-// deepseek-v4-flash pricing, per 1M tokens (ADR-0003). These
-// are the canonical rates that turn the engine seam's cached/cold token
-// telemetry into the running cost readout on the right rail (issue #228).
+// deepseek-v4-flash pricing, per 1M tokens. These are the canonical
+// rates that turn the engine seam's cached/cold token telemetry into
+// the running cost readout on the right rail.
 const (
 	costPerInputMiss = 0.14   // $/1M uncached input tokens
 	costPerOutput    = 0.28   // $/1M output tokens
 	costPerInputHit  = 0.0028 // $/1M cache-hit input tokens
 )
 
-// TelemetryKind discriminates a live status-strip update (issue #86): a turn
-// boundary, per-turn token usage, or the one-shot compaction marker.
+// TelemetryKind discriminates a live status-strip update: a turn boundary,
+// per-turn token usage, or the one-shot compaction marker.
 type TelemetryKind int
 
 const (
@@ -40,16 +40,15 @@ type TelemetryUpdate struct {
 	Output int
 	// Ctx is the live per-turn context-window size (provider.Usage.PromptTokens)
 	// for the active turn. It REPLACES the tracked live value on each usage
-	// event, never accumulates, so it shrinks after a compaction (issue #267).
+	// event, never accumulates, so it shrinks after a compaction.
 	Ctx int
 }
 
-// Telemetry is the live session telemetry surface (issue #86), now consumed by
-// the right rail's STATS section (issue #227) and the settings readout — the
-// bottom status strip no longer renders telemetry numbers (issue #228). It
-// holds the run's static config (model, effort, thinking, max turns) plus live
-// counters updated from the engine seam. It is read-only against the agent
-// loop: nothing here ever pauses or blocks a run.
+// Telemetry is the live session telemetry surface consumed by the right rail's
+// STATS section and the settings readout. It holds the run's static config
+// (model, effort, thinking, max turns) plus live counters updated from the
+// engine seam. It is read-only against the agent loop: nothing here ever
+// pauses or blocks a run.
 type Telemetry struct {
 	model    string
 	effort   string
@@ -62,8 +61,8 @@ type Telemetry struct {
 	output    int
 	compacted bool
 	// liveCtx is the live context-window size for the active turn, replaced from
-	// each usage event's provider.Usage.PromptTokens rather than accumulated
-	// (issue #267). 0 until the first usage event lands.
+	// each usage event's provider.Usage.PromptTokens rather than accumulated.
+	// 0 until the first usage event lands.
 	liveCtx int
 
 	// startedAt is when the session began (NewTelemetry), backing the live
@@ -77,9 +76,9 @@ type Telemetry struct {
 }
 
 // NewTelemetry builds the live session telemetry surface seeded with the run's
-// static session state (issue #86), returning the Telemetry ready to be handed
-// to a Model via Dependencies. The caller wires the engine event seam's
-// per-turn updates into UpdateChan.
+// static session state, returning the Telemetry ready to be handed to a Model
+// via Dependencies. The caller wires the engine event seam's per-turn updates
+// into UpdateChan.
 func NewTelemetry(model string, effort string, thinking bool, maxTurns int) *Telemetry {
 	return &Telemetry{
 		model:     model,
@@ -108,7 +107,7 @@ func (t *Telemetry) apply(u TelemetryUpdate) {
 		t.cacheMiss += u.Miss
 		t.output += u.Output
 		// Live ctx is replaced, not added: it reflects the current turn's
-		// context-window size and shrinks after a compaction (issue #267).
+		// context-window size and shrinks after a compaction.
 		t.liveCtx = u.Ctx
 	case TelemetryCompacted:
 		t.compacted = true
@@ -126,7 +125,7 @@ func (t *Telemetry) cost() float64 {
 // liveContextSize returns the live per-turn context-window size in tokens (0
 // before the first usage event). Unlike the cumulative counters it is REPLACED,
 // not accumulated, so it collapses back down after a compaction shrinks the
-// real context (issue #267).
+// real context.
 func (t *Telemetry) liveContextSize() int { return t.liveCtx }
 
 // hitPercent returns the prompt-cache hit ratio as a percentage, 0 when no

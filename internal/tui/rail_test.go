@@ -18,7 +18,7 @@ func fakeSess(prompt string) Turn {
 
 // TestRailRenderStats asserts the rail's STATS section reflects the live
 // telemetry: cache hit %, cost, turns, elapsed session time, and token in/out
-// (issue #88; issue #227 added the elapsed readout so the rail carries the
+// (the rail carries the full stats picture permanently).
 // full stats picture permanently).
 func TestRailRenderStats(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
@@ -40,7 +40,7 @@ func TestRailRenderStats(t *testing.T) {
 	if !strings.Contains(view, "cost $0.00658") {
 		t.Errorf("rail STATS missing cost, got: %q", view)
 	}
-	// The elapsed readout is the session wall-clock (issue #227): freshly
+	// The elapsed readout is the session wall-clock: freshly
 	// constructed, the session has run for just enough time to show "0s".
 	if !strings.Contains(view, "elapsed 0s") {
 		t.Errorf("rail STATS missing elapsed readout, got: %q", view)
@@ -52,7 +52,7 @@ func TestRailRenderStats(t *testing.T) {
 }
 
 // TestRailRenderModel asserts the MODEL section reflects the session's static
-// provider/model/effort/thinking (issue #88).
+// provider/model/effort/thinking.
 func TestRailRenderModel(t *testing.T) {
 	r := NewRail("opencode-go", "deepseek-v4-flash", "high", false, "sess-1", "/tmp/sess-1")
 	view := r.render(NewTelemetry("deepseek-v4-flash", "high", false, 250), defaultTheme, defaultRailWidth)
@@ -73,7 +73,7 @@ func TestRailRenderModel(t *testing.T) {
 
 // TestRailRenderContext asserts the CONTEXT section reflects the session id
 // and session temp path, and that the rail renders no SKILLS section — the
-// rail is STATS / CONTEXT / MODEL only (issue #188), so detected skills and
+// rail is STATS / CONTEXT / MODEL only, so detected skills and
 // their activation state never appear in the right pane.
 func TestRailRenderContext(t *testing.T) {
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c", "/tmp/eitri-9f2c")
@@ -94,17 +94,17 @@ func TestRailRenderContext(t *testing.T) {
 }
 
 // TestRailRenderSectionHues asserts each rail section renders with a distinct
-// hue from the theme palette (issue #182 AC1): the STATS / CONTEXT / MODEL
+// hue from the theme palette: the STATS / CONTEXT / MODEL
 // headers and their body lines carry the per-section hue's truecolor sequence
 // under the default theme, so the three sections read apart at a glance. The
-// SKILLS section hue is gone with the section (issue #188).
+// SKILLS section hue is gone with the section.
 func TestRailRenderSectionHues(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c", "/tmp/eitri-9f2c")
 	view := r.render(te, defaultTheme, defaultRailWidth)
 
-	// Default-theme rail hues, as lipgloss truecolor sequences (issue #178:
+	// Default-theme rail hues, as lipgloss truecolor sequences:
 	// every palette entry is a hex value; the output layer downsamples for
 	// non-truecolor terminals).
 	cases := []struct {
@@ -136,7 +136,7 @@ func TestRailRenderSectionHues(t *testing.T) {
 
 // TestRailRenderStatsNoGraph asserts the STATS section renders numeric lines
 // only — cache %, cost, turns, token in/out — with no usage-history graph rows
-// in any state (issue #189): the per-turn token/cost sparklines are removed,
+// in any state: the per-turn token/cost sparklines are removed,
 // so no unicode-block shape ever appears next to the numbers, even with a
 // populated telemetry history.
 func TestRailRenderStatsNoGraph(t *testing.T) {
@@ -203,7 +203,7 @@ func TestModelRailAlwaysOn(t *testing.T) {
 }
 
 // TestModelRailTranscriptFloor asserts the transcript keeps a usable hard
-// floor on an extreme-minimum terminal (issue #227 AC3): with the rail always
+// floor on an extreme-minimum terminal: with the rail always
 // on, a window too narrow to host a real pane beside it still reserves the
 // floor so the transcript stays readable rather than being squeezed away.
 func TestModelRailTranscriptFloor(t *testing.T) {
@@ -227,8 +227,8 @@ func TestModelRailTranscriptFloor(t *testing.T) {
 	}
 }
 
-// TestModelRailNoToggle asserts ctrl+b no longer hides the rail (issue #227 AC2
-// — there is no show/hide toggle for the permanent stats surface): pressing it
+// TestModelRailNoToggle asserts ctrl+b no longer hides the rail — there is no
+// show/hide toggle for the permanent stats surface: pressing it
 // leaves the rail visible, and no stray STATS/CONTEXT loss follows.
 func TestModelRailNoToggle(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
@@ -252,7 +252,7 @@ func TestModelRailNoToggle(t *testing.T) {
 }
 
 // TestModelRailLiveUpdates asserts the visible rail reflects a telemetry
-// update drained through the live-delivery path (issue #88 AC4).
+// update drained through the live-delivery path.
 func TestModelRailLiveUpdates(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
@@ -264,7 +264,7 @@ func TestModelRailLiveUpdates(t *testing.T) {
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 140, Height: 24})
 	m = asModel(t, nm)
 
-	// The rail is the always-on stats surface (issue #227); feed a live update.
+	// The rail is the always-on stats surface; feed a live update.
 	te.updates <- TelemetryUpdate{Kind: TelemetryUsage, Hit: 90_000, Miss: 10_000, Output: 5_000}
 	cmd := telemetryWait(te)
 	msg := cmd()
@@ -275,7 +275,7 @@ func TestModelRailLiveUpdates(t *testing.T) {
 		t.Errorf("open rail not live-updating cache gauge, got: %q", view(m))
 	}
 	// No graph rows in the live view either: the per-turn usage/cost sparklines
-	// are removed (issue #189), so a drained usage update shows in the numeric
+	// are removed, so a drained usage update shows in the numeric
 	// readouts only.
 	if strings.Contains(view(m), "usage") || strings.Contains(view(m), "▁") {
 		t.Errorf("open rail must not render graph rows, got: %q", view(m))
@@ -296,7 +296,7 @@ func TestModelRailHeightMatchesHistory(t *testing.T) {
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 140, Height: 12})
 	m = asModel(t, nm)
 
-	// The rail is always on (issue #227), even on a short window.
+	// The rail is always on, even on a short window.
 	if !m.tx.railVisible() {
 		t.Fatal("rail must stay visible on a short window")
 	}
@@ -317,7 +317,7 @@ func TestModelRailHeightMatchesHistory(t *testing.T) {
 // visible on screen. Regression for the history viewport region rendering
 // newline-joined rows with no trailing newline, which fused the band separator
 // onto the viewport's last padded row — doubling that row's width and shoving
-// the separator (and the rail) past the right edge (issue #88, T1 pivot).
+// the separator (and the rail) past the right edge.
 func TestModelRailStaysOnScreen(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: fakeSess("hi"),
@@ -380,9 +380,8 @@ func TestModelBandSpansFullWidthWhileTranscriptStaysRailShrunk(t *testing.T) {
 		{"wide", 120},
 		{"narrow", 80},
 		// Extreme-minimum rail-visible windows: the separator must inherit
-		// transcriptWidth's hard floor (20, issue #227 AC3), not collapse to a
-		// sliver — bandWidth stays byte-identical across the degenerate range too
-		// (issue #231 AC3).
+		// transcriptWidth's hard floor (20), not collapse to a
+		// sliver.
 		{"degenerate", 40},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -392,10 +391,10 @@ func TestModelBandSpansFullWidthWhileTranscriptStaysRailShrunk(t *testing.T) {
 				t.Fatalf("rail must stay visible at %dx30", tc.w)
 			}
 			if bw, tw := m.tx.bandWidth(), m.tx.transcriptWidth(); bw <= tw {
-				t.Errorf("bandWidth = %d must exceed rail-shrunk transcriptWidth = %d; band spans the full terminal width while the history stays rail-shrunk (issue #232)", bw, tw)
+				t.Errorf("bandWidth = %d must exceed rail-shrunk transcriptWidth = %d; band spans the full terminal width while the history stays rail-shrunk", bw, tw)
 			}
 			if bw := m.tx.bandWidth(); bw != tc.w-2 {
-				t.Errorf("bandWidth = %d, want full terminal width minus gutter = %d (issue #232 AC1)", bw, tc.w-2)
+				t.Errorf("bandWidth = %d, want full terminal width minus gutter = %d", bw, tc.w-2)
 			}
 			if m.tx.bandWidth() < 2 {
 				t.Errorf("bandWidth %d must be >= 2 so the accent separator still reads as a line", m.tx.bandWidth())
@@ -405,7 +404,7 @@ func TestModelBandSpansFullWidthWhileTranscriptStaysRailShrunk(t *testing.T) {
 }
 
 // TestModelBandWidthRailHiddenTiny pins the byte-identical seam on a rail-hidden
-// tiny window too (issue #231 AC3 coverage gap): with no right rail, bandWidth
+// tiny window too: with no right rail, bandWidth
 // and transcriptWidth follow the same formula and must still agree, even on a
 // sliver where renderBand's own clamp keeps the separator readable.
 func TestModelBandWidthRailHiddenTiny(t *testing.T) {
@@ -416,11 +415,11 @@ func TestModelBandWidthRailHiddenTiny(t *testing.T) {
 		t.Fatal("model without a wired rail must not show the rail")
 	}
 	if bw, tw := m.tx.bandWidth(), m.tx.transcriptWidth(); bw != tw {
-		t.Errorf("rail-hidden tiny window: bandWidth = %d, transcriptWidth = %d; seam must be byte-identical (issue #231 AC3)", bw, tw)
+		t.Errorf("rail-hidden tiny window: bandWidth = %d, transcriptWidth = %d; seam must be byte-identical", bw, tw)
 	}
 }
 
-// TestModelBandWidthIndependentOfComposer pins the decoupling of issue #231: the
+// TestModelBandWidthIndependentOfComposer pins the decoupling of band width: the
 // band width must be derived from its own source and never read the composer's
 // width. Flipping the composer width (via SetWidth) must not move bandWidth(),
 // and transcriptWidth() must likewise not read composer width once the terminal
@@ -443,7 +442,7 @@ func TestModelBandWidthIndependentOfComposer(t *testing.T) {
 	m.composer.SetWidth(200)
 	after := m.tx.bandWidth()
 	if before != after {
-		t.Errorf("bandWidth changed %d -> %d after composer width changed; band must be independent of composer width (issue #231)", before, after)
+		t.Errorf("bandWidth changed %d -> %d after composer width changed; band must be independent of composer width", before, after)
 	}
 
 	// transcriptWidth() must be derived solely from the terminal width and the
@@ -452,14 +451,14 @@ func TestModelBandWidthIndependentOfComposer(t *testing.T) {
 	m.composer.SetWidth(5)
 	twB := m.tx.transcriptWidth()
 	if twA != twB {
-		t.Errorf("transcriptWidth changed %d -> %d after composer width changed; must not read composer width (issue #231)", twA, twB)
+		t.Errorf("transcriptWidth changed %d -> %d after composer width changed; must not read composer width", twA, twB)
 	}
 }
 
 // TestRailRenderCtxLine asserts the STATS `ctx` line renders after the `tokens`
 // line with the latest per-turn live context-window size, human-readable via
 // formatTokens, in the normal (stats-hue) styling below the warning threshold
-// (issue #267).
+//.
 func TestRailRenderCtxLine(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000, Ctx: 137_000})
@@ -484,7 +483,7 @@ func TestRailRenderCtxLine(t *testing.T) {
 
 // TestRailRenderCtxWarnAboveThreshold asserts the STATS `ctx` line renders in
 // warning styling once the live context reaches the 150k threshold, while the
-// readout still shows the human-readable size (issue #267).
+// readout still shows the human-readable size.
 func TestRailRenderCtxWarnAboveThreshold(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000, Ctx: 160_000})
@@ -504,7 +503,7 @@ func TestRailRenderCtxWarnAboveThreshold(t *testing.T) {
 // warning clear on the next turn once a compaction shrinks the real context:
 // after an over-threshold turn, the following turn's smaller live ctx renders
 // normally again, proving the readout is live-per-turn, not cumulative
-// (issue #267).
+//.
 func TestRailRenderCtxPostCompactionRollback(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000, Ctx: 160_000})
@@ -526,7 +525,7 @@ func TestRailRenderCtxPostCompactionRollback(t *testing.T) {
 
 // TestRailRenderStatsWide asserts the rail renders aligned key-value columns at
 // wider-than-default widths: the key column is wider and values are right-padded
-// for alignment, making the rail read as a real stat ledger (issue #307).
+// for alignment, making the rail read as a real stat ledger.
 func TestRailRenderStatsWide(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
@@ -552,7 +551,7 @@ func TestRailRenderStatsWide(t *testing.T) {
 }
 
 // TestRailRenderModelWide asserts the MODEL section renders the full
-// provider/model name without truncation at wider widths (issue #307).
+// provider/model name without truncation at wider widths.
 func TestRailRenderModelWide(t *testing.T) {
 	r := NewRail("opencode-go", "deepseek-v4-flash", "high", false, "sess-1", "/tmp/sess-1")
 	view := r.render(NewTelemetry("deepseek-v4-flash", "high", false, 250), defaultTheme, 50)
@@ -567,7 +566,7 @@ func TestRailRenderModelWide(t *testing.T) {
 }
 
 // TestRailRenderStatsNarrow asserts the rail degrades gracefully at narrow
-// widths without wrapping or overlapping (issue #307).
+// widths without wrapping or overlapping.
 func TestRailRenderStatsNarrow(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
@@ -590,7 +589,7 @@ func TestRailRenderStatsNarrow(t *testing.T) {
 }
 
 // TestRailDefaultWidthUnchanged asserts the default-width rendering is
-// unchanged from today (issue #307 AC4).
+// unchanged from today.
 func TestRailDefaultWidthUnchanged(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
@@ -613,7 +612,7 @@ func TestRailDefaultWidthUnchanged(t *testing.T) {
 
 // TestRailWideAlignment asserts that at a wide rail width the key-value pairs
 // are column-aligned: keys are padded to a consistent width so values start at
-// the same column (issue #307 AC1).
+// the same column.
 func TestRailWideAlignment(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
@@ -642,7 +641,7 @@ func TestRailWideAlignment(t *testing.T) {
 }
 
 // TestRailRenderWideNoOverflow asserts no rail line exceeds the rail width at
-// wide widths (issue #307 AC1 — no content overflow or wrap).
+// wide widths (no content overflow or wrap).
 func TestRailRenderWideNoOverflow(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
@@ -662,7 +661,7 @@ func TestRailRenderWideNoOverflow(t *testing.T) {
 
 // TestRailWideValuesFuller asserts that values at wider widths show more content
 // than at default width — the rail actually pays off the extra columns
-// (issue #307 AC1).
+//.
 func TestRailWideValuesFuller(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})

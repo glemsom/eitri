@@ -11,7 +11,7 @@ import (
 // TestModel_expandedViewEditCardRendersInlineDiff asserts the Ctrl+E
 // expanded-view mode renders an edit/write card as the before→after inline
 // diff inside the card frame, and that toggling the mode off restores the
-// collapsed [+N,−M] summary (issue #275 AC through the transcript seam).
+// collapsed [+N,−M] summary (through the transcript seam).
 func TestModel_expandedViewEditCardRendersInlineDiff(t *testing.T) {
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{
@@ -104,7 +104,7 @@ func TestRenderRegions_HistoryVsBandSeparation(t *testing.T) {
 		t.Errorf("status strip leaked into the scroll region, got:\n%s", hs)
 	}
 
-	// Fixed band: status strip (now hints-only, issue #228) + composer; never
+	// Fixed band: status strip (now hints-only) + composer; never
 	// the message body.
 	if !strings.Contains(bs, "ctrl+s settings") {
 		t.Errorf("band missing status strip, got:\n%s", bs)
@@ -187,7 +187,7 @@ func normalizeRows(s string) []string {
 }
 
 // TestReviewRegion_ClipsTallDiff is obsolete with the modal review panel
-// (issue #276): the overlay and its height-clipped region are gone, so there
+// : the overlay and its height-clipped region are gone, so there
 // is no review region left to clip. The expanded card path pins the diff
 // inside the scroll region instead — tall card diffs clip against the native
 // history viewport, whose height clamp is covered by

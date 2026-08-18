@@ -4,10 +4,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// ToolFeed bridges a live run's tool-call stream into the TUI's rendering loop
-// (issue #84). The app's engine listener writes each ToolCallEvent as a start
-// update and each ToolResultEvent as a result update here, and the model drains
-// them on the UI goroutine via a waiting command, rendering a compact one-line
+// ToolFeed bridges a live run's tool-call stream into the TUI's rendering loop.
+// The app's engine listener writes each ToolCallEvent as a start update and
+// each ToolResultEvent as a result update here, and the model drains them on
+// the UI goroutine via a waiting command, rendering a compact one-line
 // `⊕ tool  args` entry per tool with a collapsed result summary that never
 // silently drops the full output (the expand path reveals it). It is read-only
 // against the agent loop: writes are non-blocking so a busy run never stalls.
@@ -37,17 +37,16 @@ type ToolStart struct {
 }
 
 // ToolResult is the trailing half of a tool entry: the tool's delivered result
-// plus the deterministic compression metadata the TUI renders (issue #84)
-// and the file line-delta / before-after content computed by the
-// TUI-side delta observer from the paired tool start/result events (issue
-// #174) — the source of the `⊕ edit path [+N,-M]` tag and the card diff's
-// inline diff (issue #90).
+// plus the deterministic compression metadata the TUI renders and the file
+// line-delta / before-after content computed by the TUI-side delta observer
+// from the paired tool start/result events — the source of the
+// `⊕ edit path [+N,-M]` tag and the card diff's inline diff.
 type ToolResult struct {
 	// Name is the tool that ran (matches its ToolStart).
 	Name string
 	// Result is the FULL pre-cap tool result string; it backs the
-	// expand-to-full-result path (nothing is silently truncated, issue #84 AC4)
-	// even when the delivered form was byte-capped (issue #286).
+	// expand-to-full-result path (nothing is silently truncated) even when the
+	// delivered form was byte-capped.
 	Result string
 	// BytesDropped is the number of bytes the byte-cap dropped (0 when the
 	// result fit the budget). The collapsed summary shows a "(+N bytes
@@ -62,19 +61,19 @@ type ToolResult struct {
 	// Compressed is true when the delivered result carries the "+N more" tail.
 	Compressed bool
 	// Added is the line delta a file-mutating edit added (0 for non-edits),
-	// computed by the TUI-side delta observer (issue #174).
+	// computed by the TUI-side delta observer.
 	Added int
 	// Removed is the line delta a file-mutating edit removed (0 for non-edits).
-	// Computed by the TUI-side delta observer (issue #174).
+	// Computed by the TUI-side delta observer.
 	Removed int
 	// Before is the target file's full content before a file-mutating tool ran,
-	// captured by the TUI-side delta observer (issue #174). It backs the card
-	// panel's inline diff of a changed file (issue #90).
+	// captured by the TUI-side delta observer. It backs the card panel's inline
+	// diff of a changed file.
 	Before string
 	// After is the target file's full content after a file-mutating tool ran.
 	After string
 	// Path is the host filesystem path of the target file, backing the card
-	// diff's path attribution (issue #90/#275).
+	// diff's path attribution.
 	Path string
 }
 
@@ -101,7 +100,7 @@ type toolUpdateMsg struct {
 // toolWait returns a command that blocks until the next tool-call update
 // arrives on the engine-seam channel, then delivers it to the UI loop as a
 // toolUpdateMsg. The model re-issues it after each update so tool entries keep
-// streaming (issue #84). When the channel closes it returns nil so polling stops.
+// streaming. When the channel closes it returns nil so polling stops.
 func toolWait(f *ToolFeed) tea.Cmd {
 	return func() tea.Msg {
 		u, ok := <-f.updates

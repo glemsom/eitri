@@ -6,7 +6,7 @@ import (
 )
 
 // TestRender_formatElapsed table-tests the tool-timer vocabulary: seconds under
-// a minute, minutes+seconds under an hour, hours+minutes beyond (issue #211).
+// a minute, minutes+seconds under an hour, hours+minutes beyond.
 func TestRender_formatElapsed(t *testing.T) {
 	cases := []struct {
 		d    time.Duration
@@ -29,8 +29,8 @@ func TestRender_formatElapsed(t *testing.T) {
 
 // TestRender_busyLine table-tests the in-progress working indicator: the animated
 // braille spinner frame cycled by index when motion is enabled, and the static
-// "… thinking" line under reduced motion (issue #211). The index wraps by
-// modulo over the frame set so the spinner loops.
+// "… thinking" line under reduced motion. The index wraps by modulo over the
+// frame set so the spinner loops.
 func TestRender_busyLine(t *testing.T) {
 	// Animated path: no EITRI_NO_MOTION, UTF-8 locale (the default in tests).
 	idxCases := []int{0, 1, len(busySpinnerFrames) - 1, len(busySpinnerFrames), len(busySpinnerFrames) + 1}
@@ -151,7 +151,7 @@ func TestRender_bottomSlice(t *testing.T) {
 }
 
 // TestRender_readRangeHint table-tests the read range extraction: both
-// start_line and end_line must be present as positive integers (issue #204).
+// start_line and end_line must be present as positive integers.
 func TestRender_readRangeHint(t *testing.T) {
 	cases := []struct {
 		name string

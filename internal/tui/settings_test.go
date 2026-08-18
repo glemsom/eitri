@@ -42,7 +42,7 @@ func TestSettingsForm_ModelFallsBackToConfiguredWhenNoneDiscovered(t *testing.T)
 }
 
 // TestSettingsForm_ThemeAdjustReskinsPanel asserts cycling the theme field
-// re-skins the Settings chrome live (issue #179 AC5, extended by issue #180):
+// re-skins the Settings chrome live: the
 // the form's theme tracks the newly selected palette as the arrow cycle
 // moves, so the panel visibly follows the selection before Save — the
 // mechanism proven end-to-end, not just persisted on Save.
@@ -92,7 +92,7 @@ func TestSettingsForm_AdjustsKnobs(t *testing.T) {
 }
 
 // TestSettingsForm_EffortCyclesAllTiers verifies the reasoning-effort selector
-// cycles through every first-class tier low→medium→high→max (issue #74).
+// cycles through every first-class tier low→medium→high→max.
 func TestSettingsForm_EffortCyclesAllTiers(t *testing.T) {
 	f := newSettingsForm(cfgFixture(), []string{}) // seeded "high"
 	f.field = fieldEffort
@@ -119,7 +119,7 @@ func TestSettingsForm_EffortCyclesBackwardWraps(t *testing.T) {
 
 // TestSettingsForm_ThinkingToggleRetainsEffort validates the reasoning mode
 // (on/off) toggles ThinkingEnabled while retaining the effort selection, so
-// toggling back on restores the original effort tier (issue #56).
+// toggling back on restores the original effort tier.
 func TestSettingsForm_ThinkingToggleRetainsEffort(t *testing.T) {
 	f := newSettingsForm(cfgFixture(), []string{})
 	f.field = fieldThinking
@@ -163,7 +163,7 @@ func TestSettingsForm_ModelAdjustSelectsDiscovered(t *testing.T) {
 
 // TestSettingsForm_ThemeCyclesAllThemes verifies the theme selector cycles
 // through every supported theme dark→light→dracula→tokyo-night→pink→nord→
-// gruvbox→solarized→notty→auto and wraps back to dark (issue #130 AC2).
+// gruvbox→solarized→notty→auto and wraps back to dark.
 func TestSettingsForm_ThemeCyclesAllThemes(t *testing.T) {
 	f := newSettingsForm(cfgFixture(), []string{}) // seeded "dark"
 	f.field = fieldTheme
@@ -178,7 +178,7 @@ func TestSettingsForm_ThemeCyclesAllThemes(t *testing.T) {
 }
 
 // TestSettingsForm_ThemeCyclesBackwardWraps verifies backward stepping wraps
-// dark→auto, so no theme is unreachable from the default (issue #130 AC2).
+// dark→auto, so no theme is unreachable from the default.
 func TestSettingsForm_ThemeCyclesBackwardWraps(t *testing.T) {
 	f := newSettingsForm(cfgFixture(), []string{}) // seeded "dark"
 	f.field = fieldTheme
@@ -190,7 +190,7 @@ func TestSettingsForm_ThemeCyclesBackwardWraps(t *testing.T) {
 
 // TestSettingsForm_InvalidThemeFirstAdjustSelectsValid verifies a hand-written
 // unknown theme in config shows raw and the first arrow press lands on a valid
-// theme, matching the hand-edited bad model value behaviour (issue #130 AC3).
+// theme, matching the hand-edited bad model value behaviour.
 func TestSettingsForm_InvalidThemeFirstAdjustSelectsValid(t *testing.T) {
 	cfg := cfgFixture()
 	cfg.Theme = "rainbow"
@@ -242,7 +242,7 @@ func TestSettingsView_RendersKnobsAndSave(t *testing.T) {
 
 // TestSettingsView_ThemeRowSitsBetweenCompactionAndWritable verifies the Theme
 // row lands in the agreed position: after Compaction Fraction, before the
-// writable-paths field (issue #130 AC1).
+// writable-paths field.
 func TestSettingsView_ThemeRowSitsBetweenCompactionAndWritable(t *testing.T) {
 	f := newSettingsForm(cfgFixture(), []string{})
 	view := settingsView(f)
@@ -259,7 +259,7 @@ func TestSettingsView_ThemeRowSitsBetweenCompactionAndWritable(t *testing.T) {
 
 // TestSettingsView_ShowsRawInvalidTheme verifies an unknown theme value from
 // config renders raw in the row, surfaced rather than silently rewritten
-// (issue #130 AC3).
+//.
 func TestSettingsView_ShowsRawInvalidTheme(t *testing.T) {
 	cfg := cfgFixture()
 	cfg.Theme = "rainbow"

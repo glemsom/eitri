@@ -196,7 +196,7 @@ func TestIdleWelcome_showsOnEmptyHidesAfterTurn(t *testing.T) {
 
 // TestBusySpinner_pulseOnFirstDelta asserts the busyPulse counter is set to 3
 // when the first stream delta arrives and decrements on each spinner tick,
-// reaching 0 and staying there (issue #353).
+// reaching 0 and staying there.
 func TestBusySpinner_pulseOnFirstDelta(t *testing.T) {
 	m := newStreamingModel()
 	m = resize(t, m)
@@ -243,7 +243,7 @@ func TestBusySpinner_pulseOnFirstDelta(t *testing.T) {
 
 // TestBusySpinner_pulseRendersBright asserts the busy spinner renders
 // the accent-styled bandStatusStyle during the pulse window and falls
-// back to the faint statusStyle after the pulse expires (issue #353).
+// back to the faint statusStyle after the pulse expires.
 func TestBusySpinner_pulseRendersBright(t *testing.T) {
 	m := newStreamingModel()
 	m = resize(t, m)

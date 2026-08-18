@@ -7,7 +7,7 @@ import (
 
 // TestTelemetryAggregatesUsage asserts the live telemetry accumulates per-turn
 // token usage into cache hit/miss and running cost with known-good literals
-// from the deepseek-v4-flash price table (ADR-0003:
+// from the deepseek-v4-flash price table:
 // $0.14/1M input miss, $0.28/1M output, $0.0028/1M cache hit).
 func TestTelemetryAggregatesUsage(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
@@ -68,9 +68,9 @@ func TestTelemetryTurnCounting(t *testing.T) {
 	if te.turns != 3 {
 		t.Fatalf("turns = %d, want 3", te.turns)
 	}
-	// The turns/max readout now lives only in the right rail's STATS section
-	// (issue #228); the bottom status strip renders no telemetry numbers, so
-	// the (now-removed) strip-level render is not asserted here — see
+	// The turns/max readout now lives only in the right rail's STATS section;
+	// the bottom status strip renders no telemetry numbers, so the
+	// (now-removed) strip-level render is not asserted here — see
 	// rail_test for the rail turn readout.
 }
 
@@ -83,14 +83,14 @@ func TestTelemetryCompactionMarker(t *testing.T) {
 	if !te.compacted {
 		t.Fatal("compacted flag not set after compaction event")
 	}
-	// The [compacted] marker now renders only in the right rail STATS section
-	// (issue #228); the bottom status strip no longer shows telemetry.
+	// The [compacted] marker now renders only in the right rail STATS section;
+	// the bottom status strip no longer shows telemetry.
 }
 
 // TestTelemetryLiveContextReplaces asserts the live context-window size is
 // REPLACED (not accumulated) from each usage event: it reflects the latest
-// per-turn provider.Usage.PromptTokens, so it shrinks after a compaction
-// (issue #267). The cumulative cache hit/miss/output counters stay +=.
+// per-turn provider.Usage.PromptTokens, so it shrinks after a compaction.
+// The cumulative cache hit/miss/output counters stay +=.
 func TestTelemetryLiveContextReplaces(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 1_000_000, Miss: 1_000_000, Output: 1_000_000, Ctx: 160_000})

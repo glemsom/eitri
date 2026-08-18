@@ -14,7 +14,7 @@ func toolEntryFor(name, args string) toolEntry {
 }
 
 // TestToolLog_ApplyPairsStartWithResult asserts a Start then a matching name
-// Result fold into one complete entry with the result field filled (issue #84).
+// Result fold into one complete entry with the result field filled.
 func TestToolLog_ApplyPairsStartWithResult(t *testing.T) {
 	var l toolLog
 	l.SetAnchor(3)
@@ -35,7 +35,7 @@ func TestToolLog_ApplyPairsStartWithResult(t *testing.T) {
 
 // TestToolLog_ApplyPairsMostRecentIncompleteSameName asserts a Result pairs back
 // to the most recent not-yet-complete entry for that tool name, so a stray or
-// out-of-order result cannot corrupt an already-complete entry (issue #208 US3).
+// out-of-order result cannot corrupt an already-complete entry.
 func TestToolLog_ApplyPairsMostRecentIncompleteSameName(t *testing.T) {
 	var l toolLog
 	l.SetAnchor(0)
@@ -57,7 +57,7 @@ func TestToolLog_ApplyPairsMostRecentIncompleteSameName(t *testing.T) {
 }
 
 // TestToolLog_ToggleBoundsChecks asserts Toggle flips expansion within bounds
-// and no-ops outside them (issue #208 US7).
+// and no-ops outside them.
 func TestToolLog_ToggleBoundsChecks(t *testing.T) {
 	var l toolLog
 	l.SetAnchor(0)
@@ -78,7 +78,7 @@ func TestToolLog_ToggleBoundsChecks(t *testing.T) {
 
 // TestToolLog_ReviewProjectsChangedFiles asserts Review consolidates the
 // file-mutating (edit/write) entries by path, keeping the most recent state per
-// path (issue #90, #208 US5).
+// path.
 func TestToolLog_ReviewProjectsChangedFiles(t *testing.T) {
 	var l toolLog
 	l.SetAnchor(0)
@@ -123,7 +123,7 @@ func TestToolLog_RenderWritesEntryWithRowRanges(t *testing.T) {
 }
 
 // TestToolLog_PlainTextRendersEntry asserts PlainText emits the ⊕ tool head and
-// indents the complete result, mirroring the clipboard transcript (issue #123).
+// indents the complete result, mirroring the clipboard transcript.
 func TestToolLog_PlainTextRendersEntry(t *testing.T) {
 	var l toolLog
 	l.SetAnchor(0)
@@ -142,7 +142,7 @@ func TestToolLog_PlainTextRendersEntry(t *testing.T) {
 // TestToolLog_PlainTextCollapsedAndExpanded asserts PlainText renders the head
 // alone for an entry whose result has not landed yet (collapsed) and the head
 // plus the indented full result once it is complete (expanded) — the two
-// shapes the clipboard transcript never truncates (issue #123, #208 US2).
+// shapes the clipboard transcript never truncates.
 func TestToolLog_PlainTextCollapsedAndExpanded(t *testing.T) {
 	var l toolLog
 	l.SetAnchor(0)
@@ -161,7 +161,7 @@ func TestToolLog_PlainTextCollapsedAndExpanded(t *testing.T) {
 
 // TestToolLog_ReviewKeepsMostRecentState asserts Review consolidates repeated
 // writes to one path by keeping the most recent before/after content span,
-// replacing the older entry's content wholesale (issue #90, #208 US5).
+// replacing the older entry's content wholesale.
 func TestToolLog_ReviewKeepsMostRecentState(t *testing.T) {
 	applyFile := func(l *toolLog, name, path, before, after string) {
 		l.SetAnchor(0)
@@ -195,7 +195,7 @@ func TestToolLog_ReviewKeepsMostRecentState(t *testing.T) {
 
 // TestToolLog_HeadForms asserts the shared head builders render the compact
 // per-tool-glyph `tool  args` head in its three forms — plain args, the read `:start-end`
-// range, and the file-edit `[+N, −M]` delta tag (issue #204, #84, #208 US4).
+// range, and the file-edit `[+N, −M]` delta tag.
 func TestToolLog_HeadForms(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -229,7 +229,7 @@ func TestToolLog_HeadForms(t *testing.T) {
 
 // TestToolLog_RenderRowAccountCollapsed asserts Render counts a collapsed entry's
 // content rows (head + collapsed summary) and that those ranges feed AtLine
-// (issue #212: render and hit-test share one layout).
+// (render and hit-test share one layout).
 func TestToolLog_RenderRowAccountCollapsed(t *testing.T) {
 	var l toolLog
 	l.SetAnchor(0)
@@ -254,7 +254,7 @@ func TestToolLog_RenderRowAccountCollapsed(t *testing.T) {
 
 // TestToolLog_RenderRowAccountExpanded asserts Render counts an expanded entry's
 // rows (head + the full framed result lines) as its own row range, so a click on
-// any of them toggles the same entry (issue #212).
+// any of them toggles the same entry.
 func TestToolLog_RenderRowAccountExpanded(t *testing.T) {
 	var l toolLog
 	l.SetAnchor(0)
@@ -275,8 +275,7 @@ func TestToolLog_RenderRowAccountExpanded(t *testing.T) {
 
 // TestToolLog_RenderRowAccountSkipsOtherAnchors asserts Render only accounts
 // entries for the requested anchor, so content-row ranges stay relative to each
-// message's own block and multiple turns share the same Render pass (issue #84,
-// #212).
+// message's own block and multiple turns share the same Render pass.
 func TestToolLog_RenderRowAccountSkipsOtherAnchors(t *testing.T) {
 	var l toolLog
 	l.SetAnchor(2)
@@ -296,7 +295,7 @@ func TestToolLog_RenderRowAccountSkipsOtherAnchors(t *testing.T) {
 // TestToolLog_RenderOutcomeElapsedAndTruncation asserts the entry head carries
 // the ✓/✗ outcome marker, the elapsed readout for a completed timed tool, and
 // arg truncation at narrow widths — the presentation forms Render must preserve
-// byte-for-byte (issue #122, #212).
+// byte-for-byte.
 func TestToolLog_RenderOutcomeElapsedAndTruncation(t *testing.T) {
 	var l toolLog
 	l.SetAnchor(0)
@@ -330,7 +329,7 @@ func TestToolLog_RenderOutcomeElapsedAndTruncation(t *testing.T) {
 }
 
 // TestToolLog_AtLineMapping asserts AtLine resolves the owning entry, reports its
-// collapsed state, and no-ops outside every recorded range (issue #212).
+// collapsed state, and no-ops outside every recorded range.
 func TestToolLog_AtLineMapping(t *testing.T) {
 	var l toolLog
 	l.SetAnchor(0)
@@ -372,7 +371,7 @@ func TestToolLog_AtLineMapping(t *testing.T) {
 }
 
 // TestToolLog_RenderFailureOutcome asserts a tool whose result is error-shaped
-// renders the ✗ outcome marker (issue #122 AC2, #212).
+// renders the ✗ outcome marker.
 func TestToolLog_RenderFailureOutcome(t *testing.T) {
 	var l toolLog
 	l.SetAnchor(0)
@@ -388,7 +387,7 @@ func TestToolLog_RenderFailureOutcome(t *testing.T) {
 // TestToolLog_RenderBytesTruncatedHint asserts a byte-capped delivery renders
 // a "(+N bytes truncated)" hint on the collapsed summary line when bytes were
 // dropped, and merges with the existing "(+N more)" hint when both line and
-// byte truncation happened (issue #286: never silent for the user either).
+// byte truncation happened (never silent for the user either).
 func TestToolLog_RenderBytesTruncatedHint(t *testing.T) {
 	var l toolLog
 	l.SetAnchor(0)
@@ -418,7 +417,7 @@ func TestToolLog_RenderBytesTruncatedHint(t *testing.T) {
 
 // TestToolLog_RenderBothHintsWithoutCompressedFlag asserts the collapsed summary
 // shows BOTH hints whenever both truncations happened, even when the separate
-// Compressed flag is false (issue #286 review): the "+N more" hint derives from
+// Compressed flag is false: the "+N more" hint derives from
 // Dropped alone, so a byte-cap that also dropped lines never loses the line
 // count just because the result is byte-only-capped in the seam's model.
 func TestToolLog_RenderBothHintsWithoutCompressedFlag(t *testing.T) {
@@ -436,7 +435,7 @@ func TestToolLog_RenderBothHintsWithoutCompressedFlag(t *testing.T) {
 
 // TestToolLog_ExpandedRendersFullRawResult asserts the expanded view renders
 // the entry's full pre-cap Result even when the delivered form was byte-capped
-// (issue #286 AC4: nothing silently truncated on the expand path).
+// (nothing silently truncated on the expand path).
 func TestToolLog_ExpandedRendersFullRawResult(t *testing.T) {
 	var l toolLog
 	l.SetAnchor(0)

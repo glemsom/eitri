@@ -8,8 +8,8 @@ import (
 
 // toolCardDiffEntry returns a completed file-mutating tool entry carrying the
 // before/after content, path, and line-delta metadata a real edit/write result
-// delivers (issue #90), so the expanded tool card has the same raw material
-// the review projection reads.
+// delivers, so the expanded tool card has the same raw material the review
+// projection reads.
 func toolCardDiffEntry(name, path, before, after string, added, removed int) toolEntry {
 	te := toolEntryFor(name, `{"path":"`+path+`"}`)
 	te.result = "ok (1ms)  1 file changed\n"
@@ -37,7 +37,7 @@ func cardBody(th Theme, te toolEntry, expanded bool) string {
 
 // TestToolCard_collapsedEditKeepsDeltaSummary asserts a collapsed edit/write
 // card keeps today's [+N,−M] summary: the before/after file content never
-// renders, and the delta tag text stays on the head (issue #275 AC).
+// renders, and the delta tag text stays on the head.
 func TestToolCard_collapsedEditKeepsDeltaSummary(t *testing.T) {
 	te := toolCardDiffEntry("edit", "internal/auth.go", "package auth\n\nfunc Old() {}\n", "package auth\n\nfunc New() {}\n", 1, 1)
 
@@ -58,7 +58,7 @@ func TestToolCard_collapsedEditKeepsDeltaSummary(t *testing.T) {
 // TestToolCard_expandedEditRendersInlineDiff asserts an expanded edit/write card
 // renders the before→after file content as an inline diff — hunks with the
 // git-style @@ header, styled +/- lines, and the left card border framing —
-// instead of the raw result dump (issue #275 AC).
+// instead of the raw result dump.
 func TestToolCard_expandedEditRendersInlineDiff(t *testing.T) {
 	te := toolCardDiffEntry("edit", "internal/auth.go", "package auth\n\nfunc Old() {}\n", "package auth\n\nfunc New() {}\n", 1, 1)
 
@@ -84,8 +84,7 @@ func TestToolCard_expandedEditRendersInlineDiff(t *testing.T) {
 }
 
 // TestToolCard_expandedWriteDiffStatuses asserts added and deleted paths render
-// as all-+ and all-− diffs, derived from the before/after content itself
-// (issue #275 AC add/delete/modify).
+// as all-+ and all-− diffs, derived from the before/after content itself.
 func TestToolCard_expandedWriteDiffStatuses(t *testing.T) {
 	// Added: empty before, content after.
 	add := toolCardDiffEntry("write", "internal/new.go", "", "package new\n\nfunc Fresh() {}\n", 3, 0)
@@ -107,7 +106,7 @@ func TestToolCard_expandedWriteDiffStatuses(t *testing.T) {
 
 // TestToolCard_expandedNoDiffFallsBackToSummary asserts an expanded card whose
 // before/after are both empty falls back to the [+N, −M] count-summary card
-// body (existing review behavior), never the raw result dump (issue #275 AC).
+// body (existing review behavior), never the raw result dump.
 // The dump check keys on the stripped result text, not the full te.result
 // string: the card frame's trailing border space would mask a rendered dump.
 func TestToolCard_expandedNoDiffFallsBackToSummary(t *testing.T) {

@@ -6,10 +6,10 @@ import (
 	"time"
 )
 
-// render.go is the value-only rendering surface (issue #208, module 2): the
-// pure text derivations and formatters the transcript consumes. Every function
-// here is a closed data-in → string-out mapping — it takes a value (a toolEntry,
-// a time.Duration, an int, a string) and never a *Model — so the only way a
+// render.go is the value-only rendering surface: the pure text derivations
+// and formatters the transcript consumes. Every function here is a closed
+// data-in → string-out mapping — it takes a value (a toolEntry, a
+// time.Duration, an int, a string) and never a *Model — so the only way a
 // render bug can arise is inside the helper, never in a call site's hidden
 // coupling to live Model state.
 
@@ -98,15 +98,15 @@ func lineCount(s string) int {
 // tokenEstimate estimates a reasoning stream's token count from its assembled
 // text length, using the conventional ~4 chars/token yardstick. It backs the
 // collapsed thinking hint's token readout so the user can gauge the turn's
-// reasoning cost at a glance (issue #85 AC2).
+// reasoning cost at a glance.
 func tokenEstimate(s string) int {
 	return len([]rune(s)) / 4
 }
 
-// idleWelcome renders the empty-transcript welcome block (issue #212): the
-// brand mark in the accent hue plus faint capability + keybinding hints, so
-// the first launch reads as a designed surface. One accent, no decoration —
-// the restrained brand treatment, not a logo wall.
+// idleWelcome renders the empty-transcript welcome block: the brand mark in
+// the accent hue plus faint capability + keybinding hints, so the first
+// launch reads as a designed surface. One accent, no decoration — the
+// restrained brand treatment, not a logo wall.
 func idleWelcome(th Theme) string {
 	return th.headerStyle.Render(hr()) + "\n" +
 		th.headerStyle.Render(brandMark() + " Eitri") + th.statusStyle.Render(g(" — ", " - ")+"your terminal coding agent") + "\n" +
@@ -127,10 +127,10 @@ func promptView(th Theme) string {
 
 // thinkingHeader renders a turn's collapsible reasoning block header. Collapsed
 // it is a one-line hint carrying a token estimate and the reasoning-effort tier
-// (issue #85 AC2: "🤔 1.4k tok · medium"); the block renders distinctly from the
-// answer so reasoning is recognizable but secondary, and settles back to this
-// hint when the turn's answer lands. reasoning is the accumulated thinking text;
-// effort is the run's reasoning-effort tier (empty drops the suffix).
+// ("🤔 1.4k tok · medium"); the block renders distinctly from the answer so
+// reasoning is recognizable but secondary, and settles back to this hint when
+// the turn's answer lands. reasoning is the accumulated thinking text; effort
+// is the run's reasoning-effort tier (empty drops the suffix).
 func thinkingHeader(th Theme, reasoning, effort string) string {
 	hint := fmt.Sprintf("%s %s tok", g("🤔", "?"), formatTokens(tokenEstimate(reasoning)))
 	if effort != "" {
@@ -141,12 +141,8 @@ func thinkingHeader(th Theme, reasoning, effort string) string {
 
 // bandHints returns the keybinding hint strip for the status row. Hints are
 // the real, wired bindings — never advertised keys that no-op. It sits on the
-// value-only render surface (issue #208) so the hint set stays table-testable
-// without a live model (issue #210); model.go's renderBand is the only
-// *Model-free site.
-// The modal review panel's hints (ctrl+d review / enter diff / o browser) went
-// with the panel (issue #276); Ctrl+D itself is deliberately unbound and so
-// never advertised. The vim-normal hint set went with vim mode (issue #309).
+// value-only render surface so the hint set stays table-testable without a live
+// model; model.go's renderBand is the only *Model-free site.
 func bandHints() string {
 	return strings.Join([]string{"ctrl+s settings", "ctrl+o copy", "ctrl+e expand", "shift+enter newline"}, g(" · ", " . "))
 }

@@ -7,15 +7,13 @@ import (
 	"github.com/glemsom/eitri/internal/diff"
 )
 
-// reviewEntry is a file-mutating tool entry's before/after projection (issue
-// #90's changed-file record): the host path, the before/after full content the
-// engine captured across the edit/write call (pure telemetry, never affecting
-// the run), and the [+N,-M] line delta.
+// reviewEntry is a file-mutating tool entry's before/after projection: the
+// host path, the before/after full content the engine captured across the
+// edit/write call (pure telemetry, never affecting the run), and the [+N,-M]
+// line delta.
 //
-// The modal review panel that used to list these entries is gone (issue
-// #276); this record now solely backs the Ctrl+E expanded card's inline diff
-// (issue #275), the no-diff fallback framing, and the tool log's Review
-// projection.
+// This record backs the Ctrl+E expanded card's inline diff, the no-diff
+// fallback framing, and the tool log's Review projection.
 type reviewEntry struct {
 	path    string
 	before  string
@@ -26,9 +24,9 @@ type reviewEntry struct {
 }
 
 // reviewEntryFromTool derives a review entry from a completed file-mutating
-// tool entry's captured before/after/path content (issue #90). It is shared by
+// tool entry's captured before/after/path content. It is shared by
 // toolLog.Review() for its per-entry projection and by the expanded tool card's
-// diff renderer (issue #275), so the projection lives in one place.
+// diff renderer, so the projection lives in one place.
 func reviewEntryFromTool(te toolEntry) reviewEntry {
 	return reviewEntry{
 		path: te.path, before: te.before, after: te.after,
@@ -42,10 +40,8 @@ func reviewEntryFromTool(te toolEntry) reviewEntry {
 // same-hue fill). A file with no content-diff (e.g. a pure flag change the
 // engine couldn't snapshot) falls back to the count summary.
 //
-// It is the card path's diff body (issue #275): renderToolCardDiff calls it
-// inside the expanded tool card's category-colored frame. It re-homed here
-// from the review-only modal path when the panel was removed (issue #276), so
-// no review-only code remains dangling.
+// It is the card path's diff body: renderToolCardDiff calls it inside the
+// expanded tool card's category-colored frame.
 func renderDiff(f reviewEntry, th Theme) string {
 	if len(f.hunks) == 0 {
 		return renderCountSummary(f, th)
@@ -83,9 +79,8 @@ func renderDiff(f reviewEntry, th Theme) string {
 
 // renderCountSummary renders a changed file's [+N, −M] count-summary line —
 // the no-diff fallback body for a path with no diffable content. It is shared
-// by the expanded tool card's renderToolCardDiff (issue #275) and the diff
-// engine wiring on the card path (issue #276), so the no-diff fallback framing
-// lives in one place.
+// by the expanded tool card's renderToolCardDiff and the diff engine wiring on
+// the card path, so the no-diff fallback framing lives in one place.
 func renderCountSummary(f reviewEntry, th Theme) string {
 	return th.statusStyle.Render("  "+f.path+" "+deltaTag(f.added, f.removed)) + "\n"
 }
