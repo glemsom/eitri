@@ -54,6 +54,7 @@ func (d *TurnDispatch) startTurn(tx *Transcript, prompt, payload string) tea.Cmd
 // SetThinkingEnabled updates the thinking flag for new messages created by
 // appendStreamDelta and handleTurnDone.
 func (d *TurnDispatch) SetThinkingEnabled(v bool) { d.thinkingEnabled = v }
+
 // stopTurn cancels the in-flight turn's context. It is a no-op when nothing
 // is running.
 func (d *TurnDispatch) stopTurn() {
