@@ -13,6 +13,7 @@ func TestGlyph_charter(t *testing.T) {
 	cases := []struct{ utf8, ascii string }{
 		{"⊕", "+"}, {"✓", "ok"}, {"✗", "X"}, {"🤔", "?"}, {"▸", ">"},
 		{"▶", ">"}, {"─", "-"}, {"·", "."}, {"…", "..."}, {"│", "|"}, {"−", "-"},
+		{"⚒", "+"}, {"──", "--"}, {"💬", ">"}, {"⌨", "k"}, {"⚙", "*"}, {"📋", "#"}, {"🔑", "+"}, {"❓", "?"},
 	}
 	// No env override: the UTF-8 glyph (the test locale supports UTF-8).
 	for _, c := range cases {

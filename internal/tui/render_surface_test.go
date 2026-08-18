@@ -40,9 +40,11 @@ func TestRender_idleWelcome(t *testing.T) {
 	}{
 		{
 			name: "brand-and-hints",
-			want: "Eitri - your terminal coding agent\n" +
-				"  ask me to fix a bug, refactor code, explain a system, or run the tests\n" +
-				"  ctrl+s settings · /help for commands & keybindings\n",
+			want: "--\n" +
+				"+ Eitri - your terminal coding agent\n" +
+				"--\n" +
+				"  > ask me to fix a bug, refactor code, explain a system, or run the tests\n" +
+				"  k ctrl+s settings · /help for commands & keybindings\n",
 		},
 	}
 	for _, c := range cases {
@@ -139,5 +141,44 @@ func TestRender_bandHints(t *testing.T) {
 	want := "ctrl+s settings . ctrl+o copy . ctrl+e expand . shift+enter newline"
 	if got != want {
 		t.Errorf("bandHints() = %q, want %q", got, want)
+	}
+}
+
+// TestRender_idleWelcome_brandMark asserts the welcome screen contains the
+// ⚒ brand mark, horizontal rules, and emoji-decorated hint lines (issue #356).
+func TestRender_idleWelcome_brandMark(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	th := renderSurfaceTestTheme()
+	got := idleWelcome(th)
+
+	for _, want := range []string{"+ Eitri", "--", "> ask me", "k ctrl+s"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("idleWelcome() missing %q, got:\n%s", want, got)
+		}
+	}
+}
+
+// TestHelpView_glyphs asserts the help view contains section emoji and rule
+// separators (issue #356).
+func TestHelpView_glyphs(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	th := renderSurfaceTestTheme()
+	got := helpView(th)
+
+	// Section headers include emoji prefixes.
+	for _, want := range []string{"$ COMMANDS", "k KEYBINDINGS", "< CONCEPTS"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("helpView() missing section emoji %q", want)
+		}
+	}
+	// Horizontal rule separators between sections.
+	if !strings.Contains(got, "--") {
+		t.Errorf("helpView() missing horizontal rule separators")
+	}
+	// Command row emoji prefixes.
+	for _, want := range []string{"* /settings", "# /copy", "+ /login", "? /help"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("helpView() missing command emoji %q", want)
+		}
 	}
 }

@@ -1,10 +1,11 @@
-[1;38;2;0;95;255mCOMMANDS[m
-[2m  /settings  open settings panel[m
-[2m  /copy  copy transcript to clipboard[m
-[2m  /login  interactive provider login[m
-[2m  /help  show this help message[m
+[1;38;2;0;95;255m$ COMMANDS[m
+[2m  * /settings  open settings panel[m
+[2m  # /copy  copy transcript to clipboard[m
+[2m  + /login  interactive provider login[m
+[2m  ? /help  show this help message[m
 
-[1;38;2;0;95;255mKEYBINDINGS[m
+--
+[1;38;2;0;95;255mk KEYBINDINGS[m
 [2m  ctrl+s  open settings[m
 [2m  ctrl+o  copy transcript[m
 [2m  ctrl+e  toggle expanded view[m
@@ -15,7 +16,8 @@
 [2m  ctrl+shift+[  narrow pane[m
 [2m  ctrl+shift+]  widen pane[m
 
-[1;38;2;0;95;255mCONCEPTS[m
+--
+[1;38;2;0;95;255m< CONCEPTS[m
 [2m  ctrl+e mode  expand/collapse all tool result cards[m
 [2m  drag-select  click and drag to select text[m
 [2m  right rail  stats, context, and model info[m
