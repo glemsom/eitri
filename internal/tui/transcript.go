@@ -389,11 +389,11 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 	// (renderBand); lean embeds and tests without a telemetry strip keep the
 	// history footer row instead.
 	if t.busy && t.telemetry == nil {
-			if t.busyPulse > 0 {
-				emit(t.theme.bandStatusStyle.Render(busyLine(t.spinner)))
-			} else {
-				emit(t.theme.statusStyle.Render(busyLine(t.spinner)))
-			}
+		if t.busyPulse > 0 {
+			emit(t.theme.bandStatusStyle.Render(busyLine(t.spinner)))
+		} else {
+			emit(t.theme.statusStyle.Render(busyLine(t.spinner)))
+		}
 		emit("\n")
 	}
 }

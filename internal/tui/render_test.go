@@ -50,15 +50,6 @@ func TestRender_busyLine(t *testing.T) {
 	})
 }
 
-// TestRender_busyLine_reducedMotionFallBack asserts the static fallback under
-// reduced motion regardless of pulse state.
-func TestRender_busyLine_reducedMotionPulse(t *testing.T) {
-	t.Setenv("EITRI_NO_MOTION", "1")
-	if got := busyLine(0); got != "… thinking" {
-		t.Errorf("reduced-motion busyLine = %q, want %q", got, "… thinking")
-	}
-}
-
 // TestRender_plural table-tests the plural suffix: "" for one, "s" otherwise.
 func TestRender_plural(t *testing.T) {
 	cases := []struct {

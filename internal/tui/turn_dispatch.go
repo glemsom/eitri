@@ -115,7 +115,6 @@ func (d *TurnDispatch) appendStreamDelta(tx *Transcript, kind StreamKind, delta 
 		tx.messages = append(tx.messages, message{role: "eitri", content: delta, streaming: true, thinkingRequested: d.thinkingEnabled})
 	}
 	d.s.curStream = len(tx.messages) - 1
-	d.s.curStream = len(tx.messages) - 1
 	tx.busyPulse = 3
 }
 
