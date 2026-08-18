@@ -26,7 +26,7 @@ import (
 
 // railDrag is one in-progress mouse drag resizing the right rail: startWidth
 // is the rail width when the press landed and startX the press column, so each
-// motion computes newWidth = startWidth + (pointerX - startX) and applies it
+// motion computes newWidth = startWidth - (pointerX - startX) and applies it
 // live through setRailWidth. It is tracked on the Model (not the Transcript)
 // because it is pointer-button state, not transcript surface state: the
 // transcript only ever sees the resulting setRailWidth writes, exactly like the
@@ -219,7 +219,7 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 			// drag, not a click — disarm the window so the drag's press can
 			// never pair with a later press into a reset.
 			m.disarmBorderClick()
-			m.tx.setRailWidth(clampRailWidth(m.railDrag.startWidth+(msg.X-m.railDrag.startX), m.tx.width))
+			m.tx.setRailWidth(clampRailWidth(m.railDrag.startWidth-(msg.X-m.railDrag.startX), m.tx.width))
 			return
 		}
 		if m.tx.dragSel == nil {
