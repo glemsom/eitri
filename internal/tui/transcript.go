@@ -51,6 +51,9 @@ type Transcript struct {
 	busy bool
 	// spinner is the busy-spinner frame index ; 0 when idle.
 	spinner int
+	// busyPulse counts down the accent-bright frames after the first stream
+	// delta arrives; 0 means no pulse, >0 means render the spinner bright.
+	busyPulse int
 	// reasoningEffort is the run's reasoning-effort tier, shown in the collapsed
 	// thinking hint .
 	reasoningEffort string
@@ -386,7 +389,11 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 	// (renderBand); lean embeds and tests without a telemetry strip keep the
 	// history footer row instead.
 	if t.busy && t.telemetry == nil {
-		emit(t.theme.statusStyle.Render(busyLine(t.spinner)))
+		if t.busyPulse > 0 {
+			emit(t.theme.bandStatusStyle.Render(busyLine(t.spinner)))
+		} else {
+			emit(t.theme.statusStyle.Render(busyLine(t.spinner)))
+		}
 		emit("\n")
 	}
 }

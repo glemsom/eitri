@@ -193,3 +193,87 @@ func TestIdleWelcome_showsOnEmptyHidesAfterTurn(t *testing.T) {
 		t.Errorf("welcome must disappear after the first turn, got: %q", view(m))
 	}
 }
+
+// TestBusySpinner_pulseOnFirstDelta asserts the busyPulse counter is set to 3
+// when the first stream delta arrives and decrements on each spinner tick,
+// reaching 0 and staying there (issue #353).
+func TestBusySpinner_pulseOnFirstDelta(t *testing.T) {
+	m := newStreamingModel()
+	m = resize(t, m)
+	m = typeText(t, m, "hi")
+	m, _ = submitBusy(t, m)
+
+	// Before any delta, busyPulse must be 0.
+	if m.tx.busyPulse != 0 {
+		t.Fatalf("busyPulse before delta = %d, want 0", m.tx.busyPulse)
+	}
+
+	// First delta sets the pulse counter.
+	m = applyDelta(t, m, "hello")
+	if m.tx.busyPulse != 3 {
+		t.Fatalf("busyPulse after first delta = %d, want 3", m.tx.busyPulse)
+	}
+
+	// Spinner tick decrements the pulse.
+	nm, _ := m.Update(spinnerTickMsg{})
+	m = asModel(t, nm)
+	if m.tx.busyPulse != 2 {
+		t.Fatalf("busyPulse after 1st tick = %d, want 2", m.tx.busyPulse)
+	}
+
+	nm, _ = m.Update(spinnerTickMsg{})
+	m = asModel(t, nm)
+	if m.tx.busyPulse != 1 {
+		t.Fatalf("busyPulse after 2nd tick = %d, want 1", m.tx.busyPulse)
+	}
+
+	nm, _ = m.Update(spinnerTickMsg{})
+	m = asModel(t, nm)
+	if m.tx.busyPulse != 0 {
+		t.Fatalf("busyPulse after 3rd tick = %d, want 0", m.tx.busyPulse)
+	}
+
+	// Further ticks keep pulse at 0.
+	nm, _ = m.Update(spinnerTickMsg{})
+	m = asModel(t, nm)
+	if m.tx.busyPulse != 0 {
+		t.Fatalf("busyPulse after 4th tick = %d, want 0", m.tx.busyPulse)
+	}
+}
+
+// TestBusySpinner_pulseRendersBright asserts the busy spinner renders
+// the accent-styled bandStatusStyle during the pulse window and falls
+// back to the faint statusStyle after the pulse expires (issue #353).
+func TestBusySpinner_pulseRendersBright(t *testing.T) {
+	m := newStreamingModel()
+	m = resize(t, m)
+	m = typeText(t, m, "hi")
+	m, _ = submitBusy(t, m)
+
+	// First delta triggers the pulse.
+	m = applyDelta(t, m, "hello")
+	if m.tx.busyPulse == 0 {
+		t.Fatal("busyPulse must be non-zero after first delta")
+	}
+
+	// The spinner text is present in the view during pulse.
+	content := view(m)
+	if !strings.Contains(content, "working") {
+		t.Fatalf("busy line must render during pulse, got: %q", content)
+	}
+
+	// Decrement pulse to 0.
+	for i := 0; i < 3; i++ {
+		nm, _ := m.Update(spinnerTickMsg{})
+		m = asModel(t, nm)
+	}
+	if m.tx.busyPulse != 0 {
+		t.Fatalf("busyPulse must be 0 after 3 ticks, got %d", m.tx.busyPulse)
+	}
+
+	// Spinner still renders after pulse expires (now faint style).
+	content = view(m)
+	if !strings.Contains(content, "working") {
+		t.Fatalf("busy line must still render after pulse, got: %q", content)
+	}
+}
