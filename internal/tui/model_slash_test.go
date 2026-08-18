@@ -109,7 +109,8 @@ func TestModel_slashTabCyclesSettingsAndSkills(t *testing.T) {
 	m = typeText(t, m, "/")
 
 	// First tab picks `/settings` (first built-in); the second tab advances to
-	// `/copy`; the third hits `/login`; the fourth reaches the matching skill.
+	// `/copy`; the third hits `/login`; the fourth reaches `/help`; the fifth
+	// reaches the matching skill.
 	m = keypress(t, m, "tab")
 	if got := m.composer.Value(); got != "/settings" {
 		t.Fatalf("first tab completion = %q, want /settings", got)
@@ -123,8 +124,12 @@ func TestModel_slashTabCyclesSettingsAndSkills(t *testing.T) {
 		t.Fatalf("third tab completion = %q, want /login", got)
 	}
 	m = keypress(t, m, "tab")
+	if got := m.composer.Value(); got != "/help" {
+		t.Fatalf("fourth tab completion = %q, want /help", got)
+	}
+	m = keypress(t, m, "tab")
 	if got := m.composer.Value(); got != "/review" {
-		t.Fatalf("fourth tab completion = %q, want /review", got)
+		t.Fatalf("fifth tab completion = %q, want /review", got)
 	}
 	// The completed line renders with the selected candidate marked up.
 	if !strings.Contains(view(m), "▸ /review") {

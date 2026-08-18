@@ -743,6 +743,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if prompt == "/login" {
 				return m.startLogin()
 			}
+			// /help appends the help message as an assistant entry in the transcript,
+			// never sent to the engine. The same rendered output the `?` keybinding
+			// produces, keeping both paths identical.
+			if prompt == "/help" {
+				m.tx.messages = append(m.tx.messages, message{role: "eitri", content: helpView(m.tx.theme)})
+				return m, nil
+			}
 			if name, args, ok := slashCommand(prompt, m.skills); ok {
 				return m.activateSkill(name, args)
 			}
@@ -790,6 +797,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.persistRailWidth()
 			m.syncWidths()
 			return m, nil
+		case "?":
+			// `?` shows help when the composer is empty and the app is idle
+			// (not busy, not prompting, not settings open). With text in the
+			// composer, `?` falls through to the textarea so it inserts a literal
+			// character like any other key.
+			if m.composer.Value() == "" && !m.tx.busy {
+				m.tx.messages = append(m.tx.messages, message{role: "eitri", content: helpView(m.tx.theme)})
+				return m, nil
+			}
 		}
 		// The Ctrl+E expanded-view toggle is handled as a dedicated
 		// case above; the legacy alt+y global tool-expand path has been superseded
@@ -1253,7 +1269,7 @@ func slashCandidates(value string, skills []SkillItem) []string {
 		return nil
 	}
 	partial := strings.TrimSpace(strings.TrimPrefix(value, "/"))
-	cands := make([]string, 0, len(skills)+2)
+	cands := make([]string, 0, len(skills)+3)
 	if partial == "" || strings.HasPrefix("settings", partial) {
 		cands = append(cands, "/settings")
 	}
@@ -1262,6 +1278,9 @@ func slashCandidates(value string, skills []SkillItem) []string {
 	}
 	if partial == "" || strings.HasPrefix("login", partial) {
 		cands = append(cands, "/login")
+	}
+	if partial == "" || strings.HasPrefix("help", partial) {
+		cands = append(cands, "/help")
 	}
 	for _, it := range skills {
 		// The built-in /settings command owns the `settings` name; a skill of
