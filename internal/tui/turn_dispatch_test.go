@@ -248,6 +248,29 @@ func TestTurnDispatch_appendStreamDelta_emptyNoop(t *testing.T) {
 	}
 }
 
+func TestTurnDispatch_appendStreamDelta_setsBusyPulseOnFirstDelta(t *testing.T) {
+	d := NewTurnDispatch(stubTurn("", nil))
+	tx := newTestTx()
+
+	d.appendStreamDelta(&tx, AnswerStream, "hello")
+
+	if tx.busyPulse != 3 {
+		t.Errorf("busyPulse = %d, want 3", tx.busyPulse)
+	}
+}
+
+func TestTurnDispatch_appendStreamDelta_doesNotResetBusyPulseOnSubsequentDelta(t *testing.T) {
+	d := NewTurnDispatch(stubTurn("", nil))
+	tx := newTestTx()
+
+	d.appendStreamDelta(&tx, AnswerStream, "hel")
+	tx.busyPulse = 1 // simulate mid-pulse	d.appendStreamDelta(&tx, AnswerStream, "lo")
+
+	if tx.busyPulse != 1 {
+		t.Errorf("busyPulse = %d, want 1 (should not reset on subsequent delta)", tx.busyPulse)
+	}
+}
+
 // --- handleTurnDone tests (5 branches) ---
 
 func TestTurnDispatch_handleTurnDone_stoppedStreaming(t *testing.T) {

@@ -864,6 +864,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.tx.spinner = (m.tx.spinner + 1) % len(busySpinnerFrames)
+		if m.tx.busyPulse > 0 {
+			m.tx.busyPulse--
+		}
 		return m, spinnerTick()
 
 	case discoverDoneMsg:
