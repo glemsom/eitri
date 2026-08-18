@@ -132,10 +132,7 @@ func (d *DeviceFlow) endpoint(key string) string {
 
 // doJSON POSTs req and decodes a JSON response.
 func (d *DeviceFlow) doJSON(req *http.Request, out any) error {
-	client := d.http
-	if client == nil {
-		client = http.DefaultClient
-	}
+	client := resolveClient(d.http)
 	resp, err := client.Do(req)
 	if err != nil {
 		return err

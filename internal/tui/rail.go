@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+
+	"github.com/glemsom/eitri/internal/constants"
 )
 
 // Rail enables a fixed-width right pane in the TUI surface: the "true right
@@ -47,7 +49,7 @@ func NewRail(provider, model, effort string, thinking bool, sessionID, sessionTe
 // lands (t.width == 0). TranscriptWidth previously fell back to the composer's
 // width here; that coupling was removed so both widths derive solely from the
 // terminal width and the rail. Both widths now live on the Transcript.
-const presizeTerminalWidth = 80
+const presizeTerminalWidth = constants.PresizeTerminalWidth
 
 // line appends one indented rail entry, truncating an over-long row with a
 // trailing ellipsis so the rail stays single-line. The usable row width is the
@@ -288,13 +290,13 @@ func renderStatsCtxLine(r *Rail, th Theme, liveCtx, railWidth int) string {
 // public LLM-context-degradation research (e.g. Anthropic/ZeroWidth/Duper
 // long-context studies) reports measurably degraded retrieval-and-reasoning
 // quality ~150k+ tokens into a window.
-const liveContextWarnThreshold = 150000
+const liveContextWarnThreshold = constants.LiveContextWarnThreshold
 
 // defaultRailWidth is the rail width applied while the Transcript's mutable
 // railWidth field is unset (0): consumers read the field through
 // railWidthOrDefault, so this constant is only the zero-state default, never a
 // width any consumer computes from.
-const defaultRailWidth = 30
+const defaultRailWidth = constants.DefaultRailWidth
 
 // syncWidths re-sizes the composer to the band width so markdown wraps and the
 // composer box align with the edge-to-edge bottom band. The composer tracks the

@@ -18,6 +18,7 @@ import (
 
 	"golang.org/x/term"
 
+	"github.com/glemsom/eitri/internal/constants"
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/engine"
 	"github.com/glemsom/eitri/internal/provider"
@@ -51,7 +52,7 @@ var ErrTUINotInteractive = errors.New("the interactive TUI requires an interacti
 // minTUIWidth is the narrowest terminal (in columns) the full-screen TUI
 // renders into; below it the transcript is squeezed unusably, so the TUI is
 // refused in favor of batch mode.
-const minTUIWidth = 80
+const minTUIWidth = constants.MinTUIWidth
 
 // tuiEnv captures the host-terminal facts the TUI boot guard reads.
 // width is the terminal width in columns; 0 means unknown.
