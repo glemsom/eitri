@@ -42,8 +42,10 @@ type Theme struct {
 	statusStyle      lipgloss.Style // faint secondary text (strips, hints, tool lines)
 	agentPaneStyle   lipgloss.Style // left-bordered pane framing assistant answers
 	errorPaneStyle   lipgloss.Style // the same pane with the error-colored border
-	stoppedPaneStyle lipgloss.Style // the same pane with the stopped (accent-dimmed) border
-	userBubbleStyle  lipgloss.Style // the carded background fill for user prompts
+	stoppedPaneStyle         lipgloss.Style // the same pane with the stopped (accent-dimmed) border
+	streamingPaneStyle       lipgloss.Style // left-bordered pane for messages still being streamed (dimmed accent)
+	streamingErrorPaneStyle  lipgloss.Style // left-bordered pane for streaming error-prefix messages (dimmed error)
+	userBubbleStyle          lipgloss.Style // the carded background fill for user prompts
 	thinkingStyle    lipgloss.Style // the 🤔 collapsed reasoning hint
 	toolStyle        lipgloss.Style // the ⊕ tool-entry line (uncategorized fallback)
 	toolShellStyle   lipgloss.Style // the ⊕ tool-entry line, shell category
@@ -373,6 +375,14 @@ func newTheme(accent, err, ok, shell, file, web, skill, bubble color.Color, rail
 		// accent dimmed: a stop is not a failure, so it stays in the agent color
 		// family rather than the error red.
 		stoppedPaneStyle: borderedPane(dimmed(accent, 0.6)),
+		// streamingPaneStyle frames assistant messages still being streamed: the
+		// same borderedPane constructor with a dimmer border (0.45) so the
+		// in-progress answer is visually distinct from a completed one.
+		streamingPaneStyle: borderedPane(dimmed(accent, 0.45)),
+		// streamingErrorPaneStyle frames streaming error-prefix messages with the
+		// error hue dimmed, keeping error-streaming distinct from both the
+		// streaming accent pane and the full error pane.
+		streamingErrorPaneStyle: borderedPane(dimmed(err, 0.45)),
 		// thinkingStyle renders the 🤔 collapsed reasoning hint; italic sets it
 		// apart from the answer body so the hint reads as a distinct treatment,
 		// not just a colored line.
