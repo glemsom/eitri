@@ -811,6 +811,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
+		case "ctrl+shift+[":
+			// Ctrl+Shift+[ shrinks the right context rail by 2 columns, clamped
+			// to minWidthRail, and persists the new width to config.
+			m.adjustRailWidth(-2)
+			return m, nil
+		case "ctrl+shift+]":
+			// Ctrl+Shift+] grows the right context rail by 2 columns and
+			// persists the new width to config.
+			m.adjustRailWidth(+2)
+			return m, nil
+		case "alt+0":
+			// Alt+0 resets the right context rail to the default width and
+			// persists the reset to config.
+			m.tx.setRailWidth(defaultRailWidth)
+			m.persistRailWidth()
+			m.syncWidths()
+			return m, nil
 		}
 		// The Ctrl+E expanded-view toggle is handled as a dedicated
 		// case above; the legacy alt+y global tool-expand path has been superseded
@@ -1609,6 +1626,28 @@ type transcriptLayout struct {
 // (state-as-color — the mode-colored composer border pattern, benchmark
 // §4.3). The rail's glyph and width never change, so the caret geometry
 // is untouched.
+// adjustRailWidth moves the right context rail by delta columns, clamped to
+// minWidthRail, and persists the new width to config. It is the shared helper
+// for the Ctrl+Shift+[ / Ctrl+Shift+] keyboard shortcuts.
+func (m *Model) adjustRailWidth(delta int) {
+	w := m.tx.railWidthOrDefault() + delta
+	if w < minWidthRail {
+		w = minWidthRail
+	}
+	m.tx.setRailWidth(w)
+	m.persistRailWidth()
+	m.syncWidths()
+}
+
+// persistRailWidth writes the current rail width into deps.Config and persists
+// it via the Save seam so the width round-trips across sessions.
+func (m *Model) persistRailWidth() {
+	m.deps.Config.RailWidth = m.tx.railWidthOrDefault()
+	if m.deps.Save != nil {
+		_ = m.deps.Save(m.deps.Config)
+	}
+}
+
 func (m *Model) syncComposerRail() {
 	c := m.tx.theme.accent
 	if m.tx.busy {
