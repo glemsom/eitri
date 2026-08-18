@@ -207,3 +207,61 @@ func TestThinkingEnabledPersists(t *testing.T) {
 		t.Fatalf("Load() ThinkingEnabled = true, want persisted off (false)")
 	}
 }
+
+// TestRailWidthPersists verifies the rail_width round-trips through save/load:
+// a non-zero width survives reload, while zero (absent in old configs) stays at
+// zero so the TUI can fall back to the compiled default.
+func TestRailWidthPersists(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	cfg := Default()
+	cfg.RailWidth = 45
+	if err := Save(cfg, path); err != nil {
+		t.Fatalf("Save() error = %v, want nil", err)
+	}
+
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if got.RailWidth != 45 {
+		t.Fatalf("Load() RailWidth = %d, want 45", got.RailWidth)
+	}
+}
+
+// TestRailWidthZeroRoundTrips verifies that an explicitly stored zero value
+// round-trips faithfully (omitempty would omit it, but JSON zero is valid).
+func TestRailWidthZeroRoundTrips(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := Save(Config{RailWidth: 0}, path); err != nil {
+		t.Fatalf("Save() error = %v, want nil", err)
+	}
+
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if got.RailWidth != 0 {
+		t.Fatalf("Load() RailWidth = %d, want 0", got.RailWidth)
+	}
+}
+
+// TestRailWidthAbsentFromOldConfig verifies a config file written before the
+// rail_width field loads without error and leaves RailWidth at zero, letting
+// the TUI fall back to DefaultRailWidth.
+func TestRailWidthAbsentFromOldConfig(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte(`{"provider":"opencode-go"}`), 0o600); err != nil {
+		t.Fatalf("WriteFile error = %v", err)
+	}
+
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if got.RailWidth != 0 {
+		t.Fatalf("Load() RailWidth = %d, want 0 for absent field", got.RailWidth)
+	}
+}

@@ -63,6 +63,7 @@ type Config struct {
 	CompactionFraction float64       `json:"compaction_fraction"`
 	ExtraWritablePaths []string      `json:"extra_writable_paths,omitempty"`
 	Theme              string        `json:"theme"`
+	RailWidth          int           `json:"rail_width,omitempty"`
 	Copilot            CopilotConfig `json:"copilot,omitempty"`
 	CustomOpenAI       OpenAIConfig  `json:"custom_openai,omitempty"`
 }
