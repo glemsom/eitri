@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 )
 
 // errInvalidJSON marks tool-call arguments that are not parseable JSON. The
@@ -36,8 +37,10 @@ func validateToolCallArgs(schema map[string]any, rawJSON string, parsed *map[str
 // validateSchema enforces the strict-shaped subset of JSON-Schema:
 // additionalProperties must be false, every required field present, every
 // present field type-checked (nullable unions ["<type>","null"] allowed), and
-// object/array values recursed. It is the tolerance point for the canonical
-// schema re-expressed per dialect.
+// object/array values recursed. An optional (non-required) field sent
+// explicitly as null is treated as absent so it falls to the tool's runtime
+// default — standard JSON-Schema requires no null type for an omitted optional.
+// It is the tolerance point for the canonical schema re-expressed per dialect.
 func validateSchema(schema, args map[string]any) error {
 	props, _ := schema["properties"].(map[string]any)
 	required := requiredList(schema["required"])
@@ -56,10 +59,15 @@ func validateSchema(schema, args map[string]any) error {
 		}
 	}
 
-	// Type-check present fields, recursing into nested values.
+	// Type-check present fields, recursing into nested values. An optional
+	// field explicitly set to null is treated as absent (the runtime defaults
+	// it), so only required fields must carry a well-typed value.
 	for k, prop := range props {
 		v, present := args[k]
 		if !present {
+			continue
+		}
+		if v == nil && !slices.Contains(required, k) {
 			continue
 		}
 		if err := checkValue(prop, v); err != nil {

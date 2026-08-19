@@ -37,12 +37,12 @@ func newTestRegistry(t *testing.T, rr Runner) (*Registry, string) {
 	return r, ws
 }
 
-// TestReadSchemaNullableUnion is a regression guard for the OpenCode Go HTTP
-// 400 on the read tool: the optional start_line/end_line were emitted as a
-// bare []any{"integer","null"} which marshals to a plain JSON array
-// ["integer","null"], an invalid JSON-Schema that the provider's validator
-// rejects. They must be a proper type-array union object ({"type":[...]}).
-func TestReadSchemaNullableUnion(t *testing.T) {
+// TestReadSchemaPlainOptionalTypes locks that the optional start_line/end_line
+// are plain {"type":"integer"} properties rather than nullable-union arrays:
+// wire tolerance for omitted optionals (issue #396) makes the union form
+// unnecessary, and the plain form is standard JSON-Schema a provider
+// validator accepts.
+func TestReadSchemaPlainOptionalTypes(t *testing.T) {
 	// Schema() needs no validator, so the type can be exercised directly.
 	schema := (&readTool{}).Schema()
 	props, ok := schema["properties"].(map[string]any)
@@ -52,24 +52,20 @@ func TestReadSchemaNullableUnion(t *testing.T) {
 	for _, field := range []string{"start_line", "end_line"} {
 		node, ok := props[field].(map[string]any)
 		if !ok {
-			t.Fatalf("schema property %q: expected union object, got %T (%v)", field, props[field], props[field])
+			t.Fatalf("schema property %q: expected plain object, got %T (%v)", field, props[field], props[field])
 		}
-		types, ok := node["type"].([]any)
-		if !ok {
-			t.Fatalf("schema property %q: expected type-array union, got %v", field, node)
-		}
-		if len(types) != 2 || types[0] != "integer" || types[1] != "null" {
-			t.Fatalf("schema property %q: unexpected type union %v", field, types)
+		typ, ok := node["type"].(string)
+		if !ok || typ != "integer" {
+			t.Fatalf("schema property %q: expected plain type %q, got %v", field, "integer", node["type"])
 		}
 	}
 }
 
 // TestReadSchemaRequiredSubset locks the read schema's required-subset shape:
 // only path is required (whole-file reads need no start_line/end_line
-// placeholders), additionalProperties is false, and the line-range optionals
-// remain declared so a model that still sends null is tolerated.
-// (The nullable-union type-array form itself is guarded by
-// TestReadSchemaNullableUnion.)
+// placeholders) and additionalProperties is false. The line-range optionals
+// are declared as ordinary integer properties that a caller may omit.
+// (The plain-type form itself is guarded by TestReadSchemaPlainOptionalTypes.)
 func TestReadSchemaRequiredSubset(t *testing.T) {
 	schema := (&readTool{}).Schema()
 	if schema["additionalProperties"] != false {

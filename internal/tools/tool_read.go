@@ -30,14 +30,8 @@ func (r *readTool) Schema() map[string]any {
 			"type":        "string",
 			"description": "The file path to read: a workspace path, a sandbox /tmp path, or any host path the sandbox can read (read is not restricted to writable roots).",
 		},
-		// The line-range optionals are declared but not required: a model omits
-		// them for a whole-file read. They stay nullable unions so a model that
-		// still sends null is tolerated. The union is the OpenAI-compatible
-		// type-array form the provider's validator accepts (a bare []any
-		// marshals to a plain JSON array, which OpenCode Go rejects with HTTP
-		// 400).
-		"start_line": map[string]any{"type": []any{"integer", "null"}},
-		"end_line":   map[string]any{"type": []any{"integer", "null"}},
+		"start_line": map[string]any{"type": "integer"},
+		"end_line":   map[string]any{"type": "integer"},
 	}, []string{"path"})
 }
 
