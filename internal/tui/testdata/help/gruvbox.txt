@@ -13,8 +13,8 @@
 [2m  shift+enter  insert newline[m
 [2m  ?  show help[m
 [2m  pgup/pgdn  scroll history[m
-[2m  ctrl+shift+[  narrow pane[m
-[2m  ctrl+shift+]  widen pane[m
+[2m  ctrl+shift+,  narrow pane[m
+[2m  ctrl+shift+.  widen pane[m
 
 --
 [1;38;2;131;165;152m< CONCEPTS[m

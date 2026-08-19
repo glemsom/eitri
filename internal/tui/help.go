@@ -36,8 +36,8 @@ func helpView(th Theme) string {
 		{"shift+enter", "insert newline"},
 		{"?", "show help"},
 		{"pgup/pgdn", "scroll history"},
-		{"ctrl+shift+[", "narrow pane"},
-		{"ctrl+shift+]", "widen pane"},
+		{"ctrl+shift+,", "narrow pane"},
+		{"ctrl+shift+.", "widen pane"},
 	}
 	for _, k := range keybindings {
 		b.WriteString(th.statusStyle.Render("  " + k.key + "  " + k.desc))
