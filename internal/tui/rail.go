@@ -11,7 +11,8 @@ import (
 )
 
 // Rail enables a fixed-width right pane in the TUI surface: the "true right
-// now" state — STATS (cache hit %, cost, turns, token in/out), CONTEXT
+// now" state — STATS (cache hit %, turns, token in/out; the cost readout was
+// removed in issue #374), CONTEXT
 // (session id, session temp path), and MODEL (provider/model/effort) —
 // rendered alongside, not into, the transcript so the conversation log stays
 // clean. It is read-only against the agent loop: the live STATS numbers are
@@ -167,9 +168,11 @@ func (r *Rail) render(te *Telemetry, th Theme, railWidth int) string {
 	return b.String()
 }
 
-// renderStats renders the STATS section: the live money/usage picture from the
-// telemetry surface as numeric lines only — cache hit %, cost, turns, elapsed
-// session time, and token in/out.
+// renderStats renders the STATS section: the live usage picture from the
+// telemetry surface as numeric lines only — cache hit %, turns, elapsed
+// session time, and token in/out. The cost readout was removed (issue #374):
+// pricing is provider-specific and churns, so the section shows token and
+// cache figures only.
 func (r *Rail) renderStats(te *Telemetry, th Theme, railWidth int) string {
 	var b strings.Builder
 	b.WriteString(th.railHeader(railStats, "STATS") + "\n")
@@ -191,22 +194,19 @@ func (r *Rail) renderStats(te *Telemetry, th Theme, railWidth int) string {
 	if totalIn > 0 {
 		pct = float64(hits) / float64(totalIn) * 100
 	}
-	cost := 0.0
 	maxTurns := 0
 	if te != nil {
-		cost = te.cost()
 		maxTurns = te.maxTurns
 	}
 	var body strings.Builder
 	kw := railKeyWidth(railWidth)
 	r.lineAligned(&body, "cache", fmt.Sprintf("%.0f%%", pct), kw, railWidth)
-	r.lineAligned(&body, "cost", formatCost(cost), kw, railWidth)
 	r.lineAligned(&body, "turns", fmt.Sprintf("%d/%d", turns, maxTurns), kw, railWidth)
 	r.lineAligned(&body, "elapsed", formatElapsed(elapsed), kw, railWidth)
 	r.lineAligned(&body, "tokens", fmt.Sprintf("%s in/%s out", formatTokens(totalIn), formatTokens(out)), kw, railWidth)
 	// The ctx line reflects the LIVE per-turn context-window size, replaced each
 	// usage event and so shrinking after a compaction — unlike the cumulative
-	// tokens/cost lines above. It reads via the same formatTokens
+	// tokens line above. It reads via the same formatTokens
 	// unit as the tokens line. No live ctx yet (te nil / first turn) renders "0".
 	body.WriteString(renderStatsCtxLine(r, th, liveCtx, railWidth) + "\n")
 	if compacted {

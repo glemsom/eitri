@@ -319,7 +319,7 @@ type Chunk struct {
 
 // Usage is per-turn token telemetry, parsed at the provider seam.
 // PromptCacheHitTokens/MissTokens are deepseek prompt-cache read tokens, the
-// data behind the cache hit-ratio gauge and cost accounting.
+// data behind the cache hit-ratio gauge.
 type Usage struct {
 	PromptTokens          int `json:"prompt_tokens"`
 	CompletionTokens      int `json:"completion_tokens"`
@@ -367,8 +367,8 @@ func (u *Usage) UnmarshalJSON(data []byte) error {
 // OpenCode proxy that omits the DeepSeek-native prompt_cache_* shape still
 // produces honest telemetry:
 //   - neither prompt_cache_* key present: every input token is a cold miss
-//     (Hit=0, Miss=PromptTokens). The TUI gauge reads cache:0% and cost bills
-//     at full miss-rate — never a fabricated hit, never a mispriced bill.
+//     (Hit=0, Miss=PromptTokens). The TUI gauge reads cache:0% — never a
+//     fabricated hit.
 //   - hit present, miss absent: the difference PromptTokens-Hit is the cold
 //     remainder billed at miss rate, keeping an honest Hit+Miss==PromptTokens
 //     denominator.

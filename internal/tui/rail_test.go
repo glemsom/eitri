@@ -17,9 +17,9 @@ func fakeSess(prompt string) Turn {
 }
 
 // TestRailRenderStats asserts the rail's STATS section reflects the live
-// telemetry: cache hit %, cost, turns, elapsed session time, and token in/out
-// (the rail carries the full stats picture permanently).
-// full stats picture permanently).
+// telemetry: cache hit %, turns, elapsed session time, and token in/out — and
+// that no cost line renders (pricing was removed, see issue #374). The rail
+// carries the full stats picture permanently.
 func TestRailRenderStats(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
@@ -37,8 +37,10 @@ func TestRailRenderStats(t *testing.T) {
 	if !strings.Contains(view, "turns 1/250") {
 		t.Errorf("rail STATS missing turns, got: %q", view)
 	}
-	if !strings.Contains(view, "cost $0.00658") {
-		t.Errorf("rail STATS missing cost, got: %q", view)
+	// The cost readout is gone: pricing is provider-specific and churns, so the
+	// STATS section shows token and cache figures only, never a derived amount.
+	if strings.Contains(view, "cost") {
+		t.Errorf("rail STATS must not render a cost line, got: %q", view)
 	}
 	// The elapsed readout is the session wall-clock: freshly
 	// constructed, the session has run for just enough time to show "0s".
@@ -135,7 +137,7 @@ func TestRailRenderSectionHues(t *testing.T) {
 }
 
 // TestRailRenderStatsNoGraph asserts the STATS section renders numeric lines
-// only — cache %, cost, turns, token in/out — with no usage-history graph rows
+// only — cache %, turns, token in/out — with no usage-history graph rows
 // in any state: the per-turn token/cost sparklines are removed,
 // so no unicode-block shape ever appears next to the numbers, even with a
 // populated telemetry history.
@@ -158,11 +160,15 @@ func TestRailRenderStatsNoGraph(t *testing.T) {
 		t.Errorf("STATS must render no sparkline block glyphs, got: %q", view)
 	}
 	// The numeric readouts stay, fed by the same telemetry (0 hits, 400 in,
-	// 400 out @ $0.14/$0.28 per 1M = $0.000168).
-	for _, want := range []string{"cache 0%", "cost $0.000168", "turns 2/250", "400 in", "400 out"} {
+	// 400 out). No cost line exists anymore, so only the token/cache figures
+	// assert here.
+	for _, want := range []string{"cache 0%", "turns 2/250", "400 in", "400 out"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("STATS missing numeric readout %q, got: %q", want, view)
 		}
+	}
+	if strings.Contains(view, "cost") {
+		t.Errorf("STATS must not render a cost line, got: %q", view)
 	}
 }
 
@@ -621,22 +627,22 @@ func TestRailWideAlignment(t *testing.T) {
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
 	view := r.renderStats(te, defaultTheme, 50)
 
-	// At width 50, the "cache" and "cost" lines should have values starting
+	// At width 50, the "cache" and "turns" lines should have values starting
 	// at the same column — the key column is consistently padded.
 	cacheLine := lineContaining(view, "80%")
-	costLine := lineContaining(view, "$")
-	if cacheLine == "" || costLine == "" {
-		t.Fatalf("missing cache or cost line in wide stats: %q", view)
+	turnsLine := lineContaining(view, "1/250")
+	if cacheLine == "" || turnsLine == "" {
+		t.Fatalf("missing cache or turns line in wide stats: %q", view)
 	}
 	// Strip ANSI to get plain text, then find value start position.
 	cachePlain := plain(cacheLine)
-	costPlain := plain(costLine)
+	turnsPlain := plain(turnsLine)
 	// Both values should start after the padded key column — the same column
 	// position in the output.
 	cacheValIdx := strings.Index(cachePlain, "80%")
-	costValIdx := strings.Index(costPlain, "$")
-	if cacheValIdx != costValIdx {
-		t.Errorf("values not aligned at wide width: cache value starts at %d, cost value starts at %d\n  cache: %q\n  cost:  %q", cacheValIdx, costValIdx, cachePlain, costPlain)
+	turnsValIdx := strings.Index(turnsPlain, "1/250")
+	if cacheValIdx != turnsValIdx {
+		t.Errorf("values not aligned at wide width: cache value starts at %d, turns value starts at %d\n  cache: %q\n  turns: %q", cacheValIdx, turnsValIdx, cachePlain, turnsPlain)
 	}
 }
 

@@ -100,7 +100,7 @@ func lineCount(s string) int {
 // tokenEstimate estimates a reasoning stream's token count from its assembled
 // text length, using the conventional ~4 chars/token yardstick. It backs the
 // collapsed thinking hint's token readout so the user can gauge the turn's
-// reasoning cost at a glance.
+// reasoning length at a glance.
 func tokenEstimate(s string) int {
 	return len([]rune(s)) / 4
 }

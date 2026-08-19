@@ -248,8 +248,9 @@ type Dependencies struct {
 	// commands (no skills). The right rail never renders skills .
 	Skills *SkillsSurface
 	// Telemetry, when non-nil, renders the live bottom status strip:
-	// model, effort, thinking, turns/max, cost, and the cache hit-ratio gauge,
-	// fed live from the engine seam. Nil disables the strip.
+	// model, effort, thinking, turns/max, and the cache hit-ratio gauge,
+	// fed live from the engine seam. The cost readout was removed in issue
+	// #374. Nil disables the strip.
 	Telemetry *Telemetry
 	// Stream, when non-nil, feeds the live assistant answer-text stream (issue
 	// #83): the engine's AnswerStream deltas arrive here and the in-progress
@@ -954,7 +955,8 @@ func (m Model) updatePrompt(msgi tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 // openSettings seeds the Settings form from the loaded config + discovery,
-// borrowing the live telemetry for the cache/cost readout .
+// borrowing the live telemetry for the cache hit-ratio readout (the cost
+// readout was removed in issue #374).
 func (m *Model) openSettings() *settingsForm {
 	cfg := m.deps.Config
 	if cfg.Provider == "" {
@@ -1541,8 +1543,9 @@ func (m Model) renderBand(b *strings.Builder) {
 	// Status row: the bottom band is now the only
 	// home of the keybinding hints, since the right rail is the sole,
 	// permanent stats surface. The strip renders no telemetry numbers
-	// (turns/max, cache gauge, cost, elapsed all live in the rail's STATS
-	// section); it is a clean single line of keybinding hints, with the busy
+	// (turns/max, cache gauge, elapsed all live in the rail's STATS
+	// section; the cost line was removed in issue #374); it is a clean single
+	// line of keybinding hints, with the busy
 	// spinner leading while a turn runs so the working state stays glanceable
 	// even when the history is scrolled away (the spinner tick drives the
 	// re-render). The hints are always shown; no width/collapse threshold cuts

@@ -456,8 +456,8 @@ func TestOpenAIStreamsPromptCacheUsage(t *testing.T) {
 // hardening: a usage blob that carries only prompt_tokens — an OpenCode
 // proxy omitting the DeepSeek-native prompt_cache_* shape — reports an honest
 // Hit=0 with every input token treated as a cold Miss. No fake hit is ever
-// fabricated, so the TUI gauge reads cache:0% and the cost line bills full
-// miss-rate pricing instead of collapsing to an indeterminate ratio.
+// fabricated, so the TUI gauge reads cache:0% instead of collapsing to an
+// indeterminate ratio.
 func TestOpenAIUsageWithoutCacheKeys(t *testing.T) {
 	fixture, err := os.ReadFile("testdata/usage-nocache.sse")
 	if err != nil {
