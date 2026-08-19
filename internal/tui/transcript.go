@@ -29,11 +29,10 @@ import (
 // The one pointer field is the persisted viewport (histViewport): it is shared
 // across the value copies Bubble Tea makes, so scroll-state changes made
 // during a render survive the next re-render cycle. The layout cache (layout)
-// is likewise a heap-allocated pointer so its state survives those value
-// copies. The drag-select (dragSel) is a plain value field already — the
-// stable tx root lets its active/inactive state survive value copies by
-// itself. (The two remaining per-field pointers are now redundant with the
-// stable tx root and are simplified in the follow-up tickets #370-371.)
+// and the drag-select (dragSel) are plain value fields already — the
+// stable tx root lets their state survive value copies by
+// itself. (The one remaining per-field pointer, histViewport, is now redundant
+// with the stable tx root and is simplified in the follow-up ticket #371.)
 //
 // The Transcript also owns the transcript's navigation: the
 // pointer-receiver navigateHistory / navigateMouse drive the shared viewport
@@ -80,16 +79,15 @@ type Transcript struct {
 	// Ctrl+E-bound mode; Ctrl+E routes through toggleExpandAll so the render
 	// reads Transcript state directly.
 	expandAll bool
-	// layout is the persistent transcript layout cache, shared with
-	// Model through a pointer (like histViewport): one batched renderHistory pass
-	// records the row->tool-entry index, the row->message index, and the
+	// layout is the persistent transcript layout cache: one batched renderHistory
+	// pass records the row->tool-entry index, the row->message index, and the
 	// ANSI-stripped plain-row space the hit-tests read back instead of re-deriving
 	// layout on every pointer event. Since the click-to-expand hit-test
 	// (toolEntryAtLine) reads this recorded index on the Transcript. It is
 	// advisory for performance — correctness is guaranteed because renderHistory
 	// here is the very pass that builds it. dirty is true while a
 	// transcript-affecting change makes the cached index stale.
-	layout *transcriptLayout
+	layout transcriptLayout
 	// telemetry is the live status-strip surface ; nil disables the
 	// busy footer fallback row.
 	telemetry *Telemetry
@@ -264,7 +262,7 @@ func (t Transcript) railWidthOrDefault() int {
 // persisted viewport keeps its position; it is only re-sized, never re-created.
 func (t *Transcript) setRailWidth(w int) {
 	t.railWidth = w
-	t.layoutPtr().dirty = true
+	t.layout.dirty = true
 }
 
 // renderPane renders the transcript + composer surface into the left pane. It
@@ -552,30 +550,17 @@ func (t Transcript) highlightSelection(content string) string {
 	return strings.Join(lines, "\n")
 }
 
-// ensureLayout lazily builds the persistent transcript layout cache (issue
-// #242) when it is dirty, exactly once per transcript change. It runs ONE
-// renderHistory pass into a scratch builder, capturing the row->tool-entry
-// index AND building the ANSI-stripped plain-row space (the drag-select copy
-// coordinates) from the same builder, then clears dirty so repeated hit-tests
-// (mouse motion, toolEntryAtLine) reuse the recorded index until the next
-// transcript-affecting change. The layout is a pointer shared with Model, so the
-// cache recorded by a Transcript forwarded from Update (which runs on a *Model)
-// persists across a drag's motion events — and across the value copies View
-// makes, because the cache itself stays in one shared location.
+// ensureLayout rebuilds the transcript layout cache when it is dirty, at most
+// once per transcript change. It runs ONE renderHistory pass into a scratch
+// builder, capturing the row->tool-entry index AND building the
+// ANSI-stripped plain-row space (the drag-select copy coordinates) from the
+// same builder, then clears dirty so repeated hit-tests (mouse motion,
+// toolEntryAtLine) reuse the recorded index until the next
+// transcript-affecting change.
 func (t *Transcript) ensureLayout() {
-	if t.layoutPtr().dirty {
+	if t.layout.dirty {
 		t.recordLayout()
 	}
-}
-
-// layoutPtr guarantees the shared layout cache exists, lazily allocating it on
-// first use. All tool-log and hit-test routes allocate through this so the
-// nil-guard lives in one place instead of five.
-func (t *Transcript) layoutPtr() *transcriptLayout {
-	if t.layout == nil {
-		t.layout = &transcriptLayout{dirty: true}
-	}
-	return t.layout
 }
 
 // recordLayout performs the one batched layout pass behind the persistent cache
@@ -585,7 +570,7 @@ func (t *Transcript) layoutPtr() *transcriptLayout {
 // incremented here backs the test hook, which asserts a repeated
 // hit-test reuses the recorded index (one build).
 func (t *Transcript) recordLayout() {
-	l := t.layoutPtr()
+	l := &t.layout
 	var hist strings.Builder
 	l.rows = l.rows[:0]
 	l.msgs = l.msgs[:0]
@@ -638,7 +623,7 @@ func (t *Transcript) toggleToolEntry(idx int) {
 		t.toggleCollapse(idx)
 	} else {
 		t.log.Toggle(idx)
-		t.layoutPtr().dirty = true // an entry expanded/collapsed changes its rendered rows
+		t.layout.dirty = true // an entry expanded/collapsed changes its rendered rows
 	}
 }
 
@@ -649,7 +634,7 @@ func (t *Transcript) toggleToolEntry(idx int) {
 // log's owned bounds-checked operation plus the shared layout dirty mark.
 func (t *Transcript) toggleCollapse(idx int) {
 	t.log.ToggleCollapse(idx)
-	t.layoutPtr().dirty = true
+	t.layout.dirty = true
 }
 
 // apply folds one tool-call observation into the transcript's log (
@@ -659,7 +644,7 @@ func (t *Transcript) toggleCollapse(idx int) {
 // re-recorded. The Transcript owns the log .
 func (t *Transcript) apply(u ToolUpdate) {
 	t.log.Apply(u)
-	t.layoutPtr().dirty = true // an entry changed the tool log's rendered rows
+	t.layout.dirty = true // an entry changed the tool log's rendered rows
 }
 
 // toggleExpandAll flips the persistent Ctrl+E expanded-view mode:
@@ -668,7 +653,7 @@ func (t *Transcript) apply(u ToolUpdate) {
 // single global mode; per-entry click-to-expand stays orthogonal.
 func (t *Transcript) toggleExpandAll() bool {
 	t.expandAll = !t.expandAll
-	t.layoutPtr().dirty = true // showing/hiding all tool results re-wraps the log
+	t.layout.dirty = true // showing/hiding all tool results re-wraps the log
 	return t.expandAll
 }
 
@@ -724,7 +709,7 @@ func (t *Transcript) toggleThinking(i int) {
 	} else {
 		msg.thinkingExpanded = !msg.thinkingExpanded
 	}
-	t.layoutPtr().dirty = true // a thinking block expanded/collapsed changes rows
+	t.layout.dirty = true // a thinking block expanded/collapsed changes rows
 }
 
 // plainLines returns the history scroll content as plain text per rendered row

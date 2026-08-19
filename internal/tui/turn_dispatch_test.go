@@ -14,7 +14,7 @@ func newTestTx() Transcript {
 	return Transcript{
 		theme:       th,
 		configTheme: config.DefaultTheme,
-		layout:      &transcriptLayout{dirty: true},
+		layout:      transcriptLayout{dirty: true},
 		log:         toolLog{},
 	}
 }

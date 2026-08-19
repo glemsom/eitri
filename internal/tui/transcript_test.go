@@ -231,7 +231,7 @@ func TestTranscript_dynamicRailWidth(t *testing.T) {
 	if tw := tx.transcriptWidth(); tw != 120-2-23 {
 		t.Errorf("transcriptWidth = %d at railWidth 22, want %d", tw, 120-2-23)
 	}
-	if !tx.layoutPtr().dirty {
+	if !tx.layout.dirty {
 		t.Errorf("setRailWidth must mark the layout cache dirty (re-wrap trigger), got clean")
 	}
 	rails := strings.Split(tx.viewWithRail(tx.renderPane("band\n"), 4), "\n")
@@ -375,6 +375,7 @@ func transcriptWithTool(t *testing.T) Transcript {
 		log:         log,
 		width:       80,
 		height:      12,
+		layout:      transcriptLayout{dirty: true},
 	}
 }
 
@@ -387,7 +388,7 @@ func transcriptWithTool(t *testing.T) Transcript {
 func TestTranscript_toolEntryAtLineReadsPersistentIndex(t *testing.T) {
 	tx := transcriptWithTool(t)
 	tx.ensureLayout() // build the persistent row->entry index once
-	if tx.layout == nil || len(tx.layout.rows) == 0 {
+	if len(tx.layout.rows) == 0 {
 		t.Fatalf("hit-test must record a tool-entry row index")
 	}
 	head := tx.layout.rows[0].start
@@ -585,13 +586,10 @@ func TestTranscript_expandAllOffDoesNotWipePerEntry(t *testing.T) {
 	}
 }
 
-// layoutBuildsOf reports how many layout builds a Transcript's shared cache has
-// performed ( test hook, read through the pointer so a repeated
-// hit-test can assert the persistent index is reused).
+// layoutBuildsOf reports how many layout builds a Transcript's cache has
+// performed ( test hook, so a repeated hit-test can assert the
+// persistent index is reused).
 func layoutBuildsOf(tx Transcript) int {
-	if tx.layout == nil {
-		return 0
-	}
 	return tx.layout.builds
 }
 
