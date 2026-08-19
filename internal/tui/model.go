@@ -781,19 +781,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
-		case "ctrl+shift+,", "ctrl+shift+[":
-			// Ctrl+Shift+, (Danish/Nordic: also Ctrl+Shift+[ on US)
-			// shrinks the right context rail by 2 columns, clamped to
-			// minWidthRail, and persists the new width to config. Comma is a
-			// dedicated unshifted bottom-row key on every layout, whereas the
-			// bracket lives behind AltGr+8/9 on Nordic keyboards, so the comma
-			// binding is the universally reachable one.
+		case "ctrl+.", "ctrl+shift+[":
+			// Ctrl+. (Danish/Nordic: also Ctrl+Shift+[ on US) shrinks the right
+			// context rail by 2 columns, clamped to minWidthRail, and persists
+			// the new width to config. Period is a dedicated unshifted
+			// bottom-row key on every layout, whereas the bracket lives behind
+			// AltGr+8/9 on Nordic keyboards, so the period binding is the
+			// universally reachable one.
 			m.adjustRailWidth(-2)
 			return m, nil
-		case "ctrl+shift+.", "ctrl+shift+]":
-			// Ctrl+Shift+. (Danish/Nordic: also Ctrl+Shift+] on US) grows the
-			// right context rail by 2 columns and persists the new width to
-			// config. Period is the dedicated bottom-row twin of comma.
+		case "ctrl+-", "ctrl+shift+]":
+			// Ctrl+- (Danish/Nordic: also Ctrl+Shift+] on US) grows the right
+			// context rail by 2 columns and persists the new width to config.
+			// Minus is a dedicated bottom-row key on every layout (the hyphen
+			// next to the right shift).
 			m.adjustRailWidth(+2)
 			return m, nil
 		case "alt+0":
