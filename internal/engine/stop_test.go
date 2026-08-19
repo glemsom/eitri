@@ -5,26 +5,29 @@ import (
 	"errors"
 	"io"
 	"testing"
-	"time"
 
 	"github.com/glemsom/eitri/internal/provider"
+	"github.com/glemsom/eitri/internal/testutil"
 )
-
-// chunkYield is the sleep the tests use to let a provider stream absorb its
-// first chunks before the cancellation lands; it models the real wire latency
-// between stream-open and a user pressing esc.
-const chunkYield = 20 * time.Millisecond
 
 // blockedStream is a Stream whose Next yields fixed chunks, then blocks on the
 // context's Done channel and returns ctx.Err() once canceled. It models a live
 // provider stream mid-flight.
+//
+// ready is closed on the stream's first Next, so a test can await mid-flight
+// readiness and cancel at a deterministic point instead of sleeping to guess
+// when the stream has started.
 type blockedStream struct {
 	ctx     context.Context
 	chunks  []provider.Chunk
 	nextIdx int
+	ready   chan struct{}
 }
 
 func (s *blockedStream) Next() (provider.Chunk, error) {
+	if s.ready != nil && s.nextIdx == 0 {
+		close(s.ready)
+	}
 	if s.nextIdx < len(s.chunks) {
 		c := s.chunks[s.nextIdx]
 		s.nextIdx++
@@ -59,9 +62,10 @@ func TestRunCanceledDuringStreamReturnsStoppedWithPartialContent(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	tr := &mockTranscript{}
 	reqs := 0
+	started := make(chan struct{})
 	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
 		reqs++
-		return &blockedStream{ctx: ctx, chunks: []provider.Chunk{
+		return &blockedStream{ctx: ctx, ready: started, chunks: []provider.Chunk{
 			{Content: "partial "},
 			{Content: "answer"},
 		}}, nil
@@ -83,8 +87,9 @@ func TestRunCanceledDuringStreamReturnsStoppedWithPartialContent(t *testing.T) {
 			t.Errorf("Answer = %q, want %q (partial content preserved)", res.Answer, "partial answer")
 		}
 	}()
-	// Wait for the stream to start absorbing chunks.
-	time.Sleep(chunkYield)
+	// Wait for the stream to start absorbing chunks, then cancel while it is
+	// still mid-flight.
+	testutil.Await(t, "provider stream to start", started)
 	cancel()
 	<-done
 
@@ -184,6 +189,7 @@ func TestRunAgentStopDuringStreamWritesStoppedTranscriptRecord(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	tr := &mockTranscript{}
 	turns := 0
+	started := make(chan struct{})
 	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
 		turns++
 		if turns == 1 {
@@ -194,7 +200,7 @@ func TestRunAgentStopDuringStreamWritesStoppedTranscriptRecord(t *testing.T) {
 				}, Done: true},
 			), nil
 		}
-		return &blockedStream{ctx: ctx, chunks: []provider.Chunk{{Content: "first turn partial "}}}, nil
+		return &blockedStream{ctx: ctx, ready: started, chunks: []provider.Chunk{{Content: "first turn partial "}}}, nil
 	}), tr)
 
 	done := make(chan struct{})
@@ -213,8 +219,8 @@ func TestRunAgentStopDuringStreamWritesStoppedTranscriptRecord(t *testing.T) {
 		_ = res
 		_ = err
 	}()
-	// Give the second stream a moment to yield its partial chunk, then cancel.
-	time.Sleep(chunkYield)
+	// Await the second (blocked) stream yielding its partial chunk, then cancel.
+	testutil.Await(t, "second provider stream to start", started)
 	cancel()
 	<-done
 
@@ -235,6 +241,7 @@ func TestRunAgentStopDuringStreamWritesStoppedTranscriptRecord(t *testing.T) {
 // clean run's record.
 func TestRunAgentStopPreservesPromptInTranscriptRecord(t *testing.T) {
 	tr := &mockTranscript{}
+	started := make(chan struct{})
 	e := New(provider.NewScripted(func(rctx context.Context, req provider.Request) (provider.Stream, error) {
 		if req.Messages[len(req.Messages)-1].Content == "clean" {
 			return provider.StreamFunc(
@@ -242,7 +249,7 @@ func TestRunAgentStopPreservesPromptInTranscriptRecord(t *testing.T) {
 				provider.Chunk{FinishReason: "stop", Done: true},
 			), nil
 		}
-		return &blockedStream{ctx: rctx, chunks: []provider.Chunk{{Content: "partial"}}}, nil
+		return &blockedStream{ctx: rctx, ready: started, chunks: []provider.Chunk{{Content: "partial"}}}, nil
 	}), tr)
 
 	// Drive a first clean run to capture the byte-identical-to-before record.
@@ -260,7 +267,7 @@ func TestRunAgentStopPreservesPromptInTranscriptRecord(t *testing.T) {
 		defer close(done)
 		_, _ = e.RunAgent(ctx, RunRequest{Model: "m", Prompt: "stopme"}, AgentOptions{})
 	}()
-	time.Sleep(chunkYield)
+	testutil.Await(t, "stopped provider stream to start", started)
 	cancel()
 	<-done
 
@@ -304,12 +311,4 @@ func (s *eofAfterChunkStream) Next() (provider.Chunk, error) {
 		return provider.Chunk{Content: "kind of done"}, nil
 	}
 	return provider.Chunk{}, io.EOF
-}
-
-// ctx returns a fresh cancelable context (helper for streams that need one
-// before the real cancel path is established).
-func ctx() context.Context {
-	ctx, cancel := context.WithCancel(context.Background())
-	_ = cancel
-	return ctx
 }
