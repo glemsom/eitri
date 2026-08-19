@@ -53,8 +53,10 @@ type Transcript struct {
 	busy bool
 	// spinner is the busy-spinner frame index ; 0 when idle.
 	spinner int
-	// busyPulse counts down the accent-bright frames after the first stream
-	// delta arrives; 0 means no pulse, >0 means render the spinner bright.
+	// busyPulse counts down the accent-bright frames: it is armed to 3 on a
+	// stream delta (the answer "arrival" moment) or on a tool start while
+	// thinking is off (the tool-activity pulse fallback), and decrements on
+	// each spinner tick; 0 means no pulse, >0 means render the bright accent.
 	busyPulse int
 	// reasoningEffort is the run's reasoning-effort tier, shown in the collapsed
 	// thinking hint .
@@ -387,7 +389,7 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 			now = time.Now()
 		}
 		blockStart := nl
-		toolBlock, blockRows := t.log.Render(t.theme, t.expandAll, now, w, i)
+		toolBlock, blockRows := t.log.Render(t.theme, t.expandAll, now, w, i, t.busyPulse > 0)
 		emit(toolBlock)
 		if toolRows != nil {
 			for _, r := range blockRows {

@@ -27,7 +27,7 @@ func toolCardDiffEntry(name, path, before, after string, added, removed int) too
 // summary or the expanded card block), so assertions never depend on the
 // styling of the head row.
 func cardBody(th Theme, te toolEntry, expanded bool) string {
-	all := renderToolEntry(th, te, expanded, time.Time{}, 80)
+	all := renderToolEntry(th, te, expanded, time.Time{}, 80, false)
 	parts := strings.SplitN(all, "\n", 2)
 	if len(parts) != 2 {
 		return ""
@@ -62,7 +62,7 @@ func TestToolCard_collapsedEditKeepsDeltaSummary(t *testing.T) {
 func TestToolCard_expandedEditRendersInlineDiff(t *testing.T) {
 	te := toolCardDiffEntry("edit", "internal/auth.go", "package auth\n\nfunc Old() {}\n", "package auth\n\nfunc New() {}\n", 1, 1)
 
-	expanded := renderToolEntry(defaultTheme, te, true, time.Time{}, 80)
+	expanded := renderToolEntry(defaultTheme, te, true, time.Time{}, 80, false)
 
 	// Diff lines render with the diff engine's +/- vocabulary.
 	strip := ansiStrip(expanded)
@@ -88,7 +88,7 @@ func TestToolCard_expandedEditRendersInlineDiff(t *testing.T) {
 func TestToolCard_expandedWriteDiffStatuses(t *testing.T) {
 	// Added: empty before, content after.
 	add := toolCardDiffEntry("write", "internal/new.go", "", "package new\n\nfunc Fresh() {}\n", 3, 0)
-	added := renderToolEntry(defaultTheme, add, true, time.Time{}, 80)
+	added := renderToolEntry(defaultTheme, add, true, time.Time{}, 80, false)
 	if !strings.Contains(added, "+package new") {
 		t.Errorf("added file must render as all-+ diff, got:\n%s", added)
 	}
@@ -98,7 +98,7 @@ func TestToolCard_expandedWriteDiffStatuses(t *testing.T) {
 
 	// Deleted: content before, empty after.
 	del := toolCardDiffEntry("edit", "internal/gone.go", "package gone\n\nfunc Old() {}\n", "", 0, 3)
-	deleted := renderToolEntry(defaultTheme, del, true, time.Time{}, 80)
+	deleted := renderToolEntry(defaultTheme, del, true, time.Time{}, 80, false)
 	if !strings.Contains(deleted, "-package gone") {
 		t.Errorf("deleted file must render as all-− diff, got:\n%s", deleted)
 	}
@@ -112,7 +112,7 @@ func TestToolCard_expandedWriteDiffStatuses(t *testing.T) {
 func TestToolCard_expandedNoDiffFallsBackToSummary(t *testing.T) {
 	te := toolCardDiffEntry("edit", "internal/auth.go", "", "", 0, 0)
 
-	expanded := renderToolEntry(defaultTheme, te, true, time.Time{}, 80)
+	expanded := renderToolEntry(defaultTheme, te, true, time.Time{}, 80, false)
 	strip := ansiStrip(expanded)
 	if !strings.Contains(strip, "[+0, −0]") {
 		t.Errorf("no-diff fallback must keep the count summary, got:\n%s", strip)

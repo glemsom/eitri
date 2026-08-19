@@ -600,6 +600,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.tx.apply(msgi.update) // tool updates route through the Transcript 
+		// Tool-activity pulse fallback: with thinking off there is no
+		// chain-of-thought stream to pulse on (the stream-delta pulse in
+		// appendStreamDelta never fires), so each tool starting is the live
+		// signal — arm the same brief accent flash so the surface never freezes
+		// on a static spinner through a long tool phase. Thinking on already
+		// pulses via the stream, so the fallback is gated to thinking-off turns
+		// to keep thinking-on behavior unchanged.
+		if msgi.update.Start != nil && !m.td.thinkingEnabled && motionEnabled() {
+			m.tx.busyPulse = 3
+		}
 		return m, toolWait(m.toolFeed)
 
 	case streamDeltaMsg:

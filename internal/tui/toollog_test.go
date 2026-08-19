@@ -110,7 +110,7 @@ func TestToolLog_RenderWritesEntryWithRowRanges(t *testing.T) {
 	l.SetAnchor(0)
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
 
-	got, rows := l.Render(defaultTheme, false, time.Time{}, 80, 0)
+	got, rows := l.Render(defaultTheme, false, time.Time{}, 80, 0, false)
 	if !strings.Contains(got, "🔧 bash") {
 		t.Errorf("Render must emit the tool head, got %q", got)
 	}
@@ -236,7 +236,7 @@ func TestToolLog_RenderRowAccountCollapsed(t *testing.T) {
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"go test"}`}})
 	l.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "ok\n", Lines: 5}})
 
-	_, rows := l.Render(defaultTheme, false, time.Time{}, 80, 0)
+	_, rows := l.Render(defaultTheme, false, time.Time{}, 80, 0, false)
 	if len(rows) != 1 {
 		t.Fatalf("expected one row range, got %d", len(rows))
 	}
@@ -262,7 +262,7 @@ func TestToolLog_RenderRowAccountExpanded(t *testing.T) {
 	l.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "ok\n", Lines: 1}})
 	l.Toggle(0) // flip the entry open
 
-	_, rows := l.Render(defaultTheme, true, time.Time{}, 80, 0)
+	_, rows := l.Render(defaultTheme, true, time.Time{}, 80, 0, false)
 	if len(rows) != 1 {
 		t.Fatalf("expected one row range, got %d", len(rows))
 	}
@@ -283,7 +283,7 @@ func TestToolLog_RenderRowAccountSkipsOtherAnchors(t *testing.T) {
 	l.SetAnchor(7)
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "read", Args: ""}})
 
-	_, rows := l.Render(defaultTheme, false, time.Time{}, 80, 2)
+	_, rows := l.Render(defaultTheme, false, time.Time{}, 80, 2, false)
 	if len(rows) != 1 {
 		t.Fatalf("expected the anchor-2 entry only, got %d ranges", len(rows))
 	}
@@ -307,7 +307,7 @@ func TestToolLog_RenderOutcomeElapsedAndTruncation(t *testing.T) {
 	// A completed entry freezes its elapsed span from SetStart to now. The few
 	// sub-second ms between Apply (which stamps doneAt) and SetStart only shave
 	// the fractional part, so the 105s window reads deterministically as 1m 44s.
-	got, _ := l.Render(defaultTheme, false, time.Now(), 80, 0)
+	got, _ := l.Render(defaultTheme, false, time.Now(), 80, 0, false)
 	if !strings.Contains(got, "🔧 bash") {
 		t.Errorf("head missing, got %q", got)
 	}
@@ -322,7 +322,7 @@ func TestToolLog_RenderOutcomeElapsedAndTruncation(t *testing.T) {
 	// A narrow-but-viable width truncates the args with an ellipsis rather than
 	// cutting abruptly: budget = width − label(6) − 8, so width 18 leaves a
 	// budget of 4, and the 10-wide "make build" args truncate.
-	narrow, _ := l.Render(defaultTheme, false, time.Time{}, 18, 0)
+	narrow, _ := l.Render(defaultTheme, false, time.Time{}, 18, 0, false)
 	if strings.Contains(narrow, "make build") || !strings.Contains(narrow, "…") {
 		t.Errorf("args should truncate with an ellipsis at width 18, got %q", narrow)
 	}
@@ -338,7 +338,7 @@ func TestToolLog_AtLineMapping(t *testing.T) {
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "read", Args: ""}})
 	l.Apply(ToolUpdate{Result: &ToolResult{Name: "read", Result: "c\n", Lines: 1}}) // rows 2..3
 
-	_, rows := l.Render(defaultTheme, false, time.Time{}, 80, 0)
+	_, rows := l.Render(defaultTheme, false, time.Time{}, 80, 0, false)
 	if len(rows) != 2 {
 		t.Fatalf("expected two row ranges, got %d", len(rows))
 	}
@@ -355,7 +355,7 @@ func TestToolLog_AtLineMapping(t *testing.T) {
 	// only that entry and re-render so the other entry's rows stay put: the
 	// "read" (idx 1) head row remains at absolute line 2.
 	l.Toggle(1)
-	_, rows2 := l.Render(defaultTheme, false, time.Time{}, 80, 0)
+	_, rows2 := l.Render(defaultTheme, false, time.Time{}, 80, 0, false)
 	if idx, collapsed, ok := l.AtLine(2, rows2); !ok || idx != 1 || collapsed {
 		t.Errorf("AtLine(2) = %d/%v/%v, want entry 1 expanded (collapsed=false)", idx, collapsed, ok)
 	}
@@ -378,7 +378,7 @@ func TestToolLog_RenderFailureOutcome(t *testing.T) {
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: ""}})
 	l.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "error executing tool: boom", Lines: 0}})
 
-	got, _ := l.Render(defaultTheme, false, time.Time{}, 80, 0)
+	got, _ := l.Render(defaultTheme, false, time.Time{}, 80, 0, false)
 	if !strings.Contains(got, "✗") {
 		t.Errorf("failure entry must render ✗, got %q", got)
 	}
@@ -395,7 +395,7 @@ func TestToolLog_RenderBytesTruncatedHint(t *testing.T) {
 	l.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "a\nb\nc\n+3 more\n",
 		Lines: 4, Dropped: 3, Compressed: true, BytesDropped: 2048}})
 
-	got, _ := l.Render(defaultTheme, false, time.Time{}, 80, 0)
+	got, _ := l.Render(defaultTheme, false, time.Time{}, 80, 0, false)
 	if !strings.Contains(got, "4 lines (+3 more, +2048 bytes truncated)") {
 		t.Errorf("collapsed summary missing merged truncated hint, got %q", got)
 	}
@@ -406,7 +406,7 @@ func TestToolLog_RenderBytesTruncatedHint(t *testing.T) {
 	l2.Apply(ToolUpdate{Start: &ToolStart{Name: "read", Args: ""}})
 	l2.Apply(ToolUpdate{Result: &ToolResult{Name: "read", Result: strings.Repeat("x", 70000),
 		Lines: 1, BytesDropped: 4444}})
-	got2, _ := l2.Render(defaultTheme, false, time.Time{}, 80, 0)
+	got2, _ := l2.Render(defaultTheme, false, time.Time{}, 80, 0, false)
 	if !strings.Contains(got2, "1 line (+4444 bytes truncated)") {
 		t.Errorf("collapsed summary missing bytes-only hint, got %q", got2)
 	}
@@ -427,7 +427,7 @@ func TestToolLog_RenderBothHintsWithoutCompressedFlag(t *testing.T) {
 	l.Apply(ToolUpdate{Result: &ToolResult{Name: "read", Result: strings.Repeat("x", 70000),
 		Lines: 4, Dropped: 3, Compressed: false, BytesDropped: 2048}})
 
-	got, _ := l.Render(defaultTheme, false, time.Time{}, 80, 0)
+	got, _ := l.Render(defaultTheme, false, time.Time{}, 80, 0, false)
 	if !strings.Contains(got, "4 lines (+3 more, +2048 bytes truncated)") {
 		t.Errorf("collapsed summary must show both hints regardless of Compressed, got %q", got)
 	}
@@ -444,7 +444,7 @@ func TestToolLog_ExpandedRendersFullRawResult(t *testing.T) {
 		Lines: 1, BytesDropped: 9000}})
 	l.Toggle(0)
 
-	got, _ := l.Render(defaultTheme, false, time.Time{}, 80, 0)
+	got, _ := l.Render(defaultTheme, false, time.Time{}, 80, 0, false)
 	if !strings.Contains(got, "RAW FULL RESULT") {
 		t.Errorf("expanded view must render the full raw result, got %q", got)
 	}
