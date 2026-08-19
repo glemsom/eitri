@@ -397,9 +397,10 @@ func NewModelCfg(d Dependencies) Model {
 	comp.Focus()
 	comp.CharLimit = 0
 	comp.ShowLineNumbers = false
-	// Start compact: the composer grows with the draft up to maxComposerRows
-	//, so an empty composer sits at a single row.
-	comp.SetHeight(1)
+	// Start compact: the composer rests at minComposerRows and grows with the
+	// draft up to maxComposerRows, so an empty composer reads as a two-row
+	// multi-line input.
+	comp.SetHeight(minComposerRows)
 	// The composer's caret is the terminal's hardware cursor: the
 	// textarea's software reverse-video caret cell is disabled so the terminal
 	// itself draws the caret at the edit position.
@@ -1359,6 +1360,13 @@ func (m Model) viewString() string {
 	return m.tx.viewWithRail(m.renderPane(), m.bandHeight())
 }
 
+// minComposerRows is how tall the composer rests when the draft is empty,
+// so the input field reads as a multi-line composer rather than a single-line
+// prompt. It is the floor the composer returns to after submit/reset; the
+// short-terminal clamp below can still shrink it further so the band never
+// pushes off-screen.
+const minComposerRows = 2
+
 // maxComposerRows is how tall the composer may grow inside the fixed bottom
 // band before it scrolls internally: a long draft never
 // spills into the transcript — the textarea's own viewport scrolls past this
@@ -1366,8 +1374,8 @@ func (m Model) viewString() string {
 const maxComposerRows = 8
 
 // syncComposerHeight grows the composer with its draft up to maxComposerRows,
-// then lets the textarea scroll internally: a one-line draft
-// keeps a compact single-row composer, each new line adds a row up to the
+// then lets the textarea scroll internally: an empty draft
+// rests at minComposerRows, each new line adds a row up to the
 // bound, and beyond it the composer's internal viewport scrolls so the band
 // never grows past the bound. It also clamps to the terminal height when a
 // resize has landed so the band can never push the composer off-screen. It is
@@ -1378,10 +1386,14 @@ func (m *Model) syncComposerHeight() {
 	if rows > maxComposerRows {
 		rows = maxComposerRows
 	}
+	if rows < minComposerRows {
+		rows = minComposerRows
+	}
 	// The terminal height lives on the owned Transcript .
 	if m.tx.height > 0 {
 		// The band also holds the status strip and slash completion above the
-		// composer; leave at least one row for them.
+		// composer; the clamp wins over the resting height so the band never
+		// pushes the composer off-screen on a very short terminal.
 		if lim := m.tx.height - 1; rows > lim {
 			rows = lim
 		}
