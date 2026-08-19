@@ -494,20 +494,21 @@ func newClipboard(d Dependencies) func(text string) error {
 }
 
 // newHistoryViewport builds the persisted history scroll component (T1
-// alt-screen pivot, ) as a heap-allocated bubbletea/viewport. It is a
-// pointer so scroll-state changes made by View (which runs on a value copy)
-// survive across render cycles. It starts unsized (0x0) until the first
-// WindowSizeMsg lands.
+// alt-screen pivot, ) as a plain bubbletea/viewport value. It
+// needs no heap pointer because the Model owns the Transcript as a stable
+// root it mutates in place: scroll state made by View survives value copies
+// through that root. It starts unsized (0x0) until the first WindowSizeMsg
+// lands.
 //
 // Mouse-wheel and keyed navigation live on the Transcript, not the
 // component's own Update: Transcript.navigateMouse / navigateHistory call
 // ScrollUp/ScrollDown directly so the follow position (histFollow) can break on
 // scroll-up and re-engage on reaching the bottom. The wheel delta of 3 matches
 // the component's own default MouseWheelDelta.
-func newHistoryViewport() *viewport.Model {
+func newHistoryViewport() viewport.Model {
 	v := viewport.New()
 	v.MouseWheelEnabled = false
-	return &v
+	return v
 }
 
 // SetTurnDispatch wires the TurnDispatch that owns the turn state machine.

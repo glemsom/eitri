@@ -124,7 +124,7 @@ func (m Model) inScrollRegion(y int) bool {
 // it — or the viewport has not been sized yet.
 func (m *Model) mouseToContent(x, y int) (line, col int, ok bool) {
 	vp := m.tx.histViewport
-	if vp == nil || vp.Height() <= 0 || m.tx.height <= 0 {
+	if vp.Height() <= 0 || m.tx.height <= 0 {
 		return 0, 0, false
 	}
 	// The scroll region occupies the rows above the fixed bottom band; mirror
