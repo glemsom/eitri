@@ -151,9 +151,6 @@ func TestModel_followViewportPersisted(t *testing.T) {
 			return TurnResult{Answer: "answer"}, nil
 		},
 	})
-	if m.tx.histViewport == nil {
-		t.Fatalf("model must own a persisted viewport component")
-	}
 	if m.tx.histViewport.Width() != 0 || m.tx.histViewport.Height() != 0 {
 		t.Errorf("fresh viewport should start unsized until the first resize, got %dx%d", m.tx.histViewport.Width(), m.tx.histViewport.Height())
 	}

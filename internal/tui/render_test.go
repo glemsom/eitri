@@ -131,26 +131,6 @@ func TestRender_lineCount(t *testing.T) {
 // and its table test are deleted rather than re-homed — tall card diffs now
 // clip against the native history viewport's own height clamp.
 
-// TestRender_bottomSlice table-tests the bottom-anchored slice: newest lines
-// kept, head dropped when the history overflows the viewport.
-func TestRender_bottomSlice(t *testing.T) {
-	cases := []struct {
-		name    string
-		content string
-		vh      int
-		want    string
-	}{
-		{"fits", "a\nb", 3, "a\nb"},
-		{"overflows", "a\nb\nc\nd", 2, "c\nd"},
-		{"negative", "a\nb", -1, ""},
-	}
-	for _, c := range cases {
-		if got := bottomSlice(c.content, c.vh); got != c.want {
-			t.Errorf("%s: bottomSlice(%q,%d) = %q, want %q", c.name, c.content, c.vh, got, c.want)
-		}
-	}
-}
-
 // TestRender_readRangeHint table-tests the read range extraction: both
 // start_line and end_line must be present as positive integers.
 func TestRender_readRangeHint(t *testing.T) {

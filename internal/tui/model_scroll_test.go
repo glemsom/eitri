@@ -23,7 +23,7 @@ func scrollOverflowModel(t *testing.T) Model {
 	// Hydrate the persisted viewport with the current content so navigation has
 	// a real scroll range.
 	got, _, _ := followRendered(m)
-	if vp := m.tx.histViewport; vp == nil || vp.TotalLineCount() <= vp.Height() {
+	if vp := m.tx.histViewport; vp.TotalLineCount() <= vp.Height() {
 		t.Fatalf("test must overflow: viewport lines (%d) should exceed height (%d), got render:\n%s", mustVpLines(m), mustVpHeight(m), got)
 	}
 	return m

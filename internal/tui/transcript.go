@@ -23,20 +23,18 @@ import (
 // Model holds it as a single stable root and mutates it in place (appends
 // messages, applies tool updates, drives navigation) while the render paths
 // read it directly. Because Model is a value copied every frame by Bubble Tea,
-// the pointer root is what makes ALL transcript state — not just the
-// per-field pointers below — survive those value copies.
+// the pointer root is what makes ALL transcript state survive those value
+// copies.
 //
-// The one pointer field is the persisted viewport (histViewport): it is shared
-// across the value copies Bubble Tea makes, so scroll-state changes made
-// during a render survive the next re-render cycle. The layout cache (layout)
-// and the drag-select (dragSel) are plain value fields already — the
-// stable tx root lets their state survive value copies by
-// itself. (The one remaining per-field pointer, histViewport, is now redundant
-// with the stable tx root and is simplified in the follow-up ticket #371.)
+// Every Transcript field is a plain value: the layout cache (layout), the
+// drag-select (dragSel), and the persisted history viewport (histViewport)
+// all survive Bubble Tea's per-frame Model value copies because Model holds
+// tx as a single stable pointer root it mutates in place — no per-field
+// pointer indirection is needed (issue #371).
 //
-// The Transcript also owns the transcript's navigation: the
-// pointer-receiver navigateHistory / navigateMouse drive the shared viewport
-// and mutate the follow flag in place.
+// The Transcript also owns the transcript's navigation: the pointer-receiver
+// navigateHistory / navigateMouse drive the viewport and mutate the follow
+// flag in place.
 //
 // Scope note: Transcript owns the scroll region (the history the user reads),
 // the right context rail — its visibility, band/transcript width accounting,
@@ -102,9 +100,10 @@ type Transcript struct {
 	// histFollow is true while the viewport re-anchors to the newest output
 	// ; T2 navigation breaks it on scroll-up.
 	histFollow bool
-	// histViewport is the persisted history scroll component,
-	// shared across Model's value copies so scroll state survives render cycles.
-	histViewport *viewport.Model
+	// histViewport is the persisted history scroll component. It is
+	// a plain value field: scroll/follow state survives render cycles because
+	// Model owns tx as a stable pointer root it mutates in place.
+	histViewport viewport.Model
 
 	// railWidth is the right rail's column width; 0 until a width is set, in
 	// which case consumers fall back to defaultRailWidth. Drag-resize (issue
@@ -277,7 +276,7 @@ func (t *Transcript) setRailWidth(w int) {
 // independently; renderPane concatenates them in order. The scroll region is
 // Height-aware: its content clamps to the terminal height, so the band stays
 // pinned and only the history scrolls.
-func (t Transcript) renderPane(band string) string {
+func (t *Transcript) renderPane(band string) string {
 	bandStr := band
 
 	// The scroll region renders through the native bubbletea/viewport component
@@ -422,7 +421,7 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 // clip, re-anchoring to the newest output while follow is engaged (
 // AC1/AC2). User navigation on the viewport (T2, ) is exposed through
 // navigateHistory / navigateMouse on this same value .
-func (t Transcript) renderHistoryViewport(content string, reserved int) string {
+func (t *Transcript) renderHistoryViewport(content string, reserved int) string {
 	if t.height <= 0 {
 		return content
 	}
@@ -430,22 +429,18 @@ func (t Transcript) renderHistoryViewport(content string, reserved int) string {
 	if vh <= 0 {
 		return ""
 	}
-	vp := t.histViewport
-	if vp == nil {
-		return bottomSlice(content, vh)
-	}
-	vp.SetWidth(t.transcriptWidth())
-	vp.SetHeight(vh)
+	t.histViewport.SetWidth(t.transcriptWidth())
+	t.histViewport.SetHeight(vh)
 	// An in-progress drag selection highlights its cell range in the full
 	// content before the viewport clips it .
 	if t.dragSel.active {
 		content = t.highlightSelection(content)
 	}
-	vp.SetContent(content)
+	t.histViewport.SetContent(content)
 	if t.histFollow {
-		vp.GotoBottom()
+		t.histViewport.GotoBottom()
 	}
-	return vp.View()
+	return t.histViewport.View()
 }
 
 // navigateHistory applies a T2 keyboard scroll command to the
@@ -455,34 +450,30 @@ func (t Transcript) renderHistoryViewport(content string, reserved int) string {
 // composer, so editing focus is preserved (AC4). The viewport holds its scroll
 // state across renders even while the history re-renders each frame.
 //
-// The method is a pointer receiver because the viewport (histViewport) is a
-// pointer shared across Model's value copies, and it mutates the follow flag in
-// place; the returned flag reports the resulting state .
+// The method is a pointer receiver so scroll and follow mutations land on the
+// stable Transcript root the Model holds; the returned flag reports the
+// resulting state .
 func (t *Transcript) navigateHistory(key string) bool {
-	vp := t.histViewport
-	if vp == nil {
-		return t.histFollow
-	}
 	switch key {
 	case "pgup":
-		if vp.AtTop() {
+		if t.histViewport.AtTop() {
 			return t.histFollow // already at the oldest output; nothing to do
 		}
-		vp.PageUp()
+		t.histViewport.PageUp()
 		t.histFollow = false // scrolling up breaks follow
 	case "home":
-		if vp.AtTop() {
+		if t.histViewport.AtTop() {
 			return t.histFollow
 		}
-		vp.GotoTop()
+		t.histViewport.GotoTop()
 		t.histFollow = false
 	case "pgdown":
-		vp.PageDown()
-		if vp.AtBottom() {
+		t.histViewport.PageDown()
+		if t.histViewport.AtBottom() {
 			t.histFollow = true // paging to the newest re-engages follow
 		}
 	case "end":
-		vp.GotoBottom()
+		t.histViewport.GotoBottom()
 		t.histFollow = true
 	}
 	return t.histFollow
@@ -495,24 +486,19 @@ func (t *Transcript) navigateHistory(key string) bool {
 // preserving input focus. Bubble Tea delivers mouse events only when the
 // program enables them (internal/app/tui.go).
 //
-// Like navigateHistory it is a pointer receiver on the shared viewport that
-// mutates the follow flag in place; the returned flag reports the resulting
-// state .
+// Like navigateHistory it is a pointer receiver that mutates the follow flag
+// in place on the stable root; the returned flag reports the resulting state .
 func (t *Transcript) navigateMouse(msg tea.MouseWheelMsg) bool {
-	vp := t.histViewport
-	if vp == nil {
-		return t.histFollow
-	}
 	switch msg.Button {
 	case tea.MouseWheelUp:
-		if vp.AtTop() {
+		if t.histViewport.AtTop() {
 			return t.histFollow
 		}
-		vp.ScrollUp(3)
+		t.histViewport.ScrollUp(3)
 		t.histFollow = false
 	case tea.MouseWheelDown:
-		vp.ScrollDown(3)
-		if vp.AtBottom() {
+		t.histViewport.ScrollDown(3)
+		if t.histViewport.AtBottom() {
 			t.histFollow = true
 		}
 	}

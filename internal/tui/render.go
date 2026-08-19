@@ -67,21 +67,6 @@ func truncateWidth(s string, w int) string {
 	return sb.String()
 }
 
-// bottomSlice returns the bottom-anchored slice of the history content for a
-// viewport of the given height — the fallback used when the model has no
-// persisted viewport component (should not occur via NewModelCfg). It keeps the
-// newest lines, dropping the head when the history overflows the viewport.
-func bottomSlice(content string, vh int) string {
-	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
-	if len(lines) <= vh {
-		return content
-	}
-	if vh < 0 {
-		vh = 0
-	}
-	return strings.Join(lines[len(lines)-vh:], "\n")
-}
-
 // lineCount reports how many rendered terminal rows a region string occupies,
 // i.e. the number of newline-separated lines (a trailing newline does not add
 // an extra row). It is used to compute how much of the terminal height the

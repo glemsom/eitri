@@ -19,7 +19,7 @@ import (
 func TestTranscript_rendersStandalone(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
-	tx := Transcript{
+	tx := &Transcript{
 		theme:           th,
 		messages:        []message{{role: "you", content: "hello"}},
 		configTheme:     config.DefaultTheme,
@@ -156,7 +156,7 @@ func TestTranscript_expandAllOverridesThinkingExpansion(t *testing.T) {
 // seam, without reaching through Model.
 func TestTranscript_ownsRailSurface(t *testing.T) {
 	th := themeFor(config.DefaultTheme)
-	tx := Transcript{
+	tx := &Transcript{
 		theme:       th,
 		configTheme: config.DefaultTheme,
 		rail: NewRail("opencode-go", "deepseek-v4-flash", "low", true,
@@ -203,7 +203,7 @@ func TestTranscript_ownsRailSurface(t *testing.T) {
 func TestTranscript_dynamicRailWidth(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
-	tx := Transcript{
+	tx := &Transcript{
 		theme:       th,
 		configTheme: config.DefaultTheme,
 		rail: NewRail("opencode-go", "deepseek-v4-flash", "low", true,
@@ -291,31 +291,29 @@ func TestTranscript_matchesModelRender(t *testing.T) {
 // overflowing content so keyboard/mouse navigation can move it:
 // the same arrangement the Model-path scroll tests use, but expressed purely at
 // the Transcript seam so the navigation migration proves it lives on Transcript.
-func transcriptScrollModel(t *testing.T) Transcript {
+func transcriptScrollModel(t *testing.T) *Transcript {
 	t.Helper()
 	m := newTallHistoryModel(t)
 	m = resizeTo(t, m, 120, 12)
-	tx := *m.tx // shallow copy of the shared root for Transcript-seam navigation
-	// Hydrate the persisted (shared) viewport with the current content so
-	// navigation has a real scroll range.
+	tx := m.tx // the stable Transcript root, navigated in place
+	// Hydrate the persisted viewport with the current content so navigation
+	// has a real scroll range.
 	var hist strings.Builder
 	tx.renderHistory(&hist, nil, nil)
 	tx.renderHistoryViewport(hist.String(), m.bandHeight())
-	vp := tx.histViewport
-	if vp == nil || vp.TotalLineCount() <= vp.Height() {
+	if vp := tx.histViewport; vp.TotalLineCount() <= vp.Height() {
 		t.Fatalf("test must overflow: viewport lines (%d) should exceed height (%d)", vp.TotalLineCount(), vp.Height())
 	}
 	return tx
 }
 
-// TestTranscript_navigateScrollsSharedViewport asserts the navigation seam now
-// lives on the Transcript value: PgUp/Home/PgDn/End drive the
-// shared persisted viewport through the Transcript, moving the reading offset
+// TestTranscript_navigateScrollsSharedViewport asserts the navigation seam
+// lives on the Transcript root: PgUp/Home/PgDn/End drive the
+// persisted viewport through the Transcript, moving the reading offset
 // and mutating the transcript's follow flag.
 func TestTranscript_navigateScrollsSharedViewport(t *testing.T) {
 	tx := transcriptScrollModel(t)
-	vp := tx.histViewport
-	start := vp.YOffset()
+	start := tx.histViewport.YOffset()
 	if start <= 0 {
 		t.Fatalf("overflowed follow should start at the bottom, got offset %d", start)
 	}
@@ -324,35 +322,35 @@ func TestTranscript_navigateScrollsSharedViewport(t *testing.T) {
 	if follow := tx.navigateHistory("pgup"); follow {
 		t.Errorf("PgUp must break follow, got follow=true")
 	}
-	if up := vp.YOffset(); up >= start {
+	if up := tx.histViewport.YOffset(); up >= start {
 		t.Errorf("PgUp must move the viewport up: offset %d -> %d", start, up)
 	}
 
 	// Home jumps to the top.
 	tx.navigateHistory("home")
-	if top := vp.YOffset(); top != 0 {
+	if top := tx.histViewport.YOffset(); top != 0 {
 		t.Errorf("Home should jump to the transcript top, got offset %d", top)
 	}
 
 	// PgDn moves down; End reaches the bottom and re-engages follow.
 	tx.navigateHistory("pgdown")
-	if down := vp.YOffset(); down <= 0 {
+	if down := tx.histViewport.YOffset(); down <= 0 {
 		t.Errorf("PgDn must move the viewport down from the top, got offset %d", down)
 	}
 	tx.navigateHistory("end")
-	if !vp.AtBottom() {
-		t.Errorf("End should jump to the transcript bottom, got offset %d", vp.YOffset())
+	if !tx.histViewport.AtBottom() {
+		t.Errorf("End should jump to the transcript bottom, got offset %d", tx.histViewport.YOffset())
 	}
 	if follow := tx.navigateHistory("end"); !follow {
 		t.Errorf("End reaching the bottom should re-engage follow, got follow=false")
 	}
 
 	// Wheel up scrolls toward older output and breaks follow.
-	wheelStart := vp.YOffset()
+	wheelStart := tx.histViewport.YOffset()
 	if follow := tx.navigateMouse(tea.MouseWheelMsg{Button: tea.MouseWheelUp}); follow {
 		t.Errorf("wheel up must break follow, got follow=true")
 	}
-	if up := vp.YOffset(); up >= wheelStart {
+	if up := tx.histViewport.YOffset(); up >= wheelStart {
 		t.Errorf("wheel up must scroll up, offset %d -> %d", wheelStart, up)
 	}
 }
