@@ -17,6 +17,7 @@ import (
 // assistant note, then the args are dispatched as a normal user turn (the
 // injected Turn seam) verbatim, and the args message renders after the note.
 func TestModel_slashSkillWithArgs(t *testing.T) {
+	t.Parallel()
 	var activated string
 	var turnPrompts []string
 	m := NewModelCfg(Dependencies{
@@ -62,6 +63,7 @@ func TestModel_slashSkillWithArgs(t *testing.T) {
 // TestModel_slashSkillWithMultiWordArgs asserts multi-word args are delivered
 // to the Turn seam verbatim, trimmed of surrounding whitespace.
 func TestModel_slashSkillWithMultiWordArgs(t *testing.T) {
+	t.Parallel()
 	want := "Let us improve this codebase"
 	var turnPrompts []string
 	m := NewModelCfg(Dependencies{
@@ -88,6 +90,7 @@ func TestModel_slashSkillWithMultiWordArgs(t *testing.T) {
 // TestModel_slashSkillNoArgs asserts bare `/skillname` activates the skill but
 // does NOT dispatch any follow-up turn.
 func TestModel_slashSkillNoArgs(t *testing.T) {
+	t.Parallel()
 	var activated string
 	var turnPrompts []string
 	m := NewModelCfg(Dependencies{
@@ -121,6 +124,7 @@ func TestModel_slashSkillNoArgs(t *testing.T) {
 // TestModel_slashSkillActivationError asserts an activation failure surfaces
 // the existing failure message and dispatches NO follow-up turn.
 func TestModel_slashSkillActivationError(t *testing.T) {
+	t.Parallel()
 	var turnPrompts []string
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {

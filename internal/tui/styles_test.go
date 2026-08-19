@@ -21,6 +21,7 @@ import (
 // error and ok, each a "#RRGGBB" value lipgloss adapts to any color profile,
 // plus the derived styles drawn from them.
 func TestTheme_defaultPalette(t *testing.T) {
+	t.Parallel()
 	th := defaultTheme
 
 	// The palette entries are the pre-seam hex colors, verbatim.
@@ -73,6 +74,7 @@ func TestTheme_defaultPalette(t *testing.T) {
 // addition alone re-skins the rail. The SKILLS section hue is gone with the
 // section.
 func TestTheme_railHues(t *testing.T) {
+	t.Parallel()
 	themes := []Theme{defaultTheme, newDraculaTheme(), newTokyoNightTheme(), newPinkTheme(), newLightTheme()}
 	for _, th := range themes {
 		// Three distinct hues, each a hex-derived color that adapts to any
@@ -103,6 +105,7 @@ func TestTheme_railHues(t *testing.T) {
 // distinct hex palette entries and the derived styles drawn from them, so a
 // non-default theme fully re-skins the chrome.
 func TestTheme_draculaPalette(t *testing.T) {
+	t.Parallel()
 	th := newDraculaTheme()
 
 	for name, want := range map[string]color.Color{
@@ -138,6 +141,7 @@ func TestTheme_draculaPalette(t *testing.T) {
 // same constructor pattern, so tokyo-night reads as one surface with its
 // Markdown counterpart instead of inheriting the default chrome.
 func TestTheme_tokyoNightPalette(t *testing.T) {
+	t.Parallel()
 	th := newTokyoNightTheme()
 
 	for name, want := range map[string]color.Color{
@@ -173,6 +177,7 @@ func TestTheme_tokyoNightPalette(t *testing.T) {
 // distinguishable from the pink accent, so pink chrome reads as one surface
 // with the pink Markdown theme.
 func TestTheme_pinkPalette(t *testing.T) {
+	t.Parallel()
 	th := newPinkTheme()
 
 	for name, want := range map[string]color.Color{
@@ -211,6 +216,7 @@ func TestTheme_pinkPalette(t *testing.T) {
 // each contrast-checked against white (≥ 4.5:1) — so light terminals get a
 // light-surface chrome instead of the default dark one.
 func TestTheme_lightPalette(t *testing.T) {
+	t.Parallel()
 	th := newLightTheme()
 
 	for name, want := range map[string]color.Color{
@@ -248,6 +254,7 @@ func TestTheme_lightPalette(t *testing.T) {
 // resolved theme rather than a hardcoded palette because autoTheme() queries
 // the ambient terminal.
 func TestThemeFor_auto(t *testing.T) {
+	t.Parallel()
 	if got := themeFor("auto").accent; got != themeFor(autoTheme()).accent {
 		t.Errorf("themeFor(auto) accent = %v, want resolved theme %q accent %v", got, autoTheme(), themeFor(autoTheme()).accent)
 	}
@@ -262,6 +269,7 @@ func TestThemeFor_auto(t *testing.T) {
 // non-interactive contexts); an unknown value falls back to default, matching
 // the renderer.
 func TestThemeFor_mapsConfigNames(t *testing.T) {
+	t.Parallel()
 	for name, want := range map[string]color.Color{
 		"dracula":          lipgloss.Color("#BD93F9"),
 		"tokyo-night":      lipgloss.Color("#BB9AF7"),
@@ -288,6 +296,7 @@ func TestThemeFor_mapsConfigNames(t *testing.T) {
 // same borderedPane constructor as the agent pane but with the accent dimmed to
 // 0.45, so the in-progress answer is visually distinct from a completed one.
 func TestTheme_streamingPaneStyle(t *testing.T) {
+	t.Parallel()
 	th := defaultTheme
 	if got := th.streamingPaneStyle.GetBorderLeftForeground(); got == nil {
 		t.Fatal("streaming pane style border foreground is nil")
@@ -304,6 +313,7 @@ func TestTheme_streamingPaneStyle(t *testing.T) {
 // error-prefix messages use a dimmed error border, visually distinct from the
 // streaming accent pane and the full error pane.
 func TestTheme_streamingErrorPaneStyle(t *testing.T) {
+	t.Parallel()
 	th := defaultTheme
 	if got := th.streamingErrorPaneStyle.GetBorderLeftForeground(); got == nil {
 		t.Fatal("streaming error pane style border foreground is nil")
@@ -319,6 +329,7 @@ func TestTheme_streamingErrorPaneStyle(t *testing.T) {
 // AC5): each theme's streaming pane border carries its own palette's dimmed
 // accent, so the streaming state stays theme-consistent.
 func TestTheme_streamingPaneDistinctAcrossThemes(t *testing.T) {
+	t.Parallel()
 	themes := map[string]Theme{
 		"default":     defaultTheme,
 		"dracula":     newDraculaTheme(),
@@ -344,6 +355,7 @@ func TestTheme_streamingPaneDistinctAcrossThemes(t *testing.T) {
 // leaks through, and the swap needs no consumer change — the seam is the
 // model field, not the render code.
 func TestModel_themeSeam(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer"}, nil
@@ -387,6 +399,7 @@ func TestModel_themeSeam(t *testing.T) {
 // light palette's category hues are additionally contrast-checked against
 // white (≥ 4.5:1), matching its palette-level constraint.
 func TestTheme_toolCategoryPalettes(t *testing.T) {
+	t.Parallel()
 	for name, want := range map[string]map[string]color.Color{
 		"default": {
 			"shell": lipgloss.Color("#E0AF68"),
@@ -462,6 +475,7 @@ func TestTheme_toolCategoryPalettes(t *testing.T) {
 // carries its category hue, so the renderer styles a tool line by category
 // through the seam — no hardcoded color outside the palette registry.
 func TestTheme_toolCategoryStyles(t *testing.T) {
+	t.Parallel()
 	th := defaultTheme
 	for cat, want := range map[string]color.Color{
 		"shell": th.shell,

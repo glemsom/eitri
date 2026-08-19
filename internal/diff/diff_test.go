@@ -7,6 +7,7 @@ import "testing"
 // canonical diffs, independent of the engine's internals (tdd: vertical slice,
 // independent source of truth).
 func TestDiffReportsChgChanges(t *testing.T) {
+	t.Parallel()
 	old := "#!/usr/bin/env bash\necho hello\n"
 	new := "#!/usr/bin/env bash\necho goodbye\n"
 	got := Diff(old, new)
@@ -35,6 +36,7 @@ func TestDiffReportsChgChanges(t *testing.T) {
 
 // Identical inputs produce no hunks at all.
 func TestDiffIdenticalIsEmpty(t *testing.T) {
+	t.Parallel()
 	src := "a\nb\nc\n"
 	if got := Diff(src, src); len(got) != 0 {
 		t.Errorf("Diff(identical) = %d hunks, want 0", len(got))
@@ -43,6 +45,7 @@ func TestDiffIdenticalIsEmpty(t *testing.T) {
 
 // A fully new file reports every line as added, with a fresh @@ header.
 func TestDiffAddedFile(t *testing.T) {
+	t.Parallel()
 	got := Diff("", "line1\nline2\n")
 	if len(got) != 1 {
 		t.Fatalf("hunks = %d, want 1", len(got))
@@ -59,6 +62,7 @@ func TestDiffAddedFile(t *testing.T) {
 
 // A deleted file reports every line removed with a zero-length new side.
 func TestDiffDeletedFile(t *testing.T) {
+	t.Parallel()
 	got := Diff("keep\n", "")
 	if len(got) != 1 {
 		t.Fatalf("hunks = %d, want 1", len(got))
@@ -75,6 +79,7 @@ func TestDiffDeletedFile(t *testing.T) {
 
 // Context lines bracket a change so a reader can see where it happened.
 func TestDiffIncludesContext(t *testing.T) {
+	t.Parallel()
 	old := "one\ntwo\nthree\nfour\nfive\nCHANGED\nseven\neight\nnine\nten\n"
 	new := "one\ntwo\nthree\nfour\nfive\nchanged\nseven\neight\nnine\nten\n"
 	got := Diff(old, new)
@@ -93,6 +98,7 @@ func TestDiffIncludesContext(t *testing.T) {
 
 // Insertion and deletion in one hunk report correct +/- ordering and counts.
 func TestDiffMixedInsertAndDelete(t *testing.T) {
+	t.Parallel()
 	old := "a\nb\nc\nd\n"
 	new := "a\nB\nc\nD\n"
 	got := Diff(old, new)
@@ -126,6 +132,7 @@ func flatten(hunks []Hunk) []Line {
 // Changes far apart split into separate non-overlapping hunks, each with
 // correct 1-based @@ positions (git convention).
 func TestDiffSeparatesDistantHunks(t *testing.T) {
+	t.Parallel()
 	old := stringsJoinLines("h1", "h2", "h3", "h4", "h5", "h6", "h7", "h8", "h9", "h10", "h11", "h12")
 	new := stringsJoinLines("h1", "h2", "X3", "h4", "h5", "h6", "h7", "h8", "h9", "h10", "h11", "X12")
 	got := Diff(old, new)
@@ -155,6 +162,7 @@ func TestDiffSeparatesDistantHunks(t *testing.T) {
 
 // Insertion shifts new-side line numbers while the old side stays intact.
 func TestDiffHeaderShiftOnInsert(t *testing.T) {
+	t.Parallel()
 	old := "a\nb\nc\ne\nf\ng\nh\n"
 	// Insert a line between c and e (old line 4).
 	new := "a\nb\nc\nINS\ne\nf\ng\nh\n"

@@ -16,6 +16,7 @@ func toolEntryFor(name, args string) toolEntry {
 // TestToolLog_ApplyPairsStartWithResult asserts a Start then a matching name
 // Result fold into one complete entry with the result field filled.
 func TestToolLog_ApplyPairsStartWithResult(t *testing.T) {
+	t.Parallel()
 	var l toolLog
 	l.SetAnchor(3)
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}})
@@ -37,6 +38,7 @@ func TestToolLog_ApplyPairsStartWithResult(t *testing.T) {
 // to the most recent not-yet-complete entry for that tool name, so a stray or
 // out-of-order result cannot corrupt an already-complete entry.
 func TestToolLog_ApplyPairsMostRecentIncompleteSameName(t *testing.T) {
+	t.Parallel()
 	var l toolLog
 	l.SetAnchor(0)
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"a"}`}})
@@ -59,6 +61,7 @@ func TestToolLog_ApplyPairsMostRecentIncompleteSameName(t *testing.T) {
 // TestToolLog_ToggleBoundsChecks asserts Toggle flips expansion within bounds
 // and no-ops outside them.
 func TestToolLog_ToggleBoundsChecks(t *testing.T) {
+	t.Parallel()
 	var l toolLog
 	l.SetAnchor(0)
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: ""}})
@@ -80,6 +83,7 @@ func TestToolLog_ToggleBoundsChecks(t *testing.T) {
 // file-mutating (edit/write) entries by path, keeping the most recent state per
 // path.
 func TestToolLog_ReviewProjectsChangedFiles(t *testing.T) {
+	t.Parallel()
 	var l toolLog
 	l.SetAnchor(0)
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "edit", Args: `{"path":"a.go"}`}})
@@ -106,6 +110,7 @@ func TestToolLog_ReviewProjectsChangedFiles(t *testing.T) {
 // entry text and records each entry's content-row range for the anchor (issue
 // #208 US6: one layout pass shared by transcript and hit-test).
 func TestToolLog_RenderWritesEntryWithRowRanges(t *testing.T) {
+	t.Parallel()
 	var l toolLog
 	l.SetAnchor(0)
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
@@ -125,6 +130,7 @@ func TestToolLog_RenderWritesEntryWithRowRanges(t *testing.T) {
 // TestToolLog_PlainTextRendersEntry asserts PlainText emits the ⊕ tool head and
 // indents the complete result, mirroring the clipboard transcript.
 func TestToolLog_PlainTextRendersEntry(t *testing.T) {
+	t.Parallel()
 	var l toolLog
 	l.SetAnchor(0)
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}})
@@ -144,6 +150,7 @@ func TestToolLog_PlainTextRendersEntry(t *testing.T) {
 // plus the indented full result once it is complete (expanded) — the two
 // shapes the clipboard transcript never truncates.
 func TestToolLog_PlainTextCollapsedAndExpanded(t *testing.T) {
+	t.Parallel()
 	var l toolLog
 	l.SetAnchor(0)
 	// A Start with no Result: incomplete, so the head is all there is.
@@ -163,6 +170,7 @@ func TestToolLog_PlainTextCollapsedAndExpanded(t *testing.T) {
 // writes to one path by keeping the most recent before/after content span,
 // replacing the older entry's content wholesale.
 func TestToolLog_ReviewKeepsMostRecentState(t *testing.T) {
+	t.Parallel()
 	applyFile := func(l *toolLog, name, path, before, after string) {
 		l.SetAnchor(0)
 		l.Apply(ToolUpdate{Start: &ToolStart{Name: name, Args: `{"path":"` + path + `"}`}})
@@ -197,6 +205,7 @@ func TestToolLog_ReviewKeepsMostRecentState(t *testing.T) {
 // per-tool-glyph `tool  args` head in its three forms — plain args, the read `:start-end`
 // range, and the file-edit `[+N, −M]` delta tag.
 func TestToolLog_HeadForms(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name  string
 		entry toolEntry
@@ -231,6 +240,7 @@ func TestToolLog_HeadForms(t *testing.T) {
 // content rows (head + collapsed summary) and that those ranges feed AtLine
 // (render and hit-test share one layout).
 func TestToolLog_RenderRowAccountCollapsed(t *testing.T) {
+	t.Parallel()
 	var l toolLog
 	l.SetAnchor(0)
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"go test"}`}})
@@ -256,6 +266,7 @@ func TestToolLog_RenderRowAccountCollapsed(t *testing.T) {
 // rows (head + the full framed result lines) as its own row range, so a click on
 // any of them toggles the same entry.
 func TestToolLog_RenderRowAccountExpanded(t *testing.T) {
+	t.Parallel()
 	var l toolLog
 	l.SetAnchor(0)
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"go test"}`}})
@@ -277,6 +288,7 @@ func TestToolLog_RenderRowAccountExpanded(t *testing.T) {
 // entries for the requested anchor, so content-row ranges stay relative to each
 // message's own block and multiple turns share the same Render pass.
 func TestToolLog_RenderRowAccountSkipsOtherAnchors(t *testing.T) {
+	t.Parallel()
 	var l toolLog
 	l.SetAnchor(2)
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: ""}})
@@ -297,6 +309,7 @@ func TestToolLog_RenderRowAccountSkipsOtherAnchors(t *testing.T) {
 // arg truncation at narrow widths — the presentation forms Render must preserve
 // byte-for-byte.
 func TestToolLog_RenderOutcomeElapsedAndTruncation(t *testing.T) {
+	t.Parallel()
 	var l toolLog
 	l.SetAnchor(0)
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"make build"}`}})
@@ -331,6 +344,7 @@ func TestToolLog_RenderOutcomeElapsedAndTruncation(t *testing.T) {
 // TestToolLog_AtLineMapping asserts AtLine resolves the owning entry, reports its
 // collapsed state, and no-ops outside every recorded range.
 func TestToolLog_AtLineMapping(t *testing.T) {
+	t.Parallel()
 	var l toolLog
 	l.SetAnchor(0)
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: ""}})
@@ -373,6 +387,7 @@ func TestToolLog_AtLineMapping(t *testing.T) {
 // TestToolLog_RenderFailureOutcome asserts a tool whose result is error-shaped
 // renders the ✗ outcome marker.
 func TestToolLog_RenderFailureOutcome(t *testing.T) {
+	t.Parallel()
 	var l toolLog
 	l.SetAnchor(0)
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: ""}})
@@ -389,6 +404,7 @@ func TestToolLog_RenderFailureOutcome(t *testing.T) {
 // dropped, and merges with the existing "(+N more)" hint when both line and
 // byte truncation happened (never silent for the user either).
 func TestToolLog_RenderBytesTruncatedHint(t *testing.T) {
+	t.Parallel()
 	var l toolLog
 	l.SetAnchor(0)
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: ""}})
@@ -421,6 +437,7 @@ func TestToolLog_RenderBytesTruncatedHint(t *testing.T) {
 // Dropped alone, so a byte-cap that also dropped lines never loses the line
 // count just because the result is byte-only-capped in the seam's model.
 func TestToolLog_RenderBothHintsWithoutCompressedFlag(t *testing.T) {
+	t.Parallel()
 	var l toolLog
 	l.SetAnchor(0)
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "read", Args: ""}})
@@ -437,6 +454,7 @@ func TestToolLog_RenderBothHintsWithoutCompressedFlag(t *testing.T) {
 // the entry's full pre-cap Result even when the delivered form was byte-capped
 // (nothing silently truncated on the expand path).
 func TestToolLog_ExpandedRendersFullRawResult(t *testing.T) {
+	t.Parallel()
 	var l toolLog
 	l.SetAnchor(0)
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "read", Args: ""}})

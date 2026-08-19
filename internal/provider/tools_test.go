@@ -11,6 +11,7 @@ import (
 // deltas (function.name then function.arguments over several chunks) are
 // concatenated into one complete ToolCall on the terminal chunk.
 func TestParseEventAccumulatesToolCall(t *testing.T) {
+	t.Parallel()
 	var last Chunk
 	var finish string
 	s := &toolFixtureStream{data: []string{
@@ -56,6 +57,7 @@ func TestParseEventAccumulatesToolCall(t *testing.T) {
 // ToolCall round-trips through encoding/json (the request body the client
 // sends must carry tool_call_id on role:tool messages).
 func TestToolMessageMarshalsWithToolCallID(t *testing.T) {
+	t.Parallel()
 	m := Message{Role: RoleTool, ToolCallID: "call_9", Content: "ok"}
 	b, err := json.Marshal(m)
 	if err != nil {
@@ -72,6 +74,7 @@ func TestToolMessageMarshalsWithToolCallID(t *testing.T) {
 // rejects a flat {type,id,name,arguments} entry ("missing field `function`")
 // with a 400/401, so the wire must nest name+arguments under function.
 func TestToolCallMarshalsNestedFunction(t *testing.T) {
+	t.Parallel()
 	// wireShape mirrors the Chat Completions assistant tool_calls element.
 	type wireShape struct {
 		ID   string `json:"id"`

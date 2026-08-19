@@ -7,6 +7,7 @@ import (
 )
 
 func TestDefaults(t *testing.T) {
+	t.Parallel()
 	cfg := Default()
 	if cfg.MaxTurns != 250 {
 		t.Fatalf("MaxTurns = %d, want default 250", cfg.MaxTurns)
@@ -32,6 +33,7 @@ func TestDefaults(t *testing.T) {
 }
 
 func TestLoadCreatesConfigWithDefaultsWhenAbsent(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 
@@ -56,6 +58,7 @@ func TestLoadCreatesConfigWithDefaultsWhenAbsent(t *testing.T) {
 // Copilot credentials must persist so a later batch run reuses the
 // TUI-established session; custom OpenAI needs no device flow, key/setup only.
 func TestCopilotAndCustomOpenAITokensPersist(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 	cfg := Default()
@@ -97,6 +100,7 @@ func TestCopilotAndCustomOpenAITokensPersist(t *testing.T) {
 // change that stored "high" still loads "high", while an absent
 // reasoning_effort field loads the new "low" default.
 func TestReasoningEffortDefaultAndPersist(t *testing.T) {
+	t.Parallel()
 	// A present stored value is authoritative and survives the round-trip.
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
@@ -115,6 +119,7 @@ func TestReasoningEffortDefaultAndPersist(t *testing.T) {
 // A config file that never saved a reasoning_effort (older file) must load
 // with the new "low" default rather than the zero value.
 func TestReasoningEffortAbsentDefaultsToLow(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 	if err := os.WriteFile(path, []byte("{\"provider\": \"opencode-go\", \"thinking_enabled\": true}"), 0o600); err != nil {
@@ -133,6 +138,7 @@ func TestReasoningEffortAbsentDefaultsToLow(t *testing.T) {
 // file written before the theme feature (no `theme` key) loads
 // with the "dark" default rather than the empty zero value.
 func TestThemeAbsentDefaultsToDark(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 	if err := os.WriteFile(path, []byte("{\"provider\": \"opencode-go\", \"reasoning_effort\": \"high\", \"thinking_enabled\": true}"), 0o600); err != nil {
@@ -150,6 +156,7 @@ func TestThemeAbsentDefaultsToDark(t *testing.T) {
 // TestThemePersists verifies a chosen theme round-trips through save/load so a
 // user's render-theme pick survives a reload.
 func TestThemePersists(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 	cfg := Default()
@@ -168,6 +175,7 @@ func TestThemePersists(t *testing.T) {
 }
 
 func TestLoadReadsPersistedConfig(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 	if err := Save(Config{MaxTurns: 7, CompactionFraction: 0.5, ReasoningEffort: "max", Provider: "custom", Model: "m", ExtraWritablePaths: []string{"/tmp/x"}}, path); err != nil {
@@ -191,6 +199,7 @@ func TestLoadReadsPersistedConfig(t *testing.T) {
 // through save/load: an off value survives the round-trip so a session that
 // disables reasoning is restored as non-thinking on reload.
 func TestThinkingEnabledPersists(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 	cfg := Default()
@@ -212,6 +221,7 @@ func TestThinkingEnabledPersists(t *testing.T) {
 // a non-zero width survives reload, while zero (absent in old configs) stays at
 // zero so the TUI can fall back to the compiled default.
 func TestRailWidthPersists(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 	cfg := Default()
@@ -232,6 +242,7 @@ func TestRailWidthPersists(t *testing.T) {
 // TestRailWidthZeroRoundTrips verifies that an explicitly stored zero value
 // round-trips faithfully (omitempty would omit it, but JSON zero is valid).
 func TestRailWidthZeroRoundTrips(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 	if err := Save(Config{RailWidth: 0}, path); err != nil {
@@ -251,6 +262,7 @@ func TestRailWidthZeroRoundTrips(t *testing.T) {
 // rail_width field loads without error and leaves RailWidth at zero, letting
 // the TUI fall back to DefaultRailWidth.
 func TestRailWidthAbsentFromOldConfig(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 	if err := os.WriteFile(path, []byte(`{"provider":"opencode-go"}`), 0o600); err != nil {

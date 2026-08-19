@@ -16,6 +16,7 @@ import (
 // endpoint and surfaces the verification URL + device code for the TUI approval
 // screen.
 func TestDeviceFlowStartRequestsCode(t *testing.T) {
+	t.Parallel()
 	var path, contentType string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path = r.URL.Path
@@ -46,6 +47,7 @@ func TestDeviceFlowStartRequestsCode(t *testing.T) {
 // a credential on approval, giving the TUI a fresh token set to persist to
 // config. Expiry is derived from the endpoint's expires_in.
 func TestDeviceFlowPollExchangesTokens(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseForm()
 		if r.Form.Get("grant_type") != "urn:ietf:params:oauth:grant-type:device_code" {
@@ -76,6 +78,7 @@ func TestDeviceFlowPollExchangesTokens(t *testing.T) {
 // responds with an error (no access/refresh token) surfaces the flowError
 // mismatch-value error rather than silently succeeding.
 func TestDeviceFlowPollTokenExchangeError(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"error":"incorrect_device_code"}`))
@@ -99,6 +102,7 @@ func TestDeviceFlowPollTokenExchangeError(t *testing.T) {
 // TestDeviceFlowPollAuthorizationPending verifies a not-yet-approved poll is a
 // clean retryable signal, and the TUI keeps waiting.
 func TestDeviceFlowPollAuthorizationPending(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"error":"authorization_pending"}`))
@@ -116,6 +120,7 @@ func TestDeviceFlowPollAuthorizationPending(t *testing.T) {
 // ready to persist into config (acceptance criterion (c) wiring: TUI device-flow
 // re-auth produces the fresh token set stored for later batch runs).
 func TestDeviceFlowToConfig(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == "/login/device/code" {
@@ -150,6 +155,7 @@ func TestDeviceFlowToConfig(t *testing.T) {
 
 // TestDeviceFlowConcurrentSafe guards the shared poll against data races.
 func TestDeviceFlowConcurrentSafe(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"access_token":"a","expires_in":60}`))
 	}))

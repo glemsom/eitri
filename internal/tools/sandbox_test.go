@@ -27,6 +27,7 @@ func (r *recordingRunner) Run(_ context.Context, name string, args []string) (*O
 // TestSandboxBuildsBwrapArgv locks the sandbox flag set by capturing the argv
 // a fake runner receives for `bash`.
 func TestSandboxBuildsBwrapArgv(t *testing.T) {
+	t.Parallel()
 	rr := &recordingRunner{out: &Output{Stdout: "ok"}}
 	sb := NewSandbox("/home/u/proj", "/tmp/eitri-abc", rr)
 	_, err := sb.Run(context.Background(), "echo hi")
@@ -74,6 +75,7 @@ func TestSandboxBuildsBwrapArgv(t *testing.T) {
 // TestSandboxRunPropagatesOutput checks the runner result surfaces to the
 // caller.
 func TestSandboxRunPropagatesOutput(t *testing.T) {
+	t.Parallel()
 	rr := &recordingRunner{out: &Output{Stdout: "hello\n", Stderr: "warn\n"}}
 	sb := NewSandbox("/ws", "/tmp/eitri-z", rr)
 	o, err := sb.Run(context.Background(), "ls")
@@ -87,6 +89,7 @@ func TestSandboxRunPropagatesOutput(t *testing.T) {
 
 // TestSandboxRunPropagatesError verifies a failing command surfaces the error.
 func TestSandboxRunPropagatesError(t *testing.T) {
+	t.Parallel()
 	sentinel := errors.New("boom")
 	rr := &recordingRunner{err: sentinel}
 	sb := NewSandbox("/ws", "/tmp/eitri-z", rr)
@@ -100,6 +103,7 @@ func TestSandboxRunPropagatesError(t *testing.T) {
 // ssh_config.d is included in the bwrap argv so
 // ssh -G is not caged to the host-root (nobody-owned in-cage) /etc/ssh tree.
 func TestSandboxRegistersSshConfigMount(t *testing.T) {
+	t.Parallel()
 	rr := &recordingRunner{out: &Output{Stdout: "ok"}}
 	tempHost := t.TempDir()
 	sb := NewSandbox("/ws", tempHost, rr)
@@ -132,6 +136,7 @@ func hasArgvPair(argv []string, opt, src, dst string) bool {
 // bubblewrap cage, verifying the workspace is writable and /tmp is remapped to
 // the session temp. Skipped when sudo-less CI lacks bwrap; our dev host has it.
 func TestSandboxRealBwrapIntegration(t *testing.T) {
+	t.Parallel()
 	if !bwrapAvailable() {
 		t.Skip("bwrap not present; skipping real sandbox test")
 	}

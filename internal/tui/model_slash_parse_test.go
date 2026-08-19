@@ -11,6 +11,7 @@ import (
 // line untouched (real paths and unknown skills fall through as a normal
 // prompt), and never return args when the line is skill-only.
 func TestModel_parseSkillNameAndArgs(t *testing.T) {
+	t.Parallel()
 	skills := []SkillItem{{Name: "review"}, {Name: "plan"}}
 
 	tests := []struct {

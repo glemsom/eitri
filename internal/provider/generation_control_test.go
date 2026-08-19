@@ -23,6 +23,7 @@ func (c *capableProvider) SupportedGenerationControls(context.Context) ([]Genera
 // TestNegotiateAllSupported verifies a special turn whose controls the provider
 // supports negotiates all of them through unchanged.
 func TestNegotiateAllSupported(t *testing.T) {
+	t.Parallel()
 	p := &capableProvider{supported: []GenerationControl{
 		GenerationControlJSONObjectMode,
 		GenerationControlGenerationBudget,
@@ -59,6 +60,7 @@ func (f *failingProvider) SupportedGenerationControls(context.Context) ([]Genera
 // query fails surfaces that error (the Error branch of the thinking-control
 // negotiation) rather than degrading or no-op'ing.
 func TestNegotiateCapabilityErrorPropagates(t *testing.T) {
+	t.Parallel()
 	reqs := []ControlRequirement{{Control: GenerationControlThinkingSuppression, Required: false}}
 	_, err := NegotiateGenerationControls(context.Background(), &failingProvider{}, reqs)
 	if err == nil {
@@ -73,6 +75,7 @@ func TestNegotiateCapabilityErrorPropagates(t *testing.T) {
 // cannot honor fails before any wire call, returning an error that names the
 // offending control.
 func TestNegotiateUnsupportedRequiredFails(t *testing.T) {
+	t.Parallel()
 	// Provider supports only tool-schema enforcement; the special turn requires
 	// JSON Object Mode, which it cannot honor.
 	p := &capableProvider{supported: []GenerationControl{GenerationControlToolSchemaEnforcement}}
@@ -96,6 +99,7 @@ func TestNegotiateUnsupportedRequiredFails(t *testing.T) {
 // provider cannot honor is dropped (observable degradation) while supported
 // optional controls pass through and required controls still fail independently.
 func TestNegotiateUnsupportedOptionalDegrades(t *testing.T) {
+	t.Parallel()
 	p := &capableProvider{supported: []GenerationControl{
 		GenerationControlGenerationBudget,
 		GenerationControlSamplingPolicy,
@@ -118,6 +122,7 @@ func TestNegotiateUnsupportedOptionalDegrades(t *testing.T) {
 // implement the GenerationControlProvider capability honors nothing: any
 // required control fails, any optional control is dropped.
 func TestNegotiateProviderWithoutCapability(t *testing.T) {
+	t.Parallel()
 	// Scripted does not implement the capability surface.
 	p := NewScripted(nil)
 	reqs := []ControlRequirement{
@@ -142,6 +147,7 @@ func TestNegotiateProviderWithoutCapability(t *testing.T) {
 // once in the requirements negotiates once, and that repeated optional + required
 // entries resolve to required.
 func TestNegotiateDeduplicatesRepeatedControls(t *testing.T) {
+	t.Parallel()
 	p := &capableProvider{supported: []GenerationControl{GenerationControlSamplingPolicy}}
 	reqs := []ControlRequirement{
 		{Control: GenerationControlSamplingPolicy, Required: false},

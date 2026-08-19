@@ -14,6 +14,7 @@ import (
 // session never overflows the terminal — the composer + status band stay on
 // screen and only the history scrolls.
 func TestModel_heightAwareClampsHistory(t *testing.T) {
+	t.Parallel()
 	m := newTallHistoryModel(t)
 	// Install a small-but-realistic terminal (band = status strip + composer,
 	// ~7 rows) so the whole transcript cannot fit.
@@ -44,6 +45,7 @@ func TestModel_heightAwareClampsHistory(t *testing.T) {
 // lets the band trail off-screen and the band remains the final region of the
 // content at any height.
 func TestModel_bandPinnedOnResize(t *testing.T) {
+	t.Parallel()
 	m := newTallHistoryModel(t)
 
 	for _, h := range []int{24, 10, 14, 18} {
@@ -72,6 +74,7 @@ func TestModel_bandPinnedOnResize(t *testing.T) {
 // history clamps rather than the band yielding. The follow-to-bottom behaviour
 // that keeps the newest output visible is the separate T04 seam .
 func TestModel_historyClipHoldsNewestFollowSeam(t *testing.T) {
+	t.Parallel()
 	m := newTallHistoryModel(t)
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 10})
 	m = asModel(t, nm)

@@ -11,6 +11,7 @@ import "testing"
 // TestCapTokensUnderBudgetLeavesTextIntact verifies a summary whose estimated
 // token count is below the cap is returned byte-for-byte unchanged.
 func TestCapTokensUnderBudgetLeavesTextIntact(t *testing.T) {
+	t.Parallel()
 	// 12 bytes / 4 = 3 estimated tokens, below the n=4 cap (16-byte budget).
 	in := "abcdefghijkl"
 	got := capTokens(in, 4)
@@ -22,6 +23,7 @@ func TestCapTokensUnderBudgetLeavesTextIntact(t *testing.T) {
 // TestCapTokensAtBudgetLeavesTextIntact verifies the boundary: a summary
 // exactly at the n-token budget (n*4 bytes) is left intact, not truncated.
 func TestCapTokensAtBudgetLeavesTextIntact(t *testing.T) {
+	t.Parallel()
 	// 16 bytes / 4 = exactly 4 estimated tokens, the boundary for n=4.
 	in := "abcdefghijklmnop"
 	got := capTokens(in, 4)
@@ -36,6 +38,7 @@ func TestCapTokensAtBudgetLeavesTextIntact(t *testing.T) {
 // TestCapTokensOverBudgetTrimsToBudget verifies a summary that exceeds the cap
 // is truncated to the first n*4 bytes (n estimated tokens), never more.
 func TestCapTokensOverBudgetTrimsToBudget(t *testing.T) {
+	t.Parallel()
 	// 20 bytes / 4 = 5 estimated tokens, over the n=4 cap (16-byte budget).
 	in := "abcdefghijklmnopqrst"
 	got := capTokens(in, 4)
@@ -52,6 +55,7 @@ func TestCapTokensOverBudgetTrimsToBudget(t *testing.T) {
 // budget that is not a multiple of four bytes: the result is the first n*4
 // bytes, whose estimateString still never exceeds n.
 func TestCapTokensHandlesNonMultiplesOfFour(t *testing.T) {
+	t.Parallel()
 	// n=3 => 12-byte budget against a 15-byte input.
 	in := "abcdefghijklmno"
 	got := capTokens(in, 3)
@@ -70,6 +74,7 @@ func TestCapTokensHandlesNonMultiplesOfFour(t *testing.T) {
 // TestCapTokensEmptyText verifies an empty summary is returned unchanged even
 // under a tiny budget — the cap never fabricates content.
 func TestCapTokensEmptyText(t *testing.T) {
+	t.Parallel()
 	got := capTokens("", 1)
 	if got != "" {
 		t.Fatalf("capTokens(\"\", 1) = %q, want empty", got)

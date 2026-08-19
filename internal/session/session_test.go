@@ -8,6 +8,7 @@ import (
 )
 
 func TestNewCreatesGUIDTranscriptDir(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	s, err := New(dir, false)
 	if err != nil {
@@ -30,6 +31,7 @@ func TestNewCreatesGUIDTranscriptDir(t *testing.T) {
 }
 
 func TestWriteTranscriptPersistsContent(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	s, err := New(dir, true)
 	if err != nil {
@@ -51,6 +53,7 @@ func TestWriteTranscriptPersistsContent(t *testing.T) {
 }
 
 func TestDebugTraceSinkWritesHTTPTraces(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 
 	t.Run("enabled writes trace files", func(t *testing.T) {

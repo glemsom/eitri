@@ -42,6 +42,7 @@ func (s *blockedStream) Next() (provider.Chunk, error) {
 // context.Canceled, so callers (batch, TUI) can tell a user stop apart from a
 // failure.
 func TestErrStoppedWrapsContextCanceled(t *testing.T) {
+	t.Parallel()
 	if ErrStopped == nil {
 		t.Fatal("ErrStopped must be non-nil")
 	}
@@ -59,6 +60,7 @@ func TestErrStoppedWrapsContextCanceled(t *testing.T) {
 // and writes a distinguishable stopped transcript record carrying the partial
 // content.
 func TestRunCanceledDuringStreamReturnsStoppedWithPartialContent(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	tr := &mockTranscript{}
 	reqs := 0
@@ -109,6 +111,7 @@ func TestRunCanceledDuringStreamReturnsStoppedWithPartialContent(t *testing.T) {
 // the stop sentinel without ever calling Stream again (no resubmit past the
 // cancellation boundary).
 func TestRunAgentCanceledBeforeStreamRefusesResubmit(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	streams := 0
@@ -137,6 +140,7 @@ func TestRunAgentCanceledBeforeStreamRefusesResubmit(t *testing.T) {
 // (the running work dies at the ctx boundary) and the engine surfaces the stop
 // sentinel.
 func TestRunAgentCanceledDuringToolExecutionKillsToolLive(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	var toolCtx context.Context
 	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
@@ -186,6 +190,7 @@ func TestRunAgentCanceledDuringToolExecutionKillsToolLive(t *testing.T) {
 // and leave the resubmit counter at the pre-stop value (no fresh provider work
 // after the cancellation boundary).
 func TestRunAgentStopDuringStreamWritesStoppedTranscriptRecord(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	tr := &mockTranscript{}
 	turns := 0
@@ -240,6 +245,7 @@ func TestRunAgentStopDuringStreamWritesStoppedTranscriptRecord(t *testing.T) {
 // reads "=== <prompt> ===" + partial content) and is distinguishable from a
 // clean run's record.
 func TestRunAgentStopPreservesPromptInTranscriptRecord(t *testing.T) {
+	t.Parallel()
 	tr := &mockTranscript{}
 	started := make(chan struct{})
 	e := New(provider.NewScripted(func(rctx context.Context, req provider.Request) (provider.Stream, error) {
@@ -287,6 +293,7 @@ func TestRunAgentStopPreservesPromptInTranscriptRecord(t *testing.T) {
 // existing stream-termination contract) and no stop edge interferes: the
 // engine still accumulates and writes the normal record.
 func TestRunIoEOFStillClean(t *testing.T) {
+	t.Parallel()
 	tr := &mockTranscript{}
 	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
 		return &eofAfterChunkStream{}, nil

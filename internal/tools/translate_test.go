@@ -8,6 +8,7 @@ import (
 // directions: sandbox /tmp -> host /tmp/eitri-<GUID> and the reverse, while
 // leaving workspace host paths untouched.
 func TestPathTranslatorIsBidirectional(t *testing.T) {
+	t.Parallel()
 	g := GUID("abc123")
 	tr := NewPathTranslator(g)
 
@@ -47,6 +48,7 @@ func TestPathTranslatorIsBidirectional(t *testing.T) {
 // TestPathTranslatorIsIdempotent verifies repeated
 // translation never compounds or double-applies the GUID segment.
 func TestPathTranslatorIsIdempotent(t *testing.T) {
+	t.Parallel()
 	g := GUID("xyz99")
 	tr := NewPathTranslator(g)
 
@@ -67,6 +69,7 @@ func TestPathTranslatorIsIdempotent(t *testing.T) {
 // TestPathTranslatorTempIdentityDefinesGuestRoot verifies the model-facing
 // temp identity is always sandbox /tmp.
 func TestPathTranslatorTempIdentityDefinesGuestRoot(t *testing.T) {
+	t.Parallel()
 	tr := NewPathTranslator(GUID("aaa"))
 	host, rewritten := tr.SandboxToHost("/tmp")
 	if rewritten != true {

@@ -19,6 +19,7 @@ import (
 // assistant answer, and the per-turn reasoning block are all copied, with no
 // ANSI styling leaking into the pasted text.
 func TestModel_ctrlOCopiesTranscript(t *testing.T) {
+	t.Parallel()
 	var copied string
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -56,6 +57,7 @@ func TestModel_ctrlOCopiesTranscript(t *testing.T) {
 // block is NOT copied: the display-layer gate hides chain-of-thought
 // for a turn that didn't request thinking, regardless of what the backend sent.
 func TestModel_ctrlOHidesReasoningWhenThinkingOff(t *testing.T) {
+	t.Parallel()
 	var copied string
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -83,6 +85,7 @@ func TestModel_ctrlOHidesReasoningWhenThinkingOff(t *testing.T) {
 // surface: the transcript is copied and the command never reaches the engine
 // seam as a prompt .
 func TestModel_copySlashCopiesTranscript(t *testing.T) {
+	t.Parallel()
 	var copied string
 	var prompted []string
 	m := NewModelCfg(Dependencies{
@@ -115,6 +118,7 @@ func TestModel_copySlashCopiesTranscript(t *testing.T) {
 // TestModel_copyFailureReportsNote asserts a clipboard failure surfaces as a
 // visible status note instead of failing silently .
 func TestModel_copyFailureReportsNote(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -138,6 +142,7 @@ func TestModel_copyFailureReportsNote(t *testing.T) {
 // writer, and the band reports "copied" . The injected
 // OSC52Out stands in for os.Stdout so no real terminal is needed.
 func TestModel_copyFallsBackToOSC52(t *testing.T) {
+	t.Parallel()
 	var out bytes.Buffer
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -178,6 +183,7 @@ func TestModel_copyFallsBackToOSC52(t *testing.T) {
 // transcript or the agent loop: no message is added/removed/altered and the
 // model stays out of the busy state .
 func TestModel_copyDoesNotMutateConversation(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -208,6 +214,7 @@ func TestModel_copyDoesNotMutateConversation(t *testing.T) {
 // /copy command alongside /settings, and tab cycles to it (:
 // the copy command is discoverable from the command surface).
 func TestModel_copySlashShowsInCompletion(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil

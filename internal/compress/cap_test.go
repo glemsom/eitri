@@ -16,6 +16,7 @@ var bytesMarkerRe = regexp.MustCompile(`(?:\+[0-9]+ more, )?\+[0-9]+ bytes trunc
 // passes through byte-identical with zero dropped bytes — and that no marker
 // is ever appended (a cap must not inflate a result that already fits).
 func TestCapBytesUnderBudgetUnchanged(t *testing.T) {
+	t.Parallel()
 	cases := []string{
 		"",
 		"ok\n",
@@ -35,6 +36,7 @@ func TestCapBytesUnderBudgetUnchanged(t *testing.T) {
 // deterministically head-truncated to the budget and carries an explicit
 // "+N bytes truncated" marker whose count matches exactly what was dropped.
 func TestCapBytesOverBudgetKeepsHeadWithMarker(t *testing.T) {
+	t.Parallel()
 	draft := strings.Repeat("listing line\n", 30000) // ~390 KiB
 	delivered, dropped := CapBytes(draft, DefaultByteCap, true)
 
@@ -64,6 +66,7 @@ func TestCapBytesOverBudgetKeepsHeadWithMarker(t *testing.T) {
 // into a single merged tail line carrying both drop counts, with the marker's
 // full length accounted in the budget.
 func TestCapBytesComposesWithLineMarker(t *testing.T) {
+	t.Parallel()
 	var b strings.Builder
 	for i := 0; i < 400; i++ {
 		b.WriteString("entry.")
@@ -98,6 +101,7 @@ func TestCapBytesComposesWithLineMarker(t *testing.T) {
 // TestCapBytesDeterministic verifies the same input and budget always yield
 // the same output (protects the byte-stable cache prefix).
 func TestCapBytesDeterministic(t *testing.T) {
+	t.Parallel()
 	draft := strings.Repeat("entry."+itoa(42)+" payload\n", 20000)
 	a, da := CapBytes(draft, DefaultByteCap, true)
 	b, db := CapBytes(draft, DefaultByteCap, true)
@@ -111,6 +115,7 @@ func TestCapBytesDeterministic(t *testing.T) {
 // budget leaves it alone: the byte marker is never double-marked (the capped
 // result is under budget, so the re-cap passes it through byte-identical).
 func TestCapBytesIdempotent(t *testing.T) {
+	t.Parallel()
 	draft := strings.Repeat("entry."+itoa(7)+" payload\n", 20000)
 	capped, _ := CapBytes(draft, DefaultByteCap, true)
 
@@ -131,6 +136,7 @@ func TestCapBytesIdempotent(t *testing.T) {
 // the kept head is always valid UTF-8 and no multibyte rune is split by the
 // byte cut.
 func TestCapBytesUtf8Boundary(t *testing.T) {
+	t.Parallel()
 	draft := strings.Repeat("héllo wörld\n", 20000) // é/ö are 2-byte runes
 	delivered, dropped := CapBytes(draft, DefaultByteCap, true)
 
@@ -152,6 +158,7 @@ func TestCapBytesUtf8Boundary(t *testing.T) {
 // traded away for size (never-silent): a draft only a few bytes over budget
 // still truncates and reports the exact dropped count.
 func TestCapBytesSlightlyOverBudgetStillTruncates(t *testing.T) {
+	t.Parallel()
 	draft := strings.Repeat("x", 1000) // body; no marker to peel
 	delivered, dropped := CapBytes(draft, 999, true)
 
@@ -181,6 +188,7 @@ func min(a, b int) int {
 // case — the merger's own bytes are reserved ahead of the cut, never stolen
 // from the keep head.
 func TestCapBytesMergedMarkerDeliveredNeverExceedsBudget(t *testing.T) {
+	t.Parallel()
 	budget := 500
 	// Head that with the long "+N more" marker lands exactly at budget+1.
 	head := strings.Repeat("x", budget+1-len("+29999 more\n"))
@@ -209,6 +217,7 @@ func TestCapBytesMergedMarkerDeliveredNeverExceedsBudget(t *testing.T) {
 // ahead of the plain "+N bytes truncated" tail, so no raw bytes are silently
 // dropped as a fake "marker".
 func TestCapBytesWithoutLineTruncatedNeverMergesLookLikeMarker(t *testing.T) {
+	t.Parallel()
 	// The look-like-marker line sits at the HEAD so it survives the byte cut,
 	// exactly the shape that would be silently re-written as a merged marker
 	// if CapBytes peeled on looks alone.

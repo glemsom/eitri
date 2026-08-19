@@ -12,6 +12,7 @@ import (
 // AC1) — so a range-limited read is distinguishable at a glance from a
 // whole-file dump.
 func TestModel_readRangeShownInEntryHead(t *testing.T) {
+	t.Parallel()
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -40,6 +41,7 @@ func TestModel_readRangeShownInEntryHead(t *testing.T) {
 // TestModel_readWholeFileHasNoRange asserts a `read` call with omitted or null
 // limits renders today's path-only head with no range tag .
 func TestModel_readWholeFileHasNoRange(t *testing.T) {
+	t.Parallel()
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -78,6 +80,7 @@ func TestModel_readWholeFileHasNoRange(t *testing.T) {
 //: a single explicit limit, string-typed limits, and invalid
 // JSON all render the plain path hint.
 func TestModel_readMalformedArgsFallBackToPath(t *testing.T) {
+	t.Parallel()
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -112,6 +115,7 @@ func TestModel_readMalformedArgsFallBackToPath(t *testing.T) {
 // transcript carries the same range tag as the on-screen entry head (
 // AC4).
 func TestModel_clipboardCopyIncludesReadRange(t *testing.T) {
+	t.Parallel()
 	var copied string
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{

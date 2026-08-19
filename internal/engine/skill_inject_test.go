@@ -15,6 +15,7 @@ import (
 // drives the real engine seam (not the tui.Turn stub) and asserts the provider
 // request carries the injected <skill_content> payload ahead of the user args.
 func TestRunAgentPrependsSkillInjectToMessages(t *testing.T) {
+	t.Parallel()
 	var capturer capturedRequests
 	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
 		capturer.reqs = append(capturer.reqs, req)
@@ -59,6 +60,7 @@ func TestRunAgentPrependsSkillInjectToMessages(t *testing.T) {
 // when no skill was slash-activated, RunAgent must keep the historical two-message
 // head (system + user) so ordinary turns are byte-identical (prompt-cache invariant).
 func TestRunAgentWithoutSkillInjectKeepsExistingShape(t *testing.T) {
+	t.Parallel()
 	var capturer capturedRequests
 	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
 		capturer.reqs = append(capturer.reqs, req)

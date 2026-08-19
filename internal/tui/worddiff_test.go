@@ -9,6 +9,7 @@ import (
 // that differ between two lines, keeping shared words and punctuation
 // unchanged (benchmark §4.2 word-level diff emphasis).
 func TestWordDiff_marksChangedTokens(t *testing.T) {
+	t.Parallel()
 	oldToks, newToks := wordDiff("func start(port int) error {", "func start(port uint16) error {")
 	oldJoin, newJoin := "", ""
 	for _, tok := range oldToks {
@@ -52,6 +53,7 @@ func changedText(toks []wordToken) string {
 // first styled token so the rendered text stays contiguous (+world, not
 // +<escape>world) and the changed token carries bold emphasis (SGR 1).
 func TestRenderWordDiff_prefixContiguous(t *testing.T) {
+	t.Parallel()
 	_, newToks := wordDiff("a=b", "a==b")
 	rendered := renderWordDiff(newToks, defaultTheme.diffAddStyle, "+")
 	if !strings.Contains(rendered, "+") {

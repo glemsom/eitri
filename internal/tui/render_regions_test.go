@@ -13,6 +13,7 @@ import (
 // diff inside the card frame, and that toggling the mode off restores the
 // collapsed [+N,−M] summary (through the transcript seam).
 func TestModel_expandedViewEditCardRendersInlineDiff(t *testing.T) {
+	t.Parallel()
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -57,6 +58,7 @@ func TestModel_expandedViewEditCardRendersInlineDiff(t *testing.T) {
 // (renderBand), with no content leaking across the seam. This is the region
 // boundary that T02+ later drives with height-aware viewport + band pinning.
 func TestRenderRegions_HistoryVsBandSeparation(t *testing.T) {
+	t.Parallel()
 	feed := NewToolFeed()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
@@ -131,6 +133,7 @@ func resizeTo(t *testing.T, m Model, width, height int) Model {
 // renderPane is the height-clamped history
 // followed by the fixed band, which stays the final (bottom-pinned) region.
 func TestRenderPane_ComposesRegionsInOrder(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer"}, nil

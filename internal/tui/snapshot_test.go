@@ -96,6 +96,7 @@ const (
 	loginBefore = `package auth
 
 func TestLogin(t *testing.T) {
+	t.Parallel()
 	mock := newMockClock()
 	user := mustCreateUser(t)
 	tok := issueToken(user, mock.Now())
@@ -107,6 +108,7 @@ func TestLogin(t *testing.T) {
 	loginAfter = `package auth
 
 func TestLogin(t *testing.T) {
+	t.Parallel()
 	mock := newMockClock()
 	mock.Freeze()
 	defer mock.Unfreeze()
@@ -122,6 +124,7 @@ func TestLogin(t *testing.T) {
 // TestSnapshot_frames renders the scripted session states to .ans frames for
 // the aesthetic measure pipeline. Every frame must render without panicking.
 func TestSnapshot_frames(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("EITRI_SNAPSHOT") != "1" {
 		t.Skip("set EITRI_SNAPSHOT=1 to render snapshot frames")
 	}
@@ -309,6 +312,7 @@ func scriptedChat(t *testing.T, cfg config.Config, w, h int) Model {
 // TestSnapshot_narrow audits the narrow-terminal surface (80x24, no rail —
 // auto-hidden below 120): strip collapse, bubble wrapping, band fit.
 func TestSnapshot_narrow(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("EITRI_SNAPSHOT") != "1" {
 		t.Skip("set EITRI_SNAPSHOT=1 to render snapshot frames")
 	}

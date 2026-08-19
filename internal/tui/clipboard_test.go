@@ -19,6 +19,7 @@ func failingClipboard(text string) error {
 // a terminal like Ghostty turns into a system-clipboard write, verified against
 // a hand-computed literal.
 func TestClipboardWithOSCFallbackFallsBackToOSC52(t *testing.T) {
+	t.Parallel()
 	var out bytes.Buffer
 	seam := clipboardWithOSCFallback(failingClipboard, &out)
 	if err := seam("hello"); err != nil {
@@ -34,6 +35,7 @@ func TestClipboardWithOSCFallbackFallsBackToOSC52(t *testing.T) {
 // clipboard and no OSC 52 sequence is ever written, so a working system
 // clipboard keeps its exact pre-fallback behaviour.
 func TestClipboardWithOSCFallbackPrimarySuccessSkipsFallback(t *testing.T) {
+	t.Parallel()
 	var copied string
 	primary := func(text string) error { copied = text; return nil }
 	var out bytes.Buffer
@@ -68,6 +70,7 @@ func (*notTerminal) Fd() uintptr { return 12345 }
 // the fallback error so the existing "copy failed: …" status note still
 // reports the failure instead of claiming a copy that never happened.
 func TestClipboardWithOSCFallbackBothFail(t *testing.T) {
+	t.Parallel()
 	seam := clipboardWithOSCFallback(failingClipboard, errWriter{})
 	err := seam("hello")
 	if err == nil {
@@ -82,6 +85,7 @@ func TestClipboardWithOSCFallbackBothFail(t *testing.T) {
 // the seam returns osc52.ErrNotTerminal and emits nothing, so piped/
 // non-terminal output never receives escape garbage.
 func TestClipboardWithOSCFallbackRefusesNonTerminalOutput(t *testing.T) {
+	t.Parallel()
 	var out notTerminal
 	seam := clipboardWithOSCFallback(failingClipboard, &out)
 	err := seam("hello")

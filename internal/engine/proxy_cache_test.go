@@ -73,6 +73,7 @@ func proxyFixture(t *testing.T, name string) string {
 // proxy-shaped form of the prompt-cache invariant that unit marshaling tests
 // cannot observe.
 func TestRunAgentKeepsByteIdenticalHeadThroughProxy(t *testing.T) {
+	t.Parallel()
 	h := &proxyHandler{
 		fixtures: []string{
 			proxyFixture(t, "proxy-turn1.sse"), // turn 1: tool_calls (read)

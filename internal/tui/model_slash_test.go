@@ -14,6 +14,7 @@ import (
 // opens the Settings surface, routing to the same settings
 // panel ctrl+s opens — never sent as a chat prompt to the engine seam.
 func TestModel_slashSettingsOpensSurface(t *testing.T) {
+	t.Parallel()
 	var prompted string
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
@@ -48,6 +49,7 @@ func TestModel_slashSettingsOpensSurface(t *testing.T) {
 // still sent normally so slash handling never swallows user
 // input.
 func TestModel_slashCompletionListsCommands(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -99,6 +101,7 @@ func TestModel_slashCompletionListsCommands(t *testing.T) {
 // commands ahead of any matching skill — filling
 // the composer candidate-by-candidate.
 func TestModel_slashTabCyclesSettingsAndSkills(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -141,6 +144,7 @@ func TestModel_slashTabCyclesSettingsAndSkills(t *testing.T) {
 // login seam instead of the engine, surfaces the device-flow code, and applies
 // the returned config for later turns.
 func TestModel_slashLoginRunsLoginFlow(t *testing.T) {
+	t.Parallel()
 	var prompted string
 	var applied config.Config
 	m := NewModelCfg(Dependencies{
@@ -183,6 +187,7 @@ func TestModel_slashLoginRunsLoginFlow(t *testing.T) {
 // deleted back to empty. The completion list and its reserved rows must key off
 // the current composer value, not a stale `/...` prefix.
 func TestModel_slashCompletionDismissedOnEmptyLine(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil

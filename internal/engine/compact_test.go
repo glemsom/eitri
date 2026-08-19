@@ -28,6 +28,7 @@ func compactCfg() *CompactionConfig {
 // ring-fence: a message belonging to a skill activation
 // is kept, not evicted, even when the soft budget would drop it.
 func TestEvictPruneRingFenceProtectsSkillContent(t *testing.T) {
+	t.Parallel()
 	msgs := []provider.Message{
 		{Role: provider.RoleUser, Content: "old prompt"},
 		{Role: provider.RoleAssistant, Content: "old answer"},
@@ -147,6 +148,7 @@ func (b *budgetScripted) SupportedGenerationControls(context.Context) ([]provide
 // max_completion_tokens capped at SummaryMaxTokens, while ordinary agent/tool
 // turns in the same run carry no budget.
 func TestCompactionSummaryHonorsGenerationBudget(t *testing.T) {
+	t.Parallel()
 	h := &compactHandler{}
 	e := New(&budgetScripted{Scripted: *provider.NewScripted(h.stream)}, &mockTranscript{})
 
@@ -194,6 +196,7 @@ func TestCompactionSummaryHonorsGenerationBudget(t *testing.T) {
 // the hard cap. Compaction still happens (eviction frees context) and the run
 // completes.
 func TestCompactionSkipsSummaryWhenBudgetUnsupported(t *testing.T) {
+	t.Parallel()
 	// NewScripted has no generation-control capability surface: it honors no
 	// controls, so a required Generation Budget fails the contract.
 	h := &compactHandler{}
@@ -232,6 +235,7 @@ func TestCompactionSkipsSummaryWhenBudgetUnsupported(t *testing.T) {
 // an anchored summary at the head of the next request, and preserves the
 // verbatim tail (including reasoning_content).
 func TestRunAgentCompactsAtThreshold(t *testing.T) {
+	t.Parallel()
 	h := &compactHandler{}
 	var compacted bool
 	e := New(&budgetScripted{Scripted: *provider.NewScripted(h.stream)}, &mockTranscript{})
@@ -373,6 +377,7 @@ func (h *overflowHandler) stream(ctx context.Context, req provider.Request) (pro
 // through the same unified path rather than failing the run with the overflow
 // error.
 func TestRunAgentOverflowTrigger(t *testing.T) {
+	t.Parallel()
 	h := &overflowHandler{}
 	e := New(&budgetScripted{Scripted: *provider.NewScripted(h.stream)}, &mockTranscript{})
 

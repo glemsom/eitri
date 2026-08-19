@@ -16,6 +16,7 @@ import (
 // appended to the conversation (ticket #34: "a TUI run of a greeting
 // round-trips through the engine and renders the answer").
 func TestModel_greetingRoundTrip(t *testing.T) {
+	t.Parallel()
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		if prompt != "hello" {
 			t.Errorf("expected prompt 'hello', got %q", prompt)
@@ -61,6 +62,7 @@ func TestModel_greetingRoundTrip(t *testing.T) {
 // TestModel_errorTurn asserts a failing turn renders a visible error instead of
 // silently dropping.
 func TestModel_errorTurn(t *testing.T) {
+	t.Parallel()
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		return TurnResult{}, errors.New("provider exploded")
 	})
@@ -80,6 +82,7 @@ func TestModel_errorTurn(t *testing.T) {
 // reasoning body is hidden until `tab` expands the block, and reasoning never
 // leaks into the answer (ticket #17 / #85).
 func TestModel_thinkingCollapsible(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{
@@ -127,6 +130,7 @@ func TestModel_thinkingCollapsible(t *testing.T) {
 // hint is a one-line summary carrying a reason-token estimate and the
 // reasoning-effort tier .
 func TestModel_thinkingHintReportsTokensAndEffort(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer", Reasoning: strings.Repeat("reasoning words. ", 400)}, nil
@@ -160,6 +164,7 @@ func TestModel_thinkingHintReportsTokensAndEffort(t *testing.T) {
 // (issue #364 AC2; origin issue #85 AC3: "auto-collapses once the turn's final
 // answer lands").
 func TestModel_thinkingAutoCollapsesOnAnswer(t *testing.T) {
+	t.Parallel()
 	m := newStreamingModel()
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
@@ -183,6 +188,7 @@ func TestModel_thinkingAutoCollapsesOnAnswer(t *testing.T) {
 // detected skills surface wired . Skills still activate via the
 // slash-command surface, just not in the rail.
 func TestModel_railRendersNoSkillsSection(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -211,6 +217,7 @@ func TestModel_railRendersNoSkillsSection(t *testing.T) {
 // activation flow (ticket #35); the rail shows no ✓/✕ state for it (issue
 // #188).
 func TestModel_slashCommandActivatesSkill(t *testing.T) {
+	t.Parallel()
 	var activated string
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -240,6 +247,7 @@ func TestModel_slashCommandActivatesSkill(t *testing.T) {
 // TestModel_slashCompletionTab asserts `/` + tab cycles a skill-name completion
 // in the composer.
 func TestModel_slashCompletionTab(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -332,6 +340,7 @@ func view(m Model) string { return m.View().Content }
 // composer instead of submitting: the prompt text must sit on a new line, the
 // model must not go busy, and no turn command may be emitted (ticket #57).
 func TestModel_shiftEnterInsertsNewline(t *testing.T) {
+	t.Parallel()
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		t.Fatalf("Shift+Enter must not submit a turn, got prompt %q", prompt)
 		return TurnResult{}, nil
@@ -358,6 +367,7 @@ func TestModel_shiftEnterInsertsNewline(t *testing.T) {
 // . The line is informational/read-only: opening the model with
 // no workspace (the plain chat default) renders no such line.
 func TestModel_workspaceStateSurfaced(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -391,6 +401,7 @@ func TestModel_workspaceStateSurfaced(t *testing.T) {
 // assembled with Shift+Enter is delivered whole to the engine when the final
 // plain Enter submits (ticket #57).
 func TestModel_shiftEnterThenSubmitSendsWholeMultiLine(t *testing.T) {
+	t.Parallel()
 	var got []string
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		got = append(got, prompt)
@@ -418,6 +429,7 @@ func TestModel_shiftEnterThenSubmitSendsWholeMultiLine(t *testing.T) {
 // TestModel_shiftEnterIgnoredWhileBusy asserts Shift+Enter is a no-op (does not
 // touch the composer) while a prior turn is still running (ticket #57).
 func TestModel_shiftEnterIgnoredWhileBusy(t *testing.T) {
+	t.Parallel()
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		return TurnResult{Answer: "ok"}, nil
 	})

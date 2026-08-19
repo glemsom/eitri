@@ -10,6 +10,7 @@ import (
 // TestGitBranch reads the branch from .git/HEAD, walking up from a workspace
 // subdirectory, and returns "" for detached/absent repos.
 func TestGitBranch(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "sub", "deep"), 0o755); err != nil {
 		t.Fatal(err)
@@ -51,6 +52,7 @@ func TestGitBranch(t *testing.T) {
 // TestRailBranchRenders asserts the CONTEXT section shows the branch line once
 // SetBranch is called, and omits it otherwise (statusline telemetry).
 func TestRailBranchRenders(t *testing.T) {
+	t.Parallel()
 	r := NewRail("opencode-go", "deepseek-v4-flash", "high", true, "sess-1", "/tmp/sess-1")
 	view := r.render(NewTelemetry("deepseek-v4-flash", "high", true, 250), defaultTheme, defaultRailWidth)
 	if contains := strings.Contains(view, "branch"); contains {

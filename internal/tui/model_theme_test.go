@@ -18,6 +18,7 @@ import (
 // Bubble Tea runtime renders before any message is processed, so the test
 // checks it before feeding a resize.
 func TestModel_unknownThemeStartupWarning(t *testing.T) {
+	t.Parallel()
 	cfg := cfgFixture()
 	cfg.Theme = "bogus"
 	m := NewModelCfg(Dependencies{Config: cfg})
@@ -44,6 +45,7 @@ func TestModel_unknownThemeStartupWarning(t *testing.T) {
 // TestModel_validThemeNoWarning asserts a supported theme never triggers the
 // unknown-theme startup warning: valid themes print nothing.
 func TestModel_validThemeNoWarning(t *testing.T) {
+	t.Parallel()
 	cfg := cfgFixture()
 	cfg.Theme = "dracula"
 	m := NewModelCfg(Dependencies{Config: cfg})
@@ -59,6 +61,7 @@ func TestModel_validThemeNoWarning(t *testing.T) {
 // config re-skins the whole surface, not just the Markdown body, with no
 // interaction needed.
 func TestModel_configThemeSkinsChromeAtStartup(t *testing.T) {
+	t.Parallel()
 	cfg := cfgFixture()
 	cfg.Theme = "dracula"
 	m := NewModelCfg(Dependencies{
@@ -82,6 +85,7 @@ func TestModel_configThemeSkinsChromeAtStartup(t *testing.T) {
 // agent pane border and the Markdown body pick up the new palette without a
 // restart.
 func TestModel_settingsThemeSaveReskinsChrome(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer"}, nil
@@ -123,6 +127,7 @@ func TestModel_settingsThemeSaveReskinsChrome(t *testing.T) {
 // one after: the band note must not repeat forever ( hardening —
 // the same one-shot discipline the startup warning relies on).
 func TestModel_statusNoteIsOneShot(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil

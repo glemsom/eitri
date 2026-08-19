@@ -16,6 +16,7 @@ import (
 // cache is built once (on the first hit-test), repeated toolEntryAtLine and
 // mouseToContent calls must not re-run the layout pass.
 func TestLayoutCache_hitTestsReuseRecordedIndex(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -62,6 +63,7 @@ func TestLayoutCache_hitTestsReuseRecordedIndex(t *testing.T) {
 // the row->message index alongside the tool-entry index, so the persistent
 // layout records every owner the transcript renders.
 func TestLayoutCache_recordsRowMessageIndex(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -100,6 +102,7 @@ func TestLayoutCache_recordsRowMessageIndex(t *testing.T) {
 // owning message via the recorded index, and reports ok=false for a non-message
 // row (the workspace header) without re-building layout.
 func TestLayoutCache_messageAtLineConsumesRowIndex(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil

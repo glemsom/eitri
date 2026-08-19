@@ -19,6 +19,7 @@ type headRecorder struct {
 // provider must see RoleSystem first, whose content is byte-identical to the
 // embedded source.
 func TestRunOpensWithSystemPrompt(t *testing.T) {
+	t.Parallel()
 	cap := &headRecorder{}
 	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
 		cap.reqs = append(cap.reqs, req)
@@ -54,6 +55,7 @@ func assertSystemPromptHead(t *testing.T, msgs []provider.Message) {
 // special turn opens with the embedded system prompt at [0], so
 // every run path shares the same byte-stable request head.
 func TestRunJSONObjectModeOpensWithSystemPrompt(t *testing.T) {
+	t.Parallel()
 	cap := &headRecorder{}
 	p := &capableScripted{
 		Scripted: provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
@@ -76,6 +78,7 @@ func TestRunJSONObjectModeOpensWithSystemPrompt(t *testing.T) {
 // TestRunSamplingPolicyOpensWithSystemPrompt asserts the Sampling Policy
 // special turn opens with the embedded system prompt at [0].
 func TestRunSamplingPolicyOpensWithSystemPrompt(t *testing.T) {
+	t.Parallel()
 	cap := &headRecorder{}
 	p := &capableScripted{
 		Scripted: provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
@@ -98,6 +101,7 @@ func TestRunSamplingPolicyOpensWithSystemPrompt(t *testing.T) {
 // TestRunAgentOpensWithSystemPrompt asserts the tool-capable agent loop opens
 // each request with the embedded system prompt at [0].
 func TestRunAgentOpensWithSystemPrompt(t *testing.T) {
+	t.Parallel()
 	cap := &headRecorder{}
 	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
 		cap.reqs = append(cap.reqs, req)
@@ -124,6 +128,7 @@ func TestRunAgentOpensWithSystemPrompt(t *testing.T) {
 // on. The prior-turn payload appends after the stable
 // head, so only the messages [2:] may change; the head itself must not.
 func TestRunAgentKeepsStableHeadAcrossTurns(t *testing.T) {
+	t.Parallel()
 	turn := 0
 	var heads [][]provider.Message
 	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {

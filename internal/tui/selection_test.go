@@ -23,6 +23,7 @@ import (
 // two-character escape sequences while keeping every printable rune, so the
 // plain-text cell grid selection maps into matches the rendered transcript.
 func TestAnsiStrip_RemovesEscapeSequences(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		in, want string
 	}{
@@ -52,6 +53,7 @@ func TestAnsiStrip_RemovesEscapeSequences(t *testing.T) {
 // after it, and all escape sequences keep their exact bytes, so the surrounding
 // styling never breaks (no partial-code artifacts).
 func TestHighlightRange_WrapsOnlySelectedCells(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		line       string
 		from, to   int
@@ -88,6 +90,7 @@ func TestHighlightRange_WrapsOnlySelectedCells(t *testing.T) {
 // turns reverse video on and off around that single rune, and a range past the
 // end of the line leaves the line unchanged (no panic, no spurious markers).
 func TestHighlightRange_SingleCellAndOutOfRange(t *testing.T) {
+	t.Parallel()
 	got := highlightRange("ab", 1, 1)
 	if plain := ansiStrip(got); plain != "ab" {
 		t.Errorf("single-cell highlight plain = %q, want \"ab\"", plain)
@@ -160,6 +163,7 @@ func dragMsg(action string, x, y int) tea.Msg {
 // : press anchors the range, motion extends it, release copies
 // through the same seam as Ctrl+O, and the band reports the copy.
 func TestDragSelect_copiesSelectedRange(t *testing.T) {
+	t.Parallel()
 	var copied string
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -201,6 +205,7 @@ func TestDragSelect_copiesSelectedRange(t *testing.T) {
 // behaviour: the copied snippet is exactly the characters
 // shown on screen for the selected cells, with no escape residue.
 func TestDragSelect_multilineRangeJoinsRows(t *testing.T) {
+	t.Parallel()
 	var copied string
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -266,6 +271,7 @@ func TestDragSelect_multilineRangeJoinsRows(t *testing.T) {
 // widths: in "ab你defg" 你 occupies display columns 2-3 and is 1 rune (issue
 // #261 width/run mismatch repro).
 func TestColToRuneIndex_WidthAware(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		line string
 		col  int
@@ -396,6 +402,7 @@ func newWideAnswerModel(t *testing.T, copied *string) (m Model, rows []string, t
 }
 
 func TestDragSelect_wideCharCopyMatchesHighlight(t *testing.T) {
+	t.Parallel()
 	var copied string
 	m, _, _, answerRow := newWideAnswerModel(t, &copied)
 
@@ -418,6 +425,7 @@ func TestDragSelect_wideCharCopyMatchesHighlight(t *testing.T) {
 // corrupts the copy: dragging display column 5..7 (b through 你's two cells)
 // copies runes [5,6] = "b你" intact.
 func TestDragSelect_boundaryInsideWideCharNoPanic(t *testing.T) {
+	t.Parallel()
 	var copied string
 	m, _, _, answerRow := newWideAnswerModel(t, &copied)
 
@@ -434,6 +442,7 @@ func TestDragSelect_boundaryInsideWideCharNoPanic(t *testing.T) {
 // reproducing exactly the wrapped rows the user saw (no
 // partial-code artifacts from wrapped lines or ANSI styling).
 func TestDragSelect_wrappedLinesCopyMatchesDisplay(t *testing.T) {
+	t.Parallel()
 	var copied string
 	long := strings.Repeat("word ", 40) // wraps across several display rows
 	m := NewModelCfg(Dependencies{
@@ -489,6 +498,7 @@ func TestDragSelect_wrappedLinesCopyMatchesDisplay(t *testing.T) {
 // cell back to the start cell copies the same normalized range as the forward
 // drag (selection is direction-independent).
 func TestDragSelect_backwardsDragCopiesSameRange(t *testing.T) {
+	t.Parallel()
 	var copied string
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -525,6 +535,7 @@ func TestDragSelect_backwardsDragCopiesSameRange(t *testing.T) {
 // the reverse-video marker: the composer paints no software caret cell
 // anymore, so no row needs excluding.
 func TestDragSelect_highlightsDuringDrag(t *testing.T) {
+	t.Parallel()
 	m := dragModel(t, "plain answer")
 	rows, top := historyContentRows(m)
 	if top != 0 {
@@ -555,6 +566,7 @@ func TestDragSelect_highlightsDuringDrag(t *testing.T) {
 // (no drag) never reaches the clipboard — only an actual drag copies (issue
 // #124 AC2: click-dragging, not clicking).
 func TestDragSelect_plainClickCopiesNothing(t *testing.T) {
+	t.Parallel()
 	copied := ""
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -580,6 +592,7 @@ func TestDragSelect_plainClickCopiesNothing(t *testing.T) {
 // band never starts a selection and drag events never disturb the composer
 // input (selection does not interfere with composer input).
 func TestDragSelect_ignoresBandAndComposer(t *testing.T) {
+	t.Parallel()
 	m := dragModel(t, "plain answer")
 	bandLines := m.bandHeight()
 	// A press on the band's own row (last terminal row).
@@ -608,6 +621,7 @@ func TestDragSelect_ignoresBandAndComposer(t *testing.T) {
 // plain text even though it is no longer the first content row (
 // AC3 — selection reads the rendered transcript, not a fixed offset).
 func TestDragSelect_scrolledViewportMapsRows(t *testing.T) {
+	t.Parallel()
 	var copied string
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -663,6 +677,7 @@ func TestDragSelect_scrolledViewportMapsRows(t *testing.T) {
 // is being drawn, so selection never interferes with scroll navigation (issue
 // #124 AC4).
 func TestDragSelect_wheelStillScrollsDuringDrag(t *testing.T) {
+	t.Parallel()
 	m := scrollOverflowModel(t)
 	rows, top := historyContentRows(m)
 	if top <= 0 {
@@ -703,6 +718,7 @@ func TestDragSelect_wheelStillScrollsDuringDrag(t *testing.T) {
 // stay inert and the global expandAll flag is never touched (benchmark §4.4
 // mouse ergonomics: click-to-expand tool results).
 func TestClickToExpand_togglesToolEntry(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil

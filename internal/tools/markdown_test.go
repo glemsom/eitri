@@ -9,6 +9,7 @@ import (
 // converter is expected to render: headings, paragraphs, bold/italic, links,
 // code fences, and lists — the shapes web content needs.
 func TestHTMLToMarkdownRendersBlocks(t *testing.T) {
+	t.Parallel()
 	html := `<html><body>` +
 		`<h1>Heading</h1>` +
 		`<p>Text with <strong>bold</strong> and <em>it</em> and <a href="https://x.io">link</a>.</p>` +
@@ -37,6 +38,7 @@ func TestHTMLToMarkdownRendersBlocks(t *testing.T) {
 // TestHTMLToMarkdownDropsChrome verifies script/style/nav bodies never reach the
 // output — untrusted web chrome stays out.
 func TestHTMLToMarkdownDropsChrome(t *testing.T) {
+	t.Parallel()
 	html := `<html><head><style>.x{}</style></head><body><nav><a>hidden</a></nav><script>evil()</script><p>keep</p></body></html>`
 	out, err := htmlToMarkdown(strings.NewReader(html))
 	if err != nil {

@@ -15,6 +15,7 @@ import (
 // explicit "+ more" marker, strictly shorter than the raw bytes, and
 // deterministic so a re-run recovers the full output.
 func TestAgentBashTurnReturnsCompressedOutput(t *testing.T) {
+	t.Parallel()
 	var raw strings.Builder
 	for i := range 500 {
 		raw.WriteString("internal/pkg_")

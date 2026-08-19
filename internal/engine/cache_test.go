@@ -49,6 +49,7 @@ func (c *captureHandler) stream(ctx context.Context, req provider.Request) (prov
 // request head (the stable prefix before the growing tool tail) is
 // byte-identical across turns — the prompt-cache invariant.
 func TestRunAgentMaintainsByteIdenticalCacheHead(t *testing.T) {
+	t.Parallel()
 	c := &captureHandler{}
 	e := New(provider.NewScripted(c.stream), nil)
 
@@ -104,6 +105,7 @@ func TestRunAgentMaintainsByteIdenticalCacheHead(t *testing.T) {
 // (including deepseek cache hit/miss tokens) parsed at the provider seam
 // reaches the engine Result.
 func TestRunAgentPropagatesPromptCacheUsage(t *testing.T) {
+	t.Parallel()
 	c := &captureHandler{}
 	e := New(provider.NewScripted(c.stream), nil)
 

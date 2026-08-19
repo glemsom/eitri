@@ -33,6 +33,7 @@ func lineContaining(s, want string) string {
 // answer without any "you"/"eitri" role labels: the user prompt is plain
 // markdown, and only the agent pane's left border marks the answer side.
 func TestModel_stylingNoRoleLabels(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer"}, nil
@@ -55,6 +56,7 @@ func TestModel_stylingNoRoleLabels(t *testing.T) {
 // left-bordered pane, visually distinct from the user chip (:
 // "left-bordered agent panes").
 func TestModel_stylingAgentPaneBordered(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer"}, nil
@@ -77,6 +79,7 @@ func TestModel_stylingAgentPaneBordered(t *testing.T) {
 // ✓ outcome tag and a failed one a ✗ tag, next to the per-tool glyph
 // ").
 func TestModel_stylingToolOutcomeMarkers(t *testing.T) {
+	t.Parallel()
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -114,6 +117,7 @@ func TestModel_stylingToolOutcomeMarkers(t *testing.T) {
 // marker inside a bordered agent pane "), so an
 // error is as readable as a normal answer.
 func TestModel_stylingErrorMarker(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{}, errors.New("provider exploded")
@@ -143,6 +147,7 @@ func TestModel_stylingErrorMarker(t *testing.T) {
 // generic faint line. The per-tool glyph stays on every entry — meaning never rides
 // on color alone .
 func TestModel_stylingToolCategoryColors(t *testing.T) {
+	t.Parallel()
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -213,6 +218,7 @@ func TestModel_stylingToolCategoryColors(t *testing.T) {
 // answer text itself stays plain — the 🤔 glyph plus the accent+italic pair
 // mark the hint, never color alone .
 func TestModel_stylingThinkingDistinct(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer", Reasoning: "hidden reasoning"}, nil
@@ -243,6 +249,7 @@ func TestModel_stylingThinkingDistinct(t *testing.T) {
 // TestModel_stylingThinkingMarker asserts the thinking block keeps its 🤔
 // marker ") on the collapsed hint line.
 func TestModel_stylingThinkingMarker(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok", Reasoning: "hidden reasoning"}, nil
@@ -266,6 +273,7 @@ func TestModel_stylingThinkingMarker(t *testing.T) {
 // region: a top border separates it from the transcript, and it still carries
 // the live status strip and the composer .
 func TestModel_stylingBandCoherent(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
 	m := NewModelCfg(Dependencies{
@@ -380,6 +388,7 @@ func cellBGFill(s string) []bool {
 // right scroll/follow gutter (transcript width minus composer width) is out of
 // scope: only the card's own columns are asserted.
 func TestModel_userBubbleFillsFullWidth(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer"}, nil
@@ -414,6 +423,7 @@ func TestModel_userBubbleFillsFullWidth(t *testing.T) {
 }
 
 func TestModel_stylingPaletteCentralized(t *testing.T) {
+	t.Parallel()
 	if got := defaultTheme.agentPaneStyle.GetBorderLeftForeground(); got != defaultTheme.accent {
 		t.Errorf("agent pane border foreground = %v, want accent %v", got, defaultTheme.accent)
 	}

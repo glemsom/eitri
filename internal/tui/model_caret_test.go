@@ -57,6 +57,7 @@ func newline(t *testing.T, m Model) Model {
 // plain text — and the frame attaches the terminal's hardware caret instead
 // .
 func TestComposer_HardwareCaretReplacesSoftwareCell(t *testing.T) {
+	t.Parallel()
 	m := caretModel(t)
 	m = typeText(t, m, "hi")
 	if strings.Contains(view(m), "\x1b[7m") {
@@ -75,6 +76,7 @@ func TestComposer_HardwareCaretReplacesSoftwareCell(t *testing.T) {
 // terminal's configured cursor color, so Eitri never overwrites it with a fixed
 // white. Color stays nil so the renderer emits no SetCursorColor sequence.
 func TestComposer_CaretStylePolicy(t *testing.T) {
+	t.Parallel()
 	m := caretModel(t)
 	c := caret(t, m)
 	if c.Shape != tea.CursorBlock {
@@ -94,6 +96,7 @@ func TestComposer_CaretStylePolicy(t *testing.T) {
 // minComposerRows, so a single-line draft sits at the composer's first row with
 // the empty rows below it; the band stays pinned to the bottom of the frame.
 func TestComposer_CaretTracksTyping(t *testing.T) {
+	t.Parallel()
 	m := caretModel(t)
 	composerTop := lineCount(view(m)) - minComposerRows
 	if c := caret(t, m); c.X != 2 || c.Y != composerTop {
@@ -110,6 +113,7 @@ func TestComposer_CaretTracksTyping(t *testing.T) {
 // wraps, and the caret sits at the end of the last rendered draft line (issue
 // #168 AC2, soft-wrapped lines).
 func TestComposer_CaretTracksWrappedDraft(t *testing.T) {
+	t.Parallel()
 	m := caretModel(t)
 	m = typeText(t, m, strings.Repeat("a", 100)) // wraps to two composer rows
 	if rows := composerRows(m); len(rows) < 2 {
@@ -123,6 +127,7 @@ func TestComposer_CaretTracksWrappedDraft(t *testing.T) {
 // pushes the band up a row, the caret sits on the new line's visible row, and
 // cursor navigation moves it within the grown composer.
 func TestComposer_CaretTracksMultiLineDraft(t *testing.T) {
+	t.Parallel()
 	m := caretModel(t)
 	m = typeText(t, m, "line one")
 	m = newline(t, m)
@@ -142,6 +147,7 @@ func TestComposer_CaretTracksMultiLineDraft(t *testing.T) {
 // on the visible row that renders the edit line, at the correct column,
 // instead of drifting above the band.
 func TestComposer_CaretTracksInternalScroll(t *testing.T) {
+	t.Parallel()
 	m := caretModel(t)
 	// 9 draft rows exceed the 8-row composer bound, forcing internal scroll.
 	m = typeText(t, m, "a")
@@ -159,6 +165,7 @@ func TestComposer_CaretTracksInternalScroll(t *testing.T) {
 // attached when the Settings surface or the continuation prompt is up — the
 // composer is not on screen there .
 func TestComposer_CaretAbsentOnNonComposerSurfaces(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -185,6 +192,7 @@ func TestComposer_CaretAbsentOnNonComposerSurfaces(t *testing.T) {
 // surface does not have . The caret returns as soon as the
 // turn completes and the composer regains the editing surface .
 func TestComposer_CaretHiddenWhileBusy(t *testing.T) {
+	t.Parallel()
 	m := newStreamingModel()
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
@@ -205,6 +213,7 @@ func TestComposer_CaretHiddenWhileBusy(t *testing.T) {
 // panel that used to steal keys on ctrl+d is gone, so nothing can detach the
 // caret .
 func TestComposer_CaretStaysAttachedOnCtrlD(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil

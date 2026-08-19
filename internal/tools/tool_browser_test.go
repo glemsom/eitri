@@ -23,6 +23,7 @@ func (b *recordingBrowser) Open(_ context.Context, target string) error {
 // TestOpenInBrowserLaunchesHostSideTarget verifies open_in_browser launches the
 // given target through the BrowserLauncher seam.
 func TestOpenInBrowserLaunchesHostSideTarget(t *testing.T) {
+	t.Parallel()
 	r, _ := newWebFetchRegistry(t, &stubFetcher{body: "<html><body></body></html>"})
 	br := r.browser.(*recordingBrowser)
 	res, err := r.Run(context.Background(), "open_in_browser", argMap("path", "https://example.com"))
@@ -42,6 +43,7 @@ func TestOpenInBrowserLaunchesHostSideTarget(t *testing.T) {
 // to open a file in the session temp (sandbox /tmp), open_in_browser translates
 // the sandbox path to the host /tmp/eitri-<GUID> form before launching.
 func TestOpenInBrowserTranslatesSessionTempToHost(t *testing.T) {
+	t.Parallel()
 	home, err := os.UserHomeDir()
 	if err != nil {
 		t.Fatalf("home dir: %v", err)
@@ -78,6 +80,7 @@ func TestOpenInBrowserTranslatesSessionTempToHost(t *testing.T) {
 // a real error instead of silently passing an unparseable file:// URL through to
 // the launcher (which would open garbage in the host browser).
 func TestOpenInBrowserTranslateErrorsOnMalformedFileURL(t *testing.T) {
+	t.Parallel()
 	o := &openInBrowserTool{br: &recordingBrowser{}, tr: NewPathTranslator(GUID("g"))}
 	host, err := o.translate("file://%zz")
 	if err == nil {
@@ -99,6 +102,7 @@ func (b *failingBrowser) Open(_ context.Context, _ string) error { return b.err 
 // TestOpenInBrowserStableMeta locks the tool's name and description so the
 // provider-facing tool surface cannot drift.
 func TestOpenInBrowserStableMeta(t *testing.T) {
+	t.Parallel()
 	o := &openInBrowserTool{br: &recordingBrowser{}, tr: NewPathTranslator(GUID("g"))}
 	if got := o.Name(); got != "open_in_browser" {
 		t.Fatalf("Name() = %q, want open_in_browser", got)
@@ -111,6 +115,7 @@ func TestOpenInBrowserStableMeta(t *testing.T) {
 // TestOpenInBrowserRunRejectsMissingPath verifies a call without the required
 // path argument fails fast and never touches the launcher.
 func TestOpenInBrowserRunRejectsMissingPath(t *testing.T) {
+	t.Parallel()
 	br := &recordingBrowser{}
 	o := &openInBrowserTool{br: br, tr: NewPathTranslator(GUID("g"))}
 	if _, err := o.Run(context.Background(), map[string]any{}); err == nil {
@@ -124,6 +129,7 @@ func TestOpenInBrowserRunRejectsMissingPath(t *testing.T) {
 // TestOpenInBrowserRunSurfacesLauncherError verifies a launcher failure is
 // wrapped with the tool name and target so the caller sees why the open failed.
 func TestOpenInBrowserRunSurfacesLauncherError(t *testing.T) {
+	t.Parallel()
 	br := &failingBrowser{err: errors.New("xdg-open: no app found")}
 	o := &openInBrowserTool{br: br, tr: NewPathTranslator(GUID("g"))}
 	_, err := o.Run(context.Background(), argMap("path", "https://example.com"))
@@ -141,6 +147,7 @@ func TestOpenInBrowserRunSurfacesLauncherError(t *testing.T) {
 // TestOpenInBrowserRunSurfacesTranslateError verifies a malformed file URL
 // surfaces from Run (via translate) without touching the launcher.
 func TestOpenInBrowserRunSurfacesTranslateError(t *testing.T) {
+	t.Parallel()
 	br := &recordingBrowser{}
 	o := &openInBrowserTool{br: br, tr: NewPathTranslator(GUID("g"))}
 	if _, err := o.Run(context.Background(), argMap("path", "file://%zz")); err == nil {
@@ -154,6 +161,7 @@ func TestOpenInBrowserRunSurfacesTranslateError(t *testing.T) {
 // TestOpenInBrowserTranslateSchemeURLPassesThrough verifies a non-file URL
 // (http/https/…) is opened verbatim, never remapped.
 func TestOpenInBrowserTranslateSchemeURLPassesThrough(t *testing.T) {
+	t.Parallel()
 	o := &openInBrowserTool{br: &recordingBrowser{}, tr: NewPathTranslator(GUID("g"))}
 	host, err := o.translate("https://example.com/page")
 	if err != nil {
@@ -167,6 +175,7 @@ func TestOpenInBrowserTranslateSchemeURLPassesThrough(t *testing.T) {
 // TestOpenInBrowserTranslateBareTempPath verifies a bare session-temp path
 // (no scheme) resolves to the host session-temp form.
 func TestOpenInBrowserTranslateBareTempPath(t *testing.T) {
+	t.Parallel()
 	o := &openInBrowserTool{br: &recordingBrowser{}, tr: NewPathTranslator(GUID("g"))}
 	host, err := o.translate("/tmp/report.html")
 	if err != nil {
@@ -180,6 +189,7 @@ func TestOpenInBrowserTranslateBareTempPath(t *testing.T) {
 // TestOpenInBrowserTranslateFileNonTempPath verifies a file:// URL outside the
 // session temp is preserved unchanged (no GUID injected for non-/tmp targets).
 func TestOpenInBrowserTranslateFileNonTempPath(t *testing.T) {
+	t.Parallel()
 	o := &openInBrowserTool{br: &recordingBrowser{}, tr: NewPathTranslator(GUID("g"))}
 	host, err := o.translate("file:///etc/hosts")
 	if err != nil {
@@ -193,6 +203,7 @@ func TestOpenInBrowserTranslateFileNonTempPath(t *testing.T) {
 // TestOpenInBrowserTranslateAlreadyHostPath verifies an already-host-form temp
 // path is left untouched (the translator is idempotent).
 func TestOpenInBrowserTranslateAlreadyHostPath(t *testing.T) {
+	t.Parallel()
 	o := &openInBrowserTool{br: &recordingBrowser{}, tr: NewPathTranslator(GUID("g"))}
 	host, err := o.translate("/tmp/eitri-g/report.html")
 	if err != nil {
