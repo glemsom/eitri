@@ -458,8 +458,7 @@ func NewModelCfg(d Dependencies) Model {
 		clipboard:    newClipboard(d),
 	}
 	// The layout starts stale; the Transcript's first hit-test builds it lazily,
-	// and the explicit dirty below keeps the semantic explicit
-	// .
+	// and the explicit dirty below keeps the semantic explicit .
 	m.td.SetThinkingEnabled(d.Config.ThinkingEnabled)
 	m.tx.layout.dirty = true
 	// An unknown hand-edited theme warns once on startup via the status strip,
