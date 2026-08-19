@@ -149,6 +149,9 @@ func TestModel_composerGrowsWithDraftLines(t *testing.T) {
 	if h := m.composer.Height(); h != minComposerRows {
 		t.Fatalf("empty composer should rest at %d rows, got %d", minComposerRows, h)
 	}
+	if rows := composerRows(m); len(rows) != minComposerRows {
+		t.Errorf("empty composer should render %d rows, got %d", minComposerRows, len(rows))
+	}
 
 	m = typeText(t, m, "line one")
 	m = newlineShiftEnter(t, m)
