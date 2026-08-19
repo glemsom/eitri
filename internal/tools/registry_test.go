@@ -64,6 +64,75 @@ func TestReadSchemaNullableUnion(t *testing.T) {
 	}
 }
 
+// TestReadSchemaRequiredSubset locks the read schema's required-subset shape:
+// only path is required (whole-file reads need no start_line/end_line
+// placeholders), additionalProperties is false, and the line-range optionals
+// remain declared so a model that still sends null is tolerated.
+// (The nullable-union type-array form itself is guarded by
+// TestReadSchemaNullableUnion.)
+func TestReadSchemaRequiredSubset(t *testing.T) {
+	schema := (&readTool{}).Schema()
+	if schema["additionalProperties"] != false {
+		t.Fatalf("schema additionalProperties = %v, want false", schema["additionalProperties"])
+	}
+	required, ok := schema["required"].([]string)
+	if !ok {
+		t.Fatalf("schema required = %T (%v), want []string", schema["required"], schema["required"])
+	}
+	if len(required) != 1 || required[0] != "path" {
+		t.Fatalf("schema required = %v, want only [\"path\"]", required)
+	}
+	props, ok := schema["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("schema: no properties map, got %T", schema["properties"])
+	}
+	for _, field := range []string{"path", "start_line", "end_line"} {
+		if _, ok := props[field]; !ok {
+			t.Fatalf("schema property %q missing", field)
+		}
+	}
+}
+
+// TestReadWholeFileRequiresOnlyPath verifies a whole-file read needs no
+// start_line/end_line placeholders: read with just path dumps every line.
+func TestReadWholeFileRequiresOnlyPath(t *testing.T) {
+	r, ws := newTestRegistry(t, nil)
+	path := filepath.Join(ws, "whole.txt")
+	content := "alpha\nbeta\ngamma\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	// Omitted optionals — no null placeholders. The map has only path.
+	args := map[string]any{"path": path}
+	res, err := r.Run(context.Background(), "read", args)
+	if err != nil {
+		t.Fatalf("read (path only) error = %v, want nil", err)
+	}
+	for _, want := range []string{"alpha", "beta", "gamma"} {
+		if !strings.Contains(res.Text, want) {
+			t.Fatalf("read (path only) output = %q, want whole-file content including %q", res.Text, want)
+		}
+	}
+}
+
+// TestReadToleratesNullOptionals verifies a model that still sends null for the
+// line-range optionals is not broken: null falls to the whole-file default.
+func TestReadToleratesNullOptionals(t *testing.T) {
+	r, ws := newTestRegistry(t, nil)
+	path := filepath.Join(ws, "null.txt")
+	if err := os.WriteFile(path, []byte("one\ntwo\n"), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	args := map[string]any{"path": path, "start_line": nil, "end_line": nil}
+	res, err := r.Run(context.Background(), "read", args)
+	if err != nil {
+		t.Fatalf("read (null optionals) error = %v, want nil", err)
+	}
+	if !strings.Contains(res.Text, "one") || !strings.Contains(res.Text, "two") {
+		t.Fatalf("read (null optionals) output = %q, want whole-file content", res.Text)
+	}
+}
+
 func argMap(kv ...string) map[string]any {
 	m := map[string]any{}
 	for i := 0; i+1 < len(kv); i += 2 {
