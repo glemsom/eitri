@@ -503,6 +503,13 @@ func (t *Transcript) navigateHistory(key string) bool {
 // Like navigateHistory it is a pointer receiver that mutates the follow flag
 // in place on the stable root; the returned flag reports the resulting state .
 func (t *Transcript) navigateMouse(msg tea.MouseWheelMsg) bool {
+	// Only scroll when the pointer is over the history scroll region, decided
+	// by the same scroll-region hit-test seam that sizes the region for render
+	// (inScrollRegion / the persisted viewport): a wheel over the fixed bottom
+	// band, or before the viewport is sized, leaves the history untouched.
+	if !t.inScrollRegion(msg.Y) {
+		return t.histFollow
+	}
 	switch msg.Button {
 	case tea.MouseWheelUp:
 		if t.histViewport.AtTop() {
@@ -519,6 +526,22 @@ func (t *Transcript) navigateMouse(msg tea.MouseWheelMsg) bool {
 	return t.histFollow
 }
 
+// inScrollRegion answers whether a screen row lies inside the history scroll
+// region, read from the single region source — the persisted viewport's height
+// (sized by renderHistoryViewport via scrollRegionHeight). It is the
+// row-membership half of the scroll-region hit-test seam, shared by the wheel
+// input (navigateMouse) and the selection hit-test (contentLineAtScreenRow), so
+// neither re-derives the region from Model width math. ok is false before the
+// first resize/render (the viewport has no height yet), for a row in the fixed
+// bottom band, and for a row past the terminal's bottom edge.
+func (t *Transcript) inScrollRegion(y int) bool {
+	vp := t.histViewport
+	if vp.Height() <= 0 {
+		return false
+	}
+	return y >= 0 && y < vp.Height()
+}
+
 // contentLineAtScreenRow is the scroll-region hit-test seam: it answers "is a
 // screen row y inside the history scroll region, and which content line does it
 // map to". The region is the rows left over by the fixed bottom band, which the
@@ -530,16 +553,11 @@ func (t *Transcript) navigateMouse(msg tea.MouseWheelMsg) bool {
 // first resize/render (the viewport has no height yet), for a row in the fixed
 // band, and for a row past the rendered content's last line.
 func (t *Transcript) contentLineAtScreenRow(y int) (line int, ok bool) {
-	vp := t.histViewport
-	if vp.Height() <= 0 {
+	if !t.inScrollRegion(y) {
 		return 0, false
 	}
-	// The persisted viewport's height is the scroll region's height, so a row
-	// inside the region is exactly a row within that window.
-	if y < 0 || y >= vp.Height() {
-		return 0, false
-	}
-	line = vp.YOffset() + y
+	v := t.histViewport
+	line = v.YOffset() + y
 	if line < 0 || line >= len(t.plainLines()) {
 		return 0, false
 	}

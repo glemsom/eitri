@@ -107,11 +107,19 @@ func TestScroll_scrollUpBreaksFollow(t *testing.T) {
 // driven through the model's Update . bubbletea v2 delivers
 // the wheel as its own tea.MouseWheelMsg (pass 2, ).
 func wheelMsg(up bool) tea.Msg {
+	return wheelMsgAt(up, 0)
+}
+
+// wheelMsgAt builds a mouse-wheel event with an explicit Y row so a test can
+// place the pointer over a specific screen row (inside the history region or
+// over the fixed bottom band) and assert the wheel only scrolls the history
+// when it is over the region.
+func wheelMsgAt(up bool, y int) tea.Msg {
 	btn := tea.MouseWheelDown
 	if up {
 		btn = tea.MouseWheelUp
 	}
-	return tea.MouseWheelMsg{Button: btn}
+	return tea.MouseWheelMsg{Button: btn, Y: y, X: 2}
 }
 
 // TestScroll_mouseWheelNavigatesTranscript asserts the mouse wheel scrolls the
@@ -142,6 +150,50 @@ func TestScroll_mouseWheelNavigatesTranscript(t *testing.T) {
 	}
 	if !m.tx.histFollow {
 		t.Errorf("reaching the bottom by wheel down should re-engage follow, got histFollow=false")
+	}
+}
+
+// TestScroll_mouseWheelRoutesThroughRegionSeam asserts the wheel scrolls only
+// when the pointer is over the history scroll region, as decided by the
+// Transcript's scroll-region hit-test seam: a wheel event over a visible region
+// row scrolls the viewport, while a wheel event over the fixed bottom band's
+// rows leaves the viewport untouched. The input side reads the same region the
+// render pass laid out through the seam instead of re-deriving it from Model
+// width math, so a wheeled row and a dragged row can never disagree about where
+// the region ends.
+func TestScroll_mouseWheelRoutesThroughRegionSeam(t *testing.T) {
+	m := scrollOverflowModel(t)
+	regionHeight := m.tx.scrollRegionHeight(m.bandHeight())
+	if regionHeight <= 0 {
+		t.Fatalf("precondition: region must have height, got %d", regionHeight)
+	}
+
+	// A wheel-up over a visible region row (row 0) scrolls toward older output
+	// and breaks follow.
+	start := scrollOffset(m)
+	m = mustUpdate(t, m, wheelMsgAt(true, 0))
+	if up := scrollOffset(m); up >= start {
+		t.Errorf("wheel up over the history region must scroll, offset %d -> %d", start, up)
+	}
+
+	// A wheel-up over the band's first row (just past the region) must not
+	// scroll at all: the pointer is outside the history region, so the wheel
+	// leaves the viewport (and follow) untouched.
+	offsetBefore := scrollOffset(m)
+	followBefore := m.tx.histFollow
+	m = mustUpdate(t, m, wheelMsgAt(true, regionHeight))
+	if scrollOffset(m) != offsetBefore {
+		t.Errorf("wheel over the band (row %d) must not scroll the history, offset changed %d -> %d", regionHeight, offsetBefore, scrollOffset(m))
+	}
+	if m.tx.histFollow != followBefore {
+		t.Errorf("wheel over the band must not change follow, got %v -> %v", followBefore, m.tx.histFollow)
+	}
+
+	// A wheel-up one row past the terminal's bottom edge is also outside the
+	// region and must not scroll.
+	m = mustUpdate(t, m, wheelMsgAt(true, m.tx.height))
+	if scrollOffset(m) != offsetBefore {
+		t.Errorf("wheel past the terminal bottom must not scroll, offset changed to %d", scrollOffset(m))
 	}
 }
 
