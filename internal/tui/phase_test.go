@@ -117,8 +117,4 @@ func TestPhase_noVisibleChangeAcrossActivePhases(t *testing.T) {
 			t.Errorf("%s phase busy line = %q, want unchanged %q", f.name, got, want)
 		}
 	}
-	if got := busyLine(0, PhaseWorking) != busyLine(0, PhaseReasoning) ||
-		busyLine(0, PhaseReasoning) != busyLine(0, PhaseAnswering); got {
-		t.Errorf("all active phases must render the same busy line (no visible change)")
-	}
 }
