@@ -157,26 +157,29 @@ func TestRender_idleWelcome_brandMark(t *testing.T) {
 	}
 }
 
-// TestHelpView_glyphs asserts the help view contains section emoji and rule
-// separators.
+// TestHelpView_glyphs asserts the help view carries Markdown `#` section
+// headers and backtick code spans (issue #387) and keeps the #386 category
+// glyphs, rather than the legacy spaced-emoji section/command prefixes.
 func TestHelpView_glyphs(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()
 
-	// Section headers include emoji prefixes.
-	for _, want := range []string{"$ COMMANDS", "k KEYBINDINGS", "< CONCEPTS"} {
+	// Section titles are Markdown `#` headers, not emoji-prefixed rows.
+	for _, want := range []string{"# COMMANDS", "# KEYBINDINGS", "# CONCEPTS"} {
 		if !strings.Contains(got, want) {
-			t.Errorf("helpView() missing section emoji %q", want)
+			t.Errorf("helpView() missing Markdown header %q", want)
 		}
 	}
-	// Horizontal rule separators between sections.
-	if !strings.Contains(got, "--") {
-		t.Errorf("helpView() missing horizontal rule separators")
-	}
-	// Command row emoji prefixes.
-	for _, want := range []string{"* /settings", "# /copy", "+ /login", "? /help"} {
+	// Command names are backtick code spans.
+	for _, want := range []string{"`/settings`", "`/copy`", "`/login`", "`/help`"} {
 		if !strings.Contains(got, want) {
-			t.Errorf("helpView() missing command emoji %q", want)
+			t.Errorf("helpView() missing command code span %q", want)
+		}
+	}
+	// Keybinding categories keep their #386 category glyphs.
+	for _, want := range []string{"c COMPOSER", "n NAVIGATION", "p PANES", "a ACTIONS"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("helpView() missing keybinding category %q", want)
 		}
 	}
 }
