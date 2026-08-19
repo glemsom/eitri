@@ -10,9 +10,9 @@ import (
 
 // strictToolDefs returns the canonical Chat-Completions tool manifest for the
 // tools T5's dispatch tests exercise: bash, read, write. Schemas are
-// strict-shaped (additionalProperties:false, all-required, nullable unions for
-// the read line-range optionals) so schema-validation tests target the real
-// shape.
+// strict-shaped (additionalProperties:false); read requires only path, with
+// nullable unions for the line-range optionals, so schema-validation tests
+// target the real shape.
 func strictToolDefs() []provider.Tool {
 	return []provider.Tool{
 		{Type: "function", Function: provider.ToolFunction{
@@ -38,7 +38,7 @@ func strictToolDefs() []provider.Tool {
 					"start_line": []any{"integer", "null"},
 					"end_line":   []any{"integer", "null"},
 				},
-				"required": []any{"path", "start_line", "end_line"},
+				"required": []any{"path"},
 			},
 		}},
 	}
@@ -224,6 +224,21 @@ func TestStrictShapeRejectsSchemaViolatingCall(t *testing.T) {
 	}
 	if len(rec.calls) != 0 {
 		t.Fatalf("executor called with %+v, want no calls for a schema-violating call", rec.calls)
+	}
+}
+
+// TestRequiredSubsetReadValidates verifies a read call carrying only the
+// genuinely-required field (path) — no null placeholders for the optional
+// line range — passes schema validation under the strict-shape validator.
+func TestRequiredSubsetReadValidates(t *testing.T) {
+	for _, args := range []string{
+		`{"path":"f.txt"}`,
+		`{"path":"f.txt","start_line":12,"end_line":340}`,
+		`{"path":"f.txt","start_line":null,"end_line":null}`,
+	} {
+		if err := validateToolCallArgs(strictToolDefs()[1].Function.Parameters, args, nil); err != nil {
+			t.Fatalf("validateToolCallArgs(%s) error = %v, want nil", args, err)
+		}
 	}
 }
 
