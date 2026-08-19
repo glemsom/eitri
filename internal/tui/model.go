@@ -599,7 +599,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.toolFeed == nil {
 			return m, nil
 		}
-		m.tx.apply(msgi.update) // tool updates route through the Transcript 
+		m.tx.apply(msgi.update) // tool updates route through the Transcript
 		// Tool-activity pulse fallback: with thinking off there is no
 		// chain-of-thought stream to pulse on (the stream-delta pulse in
 		// appendStreamDelta never fires), so each tool starting is the live
@@ -919,8 +919,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case skillDoneMsg:
-		m.tx.messages = append(m.tx.messages, message{role: "eitri", content: msgi.payload})
-		m.tx.layout.dirty = true // a skill result appended to the transcript
+		m.tx.appendMsg(msgi.payload)
 		if msgi.args != "" {
 			// A `/skillname <args>` activation queues the args as a normal user
 			// turn AFTER the injected skill note so message order renders
@@ -932,22 +931,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case loginCodeMsg:
-		m.tx.messages = append(m.tx.messages, message{role: "eitri", content: fmt.Sprintf("Open %s and enter code: %s", msgi.code.VerificationURI, msgi.code.UserCode)})
-		m.tx.layout.dirty = true
+		m.tx.appendMsg(fmt.Sprintf("Open %s and enter code: %s", msgi.code.VerificationURI, msgi.code.UserCode))
 		return m, loginWait(msgi.next)
 
 	case loginDoneMsg:
 		if msgi.err != nil {
-			m.tx.messages = append(m.tx.messages, message{role: "eitri", content: failurePrefix() + msgi.err.Error()})
-			m.tx.layout.dirty = true
+			m.tx.appendMsg(failurePrefix() + msgi.err.Error())
 			return m, nil
 		}
 		m.deps.Config = msgi.cfg
 		if m.deps.SaveBack != nil {
 			m.deps.SaveBack(msgi.cfg)
 		}
-		m.tx.messages = append(m.tx.messages, message{role: "eitri", content: "login saved"})
-		m.tx.layout.dirty = true
+		m.tx.appendMsg("login saved")
 		return m, nil
 	}
 
@@ -1147,7 +1143,7 @@ func (m *Model) copyTranscript() {
 }
 
 // transcriptText renders the conversation log as plain text for clipboard copy
-//: role-marked user prompts and assistant answers, per-turn
+// : role-marked user prompts and assistant answers, per-turn
 // reasoning blocks, and the interleaved tool-call entries (compact one-liner
 // plus full result when complete) — all ANSI-free so the pasted session is
 // clean. It never mutates the transcript or the agent loop.
@@ -1214,7 +1210,7 @@ func (m Model) activateSkill(name, args string) (tea.Model, tea.Cmd) {
 	m.tx.messages = append(m.tx.messages, message{role: "you", content: "/" + name})
 	m.tx.layout.dirty = true
 	if m.deps.Skills == nil || m.deps.Skills.Activate == nil {
-		m.tx.messages = append(m.tx.messages, message{role: "eitri", content: failurePrefix() + "no skill activation available"})
+		m.tx.appendMsg(failurePrefix() + "no skill activation available")
 		return m, nil
 	}
 	return m, skillCmd(m.deps.Skills.Activate, name, args)
@@ -1226,7 +1222,7 @@ func (m Model) startLogin() (tea.Model, tea.Cmd) {
 	m.tx.messages = append(m.tx.messages, message{role: "you", content: "/login"})
 	m.tx.layout.dirty = true
 	if m.deps.Login == nil {
-		m.tx.messages = append(m.tx.messages, message{role: "eitri", content: failurePrefix() + "no login flow available"})
+		m.tx.appendMsg(failurePrefix() + "no login flow available")
 		return m, nil
 	}
 	return m, loginCmd(m.deps.Login)
@@ -1471,7 +1467,7 @@ func (m Model) bandHeight() int {
 // It is used by the alternate-screen renderer, so every frame is a clean
 // repaint. The band (status strip + composer) is a Model-owned composer
 // concern; the transcript region's render delegates to the owned Transcript
-//, which composes the scroll region + band and passes
+// , which composes the scroll region + band and passes
 // the band in below them (see Transcript.renderPane).
 func (m Model) renderPane() string {
 	var band strings.Builder
@@ -1493,7 +1489,7 @@ type msgRowRange struct {
 }
 
 // transcriptLayout is the persistent layout cache for the history region
-//: one batched renderHistory pass captures the row->tool-entry
+// : one batched renderHistory pass captures the row->tool-entry
 // mapping (rows), the row->message mapping (msgs), both in content-line
 // coordinates, and the ANSI-stripped history rows (plain, the drag-select copy
 // space) so the mouse hit-test reads the recorded index instead of re-deriving
