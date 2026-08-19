@@ -755,7 +755,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// never sent to the engine. The same rendered output the `?` keybinding
 			// produces, keeping both paths identical.
 			if prompt == "/help" {
-				m.tx.messages = append(m.tx.messages, message{role: "eitri", content: helpView(m.tx.theme)})
+				m.tx.messages = append(m.tx.messages, message{role: "eitri", content: helpView()})
 				return m, nil
 			}
 			if name, args, ok := slashCommand(prompt, m.skills); ok {
@@ -817,7 +817,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// composer, `?` falls through to the textarea so it inserts a literal
 			// character like any other key.
 			if m.composer.Value() == "" && !m.tx.busy {
-				m.tx.messages = append(m.tx.messages, message{role: "eitri", content: helpView(m.tx.theme)})
+				m.tx.messages = append(m.tx.messages, message{role: "eitri", content: helpView()})
 				return m, nil
 			}
 		}

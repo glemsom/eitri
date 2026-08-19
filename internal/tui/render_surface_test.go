@@ -161,8 +161,7 @@ func TestRender_idleWelcome_brandMark(t *testing.T) {
 // separators.
 func TestHelpView_glyphs(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
-	th := renderSurfaceTestTheme()
-	got := helpView(th)
+	got := helpView()
 
 	// Section headers include emoji prefixes.
 	for _, want := range []string{"$ COMMANDS", "k KEYBINDINGS", "< CONCEPTS"} {

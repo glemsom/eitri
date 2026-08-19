@@ -128,3 +128,30 @@ func TestModel_slashHelpPartialCompletion(t *testing.T) {
 		t.Fatalf("`/he` completion should match only `/help`, got: %v", cands)
 	}
 }
+
+// TestModel_helpCopyIsEscapeFree verifies the clipboard path (Ctrl+O / /copy,
+// both via transcriptText) carries the help block as clean plain text with no
+// ANSI escape sequences (issue #378). Previously the ANSI-embedded help content
+// leaked raw escape sequences into the copied transcript.
+func TestModel_helpCopyIsEscapeFree(t *testing.T) {
+	m := NewModelCfg(Dependencies{
+		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+		Config: cfgFixture(),
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "/help")
+	m = keypress(t, m, "enter")
+
+	if len(m.tx.messages) == 0 {
+		t.Fatal("`/help` should append a message to the transcript")
+	}
+	got := m.transcriptText()
+	if !strings.Contains(got, "COMMANDS") || !strings.Contains(got, "/copy") {
+		t.Fatalf("copied transcript missing help sections, got: %q", got)
+	}
+	if strings.Contains(got, "\x1b[") {
+		t.Fatalf("copied transcript must be ANSI-free, got escapes:\n%q", got)
+	}
+}
