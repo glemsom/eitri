@@ -23,7 +23,12 @@ import (
 // viewport. anchor is the content cell where the drag started; end tracks the
 // live drag cell. moved reports whether the pointer actually dragged, so a
 // plain click (press+release on one cell) never copies a one-cell snippet.
+// active reports whether a selection is being drawn; an inactive zero-value
+// dragSelect means no drag is in progress. The Transcript owns it as a plain
+// value field (stable root), so an active selection keeps surviving value
+// copies without heap indirection.
 type dragSelect struct {
+	active                bool
 	anchorLine, anchorCol int
 	endLine, endCol       int
 	moved                 bool
@@ -31,7 +36,7 @@ type dragSelect struct {
 
 // selRange returns the normalized selection as ordered [start,end] cells:
 // start precedes end in reading order regardless of drag direction.
-func (d *dragSelect) selRange() (startLine, startCol, endLine, endCol int) {
+func (d dragSelect) selRange() (startLine, startCol, endLine, endCol int) {
 	if d.anchorLine < d.endLine || (d.anchorLine == d.endLine && d.anchorCol <= d.endCol) {
 		return d.anchorLine, d.anchorCol, d.endLine, d.endCol
 	}
@@ -63,15 +68,16 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 		}
 		line, col, ok := m.mouseToContent(msg.X, msg.Y)
 		if !ok {
-			m.tx.dragSel = nil
+			m.tx.dragSel = dragSelect{}
 			return
 		}
-		m.tx.dragSel = &dragSelect{
+		m.tx.dragSel = dragSelect{
+			active:     true,
 			anchorLine: line, anchorCol: col,
 			endLine: line, endCol: col,
 		}
 	case tea.MouseMotionMsg:
-		if m.tx.dragSel == nil {
+		if !m.tx.dragSel.active {
 			return
 		}
 		line, col, ok := m.mouseToContent(msg.X, msg.Y)
@@ -83,12 +89,12 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 		m.tx.dragSel.moved = true
 	case tea.MouseReleaseMsg:
 		d := m.tx.dragSel
-		m.tx.dragSel = nil
-		if d == nil {
+		m.tx.dragSel = dragSelect{}
+		if !d.active {
 			return
 		}
 		if d.moved {
-			m.copySelection(*d)
+			m.copySelection(d)
 			return
 		}
 		// A plain click (press+release on one cell, no drag) toggles the tool

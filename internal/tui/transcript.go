@@ -29,10 +29,11 @@ import (
 // The one pointer field is the persisted viewport (histViewport): it is shared
 // across the value copies Bubble Tea makes, so scroll-state changes made
 // during a render survive the next re-render cycle. The layout cache (layout)
-// and drag-select (dragSel) are likewise heap-allocated pointers so their
-// state survives those value copies. (These per-field pointers are now
-// redundant with the stable tx root and are simplified in the follow-up
-// tickets #370-372.)
+// is likewise a heap-allocated pointer so its state survives those value
+// copies. The drag-select (dragSel) is a plain value field already — the
+// stable tx root lets its active/inactive state survive value copies by
+// itself. (The two remaining per-field pointers are now redundant with the
+// stable tx root and are simplified in the follow-up tickets #370-371.)
 //
 // The Transcript also owns the transcript's navigation: the
 // pointer-receiver navigateHistory / navigateMouse drive the shared viewport
@@ -93,8 +94,9 @@ type Transcript struct {
 	// busy footer fallback row.
 	telemetry *Telemetry
 	// dragSel tracks an in-progress click-drag selection, whose
-	// range the scroll region highlights.
-	dragSel *dragSelect
+	// range the scroll region highlights. It is a value with an active
+	// flag: an inactive zero-value dragSel means no selection is drawn.
+	dragSel dragSelect
 	// width is the terminal width; 0 until the first resize lands.
 	width int
 	// height is the terminal height; 0 until the first resize lands.
@@ -438,7 +440,7 @@ func (t Transcript) renderHistoryViewport(content string, reserved int) string {
 	vp.SetHeight(vh)
 	// An in-progress drag selection highlights its cell range in the full
 	// content before the viewport clips it .
-	if t.dragSel != nil {
+	if t.dragSel.active {
 		content = t.highlightSelection(content)
 	}
 	vp.SetContent(content)
@@ -523,10 +525,10 @@ func (t *Transcript) navigateMouse(msg tea.MouseWheelMsg) bool {
 // video across the full rendered history content; the persisted viewport clips
 // it to the visible window .
 func (t Transcript) highlightSelection(content string) string {
-	d := t.dragSel
-	if d == nil {
+	if !t.dragSel.active {
 		return content
 	}
+	d := t.dragSel
 	startLine, startCol, endLine, endCol := d.selRange()
 	lines := strings.Split(content, "\n")
 	if startLine >= len(lines) {
