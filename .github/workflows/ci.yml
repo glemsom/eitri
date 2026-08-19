@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # The batch/app/engine tests execute real commands through the bwrap
+      # cage: without bubblewrap present they fail, they do not skip. Install
+      # it, and lift the unprivileged-user-namespace restriction some runner
+      # images enable by default (the sysctl may be absent on others, hence
+      # the `|| true`).
+      - name: Install sandbox prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Race-enabled tests
+        run: go test ./... -race -count=1
+
+      - name: Coverage
+        run: |
+          go test ./... -coverprofile=cover.out
+          go tool cover -func=cover.out
