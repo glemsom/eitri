@@ -7,6 +7,8 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/glemsom/eitri/internal/config"
 )
 
 // TestBusySpinner_animatesAndStops asserts the busy indicator is an animated
@@ -131,6 +133,142 @@ func TestToolElapsed_timerRenders(t *testing.T) {
 	content2 := view(m2)
 	if strings.Contains(content2, "0s") {
 		t.Errorf("sub-second tool must not render a timer, got: %q", content2)
+	}
+}
+
+// thinkingOffToolModel builds a model wired to a live tool feed with thinking
+// OFF — the pulse-fallback configuration: no chain-of-thought stream, so tool
+// starts are the only live-activity signal on the surface.
+func thinkingOffToolModel() Model {
+	return NewModelCfg(Dependencies{
+		Turn:   streamingTurn,
+		Tools:  NewToolFeed(),
+		Config: config.Config{ThinkingEnabled: false},
+	})
+}
+
+// TestToolPulse_setOnStartThinkingOff asserts a tool starting while thinking is
+// off arms the tool-activity pulse fallback: busyPulse jumps to 3 so the
+// running entry flashes the agent accent while it executes.
+func TestToolPulse_setOnStartThinkingOff(t *testing.T) {
+	m := thinkingOffToolModel()
+	m = resize(t, m)
+	m = typeText(t, m, "hi")
+	m, _ = submitBusy(t, m)
+
+	if m.tx.busyPulse != 0 {
+		t.Fatalf("busyPulse before tool start = %d, want 0", m.tx.busyPulse)
+	}
+	m = toolStart(t, m, "bash", `{"command":"go test ./..."}`)
+	if m.tx.busyPulse != 3 {
+		t.Fatalf("tool start (thinking off) must arm the pulse to 3, got %d", m.tx.busyPulse)
+	}
+}
+
+// TestToolPulse_notSetWhenThinkingOn asserts the tool-activity pulse is a
+// fallback only: with thinking on the stream delta already pulses, so a tool
+// start must NOT re-arm the counter — thinking-on behavior is unchanged.
+func TestToolPulse_notSetWhenThinkingOn(t *testing.T) {
+	m := NewModelCfg(Dependencies{
+		Turn:   streamingTurn,
+		Tools:  NewToolFeed(),
+		Config: config.Config{ThinkingEnabled: true},
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "hi")
+	m, _ = submitBusy(t, m)
+
+	m = toolStart(t, m, "bash", `{"command":"go test ./..."}`)
+	if m.tx.busyPulse != 0 {
+		t.Fatalf("tool start with thinking on must not pulse, got %d", m.tx.busyPulse)
+	}
+}
+
+// TestToolPulse_reducedMotionStaysStatic asserts the reduced-motion opt-out
+// keeps the surface static: a tool start must not arm the pulse (leaving the
+// static "… thinking" indicator and the entry's normal hue untouched).
+func TestToolPulse_reducedMotionStaysStatic(t *testing.T) {
+	t.Setenv("EITRI_NO_MOTION", "1")
+	m := thinkingOffToolModel()
+	m = resize(t, m)
+	m = typeText(t, m, "hi")
+	m, _ = submitBusy(t, m)
+
+	m = toolStart(t, m, "bash", `{"command":"go test ./..."}`)
+	if m.tx.busyPulse != 0 {
+		t.Fatalf("tool start under reduced motion must not pulse, got %d", m.tx.busyPulse)
+	}
+	if got := newestBusyLine(m); got != "… thinking" {
+		t.Fatalf("reduced-motion busy line = %q, want static %q", got, "… thinking")
+	}
+}
+
+// TestToolPulse_decrementsOnTick asserts the tool-armed pulse uses the same
+// frame countdown as the stream-delta pulse: 3 spinner ticks decay it to 0.
+func TestToolPulse_decrementsOnTick(t *testing.T) {
+	m := thinkingOffToolModel()
+	m = resize(t, m)
+	m = typeText(t, m, "hi")
+	m, _ = submitBusy(t, m)
+
+	m = toolStart(t, m, "bash", `{"command":"go test ./..."}`)
+	if m.tx.busyPulse != 3 {
+		t.Fatalf("tool start must arm the pulse to 3, got %d", m.tx.busyPulse)
+	}
+	for _, want := range []int{2, 1, 0} {
+		nm, _ := m.Update(spinnerTickMsg{})
+		m = asModel(t, nm)
+		if m.tx.busyPulse != want {
+			t.Fatalf("pulse after tick = %d, want %d", m.tx.busyPulse, want)
+		}
+	}
+}
+
+// TestToolPulse_runningEntryRendersAccent asserts a running (incomplete) tool
+// entry renders its head in the agent accent while the pulse window is active
+// and settles back to its category hue once the pulse expires — the visual
+// "live activity" signal for a tool phase with thinking off.
+func TestToolPulse_runningEntryRendersAccent(t *testing.T) {
+	const accent = "38;2;122;162;247" // default theme accent #7AA2F7
+	const shell = "38;2;224;175;104"  // default theme shell category #E0AF68
+
+	m := thinkingOffToolModel()
+	m = resize(t, m)
+	m = typeText(t, m, "hi")
+	m, _ = submitBusy(t, m)
+
+	m = toolStart(t, m, "bash", `{"command":"go test ./..."}`)
+	if m.tx.busyPulse == 0 {
+		t.Fatal("pulse must be armed on tool start")
+	}
+
+	// During the pulse the running entry's head carries the accent, not the
+	// shell category hue.
+	line := lineContaining(view(m), "🔧 bash")
+	if line == "" {
+		t.Fatalf("expected a running bash entry, got: %q", view(m))
+	}
+	if !strings.Contains(line, accent) {
+		t.Errorf("running entry during pulse = %q, want accent hue", line)
+	}
+	if strings.Contains(line, shell) {
+		t.Errorf("running entry during pulse must not carry the shell hue, got: %q", line)
+	}
+
+	// Pulse expires: the same running entry settles back to its category hue.
+	for i := 0; i < 3; i++ {
+		nm, _ := m.Update(spinnerTickMsg{})
+		m = asModel(t, nm)
+	}
+	if m.tx.busyPulse != 0 {
+		t.Fatalf("pulse must expire after 3 ticks, got %d", m.tx.busyPulse)
+	}
+	line = lineContaining(view(m), "🔧 bash")
+	if line == "" {
+		t.Fatalf("running bash entry still expected, got: %q", view(m))
+	}
+	if !strings.Contains(line, shell) {
+		t.Errorf("entry after pulse should carry its shell hue, got: %q", line)
 	}
 }
 

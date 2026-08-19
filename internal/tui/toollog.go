@@ -183,8 +183,10 @@ func (l *toolLog) expandedFor(i int, expandAll bool) bool {
 // persistent Ctrl+E expanded-view mode: with the mode on every entry renders
 // its full result unless a per-entry collapse override beats it, so past and
 // newly delivered entries alike respect the mode at render time. A call passes
-// `now` for the live elapsed readout while a turn runs (zero when idle).
-func (l toolLog) Render(th Theme, expandAll bool, now time.Time, width, anchor int) (string, []toolRowRange) {
+// `now` for the live elapsed readout while a turn runs (zero when idle), and
+// `pulse` while the tool-activity busy pulse is active, so a running entry
+// flashes the accent while a tool executes.
+func (l toolLog) Render(th Theme, expandAll bool, now time.Time, width, anchor int, pulse bool) (string, []toolRowRange) {
 	var b strings.Builder
 	var rows []toolRowRange
 	nl := 0
@@ -197,7 +199,7 @@ func (l toolLog) Render(th Theme, expandAll bool, now time.Time, width, anchor i
 			continue
 		}
 		start := nl
-		s := renderToolEntry(th, te, l.expandedFor(ti, expandAll), now, width)
+		s := renderToolEntry(th, te, l.expandedFor(ti, expandAll), now, width, pulse)
 		rowsInEntry := strings.Count(s, "\n")
 		emit(s)
 		if rowsInEntry > 0 {
@@ -373,8 +375,11 @@ func toolArgsHint(argsJSON string) string {
 // is rendered (the entry's pre-cap result, never the capped delivered form) so
 // nothing is silently truncated — every collapse has an expand path. It is the
 // per-entry renderer the log's Render pass runs, so the transcript and the
-// row-account/hit-test share one layout.
-func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width int) string {
+// row-account/hit-test share one layout. pulse is true while the tool-activity
+// busy pulse is active: a running (incomplete) entry flashes its head in the
+// agent accent, signalling live work during tool phases, and settles back to
+// its category hue once the pulse expires.
+func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width int, pulse bool) string {
 	var b strings.Builder
 	// The ⊕ tool glyph is constant; a delivered result tags the entry with a
 	// ✓/✗ outcome marker so success and failure are glanceable without
@@ -402,6 +407,13 @@ func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width
 		args = truncateWidth(args, budget-1) + g("…", "...")
 	}
 	head := th.toolCategoryStyle(toolCategoryOf(te.name)).Render(label)
+	if pulse && !te.complete {
+		// A tool still executing during the tool-activity pulse renders its
+		// identity in the agent accent instead of the category hue, so the
+		// running entry visibly flashes to signal live work (the fallback for
+		// a thinking-off turn with no stream to pulse on).
+		head = th.bandStatusStyle.Render(label)
+	}
 	if args != "" {
 		head += th.statusStyle.Render(args)
 	}
