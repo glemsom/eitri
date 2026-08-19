@@ -118,7 +118,8 @@ type message struct {
 	thinkingRequested bool
 	// thinkingExpanded is true while this turn's reasoning block is expanded
 	//: it defaults false (auto-collapsed) so reasoning never clogs
-	// the final reply, and collapses back when the turn's answer lands.
+	// the final reply, and collapses back when the turn's answer lands. Tab
+	// toggles it during and after streaming.
 	thinkingExpanded bool
 	// thinkingCollapsed is a per-turn collapse override that keeps this turn's
 	// reasoning block collapsed even while the global Ctrl+E expanded-view mode

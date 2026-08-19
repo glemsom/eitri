@@ -163,14 +163,14 @@ func TestModel_thinkingStreamsLive(t *testing.T) {
 	if m.tx.messages[n].content != "" {
 		t.Errorf("reasoning must not write into the answer buffer, got %q", m.tx.messages[n].content)
 	}
-	// The thinking block is live but auto-collapsed: a hint renders, not the
-	// body, until the user expands it .
+	// The thinking block is live and auto-expanded (issue #364): the reasoning
+	// body renders so the user watches it grow, alongside the hint header.
 	content := view(m)
 	if !strings.Contains(content, "🤔") {
 		t.Errorf("live reasoning should render a thinking hint, got: %q", content)
 	}
-	if strings.Contains(content, "I check the env.") {
-		t.Errorf("reasoning body should stay collapsed while streaming, got: %q", content)
+	if !strings.Contains(content, "I check the env.") {
+		t.Errorf("live reasoning body should render expanded while streaming, got: %q", content)
 	}
 
 	// An answer delta still grows the answer buffer untouched.
@@ -180,19 +180,31 @@ func TestModel_thinkingStreamsLive(t *testing.T) {
 	}
 }
 
-// TestModel_thinkingExpandedStreams asserts the expanded thinking block keeps
-// streaming reasoning in place once the user expands it during a turn (issue
-// #85 AC2: "expands in place").
+// TestModel_thinkingExpandedStreams asserts the live reasoning block renders
+// expanded by default as reasoning streams (issue #364), that tab collapses
+// and re-expands it, and that subsequent reasoning deltas keep streaming into
+// the expanded block (issue #85 AC2: "expands in place").
 func TestModel_thinkingExpandedStreams(t *testing.T) {
 	m := newStreamingModel()
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 	m, _ = submitBusy(t, m)
 
-	// First reasoning delta creates the (collapsed) block, then tab expands it.
+	// The first reasoning delta auto-expands the live block.
 	m = applyReasoningDelta(t, m, "first ")
+	if !strings.Contains(view(m), "first ") {
+		t.Fatalf("live reasoning should render expanded before any tab, got: %q", view(m))
+	}
+
+	// Tab collapses the live block, then re-expands it.
 	toggled, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = asModel(t, toggled)
+	if strings.Contains(view(m), "first ") {
+		t.Fatalf("tab should collapse the live block, got: %q", view(m))
+	}
+	toggled, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	m = asModel(t, toggled)
+
 	// A subsequent reasoning delta must render live in the expanded block.
 	m = applyReasoningDelta(t, m, "reasoning")
 	if !strings.Contains(view(m), "first reasoning") {
@@ -316,23 +328,27 @@ func TestModel_expandAllTabToggleIndependent(t *testing.T) {
 		t.Errorf("tab should re-expand a thinking block even in mode ON, got: %q", view(m))
 	}
 
-	// Mode OFF: tab obeys the classic per-turn toggle and the answer auto-collapses.
+	// Mode OFF (the default): the live reasoning block is now auto-expanded
+	// (issue #364), so tab collapses it and toggles it back, and the answer
+	// landing still auto-collapses it to a hint.
 	m2 := newStreamingModel()
 	m2 = resize(t, m2)
 	m2 = typeText(t, m2, "hi")
 	m2, _ = submitBusy(t, m2)
 	m2 = applyReasoningDelta(t, m2, "hidden reasoning")
+	if !strings.Contains(view(m2), "hidden reasoning") {
+		t.Fatalf("mode OFF: streaming reasoning should render expanded, got: %q", view(m2))
+	}
+	m2 = mustUpdate(t, m2, tea.KeyPressMsg{Code: tea.KeyTab})
 	if strings.Contains(view(m2), "hidden reasoning") {
-		t.Fatalf("mode OFF: streaming reasoning should stay collapsed, got: %q", view(m2))
+		t.Errorf("mode OFF: tab should collapse the live thinking block, got: %q", view(m2))
 	}
 	m2 = mustUpdate(t, m2, tea.KeyPressMsg{Code: tea.KeyTab})
 	if !strings.Contains(view(m2), "hidden reasoning") {
-		t.Errorf("mode OFF: tab should expand the thinking block, got: %q", view(m2))
+		t.Errorf("mode OFF: tab should re-expand the live thinking block, got: %q", view(m2))
 	}
-	// With the mode OFF the answer landing still auto-collapses the human-
-	// (tab-)expanded block back to a hint, exactly as before the Ctrl+E mode
-	// existed: the answer-land reset must fire whenever the
-	// global mode is collapsed, not only when a block was streamed collapsed.
+	// With the mode OFF the answer landing still auto-collapses the block back
+	// to a hint: the live auto-collapse fires on stream end.
 	m2 = asModel(t, mustUpdate(t, m2, turnDoneMsg{prompt: "hi", answer: "final answer", reasoning: "hidden reasoning"}))
 	if strings.Contains(view(m2), "hidden reasoning") {
 		t.Errorf("mode OFF: answer-land should auto-collapse thinking back to a hint, got: %q", view(m2))
