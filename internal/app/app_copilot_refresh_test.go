@@ -80,58 +80,57 @@ func TestCopilotRefreshRenewsTokens(t *testing.T) {
 	}
 }
 
-// TestCopilotRefreshServerErrorSurfacesNoCredential covers the credential-gap
-// branch: an endpoint that answers an error status with no tokens must surface
-// that failure, naming the HTTP status, instead of returning an empty config.
-func TestCopilotRefreshServerErrorSurfacesNoCredential(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(`{}`))
-	}))
-	defer srv.Close()
-	withCopilotTokenURL(t, srv.URL+"/login/oauth/access_token")
+// TestCopilotRefreshErrorResponses covers the endpoint-side error branches
+// table-driven: a server error status with no tokens must surface a
+// no-credential failure naming the HTTP status, and a non-JSON response must
+// surface the decode error rather than fabricating a zero config. Each row
+// expects exactly one of wantErrSubstring (a message match) or wantSyntaxErr
+// (a JSON decode error).
+func TestCopilotRefreshErrorResponses(t *testing.T) {
+	tests := []struct {
+		name             string
+		status           int
+		body             string
+		wantErrSubstring string
+		wantSyntaxErr    bool
+	}{
+		{"server error, no credential", http.StatusInternalServerError, `{}`, "no credential (HTTP 500)", false},
+		{"malformed json body", http.StatusOK, `this is not json`, "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer srv.Close()
+			withCopilotTokenURL(t, srv.URL+"/login/oauth/access_token")
 
-	refresh := copilotRefresh(srv.Client())
-	_, err := refresh(context.Background(), "old-refresh-token")
-	if err == nil {
-		t.Fatal("refresh() error = nil, want a no-credential error")
-	}
-	if !strings.Contains(err.Error(), "no credential") {
-		t.Fatalf("refresh() error = %q, want it to report the missing credential", err)
-	}
-	if !strings.Contains(err.Error(), "500") {
-		t.Fatalf("refresh() error = %q, want the HTTP 500 status code", err)
-	}
-}
-
-// TestCopilotRefreshMalformedBodySurfacesDecodeError covers the malformed-body
-// branch: a response that is not valid JSON must surface the decode error
-// rather than silently fabricating a zero config.
-func TestCopilotRefreshMalformedBodySurfacesDecodeError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`this is not json`))
-	}))
-	defer srv.Close()
-	withCopilotTokenURL(t, srv.URL+"/login/oauth/access_token")
-
-	refresh := copilotRefresh(srv.Client())
-	_, err := refresh(context.Background(), "old-refresh-token")
-	if err == nil {
-		t.Fatal("refresh() error = nil, want a JSON decode error")
-	}
-	var syntaxErr *json.SyntaxError
-	if !errors.As(err, &syntaxErr) {
-		t.Fatalf("refresh() error = %v, want a JSON decode error", err)
+			refresh := copilotRefresh(srv.Client())
+			_, err := refresh(context.Background(), "old-refresh-token")
+			if err == nil {
+				t.Fatalf("%s: refresh() error = nil, want an error", tt.name)
+			}
+			if tt.wantErrSubstring != "" && !strings.Contains(err.Error(), tt.wantErrSubstring) {
+				t.Fatalf("%s: refresh() error = %q, want it to contain %q", tt.name, err, tt.wantErrSubstring)
+			}
+			if tt.wantSyntaxErr {
+				var syntaxErr *json.SyntaxError
+				if !errors.As(err, &syntaxErr) {
+					t.Fatalf("%s: refresh() error = %v, want a JSON decode error", tt.name, err)
+				}
+			}
+		})
 	}
 }
 
 // TestCopilotRefreshTransportErrorSurfaces covers the transport-failure branch:
 // when the HTTP layer itself fails (refused connection, deadline), that error
-// is the one surfaced to the caller unchanged.
+// is the one surfaced to the caller unchanged. The seam does not need to be set
+// up here because the transport fails before any request is issued.
 func TestCopilotRefreshTransportErrorSurfaces(t *testing.T) {
 	boom := errors.New("connection refused")
 	client := &http.Client{Transport: failedTransport{err: boom}}
-	withCopilotTokenURL(t, "https://github.com/login/oauth/access_token")
 
 	refresh := copilotRefresh(client)
 	_, err := refresh(context.Background(), "old-refresh-token")
