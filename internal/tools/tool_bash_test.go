@@ -14,6 +14,7 @@ import (
 // command is the recovery path. A future edit that drops any of this guidance
 // fails the test.
 func TestBashDescriptionGuidance(t *testing.T) {
+	t.Parallel()
 	desc := (&bashTool{}).Description()
 	folded := strings.ToLower(desc)
 	for _, want := range []string{

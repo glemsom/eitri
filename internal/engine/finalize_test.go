@@ -44,6 +44,7 @@ func (j *jsonHandler) stream(_ context.Context, req provider.Request) (provider.
 // — and returns the finalized JSON object as the final answer. The session key
 // and prompt thread through unchanged.
 func TestRunJSONObjectModeFinalizesOnSupportingProvider(t *testing.T) {
+	t.Parallel()
 	h := &jsonHandler{}
 	e := New(&jsonScripted{Scripted: *provider.NewScripted(h.stream)}, &mockTranscript{})
 
@@ -81,6 +82,7 @@ func TestRunJSONObjectModeFinalizesOnSupportingProvider(t *testing.T) {
 // finalization fails negotiation fast — before any wire call — and ordinary
 // agent runs remain on the untouched non-tool path.
 func TestRunJSONObjectModeFailsFastWhenUnsupported(t *testing.T) {
+	t.Parallel()
 	// NewScripted has no generation-control capability surface: it honors no
 	// controls, so a required JSON Object Mode fails the contract.
 	h := &jsonHandler{}
@@ -109,6 +111,7 @@ func TestRunJSONObjectModeFailsFastWhenUnsupported(t *testing.T) {
 // 400 "Prompt must contain the word 'json' in some form". The engine must append
 // a JSON hint so the finalization turn always satisfies that contract.
 func TestRunJSONObjectModeAppendsJsonHintWhenPromptLacksIt(t *testing.T) {
+	t.Parallel()
 	h := &jsonHandler{}
 	e := New(&jsonScripted{Scripted: *provider.NewScripted(h.stream)}, &mockTranscript{})
 
@@ -134,6 +137,7 @@ func TestRunJSONObjectModeAppendsJsonHintWhenPromptLacksIt(t *testing.T) {
 // leaves a prompt already mentioning JSON byte-identical, so an explicit caller
 // request is never mutated.
 func TestJSONObjectPromptPreservesPromptThatRequestsJSON(t *testing.T) {
+	t.Parallel()
 	in := `Return JSON like {"ok":true}`
 	if got := jsonObjectPrompt(in); got != in {
 		t.Fatalf("jsonObjectPrompt(%q) = %q, want unchanged", in, got)
@@ -143,6 +147,7 @@ func TestJSONObjectPromptPreservesPromptThatRequestsJSON(t *testing.T) {
 // TestJSONObjectPromptAppendsSuffix verifies jsonObjectPrompt appends the fixed
 // JSON hint to a prompt that does not already mention JSON (case-insensitive).
 func TestJSONObjectPromptAppendsSuffix(t *testing.T) {
+	t.Parallel()
 	for _, in := range []string{"Finalize the answer", "Do not use JSON here", ""} {
 		got := jsonObjectPrompt(in)
 		if !strings.Contains(strings.ToLower(got), "json") {

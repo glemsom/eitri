@@ -9,6 +9,7 @@ import (
 // blocks (lists, code, bold) and asserts the ANSI output carries the expected
 // terminal styles for each (ticket #34), via the engine-render seam.
 func TestRenderMarkdown_representativeBlocks(t *testing.T) {
+	t.Parallel()
 	in := "This is **bold** text.\n\n- first item\n- second item\n\n" +
 		"```go\nfunc main() {}\n```"
 	out, err := RenderMarkdown(in, 80, "dark")
@@ -37,6 +38,7 @@ func TestRenderMarkdown_representativeBlocks(t *testing.T) {
 // renderer never errors, so a user-selected theme always renders. "ascii" is
 // deliberately excluded from the supported set.
 func TestRenderMarkdown_allSupportedThemes(t *testing.T) {
+	t.Parallel()
 	in := "# Heading\n\nSome **bold** and `code` text.\n"
 	for _, theme := range []string{"dark", "light", "dracula", "tokyo-night", "pink", "notty", "auto"} {
 		out, err := RenderMarkdown(in, 80, theme)
@@ -53,6 +55,7 @@ func TestRenderMarkdown_allSupportedThemes(t *testing.T) {
 // as the default dark theme: an unset config key must not change
 // rendering.
 func TestRenderMarkdown_emptyThemeIsDark(t *testing.T) {
+	t.Parallel()
 	in := "# Heading\n\nSome **bold** text.\n"
 	dark, err := RenderMarkdown(in, 80, "dark")
 	if err != nil {
@@ -71,6 +74,7 @@ func TestRenderMarkdown_emptyThemeIsDark(t *testing.T) {
 // excluded theme value renders as dark without ever returning an error (issue
 // #129): "bogus" is not a glamour style and "ascii" is deliberately excluded.
 func TestRenderMarkdown_invalidThemeFallsBackToDark(t *testing.T) {
+	t.Parallel()
 	in := "# Heading\n\nSome **bold** text.\n"
 	dark, err := RenderMarkdown(in, 80, "dark")
 	if err != nil {

@@ -41,6 +41,7 @@ func scrollOffset(m Model) int {
 // by a viewport's worth of lines, and Home/End jump to the top/bottom — the
 // keyed navigation seam .
 func TestScroll_pagingKeysNavigateTranscript(t *testing.T) {
+	t.Parallel()
 	m := scrollOverflowModel(t)
 	// Fresh model follows the newest output: starting offset is at the bottom.
 	start := scrollOffset(m)
@@ -83,6 +84,7 @@ func TestScroll_pagingKeysNavigateTranscript(t *testing.T) {
 // newest output, so a re-render holds the earlier reading offset instead of
 // being yanked back down to the newest .
 func TestScroll_scrollUpBreaksFollow(t *testing.T) {
+	t.Parallel()
 	m := scrollOverflowModel(t)
 	start := scrollOffset(m)
 
@@ -127,6 +129,7 @@ func wheelMsgAt(up bool, y int) tea.Msg {
 // moves the viewport toward older output and stops re-anchoring to the newest;
 // wheel-down reaches the bottom re-engages follow.
 func TestScroll_mouseWheelNavigatesTranscript(t *testing.T) {
+	t.Parallel()
 	m := scrollOverflowModel(t)
 	start := scrollOffset(m)
 
@@ -162,6 +165,7 @@ func TestScroll_mouseWheelNavigatesTranscript(t *testing.T) {
 // width math, so a wheeled row and a dragged row can never disagree about where
 // the region ends.
 func TestScroll_mouseWheelRoutesThroughRegionSeam(t *testing.T) {
+	t.Parallel()
 	m := scrollOverflowModel(t)
 	regionHeight := m.tx.scrollRegionHeight(m.bandHeight())
 	if regionHeight <= 0 {
@@ -202,6 +206,7 @@ func TestScroll_mouseWheelRoutesThroughRegionSeam(t *testing.T) {
 // after scrolling up, submitting a new prompt returns the viewport to the newest
 // output instead of holding the stale reading offset.
 func TestScroll_newSubmitRefollowsNewest(t *testing.T) {
+	t.Parallel()
 	m := scrollOverflowModel(t)
 	// Scroll up and confirm follow is broken.
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyPgUp})
@@ -234,6 +239,7 @@ func TestScroll_newSubmitRefollowsNewest(t *testing.T) {
 // composer, and paging keys that navigate the transcript leave the composer's
 // focused value untouched.
 func TestScroll_navigationDoesNotStealComposerFocus(t *testing.T) {
+	t.Parallel()
 	m := scrollOverflowModel(t)
 	// Focus stays on the composer: typing still lands in the composer.
 	m = typeText(t, m, "typed")

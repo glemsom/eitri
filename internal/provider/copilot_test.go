@@ -75,6 +75,7 @@ func drainAll(s Stream) (content, reasoning string, last Chunk, err error) {
 // provider's, since Copilot re-expresses through the same engine seam —
 // provider-agnostic dialect routing.
 func TestCopilotStreamsWithValidStoredToken(t *testing.T) {
+	t.Parallel()
 	srv, lastToken := copilotServer(t, sseFixture(t))
 	cp := NewCopilot(config.CopilotConfig{AccessToken: "stored-access"}, srv.URL+"/chat/completions", srv.Client(),
 		nil, nil)
@@ -111,6 +112,7 @@ func TestCopilotStreamsWithValidStoredToken(t *testing.T) {
 // non-interactively (never shows a device flow) and the run proceeds on the
 // renewed token.
 func TestCopilotBatchRefreshesExpiredToken(t *testing.T) {
+	t.Parallel()
 	srv, lastToken := copilotServer(t, sseFixture(t))
 	var persisted *config.CopilotConfig
 	refresh := func(_ context.Context, refreshToken string) (config.CopilotConfig, error) {
@@ -146,6 +148,7 @@ func TestCopilotBatchRefreshesExpiredToken(t *testing.T) {
 // re-auth-in-TUI message and never attempts an interactive device flow (the
 // httptest server would record a request if one was wrongly made).
 func TestCopilotBatchNoTokenErrorsReauth(t *testing.T) {
+	t.Parallel()
 	reqs := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		reqs++
@@ -170,6 +173,7 @@ func TestCopilotBatchNoTokenErrorsReauth(t *testing.T) {
 // device-flow re-auth persists a fresh token to config, a batch run built from
 // that refreshed config proceeds normally.
 func TestCopilotWorksAfterTUIReAuth(t *testing.T) {
+	t.Parallel()
 	srv, lastToken := copilotServer(t, sseFixture(t))
 	// The persisted config holds the freshly device-flow'd token.
 	cp := NewCopilot(config.CopilotConfig{
@@ -191,6 +195,7 @@ func TestCopilotWorksAfterTUIReAuth(t *testing.T) {
 }
 
 func TestCopilotDiscoversResponsesOnlyModelEndpoint(t *testing.T) {
+	t.Parallel()
 	chatReqs := 0
 	responsesReqs := 0
 	modelsReqs := 0
@@ -240,6 +245,7 @@ func TestCopilotDiscoversResponsesOnlyModelEndpoint(t *testing.T) {
 }
 
 func TestCopilotRetriesResponsesForResponsesOnlyModel(t *testing.T) {
+	t.Parallel()
 	chatReqs := 0
 	responsesReqs := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -307,6 +313,7 @@ func TestCopilotRetriesResponsesForResponsesOnlyModel(t *testing.T) {
 }
 
 func TestCopilotResponsesStreamToolCalls(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/chat/completions":
@@ -371,6 +378,7 @@ func drainOne(s Stream) (string, error) {
 // pre-flight a special turn's requirements before any wire
 // call.
 func TestCopilotDeclaresGenerationControlCapabilities(t *testing.T) {
+	t.Parallel()
 	cp := NewCopilot(config.CopilotConfig{AccessToken: "x"}, "http://example.invalid/chat/completions", nil, nil, nil)
 	supp, err := cp.SupportedGenerationControls(context.Background())
 	if err != nil {
@@ -394,6 +402,7 @@ func TestCopilotDeclaresGenerationControlCapabilities(t *testing.T) {
 // TestCopilotDropsEffortWhenThinkingDisabled pins the wire shape
 // alone; this test asserts advertisement and wire agree.
 func TestCopilotCapabilityMatchesWireBehavior(t *testing.T) {
+	t.Parallel()
 	cp := NewCopilot(config.CopilotConfig{AccessToken: "x"}, "http://example.invalid/chat/completions", nil, nil, nil)
 	assertSuppressionHonored(t, cp)
 	streamAssertSuppression(t, func(url string) Provider {
@@ -409,6 +418,7 @@ func TestCopilotCapabilityMatchesWireBehavior(t *testing.T) {
 // reasoning-on server default unless told otherwise, so the request carries an
 // explicit `thinking:{type:disabled}` suppression instead.
 func TestCopilotDropsEffortWhenThinkingDisabled(t *testing.T) {
+	t.Parallel()
 	var sawEffort, thinkingDisabled bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
@@ -447,6 +457,7 @@ func TestCopilotDropsEffortWhenThinkingDisabled(t *testing.T) {
 // keeps thinking on, the request carries an explicit `thinking:{type:enabled}`
 // toggle plus the normalized reasoning_effort.
 func TestCopilotSendsThinkingEnabledWhenThinkingOn(t *testing.T) {
+	t.Parallel()
 	var thinkingType string
 	var sawEffort bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

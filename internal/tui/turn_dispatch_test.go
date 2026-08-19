@@ -29,6 +29,7 @@ func stubTurn(answer string, err error) Turn {
 // --- startTurn tests ---
 
 func TestTurnDispatch_startTurn_installsContext(t *testing.T) {
+	t.Parallel()
 	d := NewTurnDispatch(stubTurn("ok", nil))
 	tx := newTestTx()
 
@@ -45,6 +46,7 @@ func TestTurnDispatch_startTurn_installsContext(t *testing.T) {
 }
 
 func TestTurnDispatch_startTurn_appendsUserMessage(t *testing.T) {
+	t.Parallel()
 	d := NewTurnDispatch(stubTurn("ok", nil))
 	tx := newTestTx()
 
@@ -62,6 +64,7 @@ func TestTurnDispatch_startTurn_appendsUserMessage(t *testing.T) {
 }
 
 func TestTurnDispatch_startTurn_setsBusyAndDirty(t *testing.T) {
+	t.Parallel()
 	d := NewTurnDispatch(stubTurn("ok", nil))
 	tx := newTestTx()
 
@@ -76,6 +79,7 @@ func TestTurnDispatch_startTurn_setsBusyAndDirty(t *testing.T) {
 }
 
 func TestTurnDispatch_startTurn_resetsCurStream(t *testing.T) {
+	t.Parallel()
 	d := NewTurnDispatch(stubTurn("ok", nil))
 	tx := newTestTx()
 	d.curStream = 5 // pre-set to non-default
@@ -88,6 +92,7 @@ func TestTurnDispatch_startTurn_resetsCurStream(t *testing.T) {
 }
 
 func TestTurnDispatch_startTurn_setsAnchor(t *testing.T) {
+	t.Parallel()
 	d := NewTurnDispatch(stubTurn("ok", nil))
 	tx := newTestTx()
 
@@ -102,6 +107,7 @@ func TestTurnDispatch_startTurn_setsAnchor(t *testing.T) {
 // --- stopTurn tests ---
 
 func TestTurnDispatch_stopTurn_cancelsContext(t *testing.T) {
+	t.Parallel()
 	d := NewTurnDispatch(stubTurn("ok", nil))
 	tx := newTestTx()
 	d.startTurn(&tx, "hello", "")
@@ -119,6 +125,7 @@ func TestTurnDispatch_stopTurn_cancelsContext(t *testing.T) {
 }
 
 func TestTurnDispatch_stopTurn_noopWhenNil(t *testing.T) {
+	t.Parallel()
 	d := NewTurnDispatch(stubTurn("ok", nil))
 	// No startTurn — cancel is nil.
 	d.stopTurn() // must not panic
@@ -127,6 +134,7 @@ func TestTurnDispatch_stopTurn_noopWhenNil(t *testing.T) {
 // --- turnCmd tests ---
 
 func TestTurnDispatch_turnCmd_returnsTurnDoneMsg(t *testing.T) {
+	t.Parallel()
 	d := NewTurnDispatch(stubTurn("answer", nil))
 	tx := newTestTx()
 	d.startTurn(&tx, "prompt", "")
@@ -146,6 +154,7 @@ func TestTurnDispatch_turnCmd_returnsTurnDoneMsg(t *testing.T) {
 }
 
 func TestTurnDispatch_turnCmd_contextCanceledMapsToStopped(t *testing.T) {
+	t.Parallel()
 	turnFn := func(ctx context.Context, _ string, _ string) (TurnResult, error) {
 		return TurnResult{Answer: "partial"}, context.Canceled
 	}
@@ -164,6 +173,7 @@ func TestTurnDispatch_turnCmd_contextCanceledMapsToStopped(t *testing.T) {
 }
 
 func TestTurnDispatch_turnCmd_errorReturnsErr(t *testing.T) {
+	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", errors.New("boom")))
 	tx := newTestTx()
 	d.startTurn(&tx, "hi", "")
@@ -181,6 +191,7 @@ func TestTurnDispatch_turnCmd_errorReturnsErr(t *testing.T) {
 // --- appendStreamDelta tests ---
 
 func TestTurnDispatch_appendStreamDelta_createsMessageOnFirstDelta(t *testing.T) {
+	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
 
@@ -205,6 +216,7 @@ func TestTurnDispatch_appendStreamDelta_createsMessageOnFirstDelta(t *testing.T)
 }
 
 func TestTurnDispatch_appendStreamDelta_extendsExistingMessage(t *testing.T) {
+	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
 
@@ -220,6 +232,7 @@ func TestTurnDispatch_appendStreamDelta_extendsExistingMessage(t *testing.T) {
 }
 
 func TestTurnDispatch_appendStreamDelta_reasoningSeparate(t *testing.T) {
+	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
 
@@ -238,6 +251,7 @@ func TestTurnDispatch_appendStreamDelta_reasoningSeparate(t *testing.T) {
 }
 
 func TestTurnDispatch_appendStreamDelta_emptyNoop(t *testing.T) {
+	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
 
@@ -249,6 +263,7 @@ func TestTurnDispatch_appendStreamDelta_emptyNoop(t *testing.T) {
 }
 
 func TestTurnDispatch_appendStreamDelta_setsBusyPulseOnFirstDelta(t *testing.T) {
+	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
 
@@ -260,6 +275,7 @@ func TestTurnDispatch_appendStreamDelta_setsBusyPulseOnFirstDelta(t *testing.T) 
 }
 
 func TestTurnDispatch_appendStreamDelta_doesNotResetBusyPulseOnSubsequentDelta(t *testing.T) {
+	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
 
@@ -275,6 +291,7 @@ func TestTurnDispatch_appendStreamDelta_doesNotResetBusyPulseOnSubsequentDelta(t
 // --- handleTurnDone tests (5 branches) ---
 
 func TestTurnDispatch_handleTurnDone_stoppedStreaming(t *testing.T) {
+	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
 	d.startTurn(&tx, "q", "")
@@ -316,6 +333,7 @@ func TestTurnDispatch_handleTurnDone_stoppedStreaming(t *testing.T) {
 }
 
 func TestTurnDispatch_handleTurnDone_stoppedNoStreaming(t *testing.T) {
+	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
 	d.startTurn(&tx, "q", "")
@@ -344,6 +362,7 @@ func TestTurnDispatch_handleTurnDone_stoppedNoStreaming(t *testing.T) {
 }
 
 func TestTurnDispatch_handleTurnDone_error(t *testing.T) {
+	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
 	d.startTurn(&tx, "q", "")
@@ -370,6 +389,7 @@ func TestTurnDispatch_handleTurnDone_error(t *testing.T) {
 }
 
 func TestTurnDispatch_handleTurnDone_successStreaming(t *testing.T) {
+	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
 	d.startTurn(&tx, "q", "")
@@ -407,6 +427,7 @@ func TestTurnDispatch_handleTurnDone_successStreaming(t *testing.T) {
 }
 
 func TestTurnDispatch_handleTurnDone_successNoStreaming(t *testing.T) {
+	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
 	d.startTurn(&tx, "q", "")
@@ -436,6 +457,7 @@ func TestTurnDispatch_handleTurnDone_successNoStreaming(t *testing.T) {
 // --- turnCmd dispatch integration ---
 
 func TestTurnDispatch_turnCmd_dispatchesTurn(t *testing.T) {
+	t.Parallel()
 	var calledPrompt string
 	turnFn := func(_ context.Context, prompt string, _ string) (TurnResult, error) {
 		calledPrompt = prompt
@@ -459,6 +481,7 @@ func TestTurnDispatch_turnCmd_dispatchesTurn(t *testing.T) {
 // --- full cycle test ---
 
 func TestTurnDispatch_fullCycle(t *testing.T) {
+	t.Parallel()
 	d := NewTurnDispatch(stubTurn("final", nil))
 	tx := newTestTx()
 

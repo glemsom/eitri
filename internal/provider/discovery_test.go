@@ -13,6 +13,7 @@ import (
 // derived from the Chat-Completions endpoint by stripping the
 // /chat/completions suffix.
 func TestOpenAIDiscoversModels(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			t.Errorf("method = %s, want GET", r.Method)
@@ -41,6 +42,7 @@ func TestOpenAIDiscoversModels(t *testing.T) {
 // TestOpenAIDiscoverModelsCarriesAuth verifies model discovery uses the same
 // Bearer credential as streaming.
 func TestOpenAIDiscoverModelsCarriesAuth(t *testing.T) {
+	t.Parallel()
 	var sawAuth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sawAuth = r.Header.Get("Authorization")
@@ -62,6 +64,7 @@ func TestOpenAIDiscoverModelsCarriesAuth(t *testing.T) {
 // discovery at the engine/app seam: it surfaces a committed model list so
 // discovery is exercisable without a network.
 func TestFakeDiscoversModels(t *testing.T) {
+	t.Parallel()
 	models, err := NewFake("../provider/testdata/hello.sse").Models(context.Background())
 	if err != nil {
 		t.Fatalf("Fake.Models() error = %v, want nil", err)
@@ -83,6 +86,7 @@ func TestFakeDiscoversModels(t *testing.T) {
 // simply don't expose the optional ModelLister capability; callers type-assert
 // and treat absence as "no discovery" rather than erroring.
 func TestScriptedDoesNotListModels(t *testing.T) {
+	t.Parallel()
 	sp := NewScripted(func(_ context.Context, _ Request) (Stream, error) {
 		return StreamFunc(Chunk{FinishReason: "stop", Done: true}), nil
 	})

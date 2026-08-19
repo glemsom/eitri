@@ -48,6 +48,7 @@ func testConfig(railWidth int) config.Config {
 // TestRailKey_Shrink asserts Ctrl+Shift+[ shrinks the rail by 2 columns and
 // persists the new width to config.
 func TestRailKey_Shrink(t *testing.T) {
+	t.Parallel()
 	m, cc := railKeyModel(t, 40)
 
 	nm, _ := m.Update(tea.KeyPressMsg{Code: '[', Mod: tea.ModCtrl | tea.ModShift})
@@ -64,6 +65,7 @@ func TestRailKey_Shrink(t *testing.T) {
 // TestRailKey_Grow asserts Ctrl+Shift+] grows the rail by 2 columns and
 // persists the new width to config.
 func TestRailKey_Grow(t *testing.T) {
+	t.Parallel()
 	m, cc := railKeyModel(t, 40)
 
 	nm, _ := m.Update(tea.KeyPressMsg{Code: ']', Mod: tea.ModCtrl | tea.ModShift})
@@ -80,6 +82,7 @@ func TestRailKey_Grow(t *testing.T) {
 // TestRailKey_Reset asserts Alt+0 resets the rail to the default width and
 // persists the reset to config.
 func TestRailKey_Reset(t *testing.T) {
+	t.Parallel()
 	m, cc := railKeyModel(t, 50)
 
 	nm, _ := m.Update(tea.KeyPressMsg{Code: '0', Mod: tea.ModAlt})
@@ -96,6 +99,7 @@ func TestRailKey_Reset(t *testing.T) {
 // TestRailKey_ShrinkFloor asserts shrinking below the minimum rail width is
 // clamped and does not go below minWidthRail.
 func TestRailKey_ShrinkFloor(t *testing.T) {
+	t.Parallel()
 	m, _ := railKeyModel(t, minWidthRail)
 
 	nm, _ := m.Update(tea.KeyPressMsg{Code: '[', Mod: tea.ModCtrl | tea.ModShift})
@@ -109,6 +113,7 @@ func TestRailKey_ShrinkFloor(t *testing.T) {
 // TestRailKey_Visible asserts rail resize keybinds work while the rail is
 // visible and produce a valid render (no panic, no empty output).
 func TestRailKey_Visible(t *testing.T) {
+	t.Parallel()
 	m, _ := railKeyModel(t, 30)
 
 	for _, tc := range []struct {

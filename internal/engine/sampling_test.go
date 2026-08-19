@@ -42,6 +42,7 @@ func (s *samplingHandler) stream(_ context.Context, req provider.Request) (provi
 // never top_p — and returns the generated answer. The session key and prompt
 // thread through unchanged.
 func TestRunSamplingPolicyTemperatureOnSupportingProvider(t *testing.T) {
+	t.Parallel()
 	h := &samplingHandler{}
 	e := New(&samplingScripted{Scripted: *provider.NewScripted(h.stream)}, &mockTranscript{})
 
@@ -80,6 +81,7 @@ func TestRunSamplingPolicyTemperatureOnSupportingProvider(t *testing.T) {
 // (top-p) sampling form of the special turn carries the nucleus
 // policy so the wire emits top_p and never temperature.
 func TestRunSamplingPolicyNucleusOnSupportingProvider(t *testing.T) {
+	t.Parallel()
 	h := &samplingHandler{}
 	e := New(&samplingScripted{Scripted: *provider.NewScripted(h.stream)}, &mockTranscript{})
 
@@ -103,6 +105,7 @@ func TestRunSamplingPolicyNucleusOnSupportingProvider(t *testing.T) {
 // Policy capability honors no controls, so a required sampling-policy special
 // turn fails negotiation fast — before any wire call.
 func TestRunSamplingPolicyFailsFastWhenUnsupported(t *testing.T) {
+	t.Parallel()
 	// NewScripted has no generation-control capability surface: it honors no
 	// controls, so a required Sampling Policy fails the contract.
 	h := &samplingHandler{}
@@ -129,6 +132,7 @@ func TestRunSamplingPolicyFailsFastWhenUnsupported(t *testing.T) {
 // preserved for the prompt cache: the sampling
 // seam is special-turn only.
 func TestRunOrdinaryTurnOmitsSamplingPolicy(t *testing.T) {
+	t.Parallel()
 	h := &samplingHandler{}
 	e := New(&samplingScripted{Scripted: *provider.NewScripted(h.stream)}, &mockTranscript{})
 

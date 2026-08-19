@@ -29,6 +29,7 @@ func plain(s string) string { return ansiRe.ReplaceAllString(s, "") }
 // every tested width (wide, mid, and narrow), and a resize back to a prior
 // size must never re-introduce doubled or scattered lines.
 func TestResize_KeepsNewestPinnedAcrossResize(t *testing.T) {
+	t.Parallel()
 	m := buildMultiTurnModel(t)
 	m = applyResize(t, m, 120, 24)
 
@@ -53,6 +54,7 @@ func TestResize_KeepsNewestPinnedAcrossResize(t *testing.T) {
 // (re-)wraps rendered content, shrinking the oldest line out of the viewport as
 // the newest stays pinned — proving a live re-flow rather than a frozen frame.
 func TestResize_ReFlowsHeadToNewWidth(t *testing.T) {
+	t.Parallel()
 	m := buildMultiTurnModel(t)
 	m = applyResize(t, m, 80, 12) // short viewport clips the oldest head
 

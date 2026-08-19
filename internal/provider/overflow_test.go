@@ -8,6 +8,7 @@ import (
 // TestIsContextOverflowSentinel recognizes the explicit ErrContextOverflow
 // sentinel regardless of HTTP mapping.
 func TestIsContextOverflowSentinel(t *testing.T) {
+	t.Parallel()
 	if !IsContextOverflow(ErrContextOverflow) {
 		t.Fatal("IsContextOverflow(ErrContextOverflow) = false, want true")
 	}
@@ -21,6 +22,7 @@ func TestIsContextOverflowSentinel(t *testing.T) {
 // context-length / token-limit condition is treated as overflow, so the engine
 // emergency-compacts and retries (the DeepSeek/OpenCode surface).
 func TestIsContextOverflowBodyNamesOverflow(t *testing.T) {
+	t.Parallel()
 	bodies := []string{
 		`{"error":{"message":"This model's maximum context length is 16385 tokens."}}`,
 		`{"error":"context window full"}`,
@@ -41,6 +43,7 @@ func TestIsContextOverflowBodyNamesOverflow(t *testing.T) {
 // not waste an emergency compaction on an unrelated client error and instead
 // surfaces the real cause.
 func TestIsContextOverflowNonOverflow400(t *testing.T) {
+	t.Parallel()
 	bodies := []string{
 		`{"error":{"message":"Prompt must contain the word 'json' in some form to use 'response_format'."}}`,
 		`{"error":"model does not exist"}`,
@@ -62,6 +65,7 @@ func TestIsContextOverflowNonOverflow400(t *testing.T) {
 // TestHTTPErrorErrorIncludesBody pins the diagnostic fix: the provider's actual
 // rejection body surfaces instead of an opaque status code.
 func TestHTTPErrorErrorIncludesBody(t *testing.T) {
+	t.Parallel()
 	e := &HTTPError{Code: 400, Body: "Prompt must contain the word 'json' in some form"}
 	got := e.Error()
 	if !strings.HasPrefix(got, "provider returned HTTP 400") {
@@ -75,6 +79,7 @@ func TestHTTPErrorErrorIncludesBody(t *testing.T) {
 // TestHTTPErrorErrorOmitsEmptyBody keeps the legacy short form when no body was
 // captured.
 func TestHTTPErrorErrorOmitsEmptyBody(t *testing.T) {
+	t.Parallel()
 	e := &HTTPError{Code: 401}
 	if got := e.Error(); got != "provider returned HTTP 401" {
 		t.Fatalf("Error() = %q, want short form without body", got)

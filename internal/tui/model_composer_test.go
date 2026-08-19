@@ -13,6 +13,7 @@ import (
 // empty rows — never inserting a newline into the draft . The submit path
 // (turn command + busy flag) is the existing behaviour and must be preserved.
 func TestModel_enterSubmitsAndClearsComposer(t *testing.T) {
+	t.Parallel()
 	var got []string
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		got = append(got, prompt)
@@ -40,6 +41,7 @@ func TestModel_enterSubmitsAndClearsComposer(t *testing.T) {
 // key the turn seam has seen nothing and the composer holds the two-line
 // draft.
 func TestModel_shiftEnterInsertsNewlineWithoutSubmitting(t *testing.T) {
+	t.Parallel()
 	var got []string
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		got = append(got, prompt)
@@ -69,6 +71,7 @@ func TestModel_shiftEnterInsertsNewlineWithoutSubmitting(t *testing.T) {
 // for Shift+Enter rather than the legacy line-feed byte, so the plain "ctrl+j"
 // case never sees it and the key currently falls through as a no-op.
 func TestModel_shiftEnterCsiUInsertsNewline(t *testing.T) {
+	t.Parallel()
 	var got []string
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		got = append(got, prompt)
@@ -104,6 +107,7 @@ func newlineShiftEnterCsiU(t *testing.T, m Model) Model {
 // clears back to its resting height of two rows. The newlines the user typed
 // must reach the turn seam, not be flattened or dropped.
 func TestModel_composerMultiLineInsertAndSubmit(t *testing.T) {
+	t.Parallel()
 	var got []string
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		got = append(got, prompt)
@@ -141,6 +145,7 @@ func newlineShiftEnter(t *testing.T, m Model) Model {
 // of the fixed-height composer of the pre-pivot TUI, and an over-long draft
 // caps at the bound rather than growing without limit.
 func TestModel_composerGrowsWithDraftLines(t *testing.T) {
+	t.Parallel()
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		return TurnResult{Answer: "ok"}, nil
 	})
@@ -180,6 +185,7 @@ func TestModel_composerGrowsWithDraftLines(t *testing.T) {
 // across several terminal rows, and the composer tracks them so the draft is
 // visible without clipping .
 func TestModel_composerGrowsForSoftWrappedLines(t *testing.T) {
+	t.Parallel()
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		return TurnResult{Answer: "ok"}, nil
 	})
@@ -199,6 +205,7 @@ func TestModel_composerGrowsForSoftWrappedLines(t *testing.T) {
 // view never exceeds the terminal height — the history viewport yields rows
 // instead.
 func TestModel_composerLongDraftBandPinned(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -239,6 +246,7 @@ func TestModel_composerLongDraftBandPinned(t *testing.T) {
 // hold the whole band, the composer shrinks below its resting height so the
 // band fits the terminal.
 func TestModel_composerShortTerminalClamp(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -261,6 +269,7 @@ func TestModel_composerShortTerminalClamp(t *testing.T) {
 // soft-wrapped grown composer all present, the content order is status strip,
 // slash completion, then the composer as the final region.
 func TestModel_statusAndSlashPinnedAboveComposer(t *testing.T) {
+	t.Parallel()
 	// A skill name long enough that its `/`-partial soft-wraps the composer to
 	// two rows while still completing: the slash list must stay above the
 	// grown composer.

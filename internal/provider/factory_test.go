@@ -15,6 +15,7 @@ import (
 // TestFromConfigRoutesOpenCodeGo verifies the saved opencode-go provider builds
 // the OpenAI-compatible primary client.
 func TestFromConfigRoutesOpenCodeGo(t *testing.T) {
+	t.Parallel()
 	p, err := FromConfig(config.Config{Provider: "opencode-go", Model: "deepseek-v4-flash"}, ProviderEnv{OpenCodeKey: "k"})
 	if err != nil {
 		t.Fatalf("FromConfig() error = %v, want nil", err)
@@ -28,6 +29,7 @@ func TestFromConfigRoutesOpenCodeGo(t *testing.T) {
 // an OpenAI-compatible client against the user-supplied base URL and key,
 // routed through the same Chat-Completions dialect.
 func TestFromConfigRoutesCustomOpenAI(t *testing.T) {
+	t.Parallel()
 	cfg := config.Config{
 		Provider: "custom-openai",
 		Model:    "my-model",
@@ -53,6 +55,7 @@ func TestFromConfigRoutesCustomOpenAI(t *testing.T) {
 // selection without a configured endpoint fails cleanly at build time rather
 // than silently talking nowhere.
 func TestFromConfigCustomOpenAIMissingSettingsFails(t *testing.T) {
+	t.Parallel()
 	_, err := FromConfig(config.Config{Provider: "custom-openai"}, ProviderEnv{})
 	if err == nil {
 		t.Fatalf("FromConfig(custom-openai) with no endpoint = nil error, want an error")
@@ -62,6 +65,7 @@ func TestFromConfigCustomOpenAIMissingSettingsFails(t *testing.T) {
 // TestFromConfigRoutesCopilot verifies a saved github-copilot provider builds a
 // Copilot provider carrying the persisted device-flow credential.
 func TestFromConfigRoutesCopilot(t *testing.T) {
+	t.Parallel()
 	cfg := config.Config{
 		Provider: "github-copilot",
 		Model:    "gpt-4o",
@@ -98,6 +102,7 @@ func TestFromConfigRoutesCopilot(t *testing.T) {
 // runs against the factory-built instance. Deterministic httptest servers, no
 // network.
 func TestFromConfigThinkingSuppressionMatchesWireBehavior(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name        string
 		cfg         config.Config
@@ -232,6 +237,7 @@ func thinkingWireServer(t *testing.T, inspect func(map[string]any)) *httptest.Se
 // TestFromConfigUnknownProviderFails verifies an unsupported provider selection
 // is rejected explicitly rather than silently defaulting.
 func TestFromConfigUnknownProviderFails(t *testing.T) {
+	t.Parallel()
 	_, err := FromConfig(config.Config{Provider: "nope"}, ProviderEnv{})
 	if err == nil {
 		t.Fatalf("FromConfig(unknown) = nil error, want an error")

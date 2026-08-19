@@ -7,6 +7,7 @@ import (
 // TestTelemetryAggregatesUsage asserts the live telemetry accumulates per-turn
 // token usage into cache hit/miss counters with known-good literals.
 func TestTelemetryAggregatesUsage(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	for _, u := range []TelemetryUpdate{
 		{Kind: TelemetryUsage, Hit: 1_000_000, Miss: 1_000_000, Output: 1_000_000},
@@ -27,6 +28,7 @@ func TestTelemetryAggregatesUsage(t *testing.T) {
 // TestTelemetryTurnCounting asserts the live telemetry counts one turn per turn
 // Start event.
 func TestTelemetryTurnCounting(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 10)
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
@@ -44,6 +46,7 @@ func TestTelemetryTurnCounting(t *testing.T) {
 // TestTelemetryCompactionMarker asserts a compaction event sets the read-only
 // compaction flag.
 func TestTelemetryCompactionMarker(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryCompacted})
 
@@ -59,6 +62,7 @@ func TestTelemetryCompactionMarker(t *testing.T) {
 // per-turn provider.Usage.PromptTokens, so it shrinks after a compaction.
 // The cumulative cache hit/miss/output counters stay +=.
 func TestTelemetryLiveContextReplaces(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 1_000_000, Miss: 1_000_000, Output: 1_000_000, Ctx: 160_000})
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 1_000_000, Miss: 1_000_000, Output: 1_000_000, Ctx: 50_000})

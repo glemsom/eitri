@@ -29,6 +29,7 @@ func feedToolUpdate(t *testing.T, m *Model, f *ToolFeed, u ToolUpdate) Model {
 // single-line collapsed entry with the tool name and a [+N,-M] delta tag (issue
 // #84 AC1, AC3), and that toggling expansion reveals the full result.
 func TestModel_toolEditEntryRenders(t *testing.T) {
+	t.Parallel()
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -64,6 +65,7 @@ func TestModel_toolEditEntryRenders(t *testing.T) {
 // expands on demand to the full inline result — the lossless-recovery path
 // .
 func TestModel_toolEntryCollapsedThenExpandable(t *testing.T) {
+	t.Parallel()
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -110,6 +112,7 @@ func TestModel_toolEntryCollapsedThenExpandable(t *testing.T) {
 // TestModel_toolFeedDrainsLiveUpdates asserts feeding a start then a result
 // into the feed channel pairs into a single complete entry .
 func TestModel_toolFeedDrainsLiveUpdates(t *testing.T) {
+	t.Parallel()
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -139,6 +142,7 @@ func TestModel_toolFeedDrainsLiveUpdates(t *testing.T) {
 // reads calmly (benchmark §4.1 tool-cards: label + dimmed path). The ✓
 // outcome marker keeps its own hue.
 func TestModel_stylingToolHeadSplitsLabelAndArgs(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -166,6 +170,7 @@ func TestModel_stylingToolHeadSplitsLabelAndArgs(t *testing.T) {
 // content (benchmark §4.1 tool-cards), so expansion reads as one designed
 // block instead of a raw text dump.
 func TestModel_stylingExpandedResultFramed(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -194,6 +199,7 @@ func TestModel_stylingExpandedResultFramed(t *testing.T) {
 // truncates to the pane width with an ellipsis instead of cutting abruptly at
 // the edge — while the full arguments remain in the clipboard copy path.
 func TestModel_toolArgsTruncateToWidth(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -226,6 +232,7 @@ func TestModel_toolArgsTruncateToWidth(t *testing.T) {
 // expanded-view mode on the Model's owned Transcript: the key
 // flips the single expandAll flag on→off→on, each press sticky until the next.
 func TestModel_ctrlETogglesExpandedViewMode(t *testing.T) {
+	t.Parallel()
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -266,6 +273,7 @@ func TestModel_ctrlETogglesExpandedViewMode(t *testing.T) {
 // lands while the mode is ON renders its full result, past
 // entries too, because render reads the live flag over the whole log.
 func TestModel_expandedViewModeAppliesToNewlyDeliveredEntries(t *testing.T) {
+	t.Parallel()
 	feed := NewToolFeed()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {

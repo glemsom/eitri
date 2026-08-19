@@ -43,6 +43,7 @@ func newTestRegistry(t *testing.T, rr Runner) (*Registry, string) {
 // unnecessary, and the plain form is standard JSON-Schema a provider
 // validator accepts.
 func TestReadSchemaPlainOptionalTypes(t *testing.T) {
+	t.Parallel()
 	// Schema() needs no validator, so the type can be exercised directly.
 	schema := (&readTool{}).Schema()
 	props, ok := schema["properties"].(map[string]any)
@@ -67,6 +68,7 @@ func TestReadSchemaPlainOptionalTypes(t *testing.T) {
 // are declared as ordinary integer properties that a caller may omit.
 // (The plain-type form itself is guarded by TestReadSchemaPlainOptionalTypes.)
 func TestReadSchemaRequiredSubset(t *testing.T) {
+	t.Parallel()
 	schema := (&readTool{}).Schema()
 	if schema["additionalProperties"] != false {
 		t.Fatalf("schema additionalProperties = %v, want false", schema["additionalProperties"])
@@ -92,6 +94,7 @@ func TestReadSchemaRequiredSubset(t *testing.T) {
 // TestReadWholeFileRequiresOnlyPath verifies a whole-file read needs no
 // start_line/end_line placeholders: read with just path dumps every line.
 func TestReadWholeFileRequiresOnlyPath(t *testing.T) {
+	t.Parallel()
 	r, ws := newTestRegistry(t, nil)
 	path := filepath.Join(ws, "whole.txt")
 	content := "alpha\nbeta\ngamma\n"
@@ -114,6 +117,7 @@ func TestReadWholeFileRequiresOnlyPath(t *testing.T) {
 // TestReadToleratesNullOptionals verifies a model that still sends null for the
 // line-range optionals is not broken: null falls to the whole-file default.
 func TestReadToleratesNullOptionals(t *testing.T) {
+	t.Parallel()
 	r, ws := newTestRegistry(t, nil)
 	path := filepath.Join(ws, "null.txt")
 	if err := os.WriteFile(path, []byte("one\ntwo\n"), 0o600); err != nil {
@@ -139,6 +143,7 @@ func argMap(kv ...string) map[string]any {
 
 // TestRegistryExposesTools locks the six-tool surface.
 func TestRegistryExposesTools(t *testing.T) {
+	t.Parallel()
 	r, _ := newTestRegistry(t, nil)
 	got := map[string]bool{}
 	for _, n := range r.Names() {
@@ -154,6 +159,7 @@ func TestRegistryExposesTools(t *testing.T) {
 // TestBashRunsInSandbox verifies the bash tool invokes the sandbox runner with
 // the command and returns its combined output.
 func TestBashRunsInSandbox(t *testing.T) {
+	t.Parallel()
 	rr := &recordingRunner{out: &Output{Stdout: "$HOME\n"}}
 	r, _ := newTestRegistry(t, rr)
 	res, err := r.Run(context.Background(), "bash", argMap("command", "echo $HOME"))
@@ -172,6 +178,7 @@ func TestBashRunsInSandbox(t *testing.T) {
 // returned into the conversation is truncated with the explicit "+ more" marker
 // and is strictly shorter, but the raw command can be re-run for recovery.
 func TestBashCompressesNoisyOutputAtBoundary(t *testing.T) {
+	t.Parallel()
 	var raw strings.Builder
 	for i := 0; i < 400; i++ {
 		raw.WriteString("src/file_")
@@ -205,6 +212,7 @@ func TestBashCompressesNoisyOutputAtBoundary(t *testing.T) {
 // TestReadLineRange verifies line-range reads: lines before start omitted,
 // range bounded, and the requested slice returned with content.
 func TestReadLineRange(t *testing.T) {
+	t.Parallel()
 	r, ws := newTestRegistry(t, nil)
 	path := filepath.Join(ws, "f.txt")
 	content := "l1\nl2\nl3\nl4\nl5\n"
@@ -229,6 +237,7 @@ func TestReadLineRange(t *testing.T) {
 // commonly emits "AGENTS.md" after a `ls`; it must resolve against the
 // workspace root via the translator.
 func TestReadResolvesRelativeWorkspacePath(t *testing.T) {
+	t.Parallel()
 	r, ws := newTestRegistry(t, nil)
 	if err := os.WriteFile(filepath.Join(ws, "AGENTS.md"), []byte("hello\nworld\n"), 0o600); err != nil {
 		t.Fatalf("write fixture: %v", err)
@@ -246,6 +255,7 @@ func TestReadResolvesRelativeWorkspacePath(t *testing.T) {
 // TestReadUsesSessionTempNamespace verifies a sandbox /tmp path is translated
 // and read host-side from the session temp root.
 func TestReadUsesSessionTempNamespace(t *testing.T) {
+	t.Parallel()
 	r := NewRegistry(Deps{
 		Workspace: "/home/u/proj",
 		TempHost:  "/tmp/eitri-g",
@@ -275,6 +285,7 @@ func TestReadUsesSessionTempNamespace(t *testing.T) {
 // temp reads fine (the sandbox already exposes it via bash), and a missing
 // file fails only on the genuine I/O error.
 func TestReadOutsideWritableRoots(t *testing.T) {
+	t.Parallel()
 	r, ws := newTestRegistry(t, nil)
 	// Fixture lives outside the workspace and outside session temp: a sibling
 	// dir of the workspace root under the test top dir, so it is outside every
@@ -298,6 +309,7 @@ func TestReadOutsideWritableRoots(t *testing.T) {
 
 // TestWriteCreatesFile verifies write targets validate and create the file.
 func TestWriteCreatesFile(t *testing.T) {
+	t.Parallel()
 	r, ws := newTestRegistry(t, nil)
 	res, err := r.Run(context.Background(), "write", argMap("path", filepath.Join(ws, "new.txt"), "content", "hello"))
 	out := res.Text
@@ -315,6 +327,7 @@ func TestWriteCreatesFile(t *testing.T) {
 
 // TestEditReplacesText verifies edit replaces the first unique occurrence.
 func TestEditReplacesText(t *testing.T) {
+	t.Parallel()
 	r, ws := newTestRegistry(t, nil)
 	path := filepath.Join(ws, "f.txt")
 	if err := os.WriteFile(path, []byte("alpha beta gamma"), 0o600); err != nil {
@@ -333,6 +346,7 @@ func TestEditReplacesText(t *testing.T) {
 // TestWriteRejectsOutsideRoots verifies write fails hard on paths outside the
 // writable roots.
 func TestWriteRejectsOutsideRoots(t *testing.T) {
+	t.Parallel()
 	r, _ := newTestRegistry(t, nil)
 	if _, err := r.Run(context.Background(), "write", argMap("path", "/etc/pwned", "content", "x")); err == nil {
 		t.Fatal("write to /etc/pwned error = nil, want hard error")
@@ -343,6 +357,7 @@ func TestWriteRejectsOutsideRoots(t *testing.T) {
 // a host path outside every writable root is a hard error, never a genuine
 // read/write attempt.
 func TestEditRejectsOutsideRoots(t *testing.T) {
+	t.Parallel()
 	r, _ := newTestRegistry(t, nil)
 	if _, err := r.Run(context.Background(), "edit", argMap("path", "/etc/passwd", "old_string", "root", "new_string", "root")); err == nil {
 		t.Fatal("edit to /etc/passwd error = nil, want hard error")

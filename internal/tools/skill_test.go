@@ -35,6 +35,7 @@ func writeSkill(t *testing.T, root, name, description, body string, files map[st
 // TestSkillDiscoverScopes discovers skills from both user-global and project
 // roots and verifies the union comes back with per-skill name/description.
 func TestSkillDiscoverScopes(t *testing.T) {
+	t.Parallel()
 	user := t.TempDir()
 	proj := t.TempDir()
 	writeSkill(t, user, "user-skill", "a user-global skill", "user body", nil)
@@ -79,6 +80,7 @@ func TestSkillDiscoverScopes(t *testing.T) {
 // TestSkillProjectShadowsUser verifies the exact-name collision rule: a project
 // skill shadows the user-global skill of the same name.
 func TestSkillProjectShadowsUser(t *testing.T) {
+	t.Parallel()
 	user := t.TempDir()
 	proj := t.TempDir()
 	writeSkill(t, user, "dupe", "user version", "USER BODY", nil)
@@ -101,6 +103,7 @@ func TestSkillProjectShadowsUser(t *testing.T) {
 // a parseable name/description frontmatter and verifies it is omitted (with a
 // warning) rather than surfaced to the model.
 func TestSkillUnparseableOmittedFailClosed(t *testing.T) {
+	t.Parallel()
 	user := t.TempDir()
 	bad := filepath.Join(user, "broken")
 	if err := os.MkdirAll(bad, 0o700); err != nil {
@@ -126,6 +129,7 @@ func TestSkillUnparseableOmittedFailClosed(t *testing.T) {
 // TestSkillStripsFrontmatterOnActivation verifies the SKILL.md frontmatter is
 // stripped from the returned body and bundled resources are advertised.
 func TestSkillStripsFrontmatterOnActivation(t *testing.T) {
+	t.Parallel()
 	user := t.TempDir()
 	writeSkill(t, user, "res", "has resources",
 		"## Instructions\n\nuse the script below",
@@ -158,6 +162,7 @@ func TestSkillStripsFrontmatterOnActivation(t *testing.T) {
 // TestSkillZeroOmitsTool verifies the skill tool is entirely omitted when no
 // skills are discovered.
 func TestSkillZeroOmitsTool(t *testing.T) {
+	t.Parallel()
 	catalog, err := Discover(t.TempDir(), t.TempDir(), &warningSink{})
 	if err != nil {
 		t.Fatalf("Discover error = %v, want nil", err)
@@ -173,6 +178,7 @@ func TestSkillZeroOmitsTool(t *testing.T) {
 // TestSkillDedupesReactivation verifies re-activating an already-in-context
 // skill skips re-injection of the body (returns a short dedupe notice).
 func TestSkillDedupesReactivation(t *testing.T) {
+	t.Parallel()
 	user := t.TempDir()
 	writeSkill(t, user, "s1", "first", "long body A\n", nil)
 
@@ -206,6 +212,7 @@ func TestSkillDedupesReactivation(t *testing.T) {
 // an enum of exactly the discovered, filtered skill names with the strict shape
 // (additionalProperties:false + all-required).
 func TestSkillSchemaEnumConstrained(t *testing.T) {
+	t.Parallel()
 	user := t.TempDir()
 	writeSkill(t, user, "alpha", "a", "body a", nil)
 	writeSkill(t, user, "beta", "b", "body b", nil)
@@ -260,6 +267,7 @@ func TestSkillSchemaEnumConstrained(t *testing.T) {
 // model-facing enum. It is filtered from what the model may invoke, not
 // blocked at call time.
 func TestSkillDisableModelInvocationHidden(t *testing.T) {
+	t.Parallel()
 	user := t.TempDir()
 	writeSkill(t, user, "normal", "invocable", "body n", nil)
 	// A pack with disable-model-invocation: true in its frontmatter.

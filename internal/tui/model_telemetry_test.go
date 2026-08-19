@@ -27,6 +27,7 @@ func newTelemetryModel(t *testing.T, te *Telemetry, rail *Rail) Model {
 // keybinding hints and the busy spinner only — no telemetry numbers — while
 // session stats live in the right rail's STATS section .
 func TestModelStatusStripHintsOnly(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
@@ -63,6 +64,7 @@ func TestModelStatusStripHintsOnly(t *testing.T) {
 // telemetry channel and running Update folds it into the telemetry surface,
 // which the right rail then renders .
 func TestModelTelemetryDrainsLiveUpdates(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
 	m := newTelemetryModel(t, te, r)
@@ -88,6 +90,7 @@ func TestModelTelemetryDrainsLiveUpdates(t *testing.T) {
 // on a narrow window too: hints never collapse away (the strip carries no
 // telemetry to fall back on), and no telemetry numbers appear anywhere.
 func TestModelStatusStripHintsOnNarrow(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	m := newTelemetryModel(t, te, nil)
 
@@ -110,6 +113,7 @@ func TestModelStatusStripHintsOnNarrow(t *testing.T) {
 // #228 AC1): the hints never disappear, and the spinner rides the same
 // always-visible row.
 func TestModelStatusStripBusySpinner(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	m := newTelemetryModel(t, te, nil)
 	m = typeText(t, m, "hi")

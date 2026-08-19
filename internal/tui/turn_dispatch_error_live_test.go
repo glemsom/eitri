@@ -10,6 +10,7 @@ import (
 // reasoning panel (issue #364) is not left auto-expanded once the flawed turn
 // has ended: the partial reply keeps its content but stops streaming.
 func TestTurnDispatch_handleTurnDone_errorClearsLiveStream(t *testing.T) {
+	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
 	d.startTurn(&tx, "q", "")

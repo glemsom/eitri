@@ -14,6 +14,7 @@ import (
 // state the writable-root constraint. A future edit that drops any of this
 // guidance fails the test.
 func TestEditDescriptionGuidance(t *testing.T) {
+	t.Parallel()
 	desc := (&editTool{}).Description()
 	folded := strings.ToLower(desc)
 	for _, want := range []string{

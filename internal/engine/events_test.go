@@ -50,6 +50,7 @@ func typeName(e Event) string {
 // shared drain path (the reasoning delta is never merged into
 // the answer).
 func TestRunEmitsStreamAndUsageAndTurnEvents(t *testing.T) {
+	t.Parallel()
 	col := &eventCollector{}
 	e := New(provider.NewScripted(func(_ context.Context, _ provider.Request) (provider.Stream, error) {
 		return provider.StreamFunc(
@@ -128,6 +129,7 @@ func compressExec() ToolExecutor {
 // reasoning deltas, a tool-call start, a tool-result with compression metadata,
 // per-turn usage, and the turn transition to the final answer.
 func TestRunAgentEmitsToolEventsInOrder(t *testing.T) {
+	t.Parallel()
 	col := &eventCollector{}
 	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
 		var toolResults int
@@ -202,6 +204,7 @@ func TestRunAgentEmitsToolEventsInOrder(t *testing.T) {
 // behave byte-identically. This is the "no event surface
 // required, no regressions" acceptance criterion.
 func TestRunWithoutSubscriberEmitsNoEvents(t *testing.T) {
+	t.Parallel()
 	col := &eventCollector{}
 	e := New(provider.NewScripted(func(_ context.Context, _ provider.Request) (provider.Stream, error) {
 		return provider.StreamFunc(
@@ -224,6 +227,7 @@ func TestRunWithoutSubscriberEmitsNoEvents(t *testing.T) {
 // halts event delivery mid-engine (set once, detached before the run), so a
 // detached TUI never receives stale events.
 func TestSetListenerNilStopsDelivery(t *testing.T) {
+	t.Parallel()
 	col := &eventCollector{}
 	e := New(provider.NewScripted(func(_ context.Context, _ provider.Request) (provider.Stream, error) {
 		return provider.StreamFunc(provider.Chunk{Content: "hi"}, provider.Chunk{Done: true}), nil
@@ -243,6 +247,7 @@ func TestSetListenerNilStopsDelivery(t *testing.T) {
 // is surfaced as a CompactedEvent on the subscriber when the proactive 80%
 // threshold is crossed — the (f) event surface for the compaction marker.
 func TestRunAgentEmitsCompactionEvent(t *testing.T) {
+	t.Parallel()
 	col := &eventCollector{}
 	h := &compactHandler{}
 	e := New(provider.NewScripted(h.stream), &mockTranscript{})
@@ -278,6 +283,7 @@ func TestRunAgentEmitsCompactionEvent(t *testing.T) {
 // so it must not emit an orphaned Start (the event stream a TUI consumes must
 // never pair a Start without a corresponding End).
 func TestRunAgentOverflowKeepsTurnEventsBalanced(t *testing.T) {
+	t.Parallel()
 	col := &eventCollector{}
 	h := &overflowHandler{}
 	e := New(&budgetScripted{Scripted: *provider.NewScripted(h.stream)}, &mockTranscript{})

@@ -62,6 +62,7 @@ func newStreamingModel() Model {
 // the view before the turn completes, and each delta re-renders in place rather
 // than waiting for one full-reply render on completion .
 func TestModel_streamAnswerGrowsInPlace(t *testing.T) {
+	t.Parallel()
 	m := newStreamingModel()
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
@@ -97,6 +98,7 @@ func TestModel_streamAnswerGrowsInPlace(t *testing.T) {
 // no-op visual diff when the stream was complete, and a
 // guaranteed-correct final render when the last delta raced past completion.
 func TestModel_streamFinalize(t *testing.T) {
+	t.Parallel()
 	m := newStreamingModel()
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
@@ -123,6 +125,7 @@ func TestModel_streamFinalize(t *testing.T) {
 // Streamer keeps the historical non-streaming behaviour: a completed turn
 // appends the full answer once .
 func TestModel_streamFallbackWithoutStreamer(t *testing.T) {
+	t.Parallel()
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		return TurnResult{Answer: "plain answer"}, nil
 	})
@@ -147,6 +150,7 @@ func applyReasoningDelta(t *testing.T, m Model, delta string) Model {
 // grow a distinct thinking block live during the turn, alongside (but never
 // merged into) the growing answer .
 func TestModel_thinkingStreamsLive(t *testing.T) {
+	t.Parallel()
 	m := newStreamingModel()
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
@@ -185,6 +189,7 @@ func TestModel_thinkingStreamsLive(t *testing.T) {
 // and re-expands it, and that subsequent reasoning deltas keep streaming into
 // the expanded block (issue #85 AC2: "expands in place").
 func TestModel_thinkingExpandedStreams(t *testing.T) {
+	t.Parallel()
 	m := newStreamingModel()
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
@@ -216,6 +221,7 @@ func TestModel_thinkingExpandedStreams(t *testing.T) {
 // primary buffer: no clear-screen or alt-screen escape sequence, preserving
 // native selection/scrollback/search .
 func TestModel_streamViewNeverClearsPrimary(t *testing.T) {
+	t.Parallel()
 	m := newStreamingModel()
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
@@ -236,6 +242,7 @@ func TestModel_streamViewNeverClearsPrimary(t *testing.T) {
 // mode ON a turn's reasoning block stays expanded after the final answer lands
 // and renders expanded while streaming (AC5).
 func TestModel_expandAllKeepsThinkingExpandedOnAnswer(t *testing.T) {
+	t.Parallel()
 	m := newStreamingModel()
 	m = resize(t, m)
 
@@ -264,6 +271,7 @@ func TestModel_expandAllKeepsThinkingExpandedOnAnswer(t *testing.T) {
 // thinkingExpanded opt-in is needed because the mode overrides the default
 // auto-collapse .
 func TestModel_expandAllNewTurnRendersExpanded(t *testing.T) {
+	t.Parallel()
 	m := newStreamingModel()
 	m = resize(t, m)
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
@@ -286,6 +294,7 @@ func TestModel_expandAllNewTurnRendersExpanded(t *testing.T) {
 // collapses reasoning blocks back to the one-line hint: a
 // block held expanded only by the mode renders collapsed once the mode is off.
 func TestModel_expandAllOffCollapsesThinking(t *testing.T) {
+	t.Parallel()
 	m := newStreamingModel()
 	m = resize(t, m)
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
@@ -309,6 +318,7 @@ func TestModel_expandAllOffCollapsesThinking(t *testing.T) {
 // the focused block (mirroring the tool card per-entry override), and in mode
 // OFF it behaves exactly as today .
 func TestModel_expandAllTabToggleIndependent(t *testing.T) {
+	t.Parallel()
 	// Mode ON: tab collapses then re-expands a single block.
 	m := newStreamingModel()
 	m = resize(t, m)

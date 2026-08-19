@@ -57,6 +57,7 @@ func scrollRegionFixture(t *testing.T, height, band int) *Transcript {
 // scrollRegionHeight(band) — terminal height minus the fixed bottom band — so
 // the region height, the persisted window, and the hit-test share one value.
 func TestScrollRegion_sizesViewportFromSeam(t *testing.T) {
+	t.Parallel()
 	tx := scrollRegionFixture(t, 12, 4)
 
 	if got := tx.scrollRegionHeight(4); got != 8 {
@@ -88,6 +89,7 @@ func TestScrollRegion_sizesViewportFromSeam(t *testing.T) {
 // content line under it; the band's first row and everything beyond map
 // outside.
 func TestScrollRegion_seamMapsBandEdgeRows(t *testing.T) {
+	t.Parallel()
 	tx := scrollRegionFixture(t, 12, 4)
 	// Region height = 12 - 4 = 8 rows (0..7); row 7 is the last region row and
 	// row 8 is the band's first row.
@@ -121,6 +123,7 @@ func TestScrollRegion_seamMapsBandEdgeRows(t *testing.T) {
 // just above maps inside, band row maps outside) is pinned at the seam level
 // by TestScrollRegion_seamMapsBandEdgeRows.
 func TestScrollRegion_mouseRoutesThroughSeam(t *testing.T) {
+	t.Parallel()
 	m := scrollOverflowModel(t) // 120x12, telemetry band, hydrated viewport
 	rows, top := historyContentRows(m)
 

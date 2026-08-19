@@ -75,6 +75,7 @@ func newestNonBlank(render string) string {
 // (the busy thinking footer) is the last non-blank row — the viewport follows,
 // it does not stare at a stale head.
 func TestModel_liveFollowKeepsNewestOutput(t *testing.T) {
+	t.Parallel()
 	m := busyStreamingModel(t)
 	if !m.tx.busy {
 		t.Fatalf("test model must be mid-run (busy)")
@@ -100,6 +101,7 @@ func TestModel_liveFollowKeepsNewestOutput(t *testing.T) {
 // (grow then shrink) must re-anchor the viewport to the newest streamed output
 // rather than leaving it staring at a stale head.
 func TestModel_liveFollowPersistsThroughResize(t *testing.T) {
+	t.Parallel()
 	m := busyStreamingModel(t)
 	if !m.tx.busy {
 		t.Fatalf("test model must be mid-run (busy)")
@@ -123,6 +125,7 @@ func TestModel_liveFollowPersistsThroughResize(t *testing.T) {
 // persisted viewport is the scroll-state owner and GotoBottoms after content is
 // appended so new output never leaves the user staring at a stale head.
 func TestModel_liveFollowTracksAppends(t *testing.T) {
+	t.Parallel()
 	m := newTallHistoryModel(t)
 	m = resizeTo(t, m, 80, 12)
 	// A long transcript guarantees an overflowed viewport.
@@ -146,6 +149,7 @@ func TestModel_liveFollowTracksAppends(t *testing.T) {
 // persisted bubbletea/viewport component carrying real scroll state,
 // not the stateless always-bottom string slice it replaces.
 func TestModel_followViewportPersisted(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "answer"}, nil

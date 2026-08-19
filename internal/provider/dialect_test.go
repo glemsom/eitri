@@ -24,6 +24,7 @@ func canonicalDefs() []DialectDefinition {
 // TestReExpressChatWrapsParameters verifies the canonical schema is emitted
 // under function.parameters for the Chat Completions dialect.
 func TestReExpressChatWrapsParameters(t *testing.T) {
+	t.Parallel()
 	tools := ReExpress(canonicalDefs(), DialectChat).([]Tool)
 	if len(tools) != 1 {
 		t.Fatalf("Chat tools = %d, want 1", len(tools))
@@ -43,6 +44,7 @@ func TestReExpressChatWrapsParameters(t *testing.T) {
 // TestReExpressAnthropicWrapsInputSchema verifies the same canonical schema is
 // emitted under input_schema (with a strict flag) for the Anthropic dialect.
 func TestReExpressAnthropicWrapsInputSchema(t *testing.T) {
+	t.Parallel()
 	tools := ReExpress(canonicalDefs(), DialectAnthropic).([]AnthropicTool)
 	if len(tools) != 1 {
 		t.Fatalf("Anthropic tools = %d, want 1", len(tools))

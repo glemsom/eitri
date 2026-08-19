@@ -38,6 +38,7 @@ func (c *capableScriptedSchema) SupportedGenerationControls(context.Context) ([]
 // tool_schema_enforcement control, flags the provider request so the supporting
 // client wire-emits strict tool manifests.
 func TestRunAgentOptsToolSchemaEnforcementOnSupportingProvider(t *testing.T) {
+	t.Parallel()
 	h := &schemaHandler{}
 	e := New(&capableScriptedSchema{Scripted: provider.NewScripted(h.stream)}, &mockTranscript{})
 
@@ -66,6 +67,7 @@ func TestRunAgentOptsToolSchemaEnforcementOnSupportingProvider(t *testing.T) {
 // omitted on the wire — while the loop still runs with local validation as the
 // safety floor.
 func TestRunAgentDegradesWhenToolSchemaUnsupported(t *testing.T) {
+	t.Parallel()
 	h := &schemaHandler{}
 	// NewScripted has no generation-control capability surface: it honors nothing.
 	e := New(provider.NewScripted(h.stream), &mockTranscript{})
@@ -96,6 +98,7 @@ func TestRunAgentDegradesWhenToolSchemaUnsupported(t *testing.T) {
 // loop without the opt-in never flags the provider request, keeping the default
 // wire surface byte-identical.
 func TestRunAgentDefaultOmitsToolSchemaEnforcement(t *testing.T) {
+	t.Parallel()
 	h := &schemaHandler{}
 	e := New(&capableScriptedSchema{Scripted: provider.NewScripted(h.stream)}, &mockTranscript{})
 
@@ -123,6 +126,7 @@ func TestRunAgentDefaultOmitsToolSchemaEnforcement(t *testing.T) {
 // schema-violating tool call is still rejected and the executor is never
 // called, exactly as without enforcement.
 func TestRunAgentLocalValidationStaysMandatoryWhenEnforcementActive(t *testing.T) {
+	t.Parallel()
 	capable := &capableScriptedSchema{}
 	capable.Scripted = provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
 		if len(toolResultContents(req.Messages)) == 0 {
@@ -199,6 +203,7 @@ func runReadEnforcement(t *testing.T, args string) ([]callRecord, []string, stri
 // executes end to end: the call reaches the executor and no schema-error result
 // is resubmitted.
 func TestReadRequiredSubsetExecutesUnderSchemaEnforcement(t *testing.T) {
+	t.Parallel()
 	calls, results, answer := runReadEnforcement(t, `{"path":"f.txt"}`)
 	if answer != "read it" {
 		t.Fatalf("Answer = %q, want recovery answer", answer)
@@ -218,6 +223,7 @@ func TestReadRequiredSubsetExecutesUnderSchemaEnforcement(t *testing.T) {
 // under Tool Schema Enforcement: it validates, executes, and produces no
 // schema-error result.
 func TestReadNullOptionalsToleratedUnderSchemaEnforcement(t *testing.T) {
+	t.Parallel()
 	calls, results, answer := runReadEnforcement(t, `{"path":"f.txt","start_line":null,"end_line":null}`)
 	if answer != "read it" {
 		t.Fatalf("Answer = %q, want recovery answer", answer)

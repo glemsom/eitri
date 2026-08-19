@@ -62,6 +62,7 @@ func scriptedBashReadTurn(t *testing.T) *provider.Scripted {
 // turn through the engine seam with the real sandbox, asserting the final
 // answer carries real sandbox output (the acceptance criterion).
 func TestDispatchBashThenReadReturnsSandboxOutput(t *testing.T) {
+	t.Parallel()
 	// Workspace must not live under /tmp or the sandbox /tmp remap would shadow it.
 	home, err := os.UserHomeDir()
 	if err != nil {

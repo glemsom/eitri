@@ -22,6 +22,7 @@ import (
 // result (skillDoneMsg) appends through the seam instead of touching message
 // state directly.
 func TestModel_skillResultAppendsThroughSeam(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -42,6 +43,7 @@ func TestModel_skillResultAppendsThroughSeam(t *testing.T) {
 // TestModel_loginCodeAppendsThroughSeam verifies the device-flow code note
 // (loginCodeMsg) appends through the seam.
 func TestModel_loginCodeAppendsThroughSeam(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -64,6 +66,7 @@ func TestModel_loginCodeAppendsThroughSeam(t *testing.T) {
 // TestModel_loginDoneErrorAppendsThroughSeam verifies the login-error note
 // (loginDoneMsg with err) appends through the seam.
 func TestModel_loginDoneErrorAppendsThroughSeam(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -85,6 +88,7 @@ func TestModel_loginDoneErrorAppendsThroughSeam(t *testing.T) {
 // TestModel_loginDoneSuccessAppendsThroughSeam verifies the login-success note
 // (loginDoneMsg with cfg) appends through the seam and persists the config.
 func TestModel_loginDoneSuccessAppendsThroughSeam(t *testing.T) {
+	t.Parallel()
 	var applied config.Config
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
@@ -111,6 +115,7 @@ func TestModel_loginDoneSuccessAppendsThroughSeam(t *testing.T) {
 // TestModel_skillNoActivationAppendsThroughSeam verifies the "no skill
 // activation available" failure note in activateSkill appends through the seam.
 func TestModel_skillNoActivationAppendsThroughSeam(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -132,6 +137,7 @@ func TestModel_skillNoActivationAppendsThroughSeam(t *testing.T) {
 // TestModel_loginNoFlowAppendsThroughSeam verifies the "no login flow
 // available" failure note in startLogin appends through the seam.
 func TestModel_loginNoFlowAppendsThroughSeam(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil

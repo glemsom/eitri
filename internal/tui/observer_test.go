@@ -23,6 +23,7 @@ func newObserverFixture(t *testing.T) (*DeltaObserver, string) {
 // file on start and diffs it on result. The fixture gains two lines as one is
 // swapped for three, so the observer reports +2, -0.
 func TestDeltaObserver_computesEditLineDelta(t *testing.T) {
+	t.Parallel()
 	obs, dir := newObserverFixture(t)
 	path := filepath.Join(dir, "main.go")
 	if err := os.WriteFile(path, []byte("a\nb\n"), 0o644); err != nil {
@@ -52,6 +53,7 @@ func TestDeltaObserver_computesEditLineDelta(t *testing.T) {
 // convention (trailing newline counts as one more line), so "x\ny\nz\n" is 4
 // lines.
 func TestDeltaObserver_writeCreatesFile(t *testing.T) {
+	t.Parallel()
 	obs, dir := newObserverFixture(t)
 	path := filepath.Join(dir, "new.go")
 
@@ -75,6 +77,7 @@ func TestDeltaObserver_writeCreatesFile(t *testing.T) {
 // TestDeltaObserver_ignoresNonFileTools asserts non-file tools (bash, read)
 // never produce a delta or content — the observer only tracks edit/write.
 func TestDeltaObserver_ignoresNonFileTools(t *testing.T) {
+	t.Parallel()
 	obs, _ := newObserverFixture(t)
 	obs.Start("call_b", "bash", `{"command":"ls"}`)
 	added, removed, before, after, path := obs.Result("call_b", "bash")
@@ -87,6 +90,7 @@ func TestDeltaObserver_ignoresNonFileTools(t *testing.T) {
 // the empty host path yields a zero delta and no content (best-effort degrade,
 // same as the removed engine seam).
 func TestDeltaObserver_unresolvablePath(t *testing.T) {
+	t.Parallel()
 	obs := NewDeltaObserver(func(string) string { return "" })
 	obs.Start("call_e", "edit", `{"path":"nowhere"}`)
 	added, removed, before, after, path := obs.Result("call_e", "edit")
@@ -99,6 +103,7 @@ func TestDeltaObserver_unresolvablePath(t *testing.T) {
 // the provider-assigned tool_call id, so each result diffs its own start even
 // when multiple file-mutating calls are outstanding.
 func TestDeltaObserver_pairsToolCallsById(t *testing.T) {
+	t.Parallel()
 	obs, dir := newObserverFixture(t)
 	one := filepath.Join(dir, "one.txt")
 	two := filepath.Join(dir, "two.txt")
@@ -132,6 +137,7 @@ func TestDeltaObserver_pairsToolCallsById(t *testing.T) {
 // start (a non-file tool, or an update whose start was dropped) degrades to a
 // zero delta and empty content rather than erroring.
 func TestDeltaObserver_missingStartYieldsZero(t *testing.T) {
+	t.Parallel()
 	obs, _ := newObserverFixture(t)
 	added, removed, before, after, path := obs.Result("call_x", "edit")
 	if added != 0 || removed != 0 || before != "" || after != "" || path != "" {
@@ -143,6 +149,7 @@ func TestDeltaObserver_missingStartYieldsZero(t *testing.T) {
 // degrades to unresolvable (zero delta, no content) instead of reading sandbox
 // paths as host paths — a forgotten wiring must never misreport edits.
 func TestDeltaObserver_nilResolverIsFailClosed(t *testing.T) {
+	t.Parallel()
 	obs := NewDeltaObserver(nil)
 	obs.Start("call_e", "edit", `{"path":"main.go"}`)
 	added, removed, before, after, path := obs.Result("call_e", "edit")

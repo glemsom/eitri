@@ -13,6 +13,7 @@ import (
 // "optionally limited" phrasing. A future edit that drops any of this guidance
 // fails the test.
 func TestReadDescriptionGuidance(t *testing.T) {
+	t.Parallel()
 	desc := (&readTool{}).Description()
 	folded := strings.ToLower(desc)
 	for _, want := range []string{

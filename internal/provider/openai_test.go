@@ -46,6 +46,7 @@ func strictToolList() []Tool {
 // model + messages, and the streamed deltas/usage/Done/EOF round-trip through
 // the provider seam without touching the network.
 func TestOpenAIStreamsChatCompletions(t *testing.T) {
+	t.Parallel()
 	fixture, err := os.ReadFile("testdata/hello.sse")
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
@@ -104,6 +105,7 @@ func TestOpenAIStreamsChatCompletions(t *testing.T) {
 // ordinary turns with no budget omit the field entirely (bytes stay clean for
 // the shared request head).
 func TestOpenAIEmitsGenerationBudget(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		if !strings.Contains(string(body), "\"max_completion_tokens\":256") {
@@ -164,6 +166,7 @@ func TestOpenAIEmitsGenerationBudget(t *testing.T) {
 // JSON-Schema at generation time; strict lives beside the parameters in the
 // function wrapper, exactly as the OpenAI structured-output wire expects.
 func TestOpenAIEmitsToolSchemaEnforcement(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		var parsed map[string]any
@@ -209,6 +212,7 @@ func TestOpenAIEmitsToolSchemaEnforcement(t *testing.T) {
 // for an ordinary agent/tool turn: no strict marker on any tool function, so the
 // request head stays byte-identical to the pre-enforcement surface.
 func TestOpenAIOmitsToolSchemaEnforcementByDefault(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		if strings.Contains(string(body), "strict") {
@@ -240,6 +244,7 @@ func TestOpenAIOmitsToolSchemaEnforcementByDefault(t *testing.T) {
 // that an ordinary turn with the flag off omits the field entirely (bytes stay
 // clean for the shared request head).
 func TestOpenAIEmitsJSONObjectMode(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		if !strings.Contains(string(body), "\"response_format\":{\"type\":\"json_object\"}") {
@@ -297,6 +302,7 @@ func TestOpenAIEmitsJSONObjectMode(t *testing.T) {
 // an ordinary turn with no policy emits neither field, so the shared request head
 // stays untouched. The two sampling modes are mutually exclusive on the wire.
 func TestOpenAIEmitsSamplingPolicy(t *testing.T) {
+	t.Parallel()
 	// A sample float value >1.0 catches a stray temperature/top_p mis-reuse: the
 	// policy value must round-trip unchanged so the provider applies the caller's
 	// sampling, not a reinterpretation.
@@ -394,6 +400,7 @@ func TestOpenAIEmitsSamplingPolicy(t *testing.T) {
 // carries prompt_cache_key:<sessionID> so the gateway can hit on a stable
 // byte-identical prefix.
 func TestOpenAIOptsDeepseekSessionCache(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		if !strings.Contains(string(body), `"prompt_cache_key":"sess-123"`) {
@@ -424,6 +431,7 @@ func TestOpenAIOptsDeepseekSessionCache(t *testing.T) {
 // TestOpenAIStreamsPromptCacheUsage verifies the streamed usage carries the
 // deepseek prompt-cache hit/miss token telemetry parsed at the provider seam.
 func TestOpenAIStreamsPromptCacheUsage(t *testing.T) {
+	t.Parallel()
 	fixture, err := os.ReadFile("testdata/usage-cache.sse")
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
@@ -459,6 +467,7 @@ func TestOpenAIStreamsPromptCacheUsage(t *testing.T) {
 // fabricated, so the TUI gauge reads cache:0% instead of collapsing to an
 // indeterminate ratio.
 func TestOpenAIUsageWithoutCacheKeys(t *testing.T) {
+	t.Parallel()
 	fixture, err := os.ReadFile("testdata/usage-nocache.sse")
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
@@ -499,6 +508,7 @@ func TestOpenAIUsageWithoutCacheKeys(t *testing.T) {
 //   - miss-only: Hit stays 0 (a hit is never invented), and the reported miss
 //     count is honored as-is.
 func TestOpenAIUsagePartialCacheKeys(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name     string
 		fixture  string
@@ -545,6 +555,7 @@ func TestOpenAIUsagePartialCacheKeys(t *testing.T) {
 // TestOpenAIMalformedEventReturnsCleanError verifies an invalid SSE payload is
 // surfaced as ErrMalformed, never a crash.
 func TestOpenAIMalformedEventReturnsCleanError(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte("data: this is not json\n\n"))
@@ -568,6 +579,7 @@ func TestOpenAIMalformedEventReturnsCleanError(t *testing.T) {
 // reasoning provider never trips the empty-field 400. The field is never
 // dropped by omitempty.
 func TestAssistantMessageAlwaysCarriesReasoningContent(t *testing.T) {
+	t.Parallel()
 	// Empty reasoning on an assistant message must still serialize the field.
 	body, err := json.Marshal(Message{Role: RoleAssistant, Content: "resumed"})
 	if err != nil {
@@ -593,6 +605,7 @@ func TestAssistantMessageAlwaysCarriesReasoningContent(t *testing.T) {
 // generation-control capability surface, so the engine can pre-flight a
 // special/tool turn's requirements before any wire call.
 func TestOpenAIDeclaresGenerationControlCapabilities(t *testing.T) {
+	t.Parallel()
 	cl := NewOpenAICompatible("k", "http://example.invalid/v1/chat/completions")
 	supp, err := cl.SupportedGenerationControls(context.Background())
 	if err != nil {
@@ -615,6 +628,7 @@ func TestOpenAIDeclaresGenerationControlCapabilities(t *testing.T) {
 // effort is normalized (xhigh→high; low/medium/high/max pass through) so the
 // body emits only the tiers the primary provider accepts.
 func TestOpenAIEmitsThinkingAndReasoningEffort(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
 		body, _ := io.ReadAll(r.Body)
@@ -653,6 +667,7 @@ func TestOpenAIEmitsThinkingAndReasoningEffort(t *testing.T) {
 // suppression on this path. TestOpenAIOmitsThinkingWhenDisabled
 // pins the wire shape alone; this test asserts advertisement and wire agree.
 func TestOpenAICapabilityMatchesWireBehavior(t *testing.T) {
+	t.Parallel()
 	cl := NewOpenAICompatible("k", "http://example.invalid/v1/chat/completions")
 	assertSuppressionHonored(t, cl)
 	streamAssertSuppression(t, func(url string) Provider {
@@ -667,6 +682,7 @@ func TestOpenAICapabilityMatchesWireBehavior(t *testing.T) {
 // summary call. This is the acceptance guarantee that lets a user turn
 // reasoning off without the provider forcing chain-of-thought.
 func TestOpenAIOmitsThinkingWhenDisabled(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer r.Body.Close()
 		body, _ := io.ReadAll(r.Body)
@@ -704,6 +720,7 @@ func TestOpenAIOmitsThinkingWhenDisabled(t *testing.T) {
 // low, medium, high and max are first-class tiers that pass
 // through unchanged; xhigh maps to high per the official API reference.
 func TestNormalizeReasoningEffort(t *testing.T) {
+	t.Parallel()
 	cases := map[string]string{
 		"low":    "low",
 		"medium": "medium",

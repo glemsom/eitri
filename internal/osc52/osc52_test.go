@@ -12,6 +12,7 @@ import (
 // hand-computed literal — base64("hello") is "aGVsbG8=" — independent of the
 // encoder's internals (tdd: independent source of truth).
 func TestWriteEmitsOSC52Sequence(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	if err := New(&buf).Write("hello"); err != nil {
 		t.Fatalf("Write(hello) error = %v, want nil", err)
@@ -25,6 +26,7 @@ func TestWriteEmitsOSC52Sequence(t *testing.T) {
 // Multi-byte text base64-encodes its UTF-8 bytes, not its runes: "héllo" is
 // five runes but six UTF-8 bytes, so the sequence carries the byte encoding.
 func TestWriteEncodesUTF8Bytes(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	if err := New(&buf).Write("héllo"); err != nil {
 		t.Fatalf("Write(héllo) error = %v, want nil", err)
@@ -40,6 +42,7 @@ func TestWriteEncodesUTF8Bytes(t *testing.T) {
 // the clipboard is cleared (or set to nothing) rather than emitting a bare
 // prefix that a terminal would treat as garbage.
 func TestWriteEmptyText(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	if err := New(&buf).Write(""); err != nil {
 		t.Fatalf("Write(empty) error = %v, want nil", err)
@@ -64,6 +67,7 @@ func (*fdBuf) Fd() uintptr { return 12345 }
 // A terminal-backed writer that is not a TTY returns a clean error and emits
 // nothing: OSC 52 escape bytes must never leak into a pipe or file.
 func TestWriteErrorsWhenNotTerminal(t *testing.T) {
+	t.Parallel()
 	var w fdBuf
 	err := New(&w).Write("hello")
 	if !errors.Is(err, ErrNotTerminal) {
@@ -91,6 +95,7 @@ func (w *shortWriter) Write(p []byte) (int, error) {
 // instead of reporting success for a truncated OSC 52 sequence: the full
 // sequence must reach the terminal.
 func TestWriteSurfacesShortWrite(t *testing.T) {
+	t.Parallel()
 	w := &shortWriter{max: 3}
 	err := New(w).Write("hello")
 	if !errors.Is(err, io.ErrShortWrite) {

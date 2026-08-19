@@ -19,6 +19,7 @@ func (f *fakeFataler) Helper()                           {}
 // TestAwaitReturnsWhenSignalFires asserts a fired signal unblocks Await before
 // the default timeout, so a ready stream never trips the backstop.
 func TestAwaitReturnsWhenSignalFires(t *testing.T) {
+	t.Parallel()
 	sig := make(chan struct{})
 	go func() {
 		close(sig)
@@ -30,6 +31,7 @@ func TestAwaitReturnsWhenSignalFires(t *testing.T) {
 // Await fail with the channel name in the message, so the stranded wait is
 // identifiable rather than a silent hang.
 func TestAwaitReportsChannelNameOnTimeout(t *testing.T) {
+	t.Parallel()
 	f := &fakeFataler{}
 	await(f, "provider ready", make(chan struct{}), time.Millisecond)
 

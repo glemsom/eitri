@@ -50,6 +50,7 @@ func fileEditModel(t *testing.T) Model {
 // file-change inspection is covered by the expanded-card tests in
 // toolcard_diff_test.go and render_regions_test.go (Ctrl+E path, ).
 func TestCtrlD_unbound(t *testing.T) {
+	t.Parallel()
 	t.Run("no-changed-files", func(t *testing.T) {
 		m := NewModelCfg(Dependencies{
 			Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {

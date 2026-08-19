@@ -9,6 +9,7 @@ import (
 // when the compressed form is not strictly shorter than the raw input, the raw
 // input is returned unchanged. Short, already-terse outputs pass through.
 func TestCompressNeverInflates(t *testing.T) {
+	t.Parallel()
 	cases := []string{
 		"",
 		"$HOME\n",
@@ -25,6 +26,7 @@ func TestCompressNeverInflates(t *testing.T) {
 // TestCompressIsDeterministic verifies the same input always yields the same
 // output (protects the byte-stable cache prefix).
 func TestCompressIsDeterministic(t *testing.T) {
+	t.Parallel()
 	raw := "file1.txt\nfile2.txt\nfile1.txt\nfile3.txt\n"
 	a, b := Compress(raw), Compress(raw)
 	if a != b {
@@ -35,6 +37,7 @@ func TestCompressIsDeterministic(t *testing.T) {
 // TestCompressIsIdempotent verifies re-applying never changes the result: a
 // given input collapses on the first pass and stays stable thereafter.
 func TestCompressIsIdempotent(t *testing.T) {
+	t.Parallel()
 	raw := buildLongListing(1000)
 	first := Compress(raw)
 	second := Compress(first)
@@ -45,6 +48,7 @@ func TestCompressIsIdempotent(t *testing.T) {
 
 // TestCompressStripsANSI verifies ANSI escape sequences are removed.
 func TestCompressStripsANSI(t *testing.T) {
+	t.Parallel()
 	raw := "\x1b[31mred file\x1b[0m\n\x1b[1mgreen file\x1b[0m\n"
 	got := Compress(raw)
 	if strings.Contains(got, "\x1b[") {
@@ -58,6 +62,7 @@ func TestCompressStripsANSI(t *testing.T) {
 // TestCompressDedupesConsecutiveLines verifies repeated consecutive output
 // lines collapse to one, keeping order (predictable for an agent).
 func TestCompressDedupesConsecutiveLines(t *testing.T) {
+	t.Parallel()
 	raw := "a\nb\nb\nb\nc\nc\n"
 	got := Compress(raw)
 	want := "a\nb\nc\n"
@@ -69,6 +74,7 @@ func TestCompressDedupesConsecutiveLines(t *testing.T) {
 // TestCompressTruncatesTailWithExplicitMarker verifies heavy listings truncate
 // the tail with an explicit "+N more" marker rather than silently dropping it.
 func TestCompressTruncatesTailWithExplicitMarker(t *testing.T) {
+	t.Parallel()
 	n := maxLines + 50
 	raw := buildLongListing(n)
 	got := Compress(raw)
@@ -94,6 +100,7 @@ func TestCompressTruncatesTailWithExplicitMarker(t *testing.T) {
 // economics"). Tokens are counted independently, by whitespace/punct splitting
 // the way a billing tokenizer would slice a CLI line listing.
 func TestCompressHonestEconomics(t *testing.T) {
+	t.Parallel()
 	raw := buildLongListing(400) // distinct entries, the expensive shape
 	compressed := Compress(raw)
 	rawTokens := roughTokens(raw)
@@ -114,6 +121,7 @@ func TestCompressHonestEconomics(t *testing.T) {
 // compressed form — so callers never pattern-match a look-alike "+N more"
 // tail as if it were the compressor's marker.
 func TestCompressResultReportsTruth(t *testing.T) {
+	t.Parallel()
 	// A heavy listing: genuinely compressed, bool true.
 	raw := buildLongListing(1000)
 	if out, compressed := CompressResult(raw); !compressed {
@@ -134,6 +142,7 @@ func TestCompressResultReportsTruth(t *testing.T) {
 // TestCompressScreensProgressFrames verifies carriage-return progress redraws
 // collapse to their final frame (deterministic, non-inflating).
 func TestCompressScreensProgressFrames(t *testing.T) {
+	t.Parallel()
 	raw := "Downloading 10%...\rDownloading 50%...\rDownloading 100%...\r\nDone\n"
 	got := Compress(raw)
 	if !strings.Contains(got, "Downloading 100%...") {

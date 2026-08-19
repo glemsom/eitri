@@ -21,6 +21,7 @@ func fakeSess(prompt string) Turn {
 // that no cost line renders (pricing was removed, see issue #374). The rail
 // carries the full stats picture permanently.
 func TestRailRenderStats(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
@@ -56,6 +57,7 @@ func TestRailRenderStats(t *testing.T) {
 // TestRailRenderModel asserts the MODEL section reflects the session's static
 // provider/model/effort/thinking.
 func TestRailRenderModel(t *testing.T) {
+	t.Parallel()
 	r := NewRail("opencode-go", "deepseek-v4-flash", "high", false, "sess-1", "/tmp/sess-1")
 	view := r.render(NewTelemetry("deepseek-v4-flash", "high", false, 250), defaultTheme, defaultRailWidth)
 
@@ -78,6 +80,7 @@ func TestRailRenderModel(t *testing.T) {
 // rail is STATS / CONTEXT / MODEL only, so detected skills and
 // their activation state never appear in the right pane.
 func TestRailRenderContext(t *testing.T) {
+	t.Parallel()
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c", "/tmp/eitri-9f2c")
 	view := r.render(NewTelemetry("deepseek-v4-flash", "low", true, 250), defaultTheme, defaultRailWidth)
 
@@ -101,6 +104,7 @@ func TestRailRenderContext(t *testing.T) {
 // under the default theme, so the three sections read apart at a glance. The
 // SKILLS section hue is gone with the section.
 func TestRailRenderSectionHues(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c", "/tmp/eitri-9f2c")
@@ -142,6 +146,7 @@ func TestRailRenderSectionHues(t *testing.T) {
 // so no unicode-block shape ever appears next to the numbers, even with a
 // populated telemetry history.
 func TestRailRenderStatsNoGraph(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	// Two turns of unequal usage: the shape the sparkline would have drawn.
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
@@ -177,6 +182,7 @@ func TestRailRenderStatsNoGraph(t *testing.T) {
 // ctrl+b no longer toggles it off. The rail only yields on an
 // extreme-minimum terminal via the transcript floor (tested separately).
 func TestModelRailAlwaysOn(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
 	m := NewModelCfg(Dependencies{
@@ -213,6 +219,7 @@ func TestModelRailAlwaysOn(t *testing.T) {
 // on, a window too narrow to host a real pane beside it still reserves the
 // floor so the transcript stays readable rather than being squeezed away.
 func TestModelRailTranscriptFloor(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
 	m := NewModelCfg(Dependencies{
@@ -237,6 +244,7 @@ func TestModelRailTranscriptFloor(t *testing.T) {
 // show/hide toggle for the permanent stats surface: pressing it
 // leaves the rail visible, and no stray STATS/CONTEXT loss follows.
 func TestModelRailNoToggle(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
 	m := NewModelCfg(Dependencies{
@@ -260,6 +268,7 @@ func TestModelRailNoToggle(t *testing.T) {
 // TestModelRailLiveUpdates asserts the visible rail reflects a telemetry
 // update drained through the live-delivery path.
 func TestModelRailLiveUpdates(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
 	m := NewModelCfg(Dependencies{
@@ -294,6 +303,7 @@ func TestModelRailLiveUpdates(t *testing.T) {
 // clips to the same row height as the history viewport so the two panes form
 // one coherent row and the whole view stays within the terminal height.
 func TestModelRailHeightMatchesHistory(t *testing.T) {
+	t.Parallel()
 	m := newTallHistoryModel(t)
 	// Wire a rail whose STATS/CONTEXT/MODEL block is taller than the available
 	// history viewport in a short window.
@@ -325,6 +335,7 @@ func TestModelRailHeightMatchesHistory(t *testing.T) {
 // onto the viewport's last padded row — doubling that row's width and shoving
 // the separator (and the rail) past the right edge.
 func TestModelRailStaysOnScreen(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: fakeSess("hi"),
 		Rail: NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a"),
@@ -356,6 +367,7 @@ func TestModelRailStaysOnScreen(t *testing.T) {
 // TestModelRailNoPanicWithoutFeed asserts the model renders fine with a nil
 // rail and no telemetry (the plain chat default), so wiring is optional.
 func TestModelRailNoPanicWithoutFeed(t *testing.T) {
+	t.Parallel()
 	m := NewModel(fakeSess("hi"))
 	m = resize(t, m)
 	content := view(m)
@@ -371,6 +383,7 @@ func TestModelRailNoPanicWithoutFeed(t *testing.T) {
 // history keeps wrapping to leave the rail room. The two widths must diverge on
 // a rail-visible window (band wide, transcript narrow).
 func TestModelBandSpansFullWidthWhileTranscriptStaysRailShrunk(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
 	m := NewModelCfg(Dependencies{
@@ -414,6 +427,7 @@ func TestModelBandSpansFullWidthWhileTranscriptStaysRailShrunk(t *testing.T) {
 // and transcriptWidth follow the same formula and must still agree, even on a
 // sliver where renderBand's own clamp keeps the separator readable.
 func TestModelBandWidthRailHiddenTiny(t *testing.T) {
+	t.Parallel()
 	m := NewModel(fakeSess("hi")) // no rail wired -> railVisible() == false
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 3, Height: 8})
 	m = asModel(t, nm)
@@ -431,6 +445,7 @@ func TestModelBandWidthRailHiddenTiny(t *testing.T) {
 // and transcriptWidth() must likewise not read composer width once the terminal
 // width is known.
 func TestModelBandWidthIndependentOfComposer(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
 	m := NewModelCfg(Dependencies{
@@ -466,6 +481,7 @@ func TestModelBandWidthIndependentOfComposer(t *testing.T) {
 // formatTokens, in the normal (stats-hue) styling below the warning threshold
 //.
 func TestRailRenderCtxLine(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000, Ctx: 137_000})
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
@@ -491,6 +507,7 @@ func TestRailRenderCtxLine(t *testing.T) {
 // warning styling once the live context reaches the 150k threshold, while the
 // readout still shows the human-readable size.
 func TestRailRenderCtxWarnAboveThreshold(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000, Ctx: 160_000})
 
@@ -511,6 +528,7 @@ func TestRailRenderCtxWarnAboveThreshold(t *testing.T) {
 // normally again, proving the readout is live-per-turn, not cumulative
 //.
 func TestRailRenderCtxPostCompactionRollback(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000, Ctx: 160_000})
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
@@ -533,6 +551,7 @@ func TestRailRenderCtxPostCompactionRollback(t *testing.T) {
 // wider-than-default widths: the key column is wider and values are right-padded
 // for alignment, making the rail read as a real stat ledger.
 func TestRailRenderStatsWide(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
@@ -559,6 +578,7 @@ func TestRailRenderStatsWide(t *testing.T) {
 // TestRailRenderModelWide asserts the MODEL section renders the full
 // provider/model name without truncation at wider widths.
 func TestRailRenderModelWide(t *testing.T) {
+	t.Parallel()
 	r := NewRail("opencode-go", "deepseek-v4-flash", "high", false, "sess-1", "/tmp/sess-1")
 	view := r.render(NewTelemetry("deepseek-v4-flash", "high", false, 250), defaultTheme, 50)
 
@@ -574,6 +594,7 @@ func TestRailRenderModelWide(t *testing.T) {
 // TestRailRenderStatsNarrow asserts the rail degrades gracefully at narrow
 // widths without wrapping or overlapping.
 func TestRailRenderStatsNarrow(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
@@ -597,6 +618,7 @@ func TestRailRenderStatsNarrow(t *testing.T) {
 // TestRailDefaultWidthUnchanged asserts the default-width rendering is
 // unchanged from today.
 func TestRailDefaultWidthUnchanged(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
@@ -620,6 +642,7 @@ func TestRailDefaultWidthUnchanged(t *testing.T) {
 // are column-aligned: keys are padded to a consistent width so values start at
 // the same column.
 func TestRailWideAlignment(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
@@ -649,6 +672,7 @@ func TestRailWideAlignment(t *testing.T) {
 // TestRailRenderWideNoOverflow asserts no rail line exceeds the rail width at
 // wide widths (no content overflow or wrap).
 func TestRailRenderWideNoOverflow(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
@@ -669,6 +693,7 @@ func TestRailRenderWideNoOverflow(t *testing.T) {
 // than at default width — the rail actually pays off the extra columns
 //.
 func TestRailWideValuesFuller(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})

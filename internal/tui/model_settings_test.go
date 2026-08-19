@@ -14,6 +14,7 @@ import (
 // TestModel_OpenSettingsRendersSurface verifies ctrl+s opens the Settings
 // surface, which renders the provider/model and knob rows .
 func TestModel_OpenSettingsRendersSurface(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -37,6 +38,7 @@ func TestModel_OpenSettingsRendersSurface(t *testing.T) {
 // pressing Enter invokes the Save seam with the edited config and closes the
 // Settings surface.
 func TestModel_SettingsSavePersistsAndCloses(t *testing.T) {
+	t.Parallel()
 	var saved config.Config
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -65,6 +67,7 @@ func TestModel_SettingsSavePersistsAndCloses(t *testing.T) {
 // TestModel_SettingsAdjustedValuePersists verifies a value changed in the
 // panel (cycling the model) reaches the persisted config.
 func TestModel_SettingsAdjustedValuePersists(t *testing.T) {
+	t.Parallel()
 	var saved config.Config
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -92,6 +95,7 @@ func TestModel_SettingsAdjustedValuePersists(t *testing.T) {
 // tier selected in the panel (medium) persists to config through the Save seam
 // .
 func TestModel_SettingsEffortSelectingMediumPersists(t *testing.T) {
+	t.Parallel()
 	var saved config.Config
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -122,6 +126,7 @@ func TestModel_SettingsEffortSelectingMediumPersists(t *testing.T) {
 // TestModel_SettingsPathsBackspaceEdits verifies the free-form writable-paths
 // field supports backspace to delete the trailing char before Save.
 func TestModel_SettingsPathsBackspaceEdits(t *testing.T) {
+	t.Parallel()
 	var saved config.Config
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -154,6 +159,7 @@ func TestModel_SettingsPathsBackspaceEdits(t *testing.T) {
 // reports a space key's String() as "space", not " ", so the field must
 // append the key's Text to keep a hand-written path with spaces intact.
 func TestModel_SettingsPathsSpaceTypesASpace(t *testing.T) {
+	t.Parallel()
 	var saved config.Config
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -186,6 +192,7 @@ func TestModel_SettingsPathsSpaceTypesASpace(t *testing.T) {
 // mode off in the panel persists ThinkingEnabled=false through the Save seam
 // while retaining the effort dial .
 func TestModel_SettingsThinkingTogglePersists(t *testing.T) {
+	t.Parallel()
 	var saved config.Config
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -227,6 +234,7 @@ func TestModel_SettingsThinkingTogglePersists(t *testing.T) {
 // AC2): opening settings with no pre-seeded list and a DiscoverModels seam
 // starts discovery, which delives the model list back through the model loop.
 func TestModel_SettingsDiscoveryLoadsAsync(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -265,6 +273,7 @@ func TestModel_SettingsDiscoveryLoadsAsync(t *testing.T) {
 // returns an error state in the panel rather than failing silently (
 // AC2), while the configured model still stays usable.
 func TestModel_SettingsDiscoveryErrorState(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -302,6 +311,7 @@ func TestModel_SettingsDiscoveryErrorState(t *testing.T) {
 // TestModel_SettingsThemeSelectingPersists verifies a theme selected in the
 // panel (light) persists to config through the Save seam .
 func TestModel_SettingsProviderChangeStartsDiscoveryForDraftProvider(t *testing.T) {
+	t.Parallel()
 	var providers []string
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -347,6 +357,7 @@ func TestModel_SettingsProviderChangeStartsDiscoveryForDraftProvider(t *testing.
 }
 
 func TestModel_SettingsThemeSelectingPersists(t *testing.T) {
+	t.Parallel()
 	var saved config.Config
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -381,6 +392,7 @@ func TestModel_SettingsThemeSelectingPersists(t *testing.T) {
 // provider) assumes support and renders nothing; a supporting provider or a
 // thinking-on run never warns.
 func TestSettingsView_ThinkingSuppressionWarning(t *testing.T) {
+	t.Parallel()
 	cfg := cfgFixture()
 	cfg.ThinkingEnabled = false
 	unsupported := func() bool { return false }
@@ -416,6 +428,7 @@ func TestSettingsView_ThinkingSuppressionWarning(t *testing.T) {
 // the run's provider thinking-suppression seam into the settings form when the
 // panel opens, so the warning reflects the real capability.
 func TestModel_SettingsWiringSurfacesThinkingSuppression(t *testing.T) {
+	t.Parallel()
 	cfg := cfgFixture()
 	cfg.ThinkingEnabled = false
 	m := NewModelCfg(Dependencies{
@@ -446,6 +459,7 @@ func TestModel_SettingsWiringSurfacesThinkingSuppression(t *testing.T) {
 // blocks on the Model's channels, which the main loop services; this test
 // drives the Model side deterministically.
 func TestModel_ContinuationPromptAnswersYes(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{})
 	m = resize(t, m)
 
@@ -467,6 +481,7 @@ func TestModel_ContinuationPromptAnswersYes(t *testing.T) {
 // TestModel_ContinuationPromptAnswersNo verifies the interactive max-turns
 // path refuses continuation on an "n" answer.
 func TestModel_ContinuationPromptAnswersNo(t *testing.T) {
+	t.Parallel()
 	m := NewModelCfg(Dependencies{})
 	m = resize(t, m)
 

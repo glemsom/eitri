@@ -37,6 +37,7 @@ func toolForever(wantRetries int) *provider.Scripted {
 // default), RunAgent returns ErrMaxTurns instead of looping forever. This is
 // the batch "auto-deny changes" path.
 func TestRunAgentMaxTurnsAutoDeniesWithoutHook(t *testing.T) {
+	t.Parallel()
 	e := New(toolForever(100), &mockTranscript{})
 	_, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "loop"},
 		AgentOptions{
@@ -54,6 +55,7 @@ func TestRunAgentMaxTurnsAutoDeniesWithoutHook(t *testing.T) {
 // when CanContinue grants another budget at the cap, the run proceeds past the
 // cap instead of erroring ("prompt to continue").
 func TestRunAgentMaxTurnsContinuesWhenHookGrants(t *testing.T) {
+	t.Parallel()
 	// toolForever(5): five tool turns then a final answer. MaxTurns=2 plus an
 	// always-granting hook lets the run cross the cap and finish.
 	var granted int
@@ -83,6 +85,7 @@ func TestRunAgentMaxTurnsContinuesWhenHookGrants(t *testing.T) {
 // also ends: once the hook stops granting (user declined), the run terminates
 // with ErrMaxTurns rather than continuing.
 func TestRunAgentMaxTurnsRefusesAfterGrantedBudgets(t *testing.T) {
+	t.Parallel()
 	var granted int
 	e := New(toolForever(100), &mockTranscript{})
 	_, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "loop"},

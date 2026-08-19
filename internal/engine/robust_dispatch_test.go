@@ -86,6 +86,7 @@ func toolResultContents(messages []provider.Message) []string {
 // continues the loop until the model answers. This is the acceptance
 // criterion for malformed/truncated-arg recovery.
 func TestInvalidArgumentsReturnWrappedINVALIDJSON(t *testing.T) {
+	t.Parallel()
 	var lastResults []string
 	scripted := provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
 		lastResults = toolResultContents(req.Messages)
@@ -141,6 +142,7 @@ func TestInvalidArgumentsReturnWrappedINVALIDJSON(t *testing.T) {
 // tool_call_id, never assuming a singleton. This is the acceptance criterion
 // for multi-call dispatch.
 func TestParallelToolCallsDispatchAllInOnePass(t *testing.T) {
+	t.Parallel()
 	var lastIDs []string
 	scripted := provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
 		var toolCount int
@@ -195,6 +197,7 @@ func TestParallelToolCallsDispatchAllInOnePass(t *testing.T) {
 // The engine must reject it with a schema-error tool result and continue the
 // loop, rather than executing or crashing.
 func TestStrictShapeRejectsSchemaViolatingCall(t *testing.T) {
+	t.Parallel()
 	scripted := provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
 		if len(toolResultContents(req.Messages)) == 0 {
 			// bash requires "command"; the call omits it.
@@ -234,6 +237,7 @@ func TestStrictShapeRejectsSchemaViolatingCall(t *testing.T) {
 // an explicitly-null optional is tolerated as absent (it falls to the
 // whole-file default).
 func TestRequiredSubsetReadValidates(t *testing.T) {
+	t.Parallel()
 	for _, args := range []string{
 		`{"path":"f.txt"}`,
 		`{"path":"f.txt","start_line":12,"end_line":340}`,
@@ -250,6 +254,7 @@ func TestRequiredSubsetReadValidates(t *testing.T) {
 // (how some providers express an omitted optional), independent of the read
 // tool's now-plain optional types.
 func TestNullableUnionToleratesNull(t *testing.T) {
+	t.Parallel()
 	schema := map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,

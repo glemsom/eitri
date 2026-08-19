@@ -28,6 +28,7 @@ func cfgFixture() config.Config {
 func nearEq(a, b float64) bool { return math.Abs(a-b) < 1e-9 }
 
 func TestSettingsForm_ModelStartsWithConfigured(t *testing.T) {
+	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{"deepseek-v4-flash", "grok-2", "kimi"})
 	if got := f.Model(); got != "deepseek-v4-flash" {
 		t.Fatalf("Model() = %q, want configured deepseek-v4-flash", got)
@@ -35,6 +36,7 @@ func TestSettingsForm_ModelStartsWithConfigured(t *testing.T) {
 }
 
 func TestSettingsForm_ModelFallsBackToConfiguredWhenNoneDiscovered(t *testing.T) {
+	t.Parallel()
 	f := newSettingsForm(cfgFixture(), nil)
 	if got := f.Model(); got != "deepseek-v4-flash" {
 		t.Fatalf("Model() = %q, want configured deepseek-v4-flash (no discovery)", got)
@@ -47,6 +49,7 @@ func TestSettingsForm_ModelFallsBackToConfiguredWhenNoneDiscovered(t *testing.T)
 // moves, so the panel visibly follows the selection before Save — the
 // mechanism proven end-to-end, not just persisted on Save.
 func TestSettingsForm_ThemeAdjustReskinsPanel(t *testing.T) {
+	t.Parallel()
 	f := newSettingsForm(cfgFixture(), nil)
 	f.field = fieldTheme
 	// From "dark", one step lands on "light": the curated light palette.
@@ -65,6 +68,7 @@ func TestSettingsForm_ThemeAdjustReskinsPanel(t *testing.T) {
 }
 
 func TestSettingsForm_AdjustsKnobs(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name   string
 		field  int
@@ -94,6 +98,7 @@ func TestSettingsForm_AdjustsKnobs(t *testing.T) {
 // TestSettingsForm_EffortCyclesAllTiers verifies the reasoning-effort selector
 // cycles through every first-class tier low→medium→high→max.
 func TestSettingsForm_EffortCyclesAllTiers(t *testing.T) {
+	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{}) // seeded "high"
 	f.field = fieldEffort
 
@@ -109,6 +114,7 @@ func TestSettingsForm_EffortCyclesAllTiers(t *testing.T) {
 // TestSettingsForm_EffortCyclesBackwardWraps verifies backward stepping wraps
 // low→max as well, so no tier is unreachable from the default.
 func TestSettingsForm_EffortCyclesBackwardWraps(t *testing.T) {
+	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{}) // seeded "high"
 	f.field = fieldEffort
 	f.adjust(-1)
@@ -121,6 +127,7 @@ func TestSettingsForm_EffortCyclesBackwardWraps(t *testing.T) {
 // (on/off) toggles ThinkingEnabled while retaining the effort selection, so
 // toggling back on restores the original effort tier.
 func TestSettingsForm_ThinkingToggleRetainsEffort(t *testing.T) {
+	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{})
 	f.field = fieldThinking
 
@@ -142,6 +149,7 @@ func TestSettingsForm_ThinkingToggleRetainsEffort(t *testing.T) {
 }
 
 func TestSettingsForm_ThinkingToggleDirectionInsensitive(t *testing.T) {
+	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{})
 	f.field = fieldThinking
 	// Both arrows flip the boolean mode; there is no meaningful directional
@@ -153,6 +161,7 @@ func TestSettingsForm_ThinkingToggleDirectionInsensitive(t *testing.T) {
 }
 
 func TestSettingsForm_ModelAdjustSelectsDiscovered(t *testing.T) {
+	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{"deepseek-v4-flash", "grok-2"})
 	f.field = fieldModel
 	f.adjust(1)
@@ -165,6 +174,7 @@ func TestSettingsForm_ModelAdjustSelectsDiscovered(t *testing.T) {
 // through every supported theme dark→light→dracula→tokyo-night→pink→nord→
 // gruvbox→solarized→notty→auto and wraps back to dark.
 func TestSettingsForm_ThemeCyclesAllThemes(t *testing.T) {
+	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{}) // seeded "dark"
 	f.field = fieldTheme
 
@@ -180,6 +190,7 @@ func TestSettingsForm_ThemeCyclesAllThemes(t *testing.T) {
 // TestSettingsForm_ThemeCyclesBackwardWraps verifies backward stepping wraps
 // dark→auto, so no theme is unreachable from the default.
 func TestSettingsForm_ThemeCyclesBackwardWraps(t *testing.T) {
+	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{}) // seeded "dark"
 	f.field = fieldTheme
 	f.adjust(-1)
@@ -192,6 +203,7 @@ func TestSettingsForm_ThemeCyclesBackwardWraps(t *testing.T) {
 // unknown theme in config shows raw and the first arrow press lands on a valid
 // theme, matching the hand-edited bad model value behaviour.
 func TestSettingsForm_InvalidThemeFirstAdjustSelectsValid(t *testing.T) {
+	t.Parallel()
 	cfg := cfgFixture()
 	cfg.Theme = "rainbow"
 	f := newSettingsForm(cfg, []string{})
@@ -208,6 +220,7 @@ func TestSettingsForm_InvalidThemeFirstAdjustSelectsValid(t *testing.T) {
 }
 
 func TestSettingsForm_PathsRoundTrip(t *testing.T) {
+	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{})
 	f.field = fieldPaths
 	f.SetPathBuf("/a, /b ,/c")
@@ -218,6 +231,7 @@ func TestSettingsForm_PathsRoundTrip(t *testing.T) {
 }
 
 func TestSettingsForm_SaveIsAFocusableField(t *testing.T) {
+	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{})
 	f.field = fieldSave
 	if !f.onSave() {
@@ -230,6 +244,7 @@ func TestSettingsForm_SaveIsAFocusableField(t *testing.T) {
 }
 
 func TestSettingsView_RendersKnobsAndSave(t *testing.T) {
+	t.Parallel()
 	// Discovery surfaces grok-2; the view shows the discovered selection.
 	f := newSettingsForm(cfgFixture(), []string{"grok-2"})
 	view := settingsView(f)
@@ -244,6 +259,7 @@ func TestSettingsView_RendersKnobsAndSave(t *testing.T) {
 // row lands in the agreed position: after Compaction Fraction, before the
 // writable-paths field.
 func TestSettingsView_ThemeRowSitsBetweenCompactionAndWritable(t *testing.T) {
+	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{})
 	view := settingsView(f)
 	compaction := strings.Index(view, "Compaction")
@@ -261,6 +277,7 @@ func TestSettingsView_ThemeRowSitsBetweenCompactionAndWritable(t *testing.T) {
 // config renders raw in the row, surfaced rather than silently rewritten
 //.
 func TestSettingsView_ShowsRawInvalidTheme(t *testing.T) {
+	t.Parallel()
 	cfg := cfgFixture()
 	cfg.Theme = "rainbow"
 	f := newSettingsForm(cfg, []string{})
@@ -271,6 +288,7 @@ func TestSettingsView_ShowsRawInvalidTheme(t *testing.T) {
 }
 
 func TestSettingsView_HighlightsFocusedRow(t *testing.T) {
+	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{})
 	f.field = fieldModel
 	view := settingsView(f)
@@ -286,6 +304,7 @@ func TestSettingsView_HighlightsFocusedRow(t *testing.T) {
 // cache hit-ratio only. It reflects the live Telemetry borrowed from the
 // status strip, never the agent loop itself (read-only).
 func TestSettingsView_RendersLiveCacheReadout(t *testing.T) {
+	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "high", true, 250)
 	// 100k hit + 25k miss => hit ratio 80%.
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
@@ -304,6 +323,7 @@ func TestSettingsView_RendersLiveCacheReadout(t *testing.T) {
 // TestSettingsView_TelemetryReadoutZeroWhenNone verifies a settings panel with
 // no wired telemetry renders no readout line (the pre-telemetry default).
 func TestSettingsView_TelemetryReadoutZeroWhenNone(t *testing.T) {
+	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{})
 	view := settingsView(f)
 	if strings.Contains(view, "cache:") {
@@ -317,6 +337,7 @@ func TestSettingsView_TelemetryReadoutZeroWhenNone(t *testing.T) {
 // chip colors to the light palette before Save, and the row always carries the
 // full-block chip glyph.
 func TestSettingsView_PaletteSwatchTracksTheme(t *testing.T) {
+	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{}) // seeded "dark"
 	f.field = fieldTheme
 

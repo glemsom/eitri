@@ -50,6 +50,7 @@ func newWebFetchRegistry(t *testing.T, f Fetcher) (*Registry, string) {
 // URL through the seam and returns the HTML rendered as Markdown on the
 // tool-result channel (never a bash invocation, never a system message).
 func TestWebFetchConvertsHTMLToMarkdown(t *testing.T) {
+	t.Parallel()
 	f := &stubFetcher{body: `<html><body><h1>Title</h1><p>Hello <strong>bold</strong> world.</p><ul><li>one</li><li>two</li></ul></body></html>`}
 	r, _ := newWebFetchRegistry(t, f)
 	res, err := r.Run(context.Background(), "web_fetch", argMap("url", "https://example.com/doc"))
@@ -74,6 +75,7 @@ func TestWebFetchConvertsHTMLToMarkdown(t *testing.T) {
 // TestWebFetchIsOwnPathNotBash verifies web_fetch never goes through the bash
 // runner: the recording runner gets no commands while the fetch completes.
 func TestWebFetchIsOwnPathNotBash(t *testing.T) {
+	t.Parallel()
 	f := &stubFetcher{body: `<html><body><p>plain</p></body></html>`}
 	r, _ := newWebFetchRegistry(t, f)
 	res, err := r.Run(context.Background(), "web_fetch", argMap("url", "https://example.com/x"))

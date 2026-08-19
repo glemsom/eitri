@@ -53,6 +53,7 @@ func hugeDraft(prefix string) string {
 // receives carries the byte-capped delivered form — never the oversized raw
 // string — while the ToolResultEvent keeps the full raw result (expand path).
 func TestAgentToolResultsByteCappedInHistory(t *testing.T) {
+	t.Parallel()
 	raw := hugeDraft("item")
 	capLower := compress.DefaultByteCap
 
@@ -129,6 +130,7 @@ func TestAgentToolResultsByteCappedInHistory(t *testing.T) {
 // in history, and the event's line metadata must still derive from the full
 // pre-cap result (Dropped line count preserved).
 func TestAgentByteCapComposesWithLineMarker(t *testing.T) {
+	t.Parallel()
 	var b strings.Builder
 	for i := 0; i < 30000; i++ {
 		b.WriteString("entry.")
@@ -236,6 +238,7 @@ func TestAgentByteCapComposesWithLineMarker(t *testing.T) {
 // appended; the look-like-marker content line must survive in the delivered
 // form, byte-dropped only at the head budget.
 func TestAgentByteCapPreservesLookLikeMarkerContent(t *testing.T) {
+	t.Parallel()
 	// Over-budget so the byte-cap actually runs; the raw content ends with a
 	// literal "+300 more" line that LOOKS like the compressor marker but is
 	// plain content (a read result is never compressor output).
@@ -306,6 +309,7 @@ func TestAgentByteCapPreservesLookLikeMarkerContent(t *testing.T) {
 // page Markdown is huge; the delivered form is capped while the event carries
 // the full raw result (the TUI expand seam stays lossless).
 func TestAgentByteCapWebFetchKeepsExpandPath(t *testing.T) {
+	t.Parallel()
 	raw := hugeDraft("page")
 
 	var gotResult *ToolResultEvent

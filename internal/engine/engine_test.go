@@ -23,6 +23,7 @@ func (m *mockTranscript) WriteTranscript(line []byte) error {
 // provider seam for a non-tool turn and asserts the final assistant answer,
 // reasoning channel, usage, and the transcript write.
 func TestRunProducesFinalAnswer(t *testing.T) {
+	t.Parallel()
 	tr := &mockTranscript{}
 	e := New(provider.NewFake("../provider/testdata/hello.sse"), tr)
 
@@ -50,6 +51,7 @@ func TestRunProducesFinalAnswer(t *testing.T) {
 // TestRunWritesAnswerToTranscript verifies the final answer lands in the
 // transcript via the T1b trace/sink seam.
 func TestRunWritesAnswerToTranscript(t *testing.T) {
+	t.Parallel()
 	tr := &mockTranscript{}
 	e := New(provider.NewFake("../provider/testdata/usage-final.sse"), tr)
 
@@ -92,6 +94,7 @@ type capturedRequests struct {
 // controls through to the provider: thinking enabled and the configured
 // reasoning_effort are set on every outgoing Request.
 func TestRunThreadsThinkingAndEffort(t *testing.T) {
+	t.Parallel()
 	cap := &capturedRequests{}
 	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
 		cap.reqs = append(cap.reqs, req)
@@ -125,6 +128,7 @@ func TestRunThreadsThinkingAndEffort(t *testing.T) {
 // resubmitted history never strips it, tripping DeepSeek's 400) and surface
 // the final turn's reasoning on the result.
 func TestRunAgentPersistsReasoningOnToolTurns(t *testing.T) {
+	t.Parallel()
 	assistantTurn := 0
 	var assistantReasons []string // reasoning_content the engine re-emits per assistant turn
 	scripted := provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
@@ -195,6 +199,7 @@ func (c *capableScripted) SupportedGenerationControls(context.Context) ([]provid
 // returning the honored controls and failing a required control the provider
 // cannot honor (before any wire call).
 func TestEngineNegotiatesGenerationControls(t *testing.T) {
+	t.Parallel()
 	p := &capableScripted{
 		Scripted:  provider.NewScripted(nil),
 		supported: []provider.GenerationControl{provider.GenerationControlGenerationBudget},
@@ -228,6 +233,7 @@ func TestEngineNegotiatesGenerationControls(t *testing.T) {
 // turn opens) still writes a [stopped] transcript record with the partial
 // content accumulated so far, so the on-disk trail never silently omits it.
 func TestRunAgentWritesStoppedTranscriptBetweenToolCalls(t *testing.T) {
+	t.Parallel()
 	tr := &mockTranscript{}
 	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
 		return provider.StreamFunc(

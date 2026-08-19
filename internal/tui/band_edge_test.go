@@ -50,6 +50,7 @@ func bandRowsFrom(plain string) (sep int, rows []string) {
 // its right; now each band row (separator, status strip, composer) reaches the
 // full width, and the rail floats above the band without ever overlapping.
 func TestModelBandSpansFullTerminalWidthTall(t *testing.T) {
+	t.Parallel()
 	m := railBandModel(t, 120, 40)
 	if !m.tx.railVisible() {
 		t.Fatal("rail must stay visible at 120x40")
@@ -92,6 +93,7 @@ func TestModelBandSpansFullTerminalWidthTall(t *testing.T) {
 // the transcript pane (column < transcriptWidth) instead of being hard-truncated
 // behind the rail.
 func TestModelHistoryWrapsAtTranscriptWidthWithRail(t *testing.T) {
+	t.Parallel()
 	m := railBandModel(t, 120, 40)
 	fill := strings.Repeat("a", 40)
 	long := fill + " " + fill + " XYZEND" // tail beyond transcriptWidth content, within full band
@@ -120,6 +122,7 @@ func TestModelHistoryWrapsAtTranscriptWidthWithRail(t *testing.T) {
 // the band's top and never overlaps it. On a short window the rail content
 // overflows the available rows, forcing the clamp.
 func TestModelRailEndsOneRowAboveBand(t *testing.T) {
+	t.Parallel()
 	// Short height: the ~14-row rail block dwarfs the ~7 rows the band leaves.
 	m := railBandModel(t, 120, 10)
 	if !m.tx.railVisible() {
@@ -158,6 +161,7 @@ func TestModelRailEndsOneRowAboveBand(t *testing.T) {
 // trim long content as it did pre-#232 — or the rail stops many rows above the
 // band and leaves a dead gap.
 func TestModelRailEndsOneRowAboveBandTall(t *testing.T) {
+	t.Parallel()
 	// Tall height: the ~14-row rail block leaves ~36 rows between the top and the
 	// band; without padding the rail would stop ~22 rows short of the band.
 	m := railBandModel(t, 120, 40)
@@ -196,6 +200,7 @@ func TestModelRailEndsOneRowAboveBandTall(t *testing.T) {
 // composer's first row (the top row of a minComposerRows-resting composer) and
 // follows typing as before.
 func TestModelComposerCaretStaysCorrectWithRail(t *testing.T) {
+	t.Parallel()
 	m := railBandModel(t, 120, 40)
 	composerTop := lineCount(view(m)) - minComposerRows
 
@@ -219,6 +224,7 @@ func TestModelComposerCaretStaysCorrectWithRail(t *testing.T) {
 // width, so a draft that wraps to multiple composer rows still places the caret
 // at the end of the true visible edit row under the rail.
 func TestModelComposerCaretStaysCorrectWithRailWrapped(t *testing.T) {
+	t.Parallel()
 	m := railBandModel(t, 120, 40)
 	m = typeText(t, m, strings.Repeat("a", 100)) // wraps at the full-width composer
 	if rows := composerRows(m); len(rows) < 2 {
@@ -282,6 +288,7 @@ func bandRowsForHeight(t *testing.T, h int) (sep int, rows []string) {
 // height, and that the rail's left border never appears on a band row (no
 // overlap).
 func TestModelBandSpansFullWidthUnderRailTallSweep(t *testing.T) {
+	t.Parallel()
 	for _, h := range tallBandHeights {
 		h := h
 		t.Run(fmt.Sprintf("height/%d", h), func(t *testing.T) {
@@ -319,6 +326,7 @@ func TestModelBandSpansFullWidthUnderRailTallSweep(t *testing.T) {
 // above the band and left a dead gap. This sweep asserts the rail's last
 // rendered border row == band separator row - 1 at every tall height.
 func TestModelRailEndsOneRowAboveBandTallSweep(t *testing.T) {
+	t.Parallel()
 	for _, h := range tallBandHeights {
 		h := h
 		t.Run(fmt.Sprintf("height/%d", h), func(t *testing.T) {

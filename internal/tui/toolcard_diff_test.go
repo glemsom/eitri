@@ -39,6 +39,7 @@ func cardBody(th Theme, te toolEntry, expanded bool) string {
 // card keeps today's [+N,−M] summary: the before/after file content never
 // renders, and the delta tag text stays on the head.
 func TestToolCard_collapsedEditKeepsDeltaSummary(t *testing.T) {
+	t.Parallel()
 	te := toolCardDiffEntry("edit", "internal/auth.go", "package auth\n\nfunc Old() {}\n", "package auth\n\nfunc New() {}\n", 1, 1)
 
 	head := toolEntryHead(te)
@@ -60,6 +61,7 @@ func TestToolCard_collapsedEditKeepsDeltaSummary(t *testing.T) {
 // git-style @@ header, styled +/- lines, and the left card border framing —
 // instead of the raw result dump.
 func TestToolCard_expandedEditRendersInlineDiff(t *testing.T) {
+	t.Parallel()
 	te := toolCardDiffEntry("edit", "internal/auth.go", "package auth\n\nfunc Old() {}\n", "package auth\n\nfunc New() {}\n", 1, 1)
 
 	expanded := renderToolEntry(defaultTheme, te, true, time.Time{}, 80, false)
@@ -86,6 +88,7 @@ func TestToolCard_expandedEditRendersInlineDiff(t *testing.T) {
 // TestToolCard_expandedWriteDiffStatuses asserts added and deleted paths render
 // as all-+ and all-− diffs, derived from the before/after content itself.
 func TestToolCard_expandedWriteDiffStatuses(t *testing.T) {
+	t.Parallel()
 	// Added: empty before, content after.
 	add := toolCardDiffEntry("write", "internal/new.go", "", "package new\n\nfunc Fresh() {}\n", 3, 0)
 	added := renderToolEntry(defaultTheme, add, true, time.Time{}, 80, false)
@@ -110,6 +113,7 @@ func TestToolCard_expandedWriteDiffStatuses(t *testing.T) {
 // The dump check keys on the stripped result text, not the full te.result
 // string: the card frame's trailing border space would mask a rendered dump.
 func TestToolCard_expandedNoDiffFallsBackToSummary(t *testing.T) {
+	t.Parallel()
 	te := toolCardDiffEntry("edit", "internal/auth.go", "", "", 0, 0)
 
 	expanded := renderToolEntry(defaultTheme, te, true, time.Time{}, 80, false)
