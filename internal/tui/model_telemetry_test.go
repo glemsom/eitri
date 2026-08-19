@@ -34,15 +34,14 @@ func TestModelStatusStripHintsOnly(t *testing.T) {
 
 	content := view(m)
 
-	// The right rail renders the session stats (cache %, cost, turns/max,
-	// elapsed); the bottom strip shows only the keybinding hints.
+	// The right rail renders the session stats (cache %, turns/max, elapsed,
+	// token in/out — no cost, see issue #374); the bottom strip shows only the
+	// keybinding hints.
 	if !strings.Contains(content, "cache 80%") {
 		t.Errorf("right rail missing cache gauge, got: %q", content)
 	}
-	// 100k hit @0.0028/1M + 25k miss @0.14/1M + 10k output @0.28/1M
-	// = 0.00028 + 0.0035 + 0.0028 = $0.00658.
-	if !strings.Contains(content, "cost $0.00658") {
-		t.Errorf("right rail missing cost, got: %q", content)
+	if strings.Contains(content, "cost") {
+		t.Errorf("right rail must not render a cost readout (issue #374), got: %q", content)
 	}
 
 	// The bottom band is hints-only: it renders the keybinding

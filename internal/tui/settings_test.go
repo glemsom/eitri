@@ -279,15 +279,15 @@ func TestSettingsView_HighlightsFocusedRow(t *testing.T) {
 	}
 }
 
-// TestSettingsView_RendersLiveTelemetryReadout verifies the settings panel
-// surfaces the same live cache hit-ratio + cost readout the run tracks (issue
-// #89 AC4), so switching provider/model and watching cost happen in one pane.
-// It reflects the live Telemetry borrowed from the status strip, never the
-// agent loop itself (read-only).
-func TestSettingsView_RendersLiveTelemetryReadout(t *testing.T) {
+// TestSettingsView_RendersLiveCacheReadout verifies the settings panel
+// surfaces the live cache hit-ratio readout the run tracks (issue
+// #89 AC4), so switching provider/model and watching the hit ratio happen in
+// one pane. The cost readout was removed (issue #374): the panel shows the
+// cache hit-ratio only. It reflects the live Telemetry borrowed from the
+// status strip, never the agent loop itself (read-only).
+func TestSettingsView_RendersLiveCacheReadout(t *testing.T) {
 	te := NewTelemetry("deepseek-v4-flash", "high", true, 250)
-	// 100k hit @0.0028/1M + 25k miss @0.14/1M + 10k output @0.28/1M.
-	// = 0.00028 + 0.0035 + 0.0028 = $0.00658; hit ratio 80%.
+	// 100k hit + 25k miss => hit ratio 80%.
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
 
 	f := newSettingsForm(cfgFixture(), []string{"grok-2"})
@@ -296,8 +296,8 @@ func TestSettingsView_RendersLiveTelemetryReadout(t *testing.T) {
 	if !strings.Contains(view, "cache:80%") {
 		t.Fatalf("settings view %q missing live cache hit-ratio readout", view)
 	}
-	if !strings.Contains(view, "cost:$0.00658") {
-		t.Fatalf("settings view %q missing live cost readout", view)
+	if strings.Contains(view, "cost") {
+		t.Fatalf("settings view %q must not render a cost readout (issue #374)", view)
 	}
 }
 

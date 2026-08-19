@@ -1,18 +1,7 @@
 package tui
 
 import (
-	"strconv"
-	"strings"
 	"time"
-)
-
-// deepseek-v4-flash pricing, per 1M tokens. These are the canonical
-// rates that turn the engine seam's cached/cold token telemetry into
-// the running cost readout on the right rail.
-const (
-	costPerInputMiss = 0.14   // $/1M uncached input tokens
-	costPerOutput    = 0.28   // $/1M output tokens
-	costPerInputHit  = 0.0028 // $/1M cache-hit input tokens
 )
 
 // TelemetryKind discriminates a live status-strip update: a turn boundary,
@@ -114,14 +103,6 @@ func (t *Telemetry) apply(u TelemetryUpdate) {
 	}
 }
 
-// cost returns the running session cost in dollars from accumulated token
-// telemetry at the deepseek-v4-flash rates.
-func (t *Telemetry) cost() float64 {
-	return float64(t.cacheMiss)/1e6*costPerInputMiss +
-		float64(t.cacheHit)/1e6*costPerInputHit +
-		float64(t.output)/1e6*costPerOutput
-}
-
 // liveContextSize returns the live per-turn context-window size in tokens (0
 // before the first usage event). Unlike the cumulative counters it is REPLACED,
 // not accumulated, so it collapses back down after a compaction shrinks the
@@ -136,27 +117,4 @@ func (t *Telemetry) hitPercent() float64 {
 		return 0
 	}
 	return float64(t.cacheHit) / float64(in) * 100
-}
-
-// formatCost renders the running cost in dollars, decimal notation with 4
-// significant figures and trailing zeros trimmed — never scientific (%.4g
-// renders $1e-05 for sub-cent costs — unreadable at a glance). Significant
-// figures keep an accumulated $0.00112672 readable as $0.001127 instead of an
-// eight-decimal wall in the status strip.
-func formatCost(c float64) string {
-	if c == 0 {
-		return "$0"
-	}
-	dec := 3 // 4 significant figures for costs >= $1
-	if c < 1 {
-		z := 0 // leading zeros after the decimal point
-		for v := c; v < 0.1; v *= 10 {
-			z++
-		}
-		dec = z + 4
-	}
-	s := strconv.FormatFloat(c, 'f', dec, 64)
-	s = strings.TrimRight(s, "0")
-	s = strings.TrimRight(s, ".")
-	return "$" + s
 }

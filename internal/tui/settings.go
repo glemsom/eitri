@@ -64,8 +64,9 @@ type settingsForm struct {
 	field  int
 	// pathBuf holds the free-form extra_writable_paths draft while focused.
 	pathBuf string
-	// telemetry, when non-nil, backs the live cache hit-ratio + cost readout
-	// rendered in the panel. It is the same read-only surface the status strip
+	// telemetry, when non-nil, backs the live cache hit-ratio readout rendered
+	// in the panel (the cost readout was removed in issue #374). It is the same
+	// read-only surface the status strip
 	// uses and is never mutated from the panel.
 	telemetry *Telemetry
 	// discoverState tracks on-demand provider model discovery.
@@ -311,12 +312,12 @@ func settingsView(f settingsForm) string {
 		// Idle: already-loaded or unwired, so no status line is needed.
 	}
 
-	// Live telemetry readout: the same cache hit-ratio + cost the status strip
-	// tracks, borrowed read-only so switching provider/model and watching cost
-	// happen in one pane.
+	// Live telemetry readout: the cache hit-ratio the run tracks, borrowed
+	// read-only so switching provider/model and watching the hit ratio happen
+	// in one pane.
 	if f.telemetry != nil {
 		b.WriteString(th.statusStyle.Render(fmt.Sprintf(
-			"   cache:%.0f%% "+g("·", ".")+" cost:%s", f.telemetry.hitPercent(), formatCost(f.telemetry.cost()),
+			"   cache:%.0f%%", f.telemetry.hitPercent(),
 		)))
 		b.WriteString("\n")
 	}
