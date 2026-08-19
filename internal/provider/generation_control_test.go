@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -42,6 +43,32 @@ func TestNegotiateAllSupported(t *testing.T) {
 	}
 }
 
+// failingProvider is a GenerationControlProvider whose capability query fails,
+// so negotiation surfaces the failure instead of silently degrading.
+type failingProvider struct {
+	Scripted
+}
+
+// SupportedGenerationControls implements GenerationControlProvider and always
+// fails.
+func (f *failingProvider) SupportedGenerationControls(context.Context) ([]GenerationControl, error) {
+	return nil, errors.New("capability query failed")
+}
+
+// TestNegotiateCapabilityErrorPropagates verifies a provider whose capability
+// query fails surfaces that error (the Error branch of the thinking-control
+// negotiation) rather than degrading or no-op'ing.
+func TestNegotiateCapabilityErrorPropagates(t *testing.T) {
+	reqs := []ControlRequirement{{Control: GenerationControlThinkingSuppression, Required: false}}
+	_, err := NegotiateGenerationControls(context.Background(), &failingProvider{}, reqs)
+	if err == nil {
+		t.Fatal("NegotiateGenerationControls() error = nil, want capability query failure")
+	}
+	if !strings.Contains(err.Error(), "capability query failed") {
+		t.Fatalf("NegotiateGenerationControls() error = %v, want capability query failure", err)
+	}
+}
+
 // TestNegotiateUnsupportedRequiredFails verifies a required control the provider
 // cannot honor fails before any wire call, returning an error that names the
 // offending control.
@@ -59,6 +86,9 @@ func TestNegotiateUnsupportedRequiredFails(t *testing.T) {
 	}
 	if !isUnsupportedRequired(err, GenerationControlJSONObjectMode) {
 		t.Fatalf("error = %v, want unsupported-required for JSON Object Mode", err)
+	}
+	if !strings.Contains(err.Error(), string(GenerationControlJSONObjectMode)) {
+		t.Fatalf("error = %q, want it to name JSON Object Mode", err.Error())
 	}
 }
 
