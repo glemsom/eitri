@@ -39,18 +39,26 @@ func helpView() string {
 	})
 
 	b.WriteString("\n" + hr() + "\n")
-	// KEYBINDINGS section
+	// KEYBINDINGS section, grouped under labeled category sub-headers (issue
+	// #386) so a user scanning /help can jump straight to the kind of action
+	// they need (composing, navigating, resizing panes, or app actions).
 	b.WriteString(sectionEmoji("KEYBINDINGS") + " KEYBINDINGS\n")
-	writeHelpRows(&b, []helpRow{
-		{"ctrl+s", "open settings"},
-		{"ctrl+o", "copy transcript"},
-		{"ctrl+e", "toggle expanded view"},
+	writeHelpCategory(&b, "COMPOSER", []helpRow{
 		{"tab", "toggle thinking"},
 		{"shift+enter", "insert newline"},
+	})
+	writeHelpCategory(&b, "NAVIGATION", []helpRow{
 		{"?", "show help"},
 		{"pgup/pgdn", "scroll history"},
+	})
+	writeHelpCategory(&b, "PANES", []helpRow{
+		{"ctrl+e", "toggle expanded view"},
 		{"ctrl+x", "narrow pane"},
 		{"ctrl+z", "widen pane"},
+	})
+	writeHelpCategory(&b, "ACTIONS", []helpRow{
+		{"ctrl+s", "open settings"},
+		{"ctrl+o", "copy transcript"},
 	})
 
 	b.WriteString("\n" + hr() + "\n")
@@ -63,6 +71,15 @@ func helpView() string {
 	})
 
 	return b.String()
+}
+
+// writeHelpCategory writes one labeled KEYBINDINGS category: an indented
+// emoji-prefixed category header followed by its aligned rows (issue #386).
+// Each category aligns its own column, so descriptions align within a category
+// while the category label gives a user a place to jump to.
+func writeHelpCategory(b *strings.Builder, name string, rows []helpRow) {
+	b.WriteString("  " + categoryEmoji(name) + " " + name + "\n")
+	writeHelpRows(b, rows)
 }
 
 // writeHelpRows writes each row left-aligned under a shared column so every

@@ -80,6 +80,23 @@ func sectionEmoji(name string) string {
 	return ""
 }
 
+// categoryEmoji returns the emoji prefix for a KEYBINDINGS category header
+// (issue #386), with its ASCII fallback, so the labeled sub-groups share the
+// repository's glyph conventions.
+func categoryEmoji(name string) string {
+	switch name {
+	case "COMPOSER":
+		return g("✍️", "c")
+	case "NAVIGATION":
+		return g("🧭", "n")
+	case "PANES":
+		return g("▦", "p")
+	case "ACTIONS":
+		return g("⚡", "a")
+	}
+	return ""
+}
+
 // commandEmoji returns the category emoji prefix for a help command row.
 func commandEmoji(cmd string) string {
 	switch cmd {
