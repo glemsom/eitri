@@ -295,7 +295,7 @@ func transcriptScrollModel(t *testing.T) Transcript {
 	t.Helper()
 	m := newTallHistoryModel(t)
 	m = resizeTo(t, m, 120, 12)
-	tx := m.tx
+	tx := *m.tx // shallow copy of the shared root for Transcript-seam navigation
 	// Hydrate the persisted (shared) viewport with the current content so
 	// navigation has a real scroll range.
 	var hist strings.Builder
