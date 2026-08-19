@@ -67,7 +67,9 @@ func TestReadSchemaNullableUnion(t *testing.T) {
 // TestReadSchemaRequiredSubset locks the read schema's required-subset shape:
 // only path is required (whole-file reads need no start_line/end_line
 // placeholders), additionalProperties is false, and the line-range optionals
-// remain declared nullable unions so a model that still sends null is tolerated.
+// remain declared so a model that still sends null is tolerated.
+// (The nullable-union type-array form itself is guarded by
+// TestReadSchemaNullableUnion.)
 func TestReadSchemaRequiredSubset(t *testing.T) {
 	schema := (&readTool{}).Schema()
 	if schema["additionalProperties"] != false {
@@ -87,16 +89,6 @@ func TestReadSchemaRequiredSubset(t *testing.T) {
 	for _, field := range []string{"path", "start_line", "end_line"} {
 		if _, ok := props[field]; !ok {
 			t.Fatalf("schema property %q missing", field)
-		}
-	}
-	// The options stay nullable unions: a model sending null must not break.
-	for _, field := range []string{"start_line", "end_line"} {
-		node, ok := props[field].(map[string]any)
-		if !ok {
-			t.Fatalf("schema property %q: expected union object, got %T", field, props[field])
-		}
-		if types, ok := node["type"].([]any); !ok || len(types) != 2 || types[0] != "integer" || types[1] != "null" {
-			t.Fatalf("schema property %q: expected [\"integer\",\"null\"] union, got %v", field, node)
 		}
 	}
 }
