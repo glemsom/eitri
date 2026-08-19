@@ -25,7 +25,8 @@ const (
 	PhaseAnswering
 )
 
-// String is the stable wire/display name of a phase, used in logs and tests.
+// String is the stable wire name of a phase, used in logs and tests; the
+// user-facing stage label rendered under the busy spinner is phaseVerb.
 func (p Phase) String() string {
 	switch p {
 	case PhaseReasoning:
