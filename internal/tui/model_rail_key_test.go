@@ -116,9 +116,9 @@ func TestRailKey_Visible(t *testing.T) {
 		msg  tea.KeyPressMsg
 	}{
 		{"shrink", tea.KeyPressMsg{Code: '[', Mod: tea.ModCtrl | tea.ModShift}},
-		{"shrink-z", tea.KeyPressMsg{Code: 'z', Mod: tea.ModCtrl}},
+		{"shrink-x", tea.KeyPressMsg{Code: 'x', Mod: tea.ModCtrl}},
 		{"grow", tea.KeyPressMsg{Code: ']', Mod: tea.ModCtrl | tea.ModShift}},
-		{"grow-x", tea.KeyPressMsg{Code: 'x', Mod: tea.ModCtrl}},
+		{"grow-z", tea.KeyPressMsg{Code: 'z', Mod: tea.ModCtrl}},
 		{"reset", tea.KeyPressMsg{Code: '0', Mod: tea.ModAlt}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
