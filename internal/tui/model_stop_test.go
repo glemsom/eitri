@@ -6,11 +6,11 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/glemsom/eitri/internal/config"
+	"github.com/glemsom/eitri/internal/testutil"
 )
 
 // blockingTurn is a Turn seam that runs until its context is canceled and then
@@ -47,27 +47,29 @@ func TestModel_escWhileBusyCancelsTurnAndKeepsPartial(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m, cmd := submitBusy(t, m)
 
-	// Run the turn command on its own goroutine (it blocks until canceled).
-	doneCh := make(chan tea.Msg, 1)
-	go func() { doneCh <- cmd() }()
-	<-entered
+	// Run the turn command on its own goroutine (it blocks until the cancel
+	// lands); done fires once the turn goroutine returns after cancellation.
+	done := make(chan struct{})
+	var doneMsg tea.Msg
+	go func() {
+		defer close(done)
+		doneMsg = cmd()
+	}()
+
+	// Await readiness the test drives (the running turn entered), not sleep.
+	testutil.Await(t, "running turn to start", entered)
 
 	// esc while busy must cancel the running turn.
 	nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	m = asModel(t, nm)
 
 	// The aborted turn's completion lands as a stopped result, not an error.
-	var done tea.Msg
-	select {
-	case done = <-doneCh:
-	case <-time.After(3 * time.Second):
-		t.Fatal("turn goroutine never returned after esc")
-	}
+	// The shared await's timeout is a fatal backstop, never the happy path.
+	testutil.Await(t, "turn goroutine to return after esc", done)
+	m = mustUpdate(t, m, doneMsg)
 	if !canceled.Load() {
 		t.Error("esc did not cancel the in-flight turn context")
 	}
-	nm, _ = m.Update(done)
-	m = asModel(t, nm)
 
 	if got := m.tx.messages[len(m.tx.messages)-1].content; got != "partial answer" {
 		t.Errorf("partial content = %q, want %q (kept after stop)", got, "partial answer")
@@ -306,25 +308,26 @@ func TestModel_ctrlCWhileBusyStopsTurnAndKeepsPartial(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m, cmd := submitBusy(t, m)
 
-	doneCh := make(chan tea.Msg, 1)
-	go func() { doneCh <- cmd() }()
-	<-entered
+	done := make(chan struct{})
+	var doneMsg tea.Msg
+	go func() {
+		defer close(done)
+		doneMsg = cmd()
+	}()
+	// Await readiness the test drives (the running turn entered), not sleep.
+	testutil.Await(t, "running turn to start", entered)
 
 	// Ctrl+C while busy must cancel the running turn.
 	nm, _ := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	m = asModel(t, nm)
 
-	var done tea.Msg
-	select {
-	case done = <-doneCh:
-	case <-time.After(3 * time.Second):
-		t.Fatal("turn goroutine never returned after ctrl+c")
-	}
+	// The turn's completion lands as a stopped result; the shared await's
+	// timeout is a fatal backstop, never the happy path.
+	testutil.Await(t, "turn goroutine to return after ctrl+c", done)
+	m = mustUpdate(t, m, doneMsg)
 	if !canceled.Load() {
 		t.Error("ctrl+c did not cancel the in-flight turn context")
 	}
-	nm, _ = m.Update(done)
-	m = asModel(t, nm)
 
 	if got := m.tx.messages[len(m.tx.messages)-1].content; got != "partial via ctrl+c" {
 		t.Errorf("partial content = %q, want %q (kept after ctrl+c stop)", got, "partial via ctrl+c")
