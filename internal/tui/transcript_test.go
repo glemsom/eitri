@@ -53,6 +53,38 @@ func TestTranscript_rendersStandalone(t *testing.T) {
 	}
 }
 
+// TestTranscript_appendMsgAppendsAndInvalidates pins the append seam's
+// invariant (issue #389): appendMsg appends one finished assistant entry AND
+// marks the shared message layout dirty in the same step, so a freshly-added
+// block re-wraps at the current transcript width on the next frame. The layout
+// dirty mark is the whole point of the seam — the two actions must travel
+// together — so splitting them back apart (e.g. re-spreading the raw append
+// without the invalidation, the pre-seam bug) fails this test.
+func TestTranscript_appendMsgAppendsAndInvalidates(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	th := themeFor(config.DefaultTheme)
+	tx := &Transcript{
+		theme:       th,
+		configTheme: config.DefaultTheme,
+	}
+	tx.layout.dirty = false
+
+	tx.appendMsg(helpView())
+
+	if len(tx.messages) != 1 {
+		t.Fatalf("appendMsg must append one message, got %d", len(tx.messages))
+	}
+	if tx.messages[0].role != "eitri" {
+		t.Errorf("appendMsg message role = %q, want eitri", tx.messages[0].role)
+	}
+	if tx.messages[0].content != helpView() {
+		t.Errorf("appendMsg must store the given content, got %q", tx.messages[0].content)
+	}
+	if !tx.layout.dirty {
+		t.Error("appendMsg must mark the message layout dirty so the appended block re-wraps")
+	}
+}
+
 // TestTranscript_thinkingGateScopesReasoningBlock asserts a reasoning block
 // renders only for a turn that requested thinking: a message whose
 // thinkingRequested flag is false shows no reasoning block even when the

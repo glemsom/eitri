@@ -625,6 +625,18 @@ func (t *Transcript) toggleCollapse(idx int) {
 	t.layout.dirty = true
 }
 
+// appendMsg appends a finished assistant entry to the transcript and marks the
+// shared message layout dirty in the same step, so the appended block re-wraps
+// at the current transcript width on the next frame instead of rendering at a
+// stale width. It is the single seam every append of a completed assistant
+// entry routes through: the append and the layout invalidation are one
+// invariant, never split back across call sites (one forgetting the dirty mark
+// recreates the stale-width bug).
+func (t *Transcript) appendMsg(content string) {
+	t.messages = append(t.messages, message{role: "eitri", content: content})
+	t.layout.dirty = true
+}
+
 // apply folds one tool-call observation into the transcript's log (
 // AC1/AC2): tool updates now route through the Transcript so they land in the
 // same log renderPane reads. It delegates to the tool log's Apply (start/result
