@@ -82,6 +82,83 @@ func TestHelpView_noSkills(t *testing.T) {
 	}
 }
 
+// TestHelpView_alignedColumns asserts each section's descriptions share one
+// vertical ruler (issue #385): within a section the key/label cell is padded to
+// the widest so every description starts at the same column.
+func TestHelpView_alignedColumns(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	got := helpView()
+
+	sections := []struct {
+		header string
+		descs  []string
+	}{
+		{"COMMANDS", []string{
+			"open settings panel", "copy transcript to clipboard",
+			"interactive provider login", "show this help message",
+		}},
+		{"KEYBINDINGS", []string{
+			"open settings", "copy transcript", "toggle expanded view",
+			"toggle thinking", "insert newline", "show help",
+			"scroll history", "narrow pane", "widen pane",
+		}},
+		{"CONCEPTS", []string{
+			"expand/collapse all tool result cards",
+			"click and drag to select text",
+			"stats, context, and model info",
+		}},
+	}
+
+	for _, sec := range sections {
+		lines := sectionLines(t, got, sec.header)
+		col := -1
+		for _, desc := range sec.descs {
+			found := false
+			for _, ln := range lines {
+				if i := strings.Index(ln, desc); i >= 0 {
+					if col == -1 {
+						col = i
+					} else if i != col {
+						t.Errorf("%s: description %q starts at col %d, want %d\nline: %q",
+							sec.header, desc, i, col, ln)
+					}
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("%s: description %q not found in section\n%q", sec.header, desc, strings.Join(lines, "\n"))
+			}
+		}
+	}
+}
+
+// sectionLines returns the row lines of a /help section (content between the
+// section header and the following blank separator), trimming the two-space
+// indent used by every row.
+func sectionLines(t *testing.T, got, header string) []string {
+	t.Helper()
+	lines := strings.Split(got, "\n")
+	started := false
+	var out []string
+	for _, ln := range lines {
+		if strings.Contains(ln, " "+header) {
+			started = true
+			continue
+		}
+		if started && ln == "" {
+			break
+		}
+		if started && ln != "" {
+			out = append(out, strings.TrimPrefix(ln, "  "))
+		}
+	}
+	if len(out) == 0 {
+		t.Fatalf("section %q not found in help output", header)
+	}
+	return out
+}
+
 // TestHelpView_noAnsiEscape asserts the help content is stored as escape-free
 // plain text (issue #378): no ANSI sequences at all. Storing raw ANSI in the
 // message is what got re-escaped as literal garbage by the Markdown pass and

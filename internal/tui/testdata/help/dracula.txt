@@ -1,23 +1,23 @@
 $ COMMANDS
   * /settings  open settings panel
-  # /copy  copy transcript to clipboard
-  + /login  interactive provider login
-  ? /help  show this help message
+  # /copy      copy transcript to clipboard
+  + /login     interactive provider login
+  ? /help      show this help message
 
 --
 k KEYBINDINGS
-  ctrl+s  open settings
-  ctrl+o  copy transcript
-  ctrl+e  toggle expanded view
-  tab  toggle thinking
+  ctrl+s       open settings
+  ctrl+o       copy transcript
+  ctrl+e       toggle expanded view
+  tab          toggle thinking
   shift+enter  insert newline
-  ?  show help
-  pgup/pgdn  scroll history
-  ctrl+x  narrow pane
-  ctrl+z  widen pane
+  ?            show help
+  pgup/pgdn    scroll history
+  ctrl+x       narrow pane
+  ctrl+z       widen pane
 
 --
 < CONCEPTS
   ctrl+e mode  expand/collapse all tool result cards
   drag-select  click and drag to select text
-  right rail  stats, context, and model info
+  right rail   stats, context, and model info
