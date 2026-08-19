@@ -14,9 +14,11 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// GitHub's Copilot OAuth token endpoint: same host as the device-flow handshake,
-// reused for the non-interactive refresh path batch is allowed to take.
-const copilotTokenURL = "https://github.com/login/oauth/access_token"
+// copilotTokenURL is GitHub's Copilot OAuth access-token endpoint: the same host
+// as the device-flow handshake, reused for the non-interactive refresh path
+// batch may take. It is a package-level var (not a const) so the renewal path
+// can be pointed at an httptest server in tests.
+var copilotTokenURL = "https://github.com/login/oauth/access_token"
 
 // copilotRefresh returns a provider.RefreshFunc that renews a Copilot
 // credential from a refresh token via GitHub's OAuth token endpoint. It is the
