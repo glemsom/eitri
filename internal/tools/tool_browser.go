@@ -52,22 +52,23 @@ func (o *openInBrowserTool) Run(ctx context.Context, args map[string]any) (ToolR
 // translate maps the model-facing target to the host launch form: a plain URL
 // passes through; a file URL or filesystem path resolves through the shared
 // PathTranslator so a session-temp (/tmp) file opens at its host
-// /tmp/eitri-<GUID> location.
+// /tmp/eitri-<GUID> location. A malformed file:// URL is rejected with an error
+// rather than launched verbatim.
 func (o *openInBrowserTool) translate(target string) (string, error) {
 	if u, err := url.Parse(target); err == nil && u.Scheme != "" && u.Scheme != "file" {
 		// A non-file URL (http/https/…) is opened verbatim.
 		return target, nil
 	}
 	// file:// scheme (or a bare path): translate the underlying filesystem path.
-	var prefix string
-	path := target
 	if strings.HasPrefix(target, "file://") {
-		// Preserve the exact file URL so the host browser opens a file:// URL.
-		if u, err := url.Parse(target); err == nil {
-			path = u.Path
-			prefix = "file://"
+		u, err := url.Parse(target)
+		if err != nil {
+			return "", fmt.Errorf("open_in_browser %s: %w", target, err)
 		}
+		// Preserve the exact file URL so the host browser opens a file:// URL.
+		host, _ := o.tr.SandboxToHost(u.Path)
+		return "file://" + host, nil
 	}
-	host, _ := o.tr.SandboxToHost(path)
-	return prefix + host, nil
+	host, _ := o.tr.SandboxToHost(target)
+	return host, nil
 }

@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -70,5 +71,134 @@ func TestOpenInBrowserTranslatesSessionTempToHost(t *testing.T) {
 	}
 	if len(br.targets) != 1 || br.targets[0] != "file:///tmp/eitri-g/report.html" {
 		t.Fatalf("browser targets = %v, want translated host path file:///tmp/eitri-g/report.html", br.targets)
+	}
+}
+
+// TestOpenInBrowserTranslateErrorsOnMalformedFileURL verifies translate surfaces
+// a real error instead of silently passing an unparseable file:// URL through to
+// the launcher (which would open garbage in the host browser).
+func TestOpenInBrowserTranslateErrorsOnMalformedFileURL(t *testing.T) {
+	o := &openInBrowserTool{br: &recordingBrowser{}, tr: NewPathTranslator(GUID("g"))}
+	host, err := o.translate("file://%zz")
+	if err == nil {
+		t.Fatalf("translate(file://%%zz) error = nil, want error; host = %q", host)
+	}
+	if !strings.Contains(err.Error(), "file://%zz") {
+		t.Fatalf("translate error = %q, want it to name the offending target", err)
+	}
+}
+
+// failingBrowser is a BrowserLauncher seam that always returns the configured
+// error, so Open-in-browser's launcher-failure path is testable.
+type failingBrowser struct {
+	err error
+}
+
+func (b *failingBrowser) Open(_ context.Context, _ string) error { return b.err }
+
+// TestOpenInBrowserStableMeta locks the tool's name and description so the
+// provider-facing tool surface cannot drift.
+func TestOpenInBrowserStableMeta(t *testing.T) {
+	o := &openInBrowserTool{br: &recordingBrowser{}, tr: NewPathTranslator(GUID("g"))}
+	if got := o.Name(); got != "open_in_browser" {
+		t.Fatalf("Name() = %q, want open_in_browser", got)
+	}
+	if got := o.Description(); got == "" {
+		t.Fatal("Description() = \"\", want a non-empty description")
+	}
+}
+
+// TestOpenInBrowserRunRejectsMissingPath verifies a call without the required
+// path argument fails fast and never touches the launcher.
+func TestOpenInBrowserRunRejectsMissingPath(t *testing.T) {
+	br := &recordingBrowser{}
+	o := &openInBrowserTool{br: br, tr: NewPathTranslator(GUID("g"))}
+	if _, err := o.Run(context.Background(), map[string]any{}); err == nil {
+		t.Fatal("Run() without path = nil error, want error")
+	}
+	if len(br.targets) != 0 {
+		t.Fatalf("launcher touched with %v, want none for a missing arg", br.targets)
+	}
+}
+
+// TestOpenInBrowserRunSurfacesLauncherError verifies a launcher failure is
+// wrapped with the tool name and target so the caller sees why the open failed.
+func TestOpenInBrowserRunSurfacesLauncherError(t *testing.T) {
+	br := &failingBrowser{err: errors.New("xdg-open: no app found")}
+	o := &openInBrowserTool{br: br, tr: NewPathTranslator(GUID("g"))}
+	_, err := o.Run(context.Background(), argMap("path", "https://example.com"))
+	if err == nil {
+		t.Fatal("Run() = nil error, want the launcher error wrapped")
+	}
+	if !strings.Contains(err.Error(), "open_in_browser https://example.com") {
+		t.Fatalf("Run() error = %q, want it to name the tool and target", err)
+	}
+	if !strings.Contains(err.Error(), "no app found") {
+		t.Fatalf("Run() error = %q, want the underlying launcher cause", err)
+	}
+}
+
+// TestOpenInBrowserRunSurfacesTranslateError verifies a malformed file URL
+// surfaces from Run (via translate) without touching the launcher.
+func TestOpenInBrowserRunSurfacesTranslateError(t *testing.T) {
+	br := &recordingBrowser{}
+	o := &openInBrowserTool{br: br, tr: NewPathTranslator(GUID("g"))}
+	if _, err := o.Run(context.Background(), argMap("path", "file://%zz")); err == nil {
+		t.Fatal("Run(file://%%zz) = nil error, want a translate error")
+	}
+	if len(br.targets) != 0 {
+		t.Fatalf("launcher touched with %v, want none for a malformed file URL", br.targets)
+	}
+}
+
+// TestOpenInBrowserTranslateSchemeURLPassesThrough verifies a non-file URL
+// (http/https/…) is opened verbatim, never remapped.
+func TestOpenInBrowserTranslateSchemeURLPassesThrough(t *testing.T) {
+	o := &openInBrowserTool{br: &recordingBrowser{}, tr: NewPathTranslator(GUID("g"))}
+	host, err := o.translate("https://example.com/page")
+	if err != nil {
+		t.Fatalf("translate(https URL) error = %v, want nil", err)
+	}
+	if host != "https://example.com/page" {
+		t.Fatalf("translate(https URL) = %q, want it passed through verbatim", host)
+	}
+}
+
+// TestOpenInBrowserTranslateBareTempPath verifies a bare session-temp path
+// (no scheme) resolves to the host session-temp form.
+func TestOpenInBrowserTranslateBareTempPath(t *testing.T) {
+	o := &openInBrowserTool{br: &recordingBrowser{}, tr: NewPathTranslator(GUID("g"))}
+	host, err := o.translate("/tmp/report.html")
+	if err != nil {
+		t.Fatalf("translate(/tmp path) error = %v, want nil", err)
+	}
+	if host != "/tmp/eitri-g/report.html" {
+		t.Fatalf("translate(/tmp path) = %q, want /tmp/eitri-g/report.html", host)
+	}
+}
+
+// TestOpenInBrowserTranslateFileNonTempPath verifies a file:// URL outside the
+// session temp is preserved unchanged (no GUID injected for non-/tmp targets).
+func TestOpenInBrowserTranslateFileNonTempPath(t *testing.T) {
+	o := &openInBrowserTool{br: &recordingBrowser{}, tr: NewPathTranslator(GUID("g"))}
+	host, err := o.translate("file:///etc/hosts")
+	if err != nil {
+		t.Fatalf("translate(file:// non-temp) error = %v, want nil", err)
+	}
+	if host != "file:///etc/hosts" {
+		t.Fatalf("translate(file:// non-temp) = %q, want file:///etc/hosts unchanged", host)
+	}
+}
+
+// TestOpenInBrowserTranslateAlreadyHostPath verifies an already-host-form temp
+// path is left untouched (the translator is idempotent).
+func TestOpenInBrowserTranslateAlreadyHostPath(t *testing.T) {
+	o := &openInBrowserTool{br: &recordingBrowser{}, tr: NewPathTranslator(GUID("g"))}
+	host, err := o.translate("/tmp/eitri-g/report.html")
+	if err != nil {
+		t.Fatalf("translate(already-host path) error = %v, want nil", err)
+	}
+	if host != "/tmp/eitri-g/report.html" {
+		t.Fatalf("translate(already-host path) = %q, want unchanged", host)
 	}
 }
