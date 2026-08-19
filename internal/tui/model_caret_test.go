@@ -90,17 +90,18 @@ func TestComposer_CaretStylePolicy(t *testing.T) {
 
 // TestComposer_CaretTracksTyping asserts the hardware caret follows the edit
 // position on a single line: at the prompt end when empty, then one column per
-// typed rune, on the composer's bottom row . The bottom row is
-// the rendered frame's last row — the band is pinned to the bottom.
+// typed rune, on the composer's top row . The composer rests at
+// minComposerRows, so a single-line draft sits at the composer's first row with
+// the empty rows below it; the band stays pinned to the bottom of the frame.
 func TestComposer_CaretTracksTyping(t *testing.T) {
 	m := caretModel(t)
-	bottom := lineCount(view(m)) - 1
-	if c := caret(t, m); c.X != 2 || c.Y != bottom {
-		t.Errorf("empty-composer caret = (%d,%d), want (2,%d)", c.X, c.Y, bottom)
+	composerTop := lineCount(view(m)) - minComposerRows
+	if c := caret(t, m); c.X != 2 || c.Y != composerTop {
+		t.Errorf("empty-composer caret = (%d,%d), want (2,%d)", c.X, c.Y, composerTop)
 	}
 	m = typeText(t, m, "hi")
-	if c := caret(t, m); c.X != 4 || c.Y != bottom {
-		t.Errorf("caret after typing %q = (%d,%d), want (4,%d)", "hi", c.X, c.Y, bottom)
+	if c := caret(t, m); c.X != 4 || c.Y != composerTop {
+		t.Errorf("caret after typing %q = (%d,%d), want (4,%d)", "hi", c.X, c.Y, composerTop)
 	}
 }
 

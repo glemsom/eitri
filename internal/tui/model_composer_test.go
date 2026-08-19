@@ -9,8 +9,8 @@ import (
 )
 
 // TestModel_enterSubmitsAndClearsComposer asserts the plain Enter key submits
-// the current prompt and clears the composer back to a single empty row —
-// never inserting a newline into the draft . The submit path
+// the current prompt and clears the composer back to its resting height of two
+// empty rows — never inserting a newline into the draft . The submit path
 // (turn command + busy flag) is the existing behaviour and must be preserved.
 func TestModel_enterSubmitsAndClearsComposer(t *testing.T) {
 	var got []string
@@ -29,8 +29,8 @@ func TestModel_enterSubmitsAndClearsComposer(t *testing.T) {
 	if v := m.composer.Value(); v != "" {
 		t.Errorf("composer must be cleared after submit, value = %q", v)
 	}
-	if h := m.composer.Height(); h != 1 {
-		t.Errorf("cleared composer should sit at 1 row, got %d", h)
+	if h := m.composer.Height(); h != minComposerRows {
+		t.Errorf("cleared composer should return to its %d-row resting height, got %d", minComposerRows, h)
 	}
 }
 
@@ -101,8 +101,8 @@ func newlineShiftEnterCsiU(t *testing.T, m Model) Model {
 // TestModel_composerMultiLineInsertAndSubmit asserts the full multi-line
 // composer cycle: Shift+Enter builds a two-line
 // draft, plain Enter submits it verbatim to the engine seam, and the composer
-// clears back to one row. The newlines the user typed must reach the turn
-// seam, not be flattened or dropped.
+// clears back to its resting height of two rows. The newlines the user typed
+// must reach the turn seam, not be flattened or dropped.
 func TestModel_composerMultiLineInsertAndSubmit(t *testing.T) {
 	var got []string
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -122,8 +122,8 @@ func TestModel_composerMultiLineInsertAndSubmit(t *testing.T) {
 	if v := m.composer.Value(); v != "" {
 		t.Errorf("composer must be cleared after multi-line submit, value = %q", v)
 	}
-	if h := m.composer.Height(); h != 1 {
-		t.Errorf("cleared composer should sit at 1 row, got %d", h)
+	if h := m.composer.Height(); h != minComposerRows {
+		t.Errorf("cleared composer should return to its %d-row resting height, got %d", minComposerRows, h)
 	}
 }
 
@@ -146,15 +146,20 @@ func TestModel_composerGrowsWithDraftLines(t *testing.T) {
 	})
 	m = resize(t, m)
 
-	if h := m.composer.Height(); h != 1 {
-		t.Fatalf("empty composer should sit at 1 row, got %d", h)
+	if h := m.composer.Height(); h != minComposerRows {
+		t.Fatalf("empty composer should rest at %d rows, got %d", minComposerRows, h)
 	}
 
 	m = typeText(t, m, "line one")
 	m = newlineShiftEnter(t, m)
 	m = typeText(t, m, "line two")
 	if h := m.composer.Height(); h != 2 {
-		t.Errorf("two-line draft should grow the composer to 2 rows, got %d", h)
+		t.Errorf("two-line draft should hold the composer at 2 rows, got %d", h)
+	}
+	m = newlineShiftEnter(t, m)
+	m = typeText(t, m, "line three")
+	if h := m.composer.Height(); h != 3 {
+		t.Errorf("three-line draft should grow the composer past the resting height to 3 rows, got %d", h)
 	}
 
 	// Push the draft far past the bound: the composer must cap, never exceed.
@@ -222,6 +227,28 @@ func TestModel_composerLongDraftBandPinned(t *testing.T) {
 	// The whole content never exceeds the terminal: nothing is pushed off-screen.
 	if n := len(strings.Split(trimmed, "\n")); n > 12 {
 		t.Errorf("view (%d lines) exceeds terminal height 12 with an over-bound draft, got:\n%q", n, trimmed)
+	}
+}
+
+// TestModel_composerShortTerminalClamp asserts the short-terminal clamp of the
+// resting height still holds: the composer never pushes the band off-screen
+// even though its resting height is now two rows. On a terminal too short to
+// hold the whole band, the composer shrinks below its resting height so the
+// band fits the terminal.
+func TestModel_composerShortTerminalClamp(t *testing.T) {
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+	})
+	// At height 2 there is no room for the resting-height band (separator row +
+	// 2-row composer = 3 rows), so the clamp must shrink the composer down and
+	// never push the band off-screen.
+	m = resizeTo(t, m, 80, 2)
+
+	content := view(m)
+	if n := len(strings.Split(strings.TrimRight(content, "\n"), "\n")); n > 2 {
+		t.Errorf("composer pushed the band off a 2-row terminal: view is %d rows:\n%q", n, content)
 	}
 }
 

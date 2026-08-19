@@ -192,24 +192,25 @@ func TestModelRailEndsOneRowAboveBandTall(t *testing.T) {
 // TestModelComposerCaretStaysCorrectWithRail pins: widening the
 // band to the full terminal width leaves the composer at column 0 (band
 // bottom-pinned), so the hardware caret geometry is unchanged with the rail
-// visible at a tall height — the caret stays at the prompt column and follows
-// typing as before.
+// visible at a tall height — the caret stays at the prompt column on the
+// composer's first row (the top row of a minComposerRows-resting composer) and
+// follows typing as before.
 func TestModelComposerCaretStaysCorrectWithRail(t *testing.T) {
 	m := railBandModel(t, 120, 40)
-	bottom := lineCount(view(m)) - 1
+	composerTop := lineCount(view(m)) - minComposerRows
 
 	c := m.View().Cursor
 	if c == nil {
 		t.Fatal("hardware caret must be attached while the composer is the active surface")
 	}
-	if c.X != 2 || c.Y != bottom {
-		t.Errorf("empty-composer caret with rail = (%d,%d), want (2,%d)", c.X, c.Y, bottom)
+	if c.X != 2 || c.Y != composerTop {
+		t.Errorf("empty-composer caret with rail = (%d,%d), want (2,%d)", c.X, c.Y, composerTop)
 	}
 
 	m = typeText(t, m, "hi")
 	after := caret(t, m)
-	if after.X != 4 || after.Y != bottom {
-		t.Errorf("caret after typing %q with rail = (%d,%d), want (4,%d)", "hi", after.X, after.Y, bottom)
+	if after.X != 4 || after.Y != composerTop {
+		t.Errorf("caret after typing %q with rail = (%d,%d), want (4,%d)", "hi", after.X, after.Y, composerTop)
 	}
 }
 
