@@ -119,7 +119,7 @@ func TestModelStatusStripBusySpinner(t *testing.T) {
 	var band strings.Builder
 	m.renderBand(&band)
 	bs := band.String()
-	if !strings.Contains(bs, "working") {
+	if !strings.Contains(bs, " Working") {
 		t.Errorf("busy status strip missing spinner, got: %q", bs)
 	}
 	if !strings.Contains(bs, "ctrl+s settings") {

@@ -19,7 +19,7 @@ func TestBusySpinner_animatesAndStops(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m, _ = submitBusy(t, m)
 
-	if !strings.Contains(view(m), "⠋ working") {
+	if !strings.Contains(view(m), "⠋ Working") {
 		t.Fatalf("busy state must show the first spinner frame, got: %q", view(m))
 	}
 
@@ -37,7 +37,7 @@ func TestBusySpinner_animatesAndStops(t *testing.T) {
 	}
 	// The rendered line carries the current braille glyph.
 	frame := string(busySpinnerFrames[m.tx.spinner])
-	if !strings.Contains(view(m), frame+" working") {
+	if !strings.Contains(view(m), frame+" Working") {
 		t.Errorf("busy line must render frame %q, got: %q", frame, view(m))
 	}
 
@@ -79,13 +79,17 @@ func TestBusySpinner_reducedMotionFallsBack(t *testing.T) {
 }
 
 // newestBusyLine extracts the busy indicator's plain text from the rendered
-// view: the transcript row carrying the spinner/static line (the band below
-// holds the composer, which is not the indicator).
+// view: the transcript row carrying the spinner+stage verb (Working / Reasoning
+// / Answering, issue #365) or the static line (the band below holds the
+// composer, which is not the indicator).
 func newestBusyLine(m Model) string {
+	verbs := []string{"Working", "Reasoning", "Answering", "… thinking"}
 	for _, row := range strings.Split(strings.TrimRight(view(m), "\n"), "\n") {
 		line := strings.TrimSpace(plain(row))
-		if strings.Contains(line, "working") || strings.Contains(line, "… thinking") {
-			return line
+		for _, verb := range verbs {
+			if strings.Contains(line, verb) {
+				return line
+			}
 		}
 	}
 	return ""
@@ -256,9 +260,10 @@ func TestBusySpinner_pulseRendersBright(t *testing.T) {
 		t.Fatal("busyPulse must be non-zero after first delta")
 	}
 
-	// The spinner text is present in the view during pulse.
+	// The spinner text is present in the view during pulse. The first delta is
+	// answer content, so the stage label reads Answering (issue #365).
 	content := view(m)
-	if !strings.Contains(content, "working") {
+	if !strings.Contains(content, "Answering") {
 		t.Fatalf("busy line must render during pulse, got: %q", content)
 	}
 
@@ -273,7 +278,7 @@ func TestBusySpinner_pulseRendersBright(t *testing.T) {
 
 	// Spinner still renders after pulse expires (now faint style).
 	content = view(m)
-	if !strings.Contains(content, "working") {
+	if !strings.Contains(content, "Answering") {
 		t.Fatalf("busy line must still render after pulse, got: %q", content)
 	}
 }
