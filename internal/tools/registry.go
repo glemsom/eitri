@@ -163,9 +163,11 @@ func strArg(args map[string]any, key string) (string, error) {
 }
 
 // strictSchema builds a strict-shaped JSON-Schema object:
-// additionalProperties:false and every field required, emulating optionals with
-// unions when needed later. This is the canonical per-tool schema target T5
-// re-expresses per dialect.
+// additionalProperties:false and a required list carrying only the genuinely-
+// mandatory fields; optional fields are declared as ordinary properties and
+// may be omitted by a caller. Optionals stay null-tolerant (nullable unions)
+// so a model that still sends null is not rejected. This is the canonical
+// per-tool schema target T5 re-expresses per dialect.
 func strictSchema(properties map[string]any, required []string) map[string]any {
 	return map[string]any{
 		"type":                 "object",
