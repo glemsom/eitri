@@ -333,7 +333,17 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 		if msg.role != "you" && msg.thinkingRequested && msg.reasoning != "" {
 			emit(thinkingHeader(t.theme, msg.reasoning, t.reasoningEffort))
 			if t.thinkingExpandedFor(msg) {
-				emit(msg.reasoning + "\n")
+				// The expanded thinking body frames in a pane: the live block
+				// (issue #364) — the current turn's reasoning the user watches
+				// grow — uses the dimmed streaming border, a completed expanded
+				// block the plain agent border. Mirroring the answer pane's
+				// construction keeps the two blocks visually consistent.
+				pane := t.theme.agentPaneStyle
+				if msg.streaming {
+					pane = t.theme.streamingPaneStyle
+				}
+				pane = pane.Border(lipgloss.Border{Left: g("│", "|")})
+				emit(fmt.Sprintf("%s\n", pane.Render(strings.TrimRight(msg.reasoning, "\n"))))
 			}
 		}
 		// Wrap the history content at the transcript width, decoupled from the
@@ -665,9 +675,19 @@ func (t *Transcript) toggleExpandAll() bool {
 // with the mode ON renders expanded even though its per-turn
 // thinkingExpanded flag defaults false, because the mode overrides it at
 // render time.
+//
+// A turn whose reasoning deltas are still streaming (issue #364) additionally
+// auto-expands its block so the user watches the thinking grow live; tab still
+// collapses such a block through the per-turn thinkingCollapsed override, and
+// the block collapses back to the hint once the turn is no longer streaming.
 func (t Transcript) thinkingExpandedFor(msg message) bool {
 	if msg.thinkingCollapsed {
 		return false
+	}
+	if msg.streaming && msg.reasoning != "" {
+		// The current turn's reasoning is streaming: auto-expand the live
+		// panel (issue #364) collapsed back once the answer lands.
+		return true
 	}
 	return t.expandAll || msg.thinkingExpanded
 }
@@ -681,12 +701,19 @@ func (t Transcript) thinkingExpandedFor(msg message) bool {
 // log's toggleCollapse). It never touches other messages and marks the shared
 // layout dirty so the block's new row span is re-recorded before the next
 // hit-test.
+//
+// A reasoning block that is still streaming (issue #364) always toggles the
+// per-turn thinkingCollapsed override — regardless of the mode — so tab can
+// collapse the auto-expanded live panel and re-expand it again.
 func (t *Transcript) toggleThinking(i int) {
 	if i < 0 || i >= len(t.messages) {
 		return
 	}
 	msg := &t.messages[i]
-	if t.expandAll {
+	if msg.streaming && msg.reasoning != "" {
+		// Live reasoning: tab collapses/re-expands the auto-expanded block.
+		msg.thinkingCollapsed = !msg.thinkingCollapsed
+	} else if t.expandAll {
 		msg.thinkingCollapsed = !msg.thinkingCollapsed
 	} else {
 		msg.thinkingExpanded = !msg.thinkingExpanded

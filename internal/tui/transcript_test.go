@@ -681,6 +681,165 @@ func TestRenderHistory_completedAssistantUsesAgentPane(t *testing.T) {
 	}
 }
 
+// reasoningLineInfo returns the ANSI border color of the rendered line that
+// carries the given reasoning body text, and whether that line is framed by
+// the pane's left border glyph (i.e. the reasoning body rendered inside a
+// pane rather than raw).
+func reasoningLineInfo(s, body string) (string, bool) {
+	for _, line := range strings.Split(s, "\n") {
+		if !strings.Contains(line, body) {
+			continue
+		}
+		framed := strings.Contains(line, g("\u2502", "|"))
+		start := strings.Index(line, "\x1b[38;2;")
+		if start == -1 {
+			return "", framed
+		}
+		end := strings.IndexByte(line[start+len("\x1b[38;2;"):], 'm')
+		if end == -1 {
+			return "", framed
+		}
+		return line[start+len("\x1b[38;2;") : start+len("\x1b[38;2;")+end], framed
+	}
+	return "", false
+}
+
+// TestRenderHistory_liveReasoningBlockUsesStreamingPane asserts that the
+// current turn's expanded reasoning block renders inside the dimmed streaming
+// pane border while reasoning deltas stream (issue #364 AC1): the live
+// thinking panel the user watches grow. A completed (non-streaming) expanded
+// reasoning block keeps the plain agent pane border instead.
+func TestRenderHistory_liveReasoningBlockUsesStreamingPane(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	th := themeFor(config.DefaultTheme)
+
+	render := func(streaming bool) string {
+		var hist strings.Builder
+		tx := newStreamPaneTestTranscript(th, []message{{
+			role:              "eitri",
+			reasoning:         "the live reasoning body",
+			streaming:         streaming,
+			thinkingRequested: true,
+			thinkingExpanded:  true,
+		}})
+		tx.renderHistory(&hist, nil, nil)
+		return hist.String()
+	}
+
+	const body = "the live reasoning body"
+
+	live := render(true)
+	liveColor, liveFramed := reasoningLineInfo(live, body)
+	if !liveFramed {
+		t.Errorf("live reasoning body must render inside a pane, got line info for: %q", live)
+	}
+	if liveColor != borderColorStr(th.streamingPaneStyle) {
+		t.Errorf("live reasoning block must use streamingPaneStyle color, got %q", liveColor)
+	}
+
+	done := render(false)
+	doneColor, doneFramed := reasoningLineInfo(done, body)
+	if !doneFramed {
+		t.Errorf("completed reasoning body must render inside a pane, got line info for: %q", done)
+	}
+	if doneColor != borderColorStr(th.agentPaneStyle) {
+		t.Errorf("completed reasoning block must use agentPaneStyle color, got %q", doneColor)
+	}
+}
+
+// TestRenderHistory_liveReasoningRespectsTabCollapse asserts the tab thinking
+// toggle still collapses a live streaming reasoning block (issue #364 AC3): a
+// streaming-reasoning message carrying the per-turn collapse override renders
+// collapsed even while it is streaming.
+func TestRenderHistory_liveReasoningRespectsTabCollapse(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	th := themeFor(config.DefaultTheme)
+	var hist strings.Builder
+	tx := newStreamPaneTestTranscript(th, []message{{
+		role:              "eitri",
+		content:           "final answer",
+		reasoning:         "hidden reasoning",
+		streaming:         true,
+		thinkingRequested: true,
+		thinkingExpanded:  true,
+		thinkingCollapsed: true,
+	}})
+	tx.renderHistory(&hist, nil, nil)
+	if strings.Contains(ansiStrip(hist.String()), "hidden reasoning") {
+		t.Errorf("tab-collapsed live reasoning block must render collapsed, got: %q", hist.String())
+	}
+}
+
+// TestRenderHistory_liveReasoningBlockRespectsThinkingGate asserts the
+// thinking-off gate also holds for the live panel (issue #364 AC4): a
+// streaming message on a thinking-off turn must not render a reasoning block
+// even though it auto-expanded while reasoning streamed.
+func TestRenderHistory_liveReasoningBlockRespectsThinkingGate(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	th := themeFor(config.DefaultTheme)
+	var hist strings.Builder
+	tx := newStreamPaneTestTranscript(th, []message{{
+		role:              "eitri",
+		content:           "final answer",
+		reasoning:         "sneaked reasoning",
+		streaming:         true,
+		thinkingRequested: false,
+		thinkingExpanded:  true,
+	}})
+	tx.renderHistory(&hist, nil, nil)
+	rendered := hist.String()
+	if strings.Contains(ansiStrip(rendered), "sneaked reasoning") {
+		t.Errorf("thinking-off live turn must not render the reasoning block, got: %q", rendered)
+	}
+}
+
+// TestTranscript_liveReasoningBlockTogglesViaTab asserts that while a turn's
+// reasoning streams, tab toggles the auto-expanded live panel through the
+// per-turn collapse override and re-expands it back (issue #364 AC3), and that
+// a completed turn's block collapses back to the hint automatically (AC2).
+func TestTranscript_liveReasoningBlockTogglesViaTab(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	th := themeFor(config.DefaultTheme)
+
+	tx := newStreamPaneTestTranscript(th, []message{{
+		role:              "eitri",
+		reasoning:         "visible reasoning",
+		streaming:         true,
+		thinkingRequested: true,
+	}})
+
+	// Live and auto-expanded by default: the body is visible.
+	var live strings.Builder
+	tx.renderHistory(&live, nil, nil)
+	if !strings.Contains(ansiStrip(live.String()), "visible reasoning") {
+		t.Fatalf("streaming reasoning must render its body expanded, got: %q", live.String())
+	}
+
+	// Tab collapses the live block.
+	tx.toggleThinking(0)
+	var collapsed strings.Builder
+	tx.renderHistory(&collapsed, nil, nil)
+	if strings.Contains(ansiStrip(collapsed.String()), "visible reasoning") {
+		t.Errorf("tab must collapse the live reasoning block, got: %q", collapsed.String())
+	}
+
+	// Tab again re-expands it.
+	tx.toggleThinking(0)
+	var reexpanded strings.Builder
+	tx.renderHistory(&reexpanded, nil, nil)
+	if !strings.Contains(ansiStrip(reexpanded.String()), "visible reasoning") {
+		t.Errorf("tab must re-expand the live reasoning block, got: %q", reexpanded.String())
+	}
+
+	// Once the turn completes (not streaming) the block collapses to the hint.
+	tx.messages[0].streaming = false
+	var done strings.Builder
+	tx.renderHistory(&done, nil, nil)
+	if strings.Contains(ansiStrip(done.String()), "visible reasoning") {
+		t.Errorf("a completed turn's reasoning block must collapse to the hint, got: %q", done.String())
+	}
+}
+
 // TestRenderHistory_streamingErrorPrefixUsesDimmedErrorPane asserts that a
 // streaming assistant message with the error prefix renders with the dimmed
 // streaming error pane style: error-prefix messages that are still streaming

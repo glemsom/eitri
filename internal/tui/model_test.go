@@ -155,21 +155,19 @@ func TestModel_thinkingHintReportsTokensAndEffort(t *testing.T) {
 	}
 }
 
-// TestModel_thinkingAutoCollapsesOnAnswer asserts an expanded per-turn thinking
-// block collapses back to its hint when the turn's final answer lands (issue
-// #85 AC3: "auto-collapses once the turn's final answer lands").
+// TestModel_thinkingAutoCollapsesOnAnswer asserts a live streaming reasoning
+// block auto-collapses back to its hint when the turn's final answer lands
+// (issue #364 AC2; origin issue #85 AC3: "auto-collapses once the turn's final
+// answer lands").
 func TestModel_thinkingAutoCollapsesOnAnswer(t *testing.T) {
 	m := newStreamingModel()
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 	m, _ = submitBusy(t, m)
-	// First reasoning delta creates the block, then tab expands it (
-	// AC3: the user can watch reasoning on demand).
+	// The first reasoning delta auto-expands the live block.
 	m = applyReasoningDelta(t, m, "hidden reasoning")
-	toggled, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	m = asModel(t, toggled)
 	if !strings.Contains(view(m), "hidden reasoning") {
-		t.Errorf("expanded block should show reasoning before answer lands, got: %q", view(m))
+		t.Errorf("live block should show reasoning before answer lands, got: %q", view(m))
 	}
 	// The final answer lands; the block auto-collapses.
 	nm, _ := m.Update(turnDoneMsg{prompt: "hi", answer: "final answer", reasoning: "hidden reasoning"})
