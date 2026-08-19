@@ -147,6 +147,7 @@ func TestModel_helpAppendMarksLayoutDirty(t *testing.T) {
 	})
 	mslash = resize(t, mslash)
 	mslash = typeText(t, mslash, "/help")
+	mslash.tx.layout.dirty = false // isolate the append: only the seam may re-mark it
 	mslash = keypress(t, mslash, "enter")
 	if !mslash.tx.layout.dirty {
 		t.Error("`/help` must mark the transcript layout dirty so the help block re-wraps")
@@ -160,6 +161,7 @@ func TestModel_helpAppendMarksLayoutDirty(t *testing.T) {
 		Config: cfgFixture(),
 	})
 	mq = resize(t, mq)
+	mq.tx.layout.dirty = false // isolate the append: only the seam may re-mark it
 	mq = keypress(t, mq, "?")
 	if !mq.tx.layout.dirty {
 		t.Error("`?` must mark the transcript layout dirty so the help block re-wraps")
