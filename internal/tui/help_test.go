@@ -58,6 +58,63 @@ func TestHelpView_sections(t *testing.T) {
 	}
 }
 
+// TestHelpView_markdownHeaders asserts the section titles are Markdown `#`
+// headers (issue #387) so the transcript's Markdown→ANSI pass renders them in
+// the theme's accent color — not the old emoji-prefixed uppercase label rows.
+func TestHelpView_markdownHeaders(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	got := helpView()
+
+	for _, want := range []string{"# COMMANDS", "# KEYBINDINGS", "# CONCEPTS"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("helpView() missing Markdown header %q", want)
+		}
+	}
+	// The old section emoji prefixes are gone: a header is a `#` line, not a
+	// glyph-prefixed run (issue #387).
+	for _, gone := range []string{"$ COMMANDS", "k KEYBINDINGS", "< CONCEPTS"} {
+		if strings.Contains(got, gone) {
+			t.Errorf("helpView() must drop legacy section prefix %q", gone)
+		}
+	}
+}
+
+// TestHelpView_codeSpans asserts command and keybinding names are wrapped in
+// backtick code spans (issue #387) so the Markdown pass renders them in code
+// style, distinct from their descriptions.
+func TestHelpView_codeSpans(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	got := helpView()
+
+	for _, name := range []string{"/settings", "/copy", "/login", "/help"} {
+		if want := "`" + name + "`"; !strings.Contains(got, want) {
+			t.Errorf("helpView() missing code span %q", want)
+		}
+	}
+	for _, name := range []string{"tab", "shift+enter", "?", "pgup/pgdn", "ctrl+e", "ctrl+x", "ctrl+z", "ctrl+s", "ctrl+o"} {
+		if want := "`" + name + "`"; !strings.Contains(got, want) {
+			t.Errorf("helpView() missing keybinding code span %q", want)
+		}
+	}
+}
+
+// TestHelpView_renderedHeaders asserts the stored Markdown headers actually
+// survive the transcript's Markdown→ANSI pass, so the section titles render on
+// screen instead of being dropped or left literal (issue #387).
+func TestHelpView_renderedHeaders(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	out, err := RenderMarkdown(helpView(), 80, "dark")
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	plain := ansiStrip(out)
+	for _, want := range []string{"COMMANDS", "KEYBINDINGS", "CONCEPTS"} {
+		if !strings.Contains(plain, want) {
+			t.Errorf("rendered help missing section %q", want)
+		}
+	}
+}
+
 // TestHelpView_commands lists the four built-in slash commands.
 func TestHelpView_commands(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
@@ -186,6 +243,8 @@ func TestHelpView_keybindingsComplete(t *testing.T) {
 
 // keybindingsSection returns the KEYBINDINGS block (from its header to the
 // trailing blank line) so uniqueness/count checks are scoped to the section.
+// It skips the blank line that separates the Markdown `#` header from its body
+// (issue #387) before collecting rows.
 func keybindingsSection(t *testing.T, got string) string {
 	t.Helper()
 	lines := strings.Split(got, "\n")
@@ -196,12 +255,16 @@ func keybindingsSection(t *testing.T, got string) string {
 			started = true
 			continue
 		}
-		if started && ln == "" {
+		if !started {
+			continue
+		}
+		if ln == "" && len(out) == 0 {
+			continue // blank line right after the `# KEYBINDINGS` header
+		}
+		if ln == "" {
 			return strings.Join(out, "\n")
 		}
-		if started {
-			out = append(out, ln)
-		}
+		out = append(out, ln)
 	}
 	return strings.Join(out, "\n")
 }
@@ -239,7 +302,8 @@ func categoryLines(t *testing.T, got, name string) []string {
 
 // sectionLines returns the row lines of a /help section (content between the
 // section header and the following blank separator), trimming the two-space
-// indent used by every row.
+// indent used by every row. It skips the blank line that follows a Markdown
+// `#` header (issue #387) before collecting rows.
 func sectionLines(t *testing.T, got, header string) []string {
 	t.Helper()
 	lines := strings.Split(got, "\n")
@@ -250,12 +314,17 @@ func sectionLines(t *testing.T, got, header string) []string {
 			started = true
 			continue
 		}
-		if started && ln == "" {
+		if !started {
+			continue
+		}
+		// Skip the blank line right after the Markdown `#` header.
+		if ln == "" && len(out) == 0 {
+			continue
+		}
+		if ln == "" {
 			break
 		}
-		if started && ln != "" {
-			out = append(out, strings.TrimPrefix(ln, "  "))
-		}
+		out = append(out, strings.TrimPrefix(ln, "  "))
 	}
 	if len(out) == 0 {
 		t.Fatalf("section %q not found in help output", header)

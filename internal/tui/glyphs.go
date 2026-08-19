@@ -67,19 +67,6 @@ func promptHint() string { return g("💬", ">") }
 // keyHint returns the ⌨ glyph for the keybinding hint line.
 func keyHint() string { return g("⌨", "k") }
 
-// sectionEmoji returns the emoji prefix for a help section header.
-func sectionEmoji(name string) string {
-	switch name {
-	case "COMMANDS":
-		return g("🔧", "$")
-	case "KEYBINDINGS":
-		return g("⌨", "k")
-	case "CONCEPTS":
-		return g("📖", "<")
-	}
-	return ""
-}
-
 // categoryEmoji returns the emoji prefix for a KEYBINDINGS category header
 // (issue #386), with its ASCII fallback, so the labeled sub-groups share the
 // repository's glyph conventions.
@@ -93,21 +80,6 @@ func categoryEmoji(name string) string {
 		return g("▦", "p")
 	case "ACTIONS":
 		return g("⚡", "a")
-	}
-	return ""
-}
-
-// commandEmoji returns the category emoji prefix for a help command row.
-func commandEmoji(cmd string) string {
-	switch cmd {
-	case "/settings":
-		return g("⚙", "*")
-	case "/copy":
-		return g("📋", "#")
-	case "/login":
-		return g("🔑", "+")
-	case "/help":
-		return g("❓", "?")
 	}
 	return ""
 }

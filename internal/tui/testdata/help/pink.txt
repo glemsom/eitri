@@ -1,27 +1,28 @@
-$ COMMANDS
-  * /settings  open settings panel
-  # /copy      copy transcript to clipboard
-  + /login     interactive provider login
-  ? /help      show this help message
+# COMMANDS
 
---
-k KEYBINDINGS
+  `/settings`  open settings panel
+  `/copy`      copy transcript to clipboard
+  `/login`     interactive provider login
+  `/help`      show this help message
+
+# KEYBINDINGS
+
   c COMPOSER
-  tab          toggle thinking
-  shift+enter  insert newline
+  `tab`          toggle thinking
+  `shift+enter`  insert newline
   n NAVIGATION
-  ?          show help
-  pgup/pgdn  scroll history
+  `?`          show help
+  `pgup/pgdn`  scroll history
   p PANES
-  ctrl+e  toggle expanded view
-  ctrl+x  narrow pane
-  ctrl+z  widen pane
+  `ctrl+e`  toggle expanded view
+  `ctrl+x`  narrow pane
+  `ctrl+z`  widen pane
   a ACTIONS
-  ctrl+s  open settings
-  ctrl+o  copy transcript
+  `ctrl+s`  open settings
+  `ctrl+o`  copy transcript
 
---
-< CONCEPTS
-  ctrl+e mode  expand/collapse all tool result cards
-  drag-select  click and drag to select text
-  right rail   stats, context, and model info
+# CONCEPTS
+
+  `ctrl+e mode`  expand/collapse all tool result cards
+  `drag-select`  click and drag to select text
+  `right rail`   stats, context, and model info
