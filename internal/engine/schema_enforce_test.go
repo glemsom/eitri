@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/glemsom/eitri/internal/provider"
@@ -154,5 +155,79 @@ func TestRunAgentLocalValidationStaysMandatoryWhenEnforcementActive(t *testing.T
 	}
 	if len(rec.calls) != 0 {
 		t.Fatalf("executor called with %+v, want no calls for a schema-violating call even with provider enforcement active", rec.calls)
+	}
+}
+
+// runReadEnforcement drives one read tool call through the agent loop with
+// provider-side Tool Schema Enforcement active on a capable provider, returning
+// the recorded executor calls, the resubmitted tool results, and the final
+// answer so a test can pin the read call's wire tolerance end to end.
+func runReadEnforcement(t *testing.T, args string) ([]callRecord, []string, string) {
+	t.Helper()
+	var results []string
+	capable := &capableScriptedSchema{Scripted: provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
+		results = toolResultContents(req.Messages)
+		if len(results) == 0 {
+			return provider.StreamFunc(
+				provider.Chunk{FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{
+					{ID: "call_read", Type: "function", Name: "read", Arguments: args},
+				}, Done: true},
+			), nil
+		}
+		return provider.StreamFunc(
+			provider.Chunk{Content: "read it"},
+			provider.Chunk{FinishReason: "stop", Done: true, Usage: &provider.Usage{PromptTokens: 4, CompletionTokens: 3}},
+		), nil
+	})}
+	e := New(capable, &mockTranscript{})
+	rec := &mockToolRecorder{}
+	res, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "go"}, AgentOptions{
+		Tools:                 strictToolDefs(),
+		Executor:              rec,
+		MaxTurns:              5,
+		ToolSchemaEnforcement: true,
+	})
+	if err != nil {
+		t.Fatalf("RunAgent() error = %v, want nil", err)
+	}
+	return rec.calls, results, res.Answer
+}
+
+// TestReadRequiredSubsetExecutesUnderSchemaEnforcement pins that, with
+// provider-side Tool Schema Enforcement active, a required-subset read call
+// that omits the optional line-range fields (whole-file form) validates and
+// executes end to end: the call reaches the executor and no schema-error result
+// is resubmitted.
+func TestReadRequiredSubsetExecutesUnderSchemaEnforcement(t *testing.T) {
+	calls, results, answer := runReadEnforcement(t, `{"path":"f.txt"}`)
+	if answer != "read it" {
+		t.Fatalf("Answer = %q, want recovery answer", answer)
+	}
+	if len(calls) != 1 || calls[0].name != "read" {
+		t.Fatalf("executor calls = %+v, want exactly one read call", calls)
+	}
+	for _, r := range results {
+		if strings.Contains(r, "invalid tool arguments") {
+			t.Fatalf("schema-error result resubmitted for a required-subset read: %q", r)
+		}
+	}
+}
+
+// TestReadNullOptionalsToleratedUnderSchemaEnforcement pins that a read call
+// that still sends null for the optional fields remains tolerated on the wire
+// under Tool Schema Enforcement: it validates, executes, and produces no
+// schema-error result.
+func TestReadNullOptionalsToleratedUnderSchemaEnforcement(t *testing.T) {
+	calls, results, answer := runReadEnforcement(t, `{"path":"f.txt","start_line":null,"end_line":null}`)
+	if answer != "read it" {
+		t.Fatalf("Answer = %q, want recovery answer", answer)
+	}
+	if len(calls) != 1 || calls[0].name != "read" {
+		t.Fatalf("executor calls = %+v, want exactly one read call", calls)
+	}
+	for _, r := range results {
+		if strings.Contains(r, "invalid tool arguments") {
+			t.Fatalf("schema-error result resubmitted for a null-optional read: %q", r)
+		}
 	}
 }

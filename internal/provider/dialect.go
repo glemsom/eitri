@@ -22,8 +22,10 @@ const (
 )
 
 // DialectDefinition is one tool's canonical, provider-agnostic form. Schema is
-// the strict-shaped JSON-Schema (additionalProperties:false, all-required,
-// nullable unions for optionals) and is the single source for every dialect.
+// the strict-shaped JSON-Schema (additionalProperties:false; required carries
+// only the genuinely-mandatory fields, with optional fields declared as
+// ordinary properties that a caller may omit) and is the single source for
+// every dialect.
 type DialectDefinition struct {
 	Name        string
 	Description string
