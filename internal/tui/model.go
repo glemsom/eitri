@@ -293,8 +293,9 @@ type Dependencies struct {
 // max-turns continuation prompt, and the detected-skills slash completion, plus
 // the composable seams it depends on (turn, deps, theme, telemetry, stream,
 // toolFeed, clipboard). EVERY transcript concern (history, tool log, rail,
-// width/height, follow, drag-select) lives on the owned value
-// Transcript field tx: the transcript is a genuinely owned,
+// width/height, follow, drag-select) lives on the owned
+// *Transcript pointer field tx (a single stable root allocated once at
+// construction): the transcript is a genuinely owned,
 // mutating surface rather than a per-frame value rebuilt from duplicated Model
 // fields. It renders through the alternate screen (T1 pivot, ), so
 // every frame is a clean full-surface repaint and the history scroll/clip lives
@@ -306,9 +307,12 @@ type Model struct {
 
 	// tx is the owned transcript surface: the single owner of the
 	// history, tool log, right rail, width/height, follow position,
-	// drag-select, and their render/navigation. Model mutates it in
+	// drag-select, and their render/navigation. It is a single stable
+	// pointer root allocated once at construction (never reassigned), so
+	// all transcript state survives Bubble Tea value copies from the one
+	// root instead of via per-field heap pointers. Model mutates it in
 	// place and never keeps a second transcript state copy. See transcript.go.
-	tx Transcript
+	tx *Transcript
 
 	// settings state: non-nil means the Settings surface is open.
 	settings *settingsForm
@@ -423,9 +427,11 @@ func NewModelCfg(d Dependencies) Model {
 	comp.SetStyles(st)
 
 	// The owned transcript surface: the single owner of the
-	// history, tool log, rail, width/height, follow, and drag-select. Model
-	// mutates it in place; there is no duplicate transcript state elsewhere.
-	transcript := Transcript{
+	// history, tool log, rail, width/height, follow, and drag-select. It is
+	// allocated once here and held as a stable pointer root on the Model;
+	// Model mutates it in place and never reassigns it. There is no
+	// duplicate transcript state elsewhere.
+	transcript := &Transcript{
 		theme:           th,
 		configTheme:     d.Config.Theme,
 		workspacePath:   d.WorkspacePath,
@@ -451,9 +457,8 @@ func NewModelCfg(d Dependencies) Model {
 		toolFeed:     d.Tools,
 		clipboard:    newClipboard(d),
 	}
-	// The layout starts stale, but the pointer share means the Transcript's
-	// first hit-test builds it lazily; the explicit dirty below keeps the
-	// semantic explicit .
+	// The layout starts stale; the Transcript's first hit-test builds it lazily,
+	// and the explicit dirty below keeps the semantic explicit .
 	m.td.SetThinkingEnabled(d.Config.ThinkingEnabled)
 	m.tx.layout.dirty = true
 	// An unknown hand-edited theme warns once on startup via the status strip,
@@ -855,7 +860,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case turnDoneMsg:
-		m.td.handleTurnDone(&m.tx, msgi)
+		m.td.handleTurnDone(m.tx, msgi)
 		m.syncComposerRail()
 		return m, nil
 	case clockTickMsg:
@@ -1082,7 +1087,7 @@ func (s *settingsForm) save(m *Model) {
 // cursor, and anchors the tool log. Model adds the stream/spinner batch
 // and syncs the composer rail.
 func (m *Model) startTurn(prompt string, payload string) tea.Cmd {
-	m.td.startTurn(&m.tx, prompt, payload)
+	m.td.startTurn(m.tx, prompt, payload)
 	m.syncComposerRail()
 	// With a live answer stream, the composer turn and the stream waiter run
 	// concurrently so the reply grows in place as deltas arrive;
@@ -1101,7 +1106,7 @@ func (m *Model) stopTurn() { m.td.stopTurn() }
 // appendStreamDelta delegates to the TurnDispatch, which grows the
 // in-progress assistant message by one streamed delta.
 func (m *Model) appendStreamDelta(kind StreamKind, delta string) {
-	m.td.appendStreamDelta(&m.tx, kind, delta)
+	m.td.appendStreamDelta(m.tx, kind, delta)
 }
 
 // skillSnapshot captures the detected skills at construction so the slash

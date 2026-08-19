@@ -17,18 +17,22 @@ import (
 // the right context rail, the follow position, the drag-select, and the
 // render of the agent-history scroll region.
 //
-// Model holds a live Transcript value as its owned tx field: the
+// Model holds a live *Transcript pointer as its owned tx field: the
 // Transcript is a genuinely owned, mutating surface rather than a per-frame
-// value rebuilt from duplicated Model fields. NewModelCfg constructs it once;
-// Model mutates it in place (appends messages, applies tool updates, drives
-// navigation) and the render paths read it directly.
+// value rebuilt from duplicated Model fields. NewModelCfg allocates it once;
+// Model holds it as a single stable root and mutates it in place (appends
+// messages, applies tool updates, drives navigation) while the render paths
+// read it directly. Because Model is a value copied every frame by Bubble Tea,
+// the pointer root is what makes ALL transcript state — not just the
+// per-field pointers below — survive those value copies.
 //
 // The one pointer field is the persisted viewport (histViewport): it is shared
-// with the value copies Bubble Tea makes during View (which runs on a value
-// Model holding the same tx), so scroll-state changes made during a render
-// survive the next re-render cycle. The layout cache (layout) and drag-select
-// (dragSel) is likewise a heap-allocated pointer so its state survives those
-// value copies.
+// across the value copies Bubble Tea makes, so scroll-state changes made
+// during a render survive the next re-render cycle. The layout cache (layout)
+// and drag-select (dragSel) are likewise heap-allocated pointers so their
+// state survives those value copies. (These per-field pointers are now
+// redundant with the stable tx root and are simplified in the follow-up
+// tickets #370-372.)
 //
 // The Transcript also owns the transcript's navigation: the
 // pointer-receiver navigateHistory / navigateMouse drive the shared viewport
