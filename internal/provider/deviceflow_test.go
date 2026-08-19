@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -68,6 +69,30 @@ func TestDeviceFlowPollExchangesTokens(t *testing.T) {
 	}
 	if cfg.ExpiresAt < 1 {
 		t.Fatalf("Poll() ExpiresAt = %d, want a future expiry", cfg.ExpiresAt)
+	}
+}
+
+// TestDeviceFlowPollTokenExchangeError verifies a device-login exchange that
+// responds with an error (no access/refresh token) surfaces the flowError
+// mismatch-value error rather than silently succeeding.
+func TestDeviceFlowPollTokenExchangeError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"error":"incorrect_device_code"}`))
+	}))
+	defer srv.Close()
+
+	d := NewDeviceFlow(srv.Client(), codeEndpoints(srv))
+	_, err := d.Poll(context.Background(), "dev-1")
+	if err == nil {
+		t.Fatal("Poll() error = nil, want flowError on token exchange failure")
+	}
+	var fe *flowError
+	if !errors.As(err, &fe) {
+		t.Fatalf("Poll() error = %v, want *flowError", err)
+	}
+	if !strings.Contains(fe.Error(), "incorrect_device_code") {
+		t.Fatalf("flowError = %q, want it to surface the mismatch value", fe.Error())
 	}
 }
 
