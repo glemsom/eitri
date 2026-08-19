@@ -36,10 +36,10 @@ func TestTurnDispatch_startTurn_installsContext(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("startTurn returned nil command")
 	}
-	if d.s.turnCtx == nil {
+	if d.turnCtx == nil {
 		t.Fatal("startTurn did not install non-nil context")
 	}
-	if d.s.turnCancel == nil {
+	if d.turnCancel == nil {
 		t.Fatal("startTurn did not install non-nil cancel func")
 	}
 }
@@ -78,12 +78,12 @@ func TestTurnDispatch_startTurn_setsBusyAndDirty(t *testing.T) {
 func TestTurnDispatch_startTurn_resetsCurStream(t *testing.T) {
 	d := NewTurnDispatch(stubTurn("ok", nil))
 	tx := newTestTx()
-	d.s.curStream = 5 // pre-set to non-default
+	d.curStream = 5 // pre-set to non-default
 
 	d.startTurn(&tx, "hello", "")
 
-	if d.s.curStream != -1 {
-		t.Errorf("curStream = %d, want -1", d.s.curStream)
+	if d.curStream != -1 {
+		t.Errorf("curStream = %d, want -1", d.curStream)
 	}
 }
 
@@ -107,13 +107,13 @@ func TestTurnDispatch_stopTurn_cancelsContext(t *testing.T) {
 	d.startTurn(&tx, "hello", "")
 
 	// Context should be live before stop.
-	if d.s.turnCtx.Err() != nil {
+	if d.turnCtx.Err() != nil {
 		t.Fatal("context already cancelled before stop")
 	}
 
 	d.stopTurn()
 
-	if d.s.turnCtx.Err() == nil {
+	if d.turnCtx.Err() == nil {
 		t.Error("stopTurn did not cancel the context")
 	}
 }
@@ -199,8 +199,8 @@ func TestTurnDispatch_appendStreamDelta_createsMessageOnFirstDelta(t *testing.T)
 	if !msg.streaming {
 		t.Error("message should be streaming")
 	}
-	if d.s.curStream != 0 {
-		t.Errorf("curStream = %d, want 0", d.s.curStream)
+	if d.curStream != 0 {
+		t.Errorf("curStream = %d, want 0", d.curStream)
 	}
 }
 
@@ -281,7 +281,7 @@ func TestTurnDispatch_handleTurnDone_stoppedStreaming(t *testing.T) {
 
 	// Simulate a streaming message.
 	tx.messages = append(tx.messages, message{role: "eitri", content: "partial", streaming: true})
-	d.s.curStream = 0
+	d.curStream = 0
 
 	stopped, err := d.handleTurnDone(&tx, turnDoneMsg{
 		stopped:  true,
@@ -307,8 +307,8 @@ func TestTurnDispatch_handleTurnDone_stoppedStreaming(t *testing.T) {
 	if !msg.stopped {
 		t.Error("message should be marked stopped")
 	}
-	if d.s.curStream != -1 {
-		t.Errorf("curStream = %d, want -1", d.s.curStream)
+	if d.curStream != -1 {
+		t.Errorf("curStream = %d, want -1", d.curStream)
 	}
 	if tx.busy {
 		t.Error("busy should be false after turn done")
@@ -364,8 +364,8 @@ func TestTurnDispatch_handleTurnDone_error(t *testing.T) {
 	if tx.messages[1].role != "eitri" {
 		t.Errorf("role = %q, want %q", tx.messages[1].role, "eitri")
 	}
-	if d.s.curStream != -1 {
-		t.Errorf("curStream = %d, want -1", d.s.curStream)
+	if d.curStream != -1 {
+		t.Errorf("curStream = %d, want -1", d.curStream)
 	}
 }
 
@@ -376,7 +376,7 @@ func TestTurnDispatch_handleTurnDone_successStreaming(t *testing.T) {
 
 	// Simulate a streaming message.
 	tx.messages = append(tx.messages, message{role: "eitri", content: "partial", streaming: true})
-	d.s.curStream = 0
+	d.curStream = 0
 
 	stopped, err := d.handleTurnDone(&tx, turnDoneMsg{
 		answer:   "final answer",
@@ -398,8 +398,8 @@ func TestTurnDispatch_handleTurnDone_successStreaming(t *testing.T) {
 	if msg.streaming {
 		t.Error("message should not be streaming")
 	}
-	if d.s.curStream != -1 {
-		t.Errorf("curStream = %d, want -1", d.s.curStream)
+	if d.curStream != -1 {
+		t.Errorf("curStream = %d, want -1", d.curStream)
 	}
 	if tx.busy {
 		t.Error("busy should be false")

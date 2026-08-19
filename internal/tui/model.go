@@ -786,9 +786,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// by default; per-turn expansion, ). Toggling the newest
 			// assistant block lets the user watch that turn's reasoning on demand.
 			// The messages and layout belong to the owned Transcript .
-			if m.td.s.curStream >= 0 && m.td.s.curStream < len(m.tx.messages) {
+			if m.td.curStream >= 0 && m.td.curStream < len(m.tx.messages) {
 				// During a stream, target the in-progress assistant message.
-				m.tx.toggleThinking(m.td.s.curStream)
+				m.tx.toggleThinking(m.td.curStream)
 			} else {
 				// Otherwise toggle the most recent assistant (eitri) message.
 				for i := len(m.tx.messages) - 1; i >= 0; i-- {

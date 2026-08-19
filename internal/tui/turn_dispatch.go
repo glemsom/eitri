@@ -7,34 +7,31 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// turnState holds the per-turn mutable state that survives Bubble Tea value
-// copies via pointer indirection. It contains only the fields used by turn
-// methods: the cancelable context for the running turn and the cursor into the
-// streaming assistant message.
-type turnState struct {
-	turnCtx    context.Context
-	turnCancel context.CancelFunc
-	curStream  int
-}
-
 // TurnDispatch owns the turn state machine: startTurn, stopTurn, turnCmd,
 // appendStreamDelta, and handleTurnDone. It is self-contained and testable
 // without a terminal or a live provider. Continuation logic (continueReq /
 // continueResp / prompting) stays on Model.
+//
+// TurnDispatch is a stable root the Model holds, so its per-turn state lives
+// as plain value fields directly on the struct instead of behind a pointer.
 type TurnDispatch struct {
-	s    *turnState
 	turn Turn
 	// thinkingEnabled records whether the current run requested chain-of-thought.
 	// New messages created by handleTurnDone and appendStreamDelta carry this
 	// flag so the transcript renderer shows reasoning only for turns that asked.
 	thinkingEnabled bool
+	// turnCtx/turnCancel hold the cancelable context for the running turn.
+	turnCtx    context.Context
+	turnCancel context.CancelFunc
+	// curStream is the cursor into the in-progress streaming assistant message.
+	curStream int
 }
 
 // NewTurnDispatch creates a TurnDispatch with the given engine seam.
 func NewTurnDispatch(turn Turn) *TurnDispatch {
 	return &TurnDispatch{
-		s:    &turnState{curStream: -1},
-		turn: turn,
+		turn:      turn,
+		curStream: -1,
 	}
 }
 
@@ -42,10 +39,10 @@ func NewTurnDispatch(turn Turn) *TurnDispatch {
 // transcript, marks the transcript busy, resets the stream cursor, anchors the
 // tool log, and returns the command that dispatches the turn.
 func (d *TurnDispatch) startTurn(tx *Transcript, prompt, payload string) tea.Cmd {
-	d.s.turnCtx, d.s.turnCancel = context.WithCancel(context.Background())
+	d.turnCtx, d.turnCancel = context.WithCancel(context.Background())
 	tx.messages = append(tx.messages, message{role: "you", content: prompt})
 	tx.busy = true
-	d.s.curStream = -1
+	d.curStream = -1
 	tx.layout.dirty = true
 	tx.log.SetAnchor(len(tx.messages) - 1)
 	return d.turnCmd(prompt, payload)
@@ -58,8 +55,8 @@ func (d *TurnDispatch) SetThinkingEnabled(v bool) { d.thinkingEnabled = v }
 // stopTurn cancels the in-flight turn's context. It is a no-op when nothing
 // is running.
 func (d *TurnDispatch) stopTurn() {
-	if d.s.turnCancel != nil {
-		d.s.turnCancel()
+	if d.turnCancel != nil {
+		d.turnCancel()
 	}
 }
 
@@ -70,7 +67,7 @@ func (d *TurnDispatch) stopTurn() {
 // rather than an error.
 func (d *TurnDispatch) turnCmd(prompt, payload string) tea.Cmd {
 	return tea.Cmd(func() tea.Msg {
-		ctx := d.s.turnCtx
+		ctx := d.turnCtx
 		if ctx == nil {
 			// Defensive fallback for a command dispatched before startTurn ran.
 			var cancel context.CancelFunc
@@ -79,7 +76,7 @@ func (d *TurnDispatch) turnCmd(prompt, payload string) tea.Cmd {
 		} else {
 			// Release the per-turn context once the turn finishes naturally;
 			// esc releases it earlier via the cancel handle.
-			defer d.s.turnCancel()
+			defer d.turnCancel()
 		}
 		res, err := d.turn(ctx, prompt, payload)
 		if err != nil {
@@ -101,11 +98,11 @@ func (d *TurnDispatch) appendStreamDelta(tx *Transcript, kind StreamKind, delta 
 	if delta == "" {
 		return
 	}
-	if d.s.curStream >= 0 && d.s.curStream < len(tx.messages) && tx.messages[d.s.curStream].streaming {
+	if d.curStream >= 0 && d.curStream < len(tx.messages) && tx.messages[d.curStream].streaming {
 		if kind == ReasoningStream {
-			tx.messages[d.s.curStream].reasoning += delta
+			tx.messages[d.curStream].reasoning += delta
 		} else {
-			tx.messages[d.s.curStream].content += delta
+			tx.messages[d.curStream].content += delta
 		}
 		return
 	}
@@ -114,7 +111,7 @@ func (d *TurnDispatch) appendStreamDelta(tx *Transcript, kind StreamKind, delta 
 	} else {
 		tx.messages = append(tx.messages, message{role: "eitri", content: delta, streaming: true, thinkingRequested: d.thinkingEnabled})
 	}
-	d.s.curStream = len(tx.messages) - 1
+	d.curStream = len(tx.messages) - 1
 	tx.busyPulse = 3
 }
 
@@ -128,21 +125,21 @@ func (d *TurnDispatch) appendStreamDelta(tx *Transcript, kind StreamKind, delta 
 func (d *TurnDispatch) handleTurnDone(tx *Transcript, msg turnDoneMsg) (stopped bool, err error) {
 	tx.busy = false
 	tx.spinner = 0
-	d.s.turnCancel = nil
-	d.s.turnCtx = nil
+	d.turnCancel = nil
+	d.turnCtx = nil
 	tx.layout.dirty = true
-	wasStreaming := d.s.curStream >= 0 && d.s.curStream < len(tx.messages)
+	wasStreaming := d.curStream >= 0 && d.curStream < len(tx.messages)
 
 	if msg.stopped {
 		// A stopped turn keeps the partial output already on screen, marked
 		// as stopped rather than rendered as an error.
 		tx.layout.dirty = true
 		if wasStreaming {
-			tx.messages[d.s.curStream].content = msg.answer
-			tx.messages[d.s.curStream].reasoning = msg.reasoning
-			tx.messages[d.s.curStream].streaming = false
-			tx.messages[d.s.curStream].stopped = true
-			d.s.curStream = -1
+			tx.messages[d.curStream].content = msg.answer
+			tx.messages[d.curStream].reasoning = msg.reasoning
+			tx.messages[d.curStream].streaming = false
+			tx.messages[d.curStream].stopped = true
+			d.curStream = -1
 		} else if msg.answer != "" || msg.reasoning != "" {
 			tx.messages = append(tx.messages, message{role: "eitri", content: msg.answer, reasoning: msg.reasoning, stopped: true, thinkingRequested: d.thinkingEnabled})
 		}
@@ -154,9 +151,9 @@ func (d *TurnDispatch) handleTurnDone(tx *Transcript, msg turnDoneMsg) (stopped 
 		// un-marked as streaming so a live reasoning panel or streaming answer
 		// border does not stay pinned open once the flawed turn has ended.
 		if wasStreaming {
-			tx.messages[d.s.curStream].streaming = false
+			tx.messages[d.curStream].streaming = false
 		}
-		d.s.curStream = -1
+		d.curStream = -1
 		tx.messages = append(tx.messages, message{role: "eitri", content: failurePrefix() + msg.err.Error(), thinkingRequested: d.thinkingEnabled})
 		return false, msg.err
 	}
@@ -164,13 +161,13 @@ func (d *TurnDispatch) handleTurnDone(tx *Transcript, msg turnDoneMsg) (stopped 
 		// Streaming turn: reconcile the incremental buffer with the full
 		// answer. When every delta already arrived the contents match, so
 		// this is a no-op visual diff.
-		tx.messages[d.s.curStream].content = msg.answer
-		tx.messages[d.s.curStream].reasoning = msg.reasoning
-		tx.messages[d.s.curStream].streaming = false
+		tx.messages[d.curStream].content = msg.answer
+		tx.messages[d.curStream].reasoning = msg.reasoning
+		tx.messages[d.curStream].streaming = false
 		if !tx.expandAll {
-			tx.messages[d.s.curStream].thinkingExpanded = false
+			tx.messages[d.curStream].thinkingExpanded = false
 		}
-		d.s.curStream = -1
+		d.curStream = -1
 	} else {
 		tx.messages = append(tx.messages, message{role: "eitri", content: msg.answer, reasoning: msg.reasoning, thinkingRequested: d.thinkingEnabled})
 	}
