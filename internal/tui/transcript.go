@@ -167,27 +167,37 @@ func (t Transcript) bandWidth() int {
 	return base - 2
 }
 
-// railClampHeight returns the maximum number of rows the right context rail may
-// occupy so it matches the history region's visible height:
-// both panes clamp to the rows left over by the fixed bottom band, so the two
-// form one coherent row. It is -1 before the first resize lands, leaving the
-// rail unclamped — mirroring renderHistoryViewport; a non-negative result is
-// the actual row budget (0 when the band fills the whole terminal, in which
-// case the rail renders nothing). Since it lives on the Transcript;
+// scrollRegionHeight returns the height in rows of the history scroll region —
+// the rows left over by the fixed bottom band. It is the single region
+// computation: the render path sizes the history viewport to it
+// (renderHistoryViewport) and the hit-test maps screen rows through that same
+// window (contentLineAtScreenRow), so render and input can never drift apart.
+// It is -1 before the first resize lands (the region renders unclamped,
+// mirroring renderHistoryViewport); a non-negative result is the actual row
+// budget (0 when the band fills the whole terminal, leaving no region).
 // bandHeight (the fixed bottom band's row count) is passed in by the caller
-// because the band itself stays a Model-owned concern ( keeps it
-// there).
-func (t Transcript) railClampHeight(bandHeight int) int {
+// because the band itself stays a Model-owned concern.
+func (t Transcript) scrollRegionHeight(bandHeight int) int {
 	if t.height <= 0 {
 		return -1
 	}
-	// The rail shares the history viewport's vertical budget: terminal height
-	// minus whatever the fixed bottom band occupies.
 	vh := t.height - bandHeight
 	if vh < 0 {
 		return 0
 	}
 	return vh
+}
+
+// railClampHeight returns the maximum number of rows the right context rail may
+// occupy so it matches the history region's visible height:
+// both panes clamp to the rows left over by the fixed bottom band, so the two
+// form one coherent row. It delegates to the single region computation
+// (scrollRegionHeight) rather than re-deriving the height minus band, so the
+// rail budget and the history window always agree. bandHeight (the fixed bottom
+// band's row count) is passed in by the caller because the band itself stays a
+// Model-owned concern ( keeps it there).
+func (t Transcript) railClampHeight(bandHeight int) int {
+	return t.scrollRegionHeight(bandHeight)
 }
 
 // surfaceWithRail merges the rendered right rail into a full-width pane so the
@@ -424,11 +434,13 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 // AC1/AC2). User navigation on the viewport (T2, ) is exposed through
 // navigateHistory / navigateMouse on this same value .
 func (t *Transcript) renderHistoryViewport(content string, reserved int) string {
-	if t.height <= 0 {
+	vh := t.scrollRegionHeight(reserved)
+	if vh < 0 {
+		// Pre-resize: the region renders unclamped to the full content.
 		return content
 	}
-	vh := t.height - reserved
-	if vh <= 0 {
+	if vh == 0 {
+		// The band fills the whole terminal; there is no region to render.
 		return ""
 	}
 	t.histViewport.SetWidth(t.transcriptWidth())
@@ -505,6 +517,33 @@ func (t *Transcript) navigateMouse(msg tea.MouseWheelMsg) bool {
 		}
 	}
 	return t.histFollow
+}
+
+// contentLineAtScreenRow is the scroll-region hit-test seam: it answers "is a
+// screen row y inside the history scroll region, and which content line does it
+// map to". The region is the rows left over by the fixed bottom band, which the
+// render pass sizes the persisted viewport to every frame
+// (renderHistoryViewport via scrollRegionHeight); reading that same persisted
+// window means a hit-test always reflects the rows actually on screen — the
+// selection side never recomputes the region from Model width math, so drag
+// coordinates and on-screen rows cannot drift apart. ok is false before the
+// first resize/render (the viewport has no height yet), for a row in the fixed
+// band, and for a row past the rendered content's last line.
+func (t *Transcript) contentLineAtScreenRow(y int) (line int, ok bool) {
+	vp := t.histViewport
+	if vp.Height() <= 0 {
+		return 0, false
+	}
+	// The persisted viewport's height is the scroll region's height, so a row
+	// inside the region is exactly a row within that window.
+	if y < 0 || y >= vp.Height() {
+		return 0, false
+	}
+	line = vp.YOffset() + y
+	if line < 0 || line >= len(t.plainLines()) {
+		return 0, false
+	}
+	return line, true
 }
 
 // highlightSelection wraps the cells covered by an in-progress drag in reverse

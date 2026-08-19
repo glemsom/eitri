@@ -107,38 +107,20 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 	}
 }
 
-// inScrollRegion reports whether a screen row y falls inside the history scroll
-// region: the rows above the fixed bottom band.
-func (m Model) inScrollRegion(y int) bool {
-	return y >= 0 && y < m.tx.height-m.bandHeight()
-}
-
 // mouseToContent maps a screen cell to history-content coordinates: line is
 // the full content line under the pointer (viewport offset + row within the
 // scroll region) and col the CELL within that line's plain text, clamped to
 // the rendered content. The mouse X is in screen display-width space; the
 // returned col is converted to a RUNE INDEX into the line so every downstream
 // consumer (highlight and copy) shares one coordinate space even when the row
-// contains wide/multibyte characters. ok is false when the pointer
-// is outside the history viewport region — over the fixed bottom band below
-// it — or the viewport has not been sized yet.
+// contains wide/multibyte characters. The row may itself fall
+// inside the history region is decided by the Transcript's scroll-region
+// hit-test seam (contentLineAtScreenRow), so the selection side reads the same
+// region the render pass laid out instead of recomputing it from Model width
+// math; ok is false over the fixed bottom band or before the viewport is sized.
 func (m *Model) mouseToContent(x, y int) (line, col int, ok bool) {
-	vp := m.tx.histViewport
-	if vp.Height() <= 0 || m.tx.height <= 0 {
-		return 0, 0, false
-	}
-	// The scroll region occupies the rows above the fixed bottom band; mirror
-	// renderPane's region math so screen rows map to the viewport's visible
-	// lines exactly.
-	if !m.inScrollRegion(y) {
-		return 0, 0, false
-	}
-	row := y
-	if row < 0 || row >= vp.Height() {
-		return 0, 0, false
-	}
-	line = vp.YOffset() + row
-	if line < 0 || line >= len(m.tx.plainLines()) {
+	line, ok = m.tx.contentLineAtScreenRow(y)
+	if !ok {
 		return 0, 0, false
 	}
 	col = x
