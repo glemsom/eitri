@@ -1,4 +1,4 @@
-// Package testutil holds small shared helpers glue for the test suite.
+// Package testutil holds small shared helpers for the test suite.
 //
 // It lives under internal/ so engine and tui tests can import it for the same
 // await semantics instead of each re-deriving a chan-select + timeout.
@@ -7,7 +7,8 @@ package testutil
 import "time"
 
 // DefaultTimeout bounds how long Await waits for a signal before failing the
-// test. It is the shared backstop the engine/tui deflake tickets converge on.
+// test. One shared deadline keeps the meaning of a timeout identical across
+// packages instead of each test re-deriving its own.
 const DefaultTimeout = 3 * time.Second
 
 // Fataler is the slice of testing.TB that Await needs. Passing the concrete
@@ -18,9 +19,9 @@ type Fataler interface {
 	Helper()
 }
 
-// Await blocks until sig fires or DefaultTimeout elapses, then returns. If the
-// signal never arrives it fails f with the channel name, so a stranded wait is
-// identifiable in the log rather than hanging the suite.
+// Await blocks until sig fires, then returns. If the signal never arrives
+// before DefaultTimeout it fails f with the channel name, so a stranded wait
+// is identifiable in the log rather than hanging the suite.
 func Await(f Fataler, name string, sig <-chan struct{}) {
 	f.Helper()
 	await(f, name, sig, DefaultTimeout)

@@ -11,11 +11,10 @@ import (
 // timeout path of Await is assertable directly.
 type fakeFataler struct {
 	fatalMsg string
-	helpers  int
 }
 
 func (f *fakeFataler) Fatalf(format string, args ...any) { f.fatalMsg = fmt.Sprintf(format, args...) }
-func (f *fakeFataler) Helper()                           { f.helpers++ }
+func (f *fakeFataler) Helper()                           {}
 
 // TestAwaitReturnsWhenSignalFires asserts a fired signal unblocks Await before
 // the default timeout, so a ready stream never trips the backstop.
