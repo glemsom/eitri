@@ -441,7 +441,7 @@ func NewModelCfg(d Dependencies) Model {
 		railWidth:       d.Config.RailWidth,
 		histFollow:      true,
 		histViewport:    newHistoryViewport(),
-		layout:          &transcriptLayout{dirty: true},
+		layout:          transcriptLayout{dirty: true},
 	}
 
 	m := Model{
