@@ -2,13 +2,13 @@ package tui
 
 import "testing"
 
-// This file covers the derived agent-phase seam (issue #363): a single Phase
-// enum computed from the live turn state (busy flag + what the in-progress
-// assistant stream is doing), instead of scattered boolean checks. It is the
-// prefactor the stage-label verb (#365) and live-reasoning panel (#364) hang
-// off, so its contract is: the phases derive correctly across every
-// busy/stream transition, and the busy indicator's rendering is UNCHANGED
-// (no visible output change; the "working" verb stays for every active phase).
+// This file covers the derived agent-phase seam (issues #363/#365): a single
+// Phase enum computed from the live turn state (busy flag + what the
+// in-progress assistant stream is doing), instead of scattered boolean checks.
+// #363 prefactored the enum with no visible change; #365 splits the busy
+// indicator verb by stage — Reasoning while chain-of-thought streams, Working
+// while tools run, Answering while answer text flows — while preserving the
+// reduced-motion/static-line fallback.
 
 // phaseTx builds a Transcript in a given live-turn state: busy on/off, with an
 // optional in-progress streaming assistant message carrying the given
@@ -95,26 +95,56 @@ func TestPhase_transitionsThroughATurn(t *testing.T) {
 	}
 }
 
-func TestPhase_noVisibleChangeAcrossActivePhases(t *testing.T) {
-	// Issue #363 keeps the surface byte-identical: every active phase renders
-	// the same spinner + "working" verb (the label split lands in #365). The
-	// reduced-motion/ASCII fallback stays the static "… thinking" line.
+func TestPhaseVerb_mapsEachBusyPhaseToItsVerb(t *testing.T) {
+	// Issue #365: the stage verb tracks the derived phase — Reasoning while
+	// chain-of-thought streams, Working during the tool gap, Answering once
+	// answer text flows. Idle never renders through the busy line, so it falls
+	// back to the busy verb.
+	cases := []struct {
+		p    Phase
+		want string
+	}{
+		{PhaseWorking, "Working"},
+		{PhaseReasoning, "Reasoning"},
+		{PhaseAnswering, "Answering"},
+		{PhaseIdle, "Working"},
+	}
+	for _, c := range cases {
+		if got := phaseVerb(c.p); got != c.want {
+			t.Errorf("phaseVerb(%v) = %q, want %q", c.p, got, c.want)
+		}
+	}
+}
+
+func TestPhase_busyLineVerbTracksPhase(t *testing.T) {
+	// The animated busy line carries the stage verb under the spinner frame,
+	// so the status strip reads the live stage while a turn runs (issue #365).
 	if !motionEnabled() {
-		t.Skip("motion disabled in this environment; rendering unchanged separately")
+		t.Skip("motion disabled in this environment; static fallback covered separately")
 	}
 	frames := []struct {
 		name string
 		tx   Transcript
+		want string
 	}{
-		{"working", phaseTx(true, false, "", "")},
-		{"reasoning", phaseTx(true, true, "thinking", "")},
-		{"answering", phaseTx(true, true, "", "answer")},
+		{"working", phaseTx(true, false, "", ""), string(busySpinnerFrames[0]) + " Working"},
+		{"reasoning", phaseTx(true, true, "thinking", ""), string(busySpinnerFrames[0]) + " Reasoning"},
+		{"answering", phaseTx(true, true, "", "answer"), string(busySpinnerFrames[0]) + " Answering"},
 	}
-	// Every active phase shares the first-frame busy line.
-	want := string(busySpinnerFrames[0]) + " working"
 	for _, f := range frames {
-		if got := busyLine(0, f.tx.phase()); got != want {
-			t.Errorf("%s phase busy line = %q, want unchanged %q", f.name, got, want)
+		if got := busyLine(0, f.tx.phase()); got != f.want {
+			t.Errorf("%s phase busy line = %q, want %q", f.name, got, f.want)
+		}
+	}
+}
+
+func TestPhase_busyLineReducedMotionPreserved(t *testing.T) {
+	// The reduced-motion/ASCII fallback stays the static "… thinking" line
+	// regardless of phase (issue #365 AC4).
+	t.Setenv("EITRI_NO_MOTION", "1")
+	for _, p := range []Phase{PhaseWorking, PhaseReasoning, PhaseAnswering} {
+		if got := busyLine(0, p); got != "… thinking" {
+			t.Errorf("reduced-motion busyLine(%v) = %q, want %q", p, got, "… thinking")
 		}
 	}
 }

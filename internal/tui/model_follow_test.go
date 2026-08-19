@@ -88,8 +88,9 @@ func TestModel_liveFollowKeepsNewestOutput(t *testing.T) {
 		t.Fatalf("test must overflow: history (%d lines) should exceed viewport height (%d)", n, vh)
 	}
 	// During busy the viewport shows the newest output (not a stale head): the
-	// busy thinking footer is the last non-blank rendered row.
-	if got := newestNonBlank(got); got != "⠋ working\n" {
+	// busy stage footer (Answering — the streamed model is mid-answer, #365) is
+	// the last non-blank rendered row.
+	if got := newestNonBlank(got); got != "⠋ Answering\n" {
 		t.Errorf("busy follow must hold the newest output at the bottom, got last row %q\n%s", got, got)
 	}
 }
@@ -110,7 +111,7 @@ func TestModel_liveFollowPersistsThroughResize(t *testing.T) {
 			// No vertical room for the history this small; nothing to follow.
 			continue
 		}
-		if row := newestNonBlank(got); row != "⠋ working\n" {
+		if row := newestNonBlank(got); row != "⠋ Answering\n" {
 			t.Errorf("resize to height %d lost the newest output (follow should hold the bottom row %q)\n%s", h, row, got)
 		}
 	}

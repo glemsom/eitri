@@ -30,13 +30,14 @@ func TestRender_formatElapsed(t *testing.T) {
 // TestRender_busyLine table-tests the in-progress working indicator: the animated
 // braille spinner frame cycled by index when motion is enabled, and the static
 // "… thinking" line under reduced motion. The index wraps by modulo over the
-// frame set so the spinner loops.
+// frame set so the spinner loops, and the stage verb renders under the frame
+// (issue #365 — here PhaseAnswering shows "Answering").
 func TestRender_busyLine(t *testing.T) {
 	// Animated path: no EITRI_NO_MOTION, UTF-8 locale (the default in tests).
 	idxCases := []int{0, 1, len(busySpinnerFrames) - 1, len(busySpinnerFrames), len(busySpinnerFrames) + 1}
 	for _, idx := range idxCases {
 		i := idx % len(busySpinnerFrames)
-		want := string(busySpinnerFrames[i]) + " working"
+		want := string(busySpinnerFrames[i]) + " Answering"
 		if got := busyLine(idx, PhaseAnswering); got != want {
 			t.Errorf("busyLine(%d) = %q, want %q", idx, got, want)
 		}

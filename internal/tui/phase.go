@@ -4,8 +4,9 @@ package tui
 // #363): a single Phase enum computed from the live turn state — the busy flag
 // plus what the in-progress assistant stream is doing — instead of scattered
 // boolean checks across the render paths. It is the prefactor the stage-label
-// verb (#365) and the live-reasoning panel (#364) hang off. No visible change:
-// the busy indicator keeps today's "working" verb for every active phase.
+// verb (#365) and the live-reasoning panel (#364) hang off. Issue #365 splits
+// the busy indicator's verb by stage: Reasoning while chain-of-thought streams,
+// Working while tools run, Answering while answer text flows.
 
 // Phase is what the agent is doing right now, derived from the live turn state
 // rather than stored.
@@ -24,7 +25,8 @@ const (
 	PhaseAnswering
 )
 
-// String is the stable wire/display name of a phase, used in logs and tests.
+// String is the stable wire name of a phase, used in logs and tests; the
+// user-facing stage label rendered under the busy spinner is phaseVerb.
 func (p Phase) String() string {
 	switch p {
 	case PhaseReasoning:
@@ -78,11 +80,17 @@ func (t Transcript) phase() Phase {
 }
 
 // phaseVerb maps a busy Phase to the status verb rendered under the busy
-// spinner. Issue #363 deliberately keeps every active phase on the single
-// "working" verb so the surface is unchanged; issue #365 splits it into
-// Reasoning / Working / Answering here, branching on p. Today the parameter is
-// the seam rather than a driver — every phase says "working".
+// spinner (issue #365): Reasoning while chain-of-thought streams, Working in
+// the tool-heavy gap (or pre/post-stream silence), Answering once answer text
+// flows. Idle never renders through the busy line, so it falls back to the
+// busy verb rather than surfacing "idle" mid-turn.
 func phaseVerb(p Phase) string {
-	_ = p // label split lands in #365
-	return "working"
+	switch p {
+	case PhaseReasoning:
+		return "Reasoning"
+	case PhaseAnswering:
+		return "Answering"
+	default:
+		return "Working"
+	}
 }

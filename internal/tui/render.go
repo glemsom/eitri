@@ -14,8 +14,9 @@ import (
 // coupling to live Model state.
 
 // busyLine renders the in-progress working indicator: the animated braille
-// spinner with a phase verb (issue #363 seam) when motion is enabled, the
-// static "… thinking" line otherwise. The verb maps off the derived Phase; the
+// spinner with the stage verb of the derived Phase (issues #363/#365) —
+// Reasoning / Working / Answering — when motion is enabled, the static
+// "… thinking" line otherwise. The verb maps off the derived Phase; the
 // label stays plain so a monochrome terminal still reads it.
 func busyLine(idx int, p Phase) string {
 	if !motionEnabled() || len(busySpinnerFrames) == 0 {
