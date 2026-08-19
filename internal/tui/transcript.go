@@ -390,9 +390,9 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 	// history footer row instead.
 	if t.busy && t.telemetry == nil {
 		if t.busyPulse > 0 {
-			emit(t.theme.bandStatusStyle.Render(busyLine(t.spinner)))
+			emit(t.theme.bandStatusStyle.Render(busyLine(t.spinner, t.phase())))
 		} else {
-			emit(t.theme.statusStyle.Render(busyLine(t.spinner)))
+			emit(t.theme.statusStyle.Render(busyLine(t.spinner, t.phase())))
 		}
 		emit("\n")
 	}

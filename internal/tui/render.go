@@ -14,13 +14,14 @@ import (
 // coupling to live Model state.
 
 // busyLine renders the in-progress working indicator: the animated braille
-// spinner with a "working" label when motion is enabled, the static "… thinking"
-// line otherwise. The label stays plain so a monochrome terminal still reads it.
-func busyLine(idx int) string {
+// spinner with a phase verb (issue #363 seam) when motion is enabled, the
+// static "… thinking" line otherwise. The verb maps off the derived Phase; the
+// label stays plain so a monochrome terminal still reads it.
+func busyLine(idx int, p Phase) string {
 	if !motionEnabled() || len(busySpinnerFrames) == 0 {
 		return "… thinking"
 	}
-	return string(busySpinnerFrames[idx%len(busySpinnerFrames)]) + " working"
+	return string(busySpinnerFrames[idx%len(busySpinnerFrames)]) + " " + phaseVerb(p)
 }
 
 // formatElapsed renders a duration in the tool-timer vocabulary (Codex-style):

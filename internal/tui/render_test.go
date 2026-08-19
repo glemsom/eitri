@@ -37,14 +37,14 @@ func TestRender_busyLine(t *testing.T) {
 	for _, idx := range idxCases {
 		i := idx % len(busySpinnerFrames)
 		want := string(busySpinnerFrames[i]) + " working"
-		if got := busyLine(idx); got != want {
+		if got := busyLine(idx, PhaseAnswering); got != want {
 			t.Errorf("busyLine(%d) = %q, want %q", idx, got, want)
 		}
 	}
 
 	t.Run("reduced-motion", func(t *testing.T) {
 		t.Setenv("EITRI_NO_MOTION", "1")
-		if got := busyLine(0); got != "… thinking" {
+		if got := busyLine(0, PhaseWorking); got != "… thinking" {
 			t.Errorf("reduced-motion busyLine = %q, want %q", got, "… thinking")
 		}
 	})

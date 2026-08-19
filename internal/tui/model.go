@@ -1552,7 +1552,7 @@ func (m Model) renderBand(b *strings.Builder) {
 		// accent-tinted to match the rail, while a turn runs. The busy/spinner
 		// state lives on the owned Transcript .
 		if m.tx.busy {
-			statusRow = m.tx.theme.bandStatusStyle.Render(busyLine(m.tx.spinner)) + "  "
+			statusRow = m.tx.theme.bandStatusStyle.Render(busyLine(m.tx.spinner, m.tx.phase())) + "  "
 		}
 		hints := bandHints()
 		if m.tx.busy {
