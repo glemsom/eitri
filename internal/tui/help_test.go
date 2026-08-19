@@ -84,7 +84,9 @@ func TestHelpView_noSkills(t *testing.T) {
 
 // TestHelpView_alignedColumns asserts each section's descriptions share one
 // vertical ruler (issue #385): within a section the key/label cell is padded to
-// the widest so every description starts at the same column.
+// the widest so every description starts at the same column. Within KEYBINDINGS
+// each labeled category has its own shared ruler (issue #386), so alignment is
+// checked per category.
 func TestHelpView_alignedColumns(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()
@@ -97,11 +99,6 @@ func TestHelpView_alignedColumns(t *testing.T) {
 			"open settings panel", "copy transcript to clipboard",
 			"interactive provider login", "show this help message",
 		}},
-		{"KEYBINDINGS", []string{
-			"open settings", "copy transcript", "toggle expanded view",
-			"toggle thinking", "insert newline", "show help",
-			"scroll history", "narrow pane", "widen pane",
-		}},
 		{"CONCEPTS", []string{
 			"expand/collapse all tool result cards",
 			"click and drag to select text",
@@ -111,26 +108,133 @@ func TestHelpView_alignedColumns(t *testing.T) {
 
 	for _, sec := range sections {
 		lines := sectionLines(t, got, sec.header)
-		col := -1
-		for _, desc := range sec.descs {
-			found := false
-			for _, ln := range lines {
-				if i := strings.Index(ln, desc); i >= 0 {
-					if col == -1 {
-						col = i
-					} else if i != col {
-						t.Errorf("%s: description %q starts at col %d, want %d\nline: %q",
-							sec.header, desc, i, col, ln)
-					}
-					found = true
-					break
+		assertAligned(t, sec.header, lines, sec.descs)
+	}
+
+	categories := []struct {
+		name  string
+		descs []string
+	}{
+		{"COMPOSER", []string{"toggle thinking", "insert newline"}},
+		{"NAVIGATION", []string{"show help", "scroll history"}},
+		{"PANES", []string{"toggle expanded view", "narrow pane", "widen pane"}},
+		{"ACTIONS", []string{"open settings", "copy transcript"}},
+	}
+	for _, cat := range categories {
+		lines := categoryLines(t, got, cat.name)
+		assertAligned(t, cat.name, lines, cat.descs)
+	}
+}
+
+// assertAligned asserts every desc appears in lines at the same starting column.
+func assertAligned(t *testing.T, label string, lines, descs []string) {
+	t.Helper()
+	col := -1
+	for _, desc := range descs {
+		found := false
+		for _, ln := range lines {
+			if i := strings.Index(ln, desc); i >= 0 {
+				if col == -1 {
+					col = i
+				} else if i != col {
+					t.Errorf("%s: description %q starts at col %d, want %d\nline: %q",
+						label, desc, i, col, ln)
 				}
-			}
-			if !found {
-				t.Fatalf("%s: description %q not found in section\n%q", sec.header, desc, strings.Join(lines, "\n"))
+				found = true
+				break
 			}
 		}
+		if !found {
+			t.Fatalf("%s: description %q not found in section\n%q", label, desc, strings.Join(lines, "\n"))
+		}
 	}
+}
+
+// TestHelpView_keybindingCategories asserts the KEYBINDINGS section groups its
+// rows under at least three labeled category sub-headers (issue #386), each
+// with an ASCII-fallback emoji prefix.
+func TestHelpView_keybindingCategories(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	got := helpView()
+
+	for _, want := range []string{
+		"c COMPOSER", "n NAVIGATION", "p PANES", "a ACTIONS",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("helpView() missing keybinding category %q", want)
+		}
+	}
+}
+
+// TestHelpView_keybindingsComplete asserts every keybinding appears exactly once
+// in the KEYBINDINGS section: none dropped, none duplicated (issue #386).
+func TestHelpView_keybindingsComplete(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	got := helpView()
+
+	sec := keybindingsSection(t, got)
+	keys := []string{
+		"ctrl+s", "ctrl+o", "ctrl+e", "tab", "shift+enter",
+		"?", "pgup/pgdn", "ctrl+x", "ctrl+z",
+	}
+	for _, k := range keys {
+		if n := strings.Count(sec, k); n != 1 {
+			t.Errorf("keybinding %q appears %d times in KEYBINDINGS, want exactly once", k, n)
+		}
+	}
+}
+
+// keybindingsSection returns the KEYBINDINGS block (from its header to the
+// trailing blank line) so uniqueness/count checks are scoped to the section.
+func keybindingsSection(t *testing.T, got string) string {
+	t.Helper()
+	lines := strings.Split(got, "\n")
+	started := false
+	var out []string
+	for _, ln := range lines {
+		if strings.Contains(ln, "KEYBINDINGS") {
+			started = true
+			continue
+		}
+		if started && ln == "" {
+			return strings.Join(out, "\n")
+		}
+		if started {
+			out = append(out, ln)
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+// categoryLines returns the keybinding rows between a labeled category header
+// and the next category/section boundary, trimming the two-space row indent.
+func categoryLines(t *testing.T, got, name string) []string {
+	t.Helper()
+	lineOf := func(ln string) bool {
+		// A category header is `  <glyph> NAME`; the row lines that follow carry
+		// the `  key  description` shape and never contain the bare name trailer.
+		return strings.HasSuffix(strings.TrimSpace(ln), " "+name)
+	}
+	lines := strings.Split(got, "\n")
+	started := false
+	var out []string
+	for _, ln := range lines {
+		if lineOf(ln) {
+			started = true
+			continue
+		}
+		if !started {
+			continue
+		}
+		// Terminate at a blank line, the KEYBINDINGS header, or the next category
+		// header — whichever closes the current category block.
+		if ln == "" || lineOf(ln) || strings.Contains(ln, "KEYBINDINGS") ||
+			strings.HasPrefix(strings.TrimSpace(ln), "-") {
+			return out
+		}
+		out = append(out, strings.TrimPrefix(ln, "  "))
+	}
+	return out
 }
 
 // sectionLines returns the row lines of a /help section (content between the

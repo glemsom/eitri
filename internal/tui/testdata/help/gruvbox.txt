@@ -6,15 +6,19 @@ $ COMMANDS
 
 --
 k KEYBINDINGS
-  ctrl+s       open settings
-  ctrl+o       copy transcript
-  ctrl+e       toggle expanded view
+  c COMPOSER
   tab          toggle thinking
   shift+enter  insert newline
-  ?            show help
-  pgup/pgdn    scroll history
-  ctrl+x       narrow pane
-  ctrl+z       widen pane
+  n NAVIGATION
+  ?          show help
+  pgup/pgdn  scroll history
+  p PANES
+  ctrl+e  toggle expanded view
+  ctrl+x  narrow pane
+  ctrl+z  widen pane
+  a ACTIONS
+  ctrl+s  open settings
+  ctrl+o  copy transcript
 
 --
 < CONCEPTS
