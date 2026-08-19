@@ -150,7 +150,12 @@ func (d *TurnDispatch) handleTurnDone(tx *Transcript, msg turnDoneMsg) (stopped 
 	}
 	if msg.err != nil {
 		// A streaming turn aborting with an error drops the partial reply and
-		// renders the error in its place.
+		// renders the error in its place. The partial message (if any) is also
+		// un-marked as streaming so a live reasoning panel or streaming answer
+		// border does not stay pinned open once the flawed turn has ended.
+		if wasStreaming {
+			tx.messages[d.s.curStream].streaming = false
+		}
 		d.s.curStream = -1
 		tx.messages = append(tx.messages, message{role: "eitri", content: failurePrefix() + msg.err.Error(), thinkingRequested: d.thinkingEnabled})
 		return false, msg.err
