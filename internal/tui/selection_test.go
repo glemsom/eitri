@@ -586,7 +586,7 @@ func TestDragSelect_ignoresBandAndComposer(t *testing.T) {
 	m = mustUpdate(t, m, dragMsg("press", 5, m.tx.height-1))
 	m = mustUpdate(t, m, dragMsg("motion", 20, m.tx.height-1))
 	m = mustUpdate(t, m, dragMsg("release", 20, m.tx.height-1))
-	if m.tx.dragSel != nil {
+	if m.tx.dragSel.active {
 		t.Errorf("press over the band must not start a selection")
 	}
 
@@ -688,7 +688,7 @@ func TestDragSelect_wheelStillScrollsDuringDrag(t *testing.T) {
 	if got := m.tx.histViewport.YOffset(); got >= before {
 		t.Errorf("wheel during drag must still scroll up: offset %d -> %d", before, got)
 	}
-	if m.tx.dragSel == nil {
+	if !m.tx.dragSel.active {
 		t.Errorf("wheel must not cancel the in-progress drag")
 	}
 	m = mustUpdate(t, m, dragMsg("release", col+3, screenRow))
