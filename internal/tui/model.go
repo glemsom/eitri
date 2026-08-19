@@ -781,20 +781,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
-		case "ctrl+.", "ctrl+shift+[":
-			// Ctrl+. (Danish/Nordic: also Ctrl+Shift+[ on US) shrinks the right
+		case "ctrl+z", "ctrl+shift+[":
+			// Ctrl+Z (Danish/Nordic: also Ctrl+Shift+[ on US) shrinks the right
 			// context rail by 2 columns, clamped to minWidthRail, and persists
-			// the new width to config. Period is a dedicated unshifted
-			// bottom-row key on every layout, whereas the bracket lives behind
-			// AltGr+8/9 on Nordic keyboards, so the period binding is the
-			// universally reachable one.
+			// the new width to config. Z is a dedicated alphabetic key on every
+			// layout, whereas the bracket lives behind AltGr+8/9 on Nordic
+			// keyboards, so the Z binding is the universally reachable one.
 			m.adjustRailWidth(-2)
 			return m, nil
-		case "ctrl+-", "ctrl+shift+]":
-			// Ctrl+- (Danish/Nordic: also Ctrl+Shift+] on US) grows the right
+		case "ctrl+x", "ctrl+shift+]":
+			// Ctrl+X (Danish/Nordic: also Ctrl+Shift+] on US) grows the right
 			// context rail by 2 columns and persists the new width to config.
-			// Minus is a dedicated bottom-row key on every layout (the hyphen
-			// next to the right shift).
+			// X is the dedicated alphabetic twin of Z and reachable on every
+			// layout. Neither Ctrl+Z nor Ctrl+X is claimed by the composer
+			// textarea (it has no undo/cut bindings), so both stay free.
 			m.adjustRailWidth(+2)
 			return m, nil
 		case "alt+0":
