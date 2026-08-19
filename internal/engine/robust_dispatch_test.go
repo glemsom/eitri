@@ -11,8 +11,9 @@ import (
 // strictToolDefs returns the canonical Chat-Completions tool manifest for the
 // tools T5's dispatch tests exercise: bash, read, write. Schemas are
 // strict-shaped (additionalProperties:false); read requires only path, with
-// nullable unions for the line-range optionals, so schema-validation tests
-// target the real shape.
+// plain integer optionals for the line range (an omitted or null optional
+// falls to the whole-file default), so schema-validation tests target the real
+// shape.
 func strictToolDefs() []provider.Tool {
 	return []provider.Tool{
 		{Type: "function", Function: provider.ToolFunction{
@@ -35,8 +36,8 @@ func strictToolDefs() []provider.Tool {
 				"additionalProperties": false,
 				"properties": map[string]any{
 					"path":       map[string]any{"type": "string"},
-					"start_line": []any{"integer", "null"},
-					"end_line":   []any{"integer", "null"},
+					"start_line": map[string]any{"type": "integer"},
+					"end_line":   map[string]any{"type": "integer"},
 				},
 				"required": []any{"path"},
 			},
@@ -228,8 +229,10 @@ func TestStrictShapeRejectsSchemaViolatingCall(t *testing.T) {
 }
 
 // TestRequiredSubsetReadValidates verifies a read call carrying only the
-// genuinely-required field (path) — no null placeholders for the optional
-// line range — passes schema validation under the strict-shape validator.
+// genuinely-required field (path) — no placeholders for the optional line
+// range — passes schema validation under the strict-shape validator, and that
+// an explicitly-null optional is tolerated as absent (it falls to the
+// whole-file default).
 func TestRequiredSubsetReadValidates(t *testing.T) {
 	for _, args := range []string{
 		`{"path":"f.txt"}`,
@@ -242,11 +245,26 @@ func TestRequiredSubsetReadValidates(t *testing.T) {
 	}
 }
 
-// TestNullableUnionToleratesNullVerifies the strict-shape validator accepts a
-// nullable-union field set to null (how a model emits an omitted optional).
+// TestNullableUnionToleratesNullVerifies the strict-shape validator still
+// accepts a third-party/supplied schema's nullable-union field set to null
+// (how some providers express an omitted optional), independent of the read
+// tool's now-plain optional types.
 func TestNullableUnionToleratesNull(t *testing.T) {
-	err := validateToolCallArgs(strictToolDefs()[1].Function.Parameters, `{"path":"f.txt","start_line":null,"end_line":null}`, nil)
-	if err != nil {
-		t.Fatalf("validateToolCallArgs() error = %v, want nil for nullable union of null value", err)
+	schema := map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties": map[string]any{
+			"path":       map[string]any{"type": "string"},
+			"start_line": []any{"integer", "null"},
+		},
+		"required": []string{"path"},
+	}
+	for _, args := range []string{
+		`{"path":"f.txt","start_line":null}`,
+		`{"path":"f.txt","start_line":12}`,
+	} {
+		if err := validateToolCallArgs(schema, args, nil); err != nil {
+			t.Fatalf("validateToolCallArgs(%s) error = %v, want nil for nullable union of null value", args, err)
+		}
 	}
 }
