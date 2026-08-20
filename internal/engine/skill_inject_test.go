@@ -2,12 +2,13 @@ package engine
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-func TestRunAgentPrependsSkillInjectToMessages(t *testing.T) {
+func TestRunAgentFoldsSkillInjectIntoUserLayer(t *testing.T) {
 	t.Parallel()
 	var capturer capturedRequests
 	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
@@ -31,20 +32,23 @@ func TestRunAgentPrependsSkillInjectToMessages(t *testing.T) {
 		t.Fatal("provider received no requests")
 	}
 	msgs := capturer.reqs[0].Messages
-	if len(msgs) != 3 {
-		t.Fatalf("Messages = %v, want 3 (system + skill inject + user args)", msgs)
+	if len(msgs) != 2 {
+		t.Fatalf("Messages = %v, want 2 (system + user with the skill folded into the user layer)", msgs)
 	}
 	if msgs[0].Role != provider.RoleSystem {
 		t.Errorf("Messages[0].Role = %q, want %q", msgs[0].Role, provider.RoleSystem)
 	}
-	if msgs[1].Role != provider.RoleSystem {
-		t.Errorf("Messages[1].Role = %q, want %q (skill payload as a system prefix)", msgs[1].Role, provider.RoleSystem)
+	if msgs[1].Role != provider.RoleUser {
+		t.Errorf("Messages[1].Role = %q, want %q (slash skill in the high-priority user layer, not a competing system message)", msgs[1].Role, provider.RoleUser)
 	}
-	if msgs[1].Content != skill {
-		t.Errorf("Messages[1].Content = %q, want the injected skill payload %q", msgs[1].Content, skill)
+	if !strings.Contains(msgs[1].Content, skill) {
+		t.Errorf("Messages[1] lacks the injected skill payload:\n%s", msgs[1].Content)
 	}
-	if msgs[2].Role != provider.RoleUser || msgs[2].Content != "improve this" {
-		t.Errorf("Messages[2] = %+v, want the user args turn", msgs[2])
+	if !strings.Contains(msgs[1].Content, "binding") {
+		t.Errorf("Messages[1] lacks the explicit binding framing:\n%s", msgs[1].Content)
+	}
+	if !strings.Contains(msgs[1].Content, "improve this") {
+		t.Errorf("Messages[1] lacks the user prompt adjacently delivered:\n%s", msgs[1].Content)
 	}
 }
 

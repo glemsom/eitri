@@ -469,11 +469,11 @@ func TestTUISlashArgsPutsSkillInProviderContext(t *testing.T) {
 		t.Fatal("provider received no requests for the args turn")
 	}
 	msgs := cap.reqs[0].Messages
-	if len(msgs) != 3 {
-		t.Fatalf("provider Messages = %d, want 3 (system + skill inject + user args); got %v", len(msgs), msgs)
+	if len(msgs) != 2 {
+		t.Fatalf("provider Messages = %d, want 2 (system + user with the skill folded into the user layer); got %v", len(msgs), msgs)
 	}
-	if msgs[1].Role != provider.RoleSystem {
-		t.Errorf("Messages[1].Role = %q, want %q (skill injected as a system prefix)", msgs[1].Role, provider.RoleSystem)
+	if msgs[1].Role != provider.RoleUser {
+		t.Errorf("Messages[1].Role = %q, want %q (slash skill in the high-priority user layer, not a second system message)", msgs[1].Role, provider.RoleUser)
 	}
 	if !strings.Contains(msgs[1].Content, "<skill_content name=\"improve-codebase-architecture\">") {
 		t.Errorf("Messages[1] lacks the skill_content payload:\n%s", msgs[1].Content)
@@ -481,8 +481,11 @@ func TestTUISlashArgsPutsSkillInProviderContext(t *testing.T) {
 	if !strings.Contains(msgs[1].Content, "Do the architecture thing") {
 		t.Errorf("Messages[1] lacks the skill body:\n%s", msgs[1].Content)
 	}
-	if msgs[2].Role != provider.RoleUser || msgs[2].Content != "Let us improve this" {
-		t.Errorf("Messages[2] = %+v, want the user args turn", msgs[2])
+	if !strings.Contains(msgs[1].Content, "binding") {
+		t.Errorf("Messages[1] lacks the binding framing:\n%s", msgs[1].Content)
+	}
+	if !strings.Contains(msgs[1].Content, "Let us improve this") {
+		t.Errorf("Messages[1] lacks the user args prompt delivered adjacently:\n%s", msgs[1].Content)
 	}
 
 	if !skills.IsActive("improve-codebase-architecture") {
@@ -543,17 +546,17 @@ func TestTUISlashBarePutsSkillInProviderContext(t *testing.T) {
 		t.Fatal("provider received no requests for the bare slash turn")
 	}
 	msgs := cap.reqs[0].Messages
-	if len(msgs) != 3 {
-		t.Fatalf("provider Messages = %d, want 3 (system + skill inject + user default prompt); got %v", len(msgs), msgs)
+	if len(msgs) != 2 {
+		t.Fatalf("provider Messages = %d, want 2 (system + user with the skill folded into the user layer); got %v", len(msgs), msgs)
 	}
-	if msgs[1].Role != provider.RoleSystem {
-		t.Errorf("Messages[1].Role = %q, want %q (skill injected as a system prefix)", msgs[1].Role, provider.RoleSystem)
+	if msgs[1].Role != provider.RoleUser {
+		t.Errorf("Messages[1].Role = %q, want %q (slash skill in the high-priority user layer, not a second system message)", msgs[1].Role, provider.RoleUser)
 	}
 	if !strings.Contains(msgs[1].Content, "<skill_content name=\"improve-codebase-architecture\">") {
 		t.Errorf("Messages[1] lacks the skill_content payload:\n%s", msgs[1].Content)
 	}
-	if msgs[2].Role != provider.RoleUser || msgs[2].Content != "apply the improve-codebase-architecture skill" {
-		t.Errorf("Messages[2] = %+v, want the bare slash default prompt", msgs[2])
+	if !strings.Contains(msgs[1].Content, "apply the improve-codebase-architecture skill") {
+		t.Errorf("Messages[1] lacks the bare-slash default prompt delivered adjacently:\n%s", msgs[1].Content)
 	}
 
 	if !skills.IsActive("improve-codebase-architecture") {

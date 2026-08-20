@@ -20,7 +20,7 @@ func compactCfg() *CompactionConfig {
 	}
 }
 
-func TestMaybeCompactKeepsSkillInjectSystemMessage(t *testing.T) {
+func TestMaybeCompactKeepsSkillInjectInUserLayer(t *testing.T) {
 	t.Parallel()
 	// A fail-safe provider: summary generation returns nothing, so maybeCompact
 	// takes its head+tail path and must still preserve the injected skill head.
@@ -29,17 +29,18 @@ func TestMaybeCompactKeepsSkillInjectSystemMessage(t *testing.T) {
 	}), &mockTranscript{})
 
 	skill := "<skill_content name=\"improve-codebase-architecture\">\nDo the architecture thing.\n</skill_content>\n"
-	// A long run whose message list opens [system(Eitri), system(<skill_content>), user, ...]:
+	// A long run whose message list opens [system(Eitri), user(<skill_content>+prompt), ...]:
 	// the two assistant legs force the tail floor past the skill head, so without the
-	// stable-head fix the skill system message is evicted into the body and lost.
+	// stable-head fix the skill user message is evicted into the body and lost.
 	messages := []provider.Message{
 		{Role: provider.RoleSystem, Content: SystemPromptContent()},
-		{Role: provider.RoleSystem, Content: skill},
-		{Role: provider.RoleUser, Content: "old prompt"},
+		{Role: provider.RoleUser, Content: skill + "\n\nUser request:\nold prompt"},
 		{Role: provider.RoleAssistant, Content: "old answer one"},
 		{Role: provider.RoleTool, ToolCallID: "t1", Content: "result"},
 		{Role: provider.RoleUser, Content: "mid prompt"},
 		{Role: provider.RoleAssistant, Content: "old answer two"},
+		{Role: provider.RoleUser, Content: "later prompt"},
+		{Role: provider.RoleAssistant, Content: "old answer three"},
 		{Role: provider.RoleUser, Content: "latest prompt"},
 	}
 
@@ -55,20 +56,20 @@ func TestMaybeCompactKeepsSkillInjectSystemMessage(t *testing.T) {
 
 	var saw bool
 	for _, m := range got {
-		if m.Role == provider.RoleSystem && strings.Contains(m.Content, "skill_content") {
+		if m.Role == provider.RoleUser && strings.Contains(m.Content, "skill_content") {
 			saw = true
 		}
 	}
 	if !saw {
-		t.Fatalf("injected skill system message dropped by compaction:\n%s", got)
+		t.Fatalf("injected skill user message dropped by compaction:\n%s", got)
 	}
 }
 
-func TestIsSkillMessageRecognizesSkillContentSystemMessage(t *testing.T) {
+func TestIsSkillMessageRecognizesSkillContentInUserLayer(t *testing.T) {
 	t.Parallel()
-	if !isSkillMessage(provider.Message{Role: provider.RoleSystem,
+	if !isSkillMessage(provider.Message{Role: provider.RoleUser,
 		Content: "<skill_content name=\"go\">follow the guidelines</skill_content>"}) {
-		t.Fatal("isSkillMessage must recognize the injected <skill_content> system message")
+		t.Fatal("isSkillMessage must recognize the slash-injected <skill_content> directive in the user layer")
 	}
 	// A model-invoked skill tool call and its SKILL-carrying tool result stay recognized.
 	if !isSkillMessage(provider.Message{Role: provider.RoleAssistant,
