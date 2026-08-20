@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -175,7 +176,7 @@ func TestModel_copyDoesNotMutateConversation(t *testing.T) {
 		t.Errorf("copy changed the message count: got %d, want %d", len(m.tx.messages), len(before))
 	}
 	for i := range before {
-		if before[i] != m.tx.messages[i] {
+		if !reflect.DeepEqual(before[i], m.tx.messages[i]) {
 			t.Errorf("message %d changed by copy: got %+v, want %+v", i, m.tx.messages[i], before[i])
 		}
 	}
