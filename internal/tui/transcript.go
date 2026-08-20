@@ -362,7 +362,7 @@ func (t Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg mess
 
 	flushReasoning := func() {
 		if reasoningEmitted {
-			return // a committed turn's reasoning snapshot renders once, at its first tool boundary
+			return // a turn's reasoning snapshot renders once per flow, at its first tool boundary
 		}
 		txt := msg.reasoning
 		if txt == "" {
