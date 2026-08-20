@@ -334,171 +334,36 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 	}
 }
 
-// renderEventFlow renders one turn's event sequence as one continuous flow:
-// reasoning reads as an internal monologue (left-ruled, dimmed), tool calls
-// and results render inline at their arrival positions, and the answer lands
-// at the tail. It returns the rendered text and the tool-entry row ranges in
-// the same shape as toolLog.Render, so the shared row->entry hit-test keeps
-// working on the merged stream.
+// renderEventFlow renders one turn's event sequence as one continuous flow
+// through the FlowRenderer seam: it assembles the flowInput from the
+// Transcript's state and delegates the now-shared fold-and-render to RenderFlow.
+// It returns the rendered text and the tool-entry row ranges in the same shape
+// as toolLog.Render, so the shared row->entry hit-test keeps working on the
+// merged stream.
 func (t Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg message, msgIdx int, now time.Time) (string, []toolRowRange) {
-	var b strings.Builder
-	var rows []toolRowRange
-	nl := 0
-	emit := func(s string) {
-		b.WriteString(s)
-		nl += strings.Count(s, "\n")
+	tools := make([]flowTool, 0)
+	for _, idx := range t.log.anchoredIndices(anchor) {
+		tools = append(tools, flowTool{
+			entry:    t.log.entries[idx],
+			logIdx:   idx,
+			expanded: t.log.expandedFor(idx, t.viewMode(), !t.toolResultsExpanded),
+		})
 	}
-	w := t.transcriptWidth()
-	pulse := t.busyPulse > 0
-
-	// The turn's tool entries anchored to its prompt appear in the same order
-	// as the tool-start events in the log, so each start consumes the next
-	// anchored entry; a start whose entry is missing is synthesized from the
-	// event so nothing in the stream silently drops.
-	anchored := t.log.anchoredIndices(anchor)
-	ti := 0
-	var reasoning, answer strings.Builder
-	reasoningEmitted := false
-	reasoningFragIdx := 0
-	anyStreamedAnswer := false
-	emittedAnswerBeforeTail := false
-	snapshotAnswerEmitted := false
-
-	flushReasoning := func() {
-		// A live (streaming) turn flushes each reasoning fragment at the
-		// boundary it precedes and resets, so chain-of-thought that resumes
-		// after a tool call renders as its own interleaved block in emission
-		// order. A committed turn's reasoning is one authoritative snapshot
-		// and renders exactly once, at its first tool boundary (or the tail).
-		var txt string
-		if msg.streaming {
-			txt = reasoning.String() // the live delta fragment accumulated since the last boundary
-			reasoning.Reset()
-		} else {
-			if reasoningEmitted {
-				return
-			}
-			txt = msg.reasoning
-			if txt == "" {
-				txt = reasoning.String() // the live log is the fallback when the message carries no snapshot
-			}
-			reasoning.Reset()
-			reasoningEmitted = true
-		}
-		if txt == "" || !msg.thinkingRequested {
-			return // nothing to show, or the thinking gate hides a turn that never asked for reasoning
-		}
-		// Each interleaved fragment gets its own index so the block focus can
-		// target a single fragment independently (issue #449 user story 3).
-		fragIdx := reasoningFragIdx
-		reasoningFragIdx++
-		emit(t.thinkingHeaderFor(msg, msgIdx, fragIdx, txt))
-		if !t.thinkingExpandedForFragment(msg, fragIdx) {
-			return // collapsed: the hint is the block
-		}
-		md, _ := RenderMarkdown(txt, w-2, t.configTheme)
-		pane := t.theme.thinkingPaneStyle
-		if msg.streaming {
-			pane = t.theme.streamingThinkingPaneStyle
-		}
-		pane = pane.Border(lipgloss.Border{Left: g("│", "|")})
-		emit(fmt.Sprintf("%s\n", pane.Render(strings.TrimRight(md, "\n"))))
-	}
-
-	emitTool := func(te toolEntry, idx int) {
-		start := nl
-		s := renderToolEntry(t.theme, te, t.log.expandedFor(idx, t.viewMode(), !t.toolResultsExpanded), now, w, pulse, t.focusedBlockIs(blockTool, 0, idx, 0))
-		emit(s)
-		if n := strings.Count(s, "\n"); n > 0 {
-			rows = append(rows, toolRowRange{start: start, end: start + n - 1, idx: idx})
-		}
-	}
-
-	// emitAnswer renders one answer block with the pane chosen from the message's
-	// flags (streaming dimmed, stopped pane, error, full accent). final marks the
-	// last block of the flow so a stopped turn's marker renders exactly once.
-	emitAnswer := func(txt string, final bool) {
-		if txt == "" {
-			return
-		}
-		md, _ := RenderMarkdown(txt, w-2, t.configTheme)
-		pane := t.theme.agentPaneStyle
-		if msg.stopped {
-			pane = t.theme.stoppedPaneStyle
-		} else if strings.HasPrefix(txt, failurePrefix()) {
-			if msg.streaming {
-				pane = t.theme.streamingErrorPaneStyle
-			} else {
-				pane = t.theme.errorPaneStyle
-			}
-		} else if msg.streaming {
-			pane = t.theme.streamingPaneStyle
-		}
-		pane = pane.Border(lipgloss.Border{Left: g("│", "|")})
-		emit(fmt.Sprintf("%s\n", pane.Render(strings.TrimRight(md, "\n"))))
-		if final && msg.stopped {
-			emit(t.theme.statusStyle.Render(stoppedMarker()) + "\n")
-		}
-	}
-
-	// flushAnswer emits the answer text accumulated since the last boundary at
-	// this boundary, then resets, so each tool call sees exactly the answer
-	// fragments the provider emitted before it, in arrival order. A turn whose
-	// answer never streamed as deltas (only the authoritative final snapshot
-	// survives, e.g. a non-streaming provider) falls back to that snapshot once;
-	// a turn that did stream never also shows the snapshot, so the already-
-	// interleaved fragments are not duplicated.
-	flushAnswer := func(final bool) {
-		txt := answer.String()
-		answer.Reset()
-		switch {
-		case txt != "":
-			// an interleaved answer fragment sits before this boundary. A turn
-			// that finalized with no answer yet split across a tool boundary
-			// (nothing rendered mid-flow) prefers the authoritative snapshot,
-			// which may be fuller than the last un-emitted stream prefix.
-			if final && !emittedAnswerBeforeTail && msg.content != "" {
-				txt = msg.content
-			}
-		case final && !anyStreamedAnswer && !snapshotAnswerEmitted && !msg.streaming && msg.content != "":
-			snapshotAnswerEmitted = true
-			txt = msg.content
-		default:
-			return // nothing to show at this boundary
-		}
-		emitAnswer(txt, final)
-		if !final && !emittedAnswerBeforeTail {
-			emittedAnswerBeforeTail = true
-		}
-	}
-
-	for _, ev := range events {
-		switch ev.Kind {
-		case EventReasoning:
-			reasoning.WriteString(ev.Delta)
-		case EventToolStart:
-			flushReasoning()
-			flushAnswer(false)
-			te := toolEntry{name: ev.Start.Name, args: ev.Start.Args, startedAt: time.Now()}
-			idx := -1
-			if ti < len(anchored) {
-				idx = anchored[ti] // the log entry for this start, in arrival order
-				te = t.log.entries[idx]
-			}
-			ti++
-			emitTool(te, idx)
-		case EventToolResult:
-			flushReasoning() // the entry sent its head when it started; results surface through it
-			flushAnswer(false)
-		case EventAnswer:
-			anyStreamedAnswer = true
-			answer.WriteString(ev.Delta)
-		}
-	}
-	flushReasoning()
-	flushAnswer(true)
-
-	return b.String(), rows
+	return RenderFlow(flowInput{
+		Events:      events,
+		Msg:         msg,
+		MsgIdx:      msgIdx,
+		Theme:       t.theme,
+		ConfigTheme: t.configTheme,
+		Width:       t.transcriptWidth(),
+		Pulse:       t.busyPulse > 0,
+		Effort:      t.reasoningEffort,
+		Mode:        t.viewMode(),
+		COTExpanded: t.cotExpanded,
+		Now:         now,
+		Tools:       tools,
+		IsFocused:   t.focusedBlockIs,
+	})
 }
 
 // renderHistoryViewport returns the Height-clamped scroll region: the rendered history content limited to the rows the fixed bottom band (the only non-reserved region) does not occupy.
@@ -929,12 +794,14 @@ func (t Transcript) focusedToolIdx() int {
 	return blk.toolIdx
 }
 
-// thinkingExpandedFor returns whether msg's reasoning block renders expanded: a
-// per-turn thinkingCollapsed override always wins, a per-turn thinkingExpanded
-// flag beats the global modes, the expand-all mode expands, the collapse-all
-// mode collapses, and otherwise the block follows the CoT-collapsed-by-default
-// flag (issue #432). A live streamed block stays expanded unless force-collapsed.
-func (t Transcript) thinkingExpandedFor(msg message) bool {
+// thinkingExpandedForBlock is the free-function form of the reasoning-block
+// expansion decision, shared by the Transcript's per-turn/legacy render paths
+// and the FlowRenderer: a per-turn thinkingCollapsed override always wins, a
+// per-turn thinkingExpanded flag beats the global modes, the expand-all mode
+// expands, the collapse-all mode collapses, and otherwise the block follows the
+// CoT-collapsed-by-default flag. A live streamed block stays expanded unless
+// force-collapsed.
+func thinkingExpandedForBlock(msg message, mode viewMode, cotExpanded bool) bool {
 	if msg.thinkingCollapsed {
 		return false
 	}
@@ -944,13 +811,29 @@ func (t Transcript) thinkingExpandedFor(msg message) bool {
 	if msg.thinkingExpanded {
 		return true
 	}
-	switch t.viewMode() {
+	switch mode {
 	case viewExpandAll:
 		return true
 	case viewCollapseAll:
 		return false
 	}
-	return t.cotExpanded
+	return cotExpanded
+}
+
+// thinkingExpandedFor returns whether msg's reasoning block renders expanded.
+func (t Transcript) thinkingExpandedFor(msg message) bool {
+	return thinkingExpandedForBlock(msg, t.viewMode(), t.cotExpanded)
+}
+
+// thinkingExpandedForFrag is the free-function form of the per-fragment
+// expansion decision, shared by the Transcript and the FlowRenderer.
+func thinkingExpandedForFrag(msg message, fragIdx int, mode viewMode, cotExpanded bool) bool {
+	if msg.fragmentForces != nil {
+		if f, ok := msg.fragmentForces[fragIdx]; ok {
+			return f
+		}
+	}
+	return thinkingExpandedForBlock(msg, mode, cotExpanded)
 }
 
 // thinkingExpandedForFragment returns whether the fragIdx-th reasoning fragment
@@ -961,12 +844,7 @@ func (t Transcript) thinkingExpandedFor(msg message) bool {
 // even in expand-all mode); the modes take over only once the forces are cleared
 // on mode entry.
 func (t Transcript) thinkingExpandedForFragment(msg message, fragIdx int) bool {
-	if msg.fragmentForces != nil {
-		if f, ok := msg.fragmentForces[fragIdx]; ok {
-			return f
-		}
-	}
-	return t.thinkingExpandedFor(msg)
+	return thinkingExpandedForFrag(msg, fragIdx, t.viewMode(), t.cotExpanded)
 }
 
 // thinkingHeaderFor renders a turn's reasoning-header line, prefixing it with the
