@@ -926,6 +926,11 @@ func (m Model) View() tea.View {
 	content := m.viewString()
 	v := tea.NewView(content)
 	v.AltScreen = true
+	// Cell-motion mode turns on SGR mouse reporting so wheel events (scroll)
+	// and click-drag (selection) reach updateMouse; without it bubbletea v2
+	// defaults to MouseModeNone and no mouse input is delivered, even though
+	// the navigateMouse handlers exist.
+	v.MouseMode = tea.MouseModeCellMotion
 	v.Cursor = m.composerCursor(content)
 	return v
 }
