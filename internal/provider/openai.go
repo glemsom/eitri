@@ -72,11 +72,17 @@ type modelList struct {
 }
 
 type modelListEntry struct {
-	ID                 string          `json:"id"`
-	Endpoints          []string        `json:"endpoints,omitempty"`
-	SupportedEndpoints []string        `json:"supported_endpoints,omitempty"`
-	Capabilities       map[string]bool `json:"capabilities,omitempty"`
+	ID                 string            `json:"id"`
+	Endpoints          []string          `json:"endpoints,omitempty"`
+	SupportedEndpoints []string          `json:"supported_endpoints,omitempty"`
+	Capabilities       modelCapabilities `json:"capabilities,omitempty"`
 }
+
+// modelCapabilities keeps discovery tolerant of providers that mix booleans
+// with descriptive strings inside the capabilities bag. Endpoint inference only
+// consumes boolean flags today; non-boolean values are ignored instead of
+// aborting the whole model-list decode.
+type modelCapabilities map[string]json.RawMessage
 
 func inferEndpointKind(m modelListEntry) EndpointKind {
 	for _, endpoints := range [][]string{m.Endpoints, m.SupportedEndpoints} {
@@ -89,13 +95,22 @@ func inferEndpointKind(m modelListEntry) EndpointKind {
 			}
 		}
 	}
-	if m.Capabilities["responses"] {
+	if capabilityEnabled(m.Capabilities, "responses") {
 		return EndpointResponses
 	}
-	if m.Capabilities["chat_completions"] || m.Capabilities["chat/completions"] {
+	if capabilityEnabled(m.Capabilities, "chat_completions") || capabilityEnabled(m.Capabilities, "chat/completions") {
 		return EndpointChatCompletions
 	}
 	return EndpointUnknown
+}
+
+func capabilityEnabled(caps modelCapabilities, key string) bool {
+	raw, ok := caps[key]
+	if !ok {
+		return false
+	}
+	var enabled bool
+	return json.Unmarshal(raw, &enabled) == nil && enabled
 }
 
 func normalizeEndpoint(s string) EndpointKind {

@@ -60,6 +60,27 @@ func TestOpenAIDiscoverModelsCarriesAuth(t *testing.T) {
 	}
 }
 
+func TestOpenAIDiscoverModelsIgnoresStringCapabilityValues(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"copilot-chat","supported_endpoints":["chat/completions"],"capabilities":{"type":"chat"}}]}`))
+	}))
+	defer srv.Close()
+
+	cl := NewOpenAICompatible("disc-key", srv.URL+"/v1/chat/completions")
+	models, err := cl.Models(context.Background())
+	if err != nil {
+		t.Fatalf("Models() error = %v, want nil", err)
+	}
+	if len(models) != 1 || models[0].ID != "copilot-chat" {
+		t.Fatalf("Models() = %v, want [copilot-chat]", models)
+	}
+	if models[0].EndpointKind != EndpointChatCompletions {
+		t.Fatalf("Models()[0].EndpointKind = %q, want %q", models[0].EndpointKind, EndpointChatCompletions)
+	}
+}
+
 // TestFakeDiscoversModels verifies the fake provider stands in for model
 // discovery at the engine/app seam: it surfaces a committed model list so
 // discovery is exercisable without a network.
