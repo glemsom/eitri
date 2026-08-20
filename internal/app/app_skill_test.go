@@ -326,17 +326,11 @@ func TestTUISlashHiddenSkillThroughEngineSeamWithArgs(t *testing.T) {
 	}
 
 	content := appTestANSIStrip(appTestView(m))
-	n := strings.Index(content, "<skill_content name=\"improve-codebase-architecture\">")
-	if n < 0 {
-		t.Fatalf("skill activation payload not rendered;\n%s", content)
-	}
-	if strings.Index(content, "Do the architecture thing") < 0 {
-		t.Fatalf("skill body not rendered;\n%s", content)
+	if strings.Contains(content, "<skill_content name=\"improve-codebase-architecture\">") {
+		t.Fatalf("skill activation payload must not be echoed as a note (single delivery via injection);\n%s", content)
 	}
 	if a := strings.Index(content, wantArgs); a < 0 {
 		t.Fatalf("args message not rendered;\n%s", content)
-	} else if n > a {
-		t.Fatalf("skill note index %d must precede args index %d (note renders before args turn)", n, a)
 	}
 
 	if !skills.IsActive("improve-codebase-architecture") {
@@ -489,6 +483,77 @@ func TestTUISlashArgsPutsSkillInProviderContext(t *testing.T) {
 	}
 	if msgs[2].Role != provider.RoleUser || msgs[2].Content != "Let us improve this" {
 		t.Errorf("Messages[2] = %+v, want the user args turn", msgs[2])
+	}
+
+	if !skills.IsActive("improve-codebase-architecture") {
+		t.Fatal("skill not marked active after slash activation")
+	}
+}
+
+func TestTUISlashBarePutsSkillInProviderContext(t *testing.T) {
+	ws := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	skillDir := filepath.Join(ws, ".agents", "skills", "improve-codebase-architecture")
+	if err := os.MkdirAll(skillDir, 0o700); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	skillMD := "---\nname: improve-codebase-architecture\ndescription: a command skill\ndisable-model-invocation: true\n---\n\n# Improve Codebase\n\nDo the architecture thing.\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillMD), 0o600); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(ws); err != nil {
+		t.Fatalf("chdir workspace: %v", err)
+	}
+	defer func() { _ = os.Chdir(oldWd) }()
+
+	skills := discoverSkills(ws)
+	reg := tools.NewRegistry(tools.Deps{
+		Workspace: ws,
+		TempHost:  t.TempDir(),
+		GUID:      tools.GUID("slash-bare-" + t.Name()),
+		Skills:    skills,
+	})
+	surface := skillSurface(reg, skills)
+	if surface == nil {
+		t.Fatal("skillSurface = nil, want non-nil")
+	}
+
+	cap := &captureSkillRequests{}
+	e := engine.New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
+		cap.reqs = append(cap.reqs, req)
+		return provider.StreamFunc(provider.Chunk{Content: "ok"}, provider.Chunk{FinishReason: "stop", Done: true}), nil
+	}), mockTranscript{})
+
+	cfg := config.Default()
+	turn := runEngineTurn(e, func() config.Config { return cfg }, reg, "sess-"+t.Name(), nil)
+	m := tui.NewModelCfg(tui.Dependencies{
+		Turn:   turn,
+		Skills: surface,
+	})
+	m = appTestResize(t, m)
+	m = appTestTypeText(t, m, "/improve-codebase-architecture")
+	m = appTestSubmitAndWait(t, m)
+
+	if len(cap.reqs) == 0 {
+		t.Fatal("provider received no requests for the bare slash turn")
+	}
+	msgs := cap.reqs[0].Messages
+	if len(msgs) != 3 {
+		t.Fatalf("provider Messages = %d, want 3 (system + skill inject + user default prompt); got %v", len(msgs), msgs)
+	}
+	if msgs[1].Role != provider.RoleSystem {
+		t.Errorf("Messages[1].Role = %q, want %q (skill injected as a system prefix)", msgs[1].Role, provider.RoleSystem)
+	}
+	if !strings.Contains(msgs[1].Content, "<skill_content name=\"improve-codebase-architecture\">") {
+		t.Errorf("Messages[1] lacks the skill_content payload:\n%s", msgs[1].Content)
+	}
+	if msgs[2].Role != provider.RoleUser || msgs[2].Content != "apply the improve-codebase-architecture skill" {
+		t.Errorf("Messages[2] = %+v, want the bare slash default prompt", msgs[2])
 	}
 
 	if !skills.IsActive("improve-codebase-architecture") {

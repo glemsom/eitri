@@ -95,8 +95,9 @@ type telemetryUpdateMsg struct {
 	update TelemetryUpdate
 }
 
-// skillDoneMsg reports a slash-command skill activation's result. args, when non-empty, carries the trailing `/skillname <args>` remainder that must run as a follow-up user turn after the injected skill note .
+// skillDoneMsg reports a slash-command skill activation's result. name is the activated skill; args, when non-empty, carries the trailing `/skillname <args>` remainder that becomes the turn prompt, and a bare `/skillname` falls back to a default prompt so a turn always runs.
 type skillDoneMsg struct {
+	name    string
 	payload string
 	args    string
 }
@@ -550,12 +551,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case skillDoneMsg:
-		m.tx.appendMsg(msgi.payload)
-		if msgi.args != "" {
-			cmd := m.startTurn(msgi.args, msgi.payload)
-			return m, cmd
+		// The skill payload is injected into the turn's context (single delivery) instead of being
+		// echoed as an assistant note, and every slash activation starts an agent turn: the trailing
+		// args become the prompt, while a bare `/skillname` falls back to a default apply-skill prompt.
+		prompt := msgi.args
+		if prompt == "" {
+			prompt = fmt.Sprintf("apply the %s skill", msgi.name)
 		}
-		return m, nil
+		cmd := m.startTurn(prompt, msgi.payload)
+		return m, cmd
 
 	case loginCodeMsg:
 		m.tx.appendMsg(fmt.Sprintf("Open %s and enter code: %s", msgi.code.VerificationURI, msgi.code.UserCode))
@@ -799,7 +803,7 @@ func slashCommand(prompt string, skills []SkillItem) (name, args string, ok bool
 	return "", "", false
 }
 
-// activateSkill runs one slash-command activation through the SkillsSurface activation seam (the T8 skill tool) on a detached command and renders the result as an assistant note.
+// activateSkill runs one slash-command activation through the SkillsSurface activation seam (the skill tool) on a detached command; the resulting payload is injected into the follow-up agent turn's context so the model acts on the skill instructions.
 func (m Model) activateSkill(name, args string) (tea.Model, tea.Cmd) {
 	m.tx.messages = append(m.tx.messages, message{role: "you", content: "/" + name})
 	m.tx.layout.dirty = true
@@ -831,7 +835,9 @@ func discoverCmd(discover func(ctx context.Context, cfg config.Config) ([]string
 	})
 }
 
-// skillCmd runs a skill activation off the main loop and reports its payload. args, when non-empty, rides along on skillDoneMsg so the handler can queue the follow-up user turn after injecting the skill note .
+// skillCmd runs a skill activation off the main loop and reports its payload. name and args ride along
+// on skillDoneMsg so the handler can start the agent turn (args as the prompt, or a default prompt for
+// a bare `/skillname`) with the payload injected into context.
 func skillCmd(activate func(ctx context.Context, name string) (string, error), name, args string) tea.Cmd {
 	return tea.Cmd(func() tea.Msg {
 		ctx, cancel := context.WithCancel(context.Background())
@@ -840,7 +846,7 @@ func skillCmd(activate func(ctx context.Context, name string) (string, error), n
 		if err != nil {
 			return turnDoneMsg{err: fmt.Errorf("activate skill %q: %w", name, err)}
 		}
-		return skillDoneMsg{payload: payload, args: args}
+		return skillDoneMsg{name: name, payload: payload, args: args}
 	})
 }
 
