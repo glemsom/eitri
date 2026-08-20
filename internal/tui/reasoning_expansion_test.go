@@ -40,27 +40,27 @@ func TestThinkingExpandedForFrag_OwnsForcesOnSeam(t *testing.T) {
 	}
 }
 
-// TestReasoning_expansionSeamOwnsWholeBlockForces locks that toggleThinking
-// routes the whole-block force through the seam on a committed turn, so the
-// decision flips between force-expand and force-collapse with no leaf flags
-// left on the message.
+// TestReasoning_expansionSeamOwnsWholeBlockForces locks that a committed turn's
+// reasoning-block toggle routes through the ExpansionState seam: the Transcript
+// delegates the focus-driven toggle to toggleThinkingFragment, which pins the
+// seam force so the open/collapsed decision flips between force-expand and
+// force-collapse with no leaf flags left on the message.
 func TestReasoning_expansionSeamOwnsWholeBlockForces(t *testing.T) {
 	t.Parallel()
 	tx := committedReasoningFlowTranscript("the body", "answer")
 
-	f, ok := tx.messages[1].expansion.forceFor(blockReasoning, reasoningWholeID)
-	if ok {
-		t.Fatalf("fresh committed block must carry no whole-block force, got ok=%v force=%v", ok, f)
+	if _, ok := tx.messages[1].expansion.forceFor(blockReasoning, 0); ok {
+		t.Fatalf("fresh committed block must carry no fragment force, got a force present")
 	}
 
-	tx.toggleThinking(1) // collapsed default -> force-expand
-	if f, ok := tx.messages[1].expansion.forceFor(blockReasoning, reasoningWholeID); !ok || !f {
-		t.Errorf("toggleThinking must pin a force-expand on the seam, got ok=%v force=%v", ok, f)
+	tx.toggleThinkingFragment(1, 0) // collapsed default -> force-expand
+	if f, ok := tx.messages[1].expansion.forceFor(blockReasoning, 0); !ok || !f {
+		t.Errorf("toggle must pin a force-expand on the seam, got ok=%v force=%v", ok, f)
 	}
 
-	tx.toggleThinking(1) // force-expand -> force-collapse
-	if f, ok := tx.messages[1].expansion.forceFor(blockReasoning, reasoningWholeID); !ok || f {
-		t.Errorf("second toggleThinking must flip to force-collapse on the seam, got ok=%v force=%v", ok, f)
+	tx.toggleThinkingFragment(1, 0) // force-expand -> force-collapse
+	if f, ok := tx.messages[1].expansion.forceFor(blockReasoning, 0); !ok || f {
+		t.Errorf("second toggle must flip to force-collapse on the seam, got ok=%v force=%v", ok, f)
 	}
 }
 

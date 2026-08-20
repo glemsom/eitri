@@ -106,15 +106,6 @@ func (l *toolLog) Apply(u ToolUpdate) {
 	}
 }
 
-// Toggle forces one entry to the opposite of how it renders, routing the
-// per-entry expansion force through the ExpansionState seam with bounds checking.
-func (l *toolLog) Toggle(i int) {
-	if i < 0 || i >= len(l.entries) {
-		return
-	}
-	l.expansion.toggle(blockTool, i)
-}
-
 // Expand pins one entry force-expanded on the seam so the per-block toggle can
 // reveal a single result even under a collapsing default.
 func (l *toolLog) Expand(i int) {
@@ -131,21 +122,6 @@ func (l *toolLog) ForceCollapse(i int) {
 		return
 	}
 	l.expansion.set(blockTool, i, false)
-}
-
-// ToggleCollapse flips one entry's collapse pin on the seam: the mechanism that
-// keeps a single entry collapsed while the global Ctrl+E expanded-view mode is
-// ON. It toggles between force-collapsed and unpinned, never force-expanding, so
-// releasing the pin lets the mode/default show the entry again.
-func (l *toolLog) ToggleCollapse(i int) {
-	if i < 0 || i >= len(l.entries) {
-		return
-	}
-	if force, ok := l.expansion.forceFor(blockTool, i); ok && !force {
-		l.expansion.clear(blockTool, i)
-	} else {
-		l.expansion.set(blockTool, i, false)
-	}
 }
 
 // expandedFor returns whether entry i renders expanded, read through the

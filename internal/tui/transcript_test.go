@@ -426,14 +426,14 @@ func TestTranscript_expandAllPerEntryCollapseOverride(t *testing.T) {
 		t.Fatalf("with expandAll on, entry must render its full result, got: %q", on.String())
 	}
 
-	tx.toggleCollapse(0)
+	tx.toggleToolEntry(0)
 	var off strings.Builder
 	tx.renderHistory(&off, nil, nil)
 	if strings.Contains(off.String(), "a.go") {
 		t.Errorf("per-entry collapse must hide the result even in expanded-view mode, got: %q", off.String())
 	}
 
-	tx.toggleCollapse(0)
+	tx.toggleToolEntry(0)
 	var again strings.Builder
 	tx.renderHistory(&again, nil, nil)
 	if !strings.Contains(again.String(), "a.go") {
@@ -451,12 +451,12 @@ func TestTranscript_toolEntryAtLineEffectiveCollapse(t *testing.T) {
 		t.Errorf("expanded mode: entry 0 must report expanded, got %d/%v/%v", idx, collapsed, ok)
 	}
 
-	tx.toggleCollapse(0)
+	tx.toggleToolEntry(0)
 	if idx, collapsed, ok := tx.toolEntryAtLine(head); !ok || idx != 0 || !collapsed {
 		t.Errorf("override collapse: entry 0 must report collapsed, got %d/%v/%v", idx, collapsed, ok)
 	}
 
-	tx.toggleCollapse(0)
+	tx.toggleToolEntry(0)
 	if idx, collapsed, ok := tx.toolEntryAtLine(head); !ok || idx != 0 || collapsed {
 		t.Errorf("override released: entry 0 must report expanded, got %d/%v/%v", idx, collapsed, ok)
 	}
@@ -699,14 +699,14 @@ func TestTranscript_liveReasoningBlockTogglesViaTab(t *testing.T) {
 		t.Fatalf("streaming reasoning must render its body expanded, got: %q", live.String())
 	}
 
-	tx.toggleThinking(1)
+	tx.toggleThinkingFragment(1, 0)
 	var collapsed strings.Builder
 	tx.renderHistory(&collapsed, nil, nil)
 	if strings.Contains(ansiStrip(collapsed.String()), "visible reasoning") {
 		t.Errorf("tab must collapse the live reasoning block, got: %q", collapsed.String())
 	}
 
-	tx.toggleThinking(1)
+	tx.toggleThinkingFragment(1, 0)
 	var reexpanded strings.Builder
 	tx.renderHistory(&reexpanded, nil, nil)
 	if !strings.Contains(ansiStrip(reexpanded.String()), "visible reasoning") {
