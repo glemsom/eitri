@@ -495,12 +495,6 @@ func (t *Transcript) toggleToolEntry(idx int) {
 	t.layout.dirty = true // an entry expanded/collapsed changes its rendered rows
 }
 
-// toggleCollapse flips one entry's per-entry collapse-override: it keeps a single entry collapsed even while the global expanded-view mode is ON, and flips back to let the mode show it.
-func (t *Transcript) toggleCollapse(idx int) {
-	t.log.ToggleCollapse(idx)
-	t.layout.dirty = true
-}
-
 // toolExpandedFor reports whether tool entry idx renders expanded under the
 // current mode and collapsed-by-default flag.
 func (t Transcript) toolExpandedFor(idx int) bool {
@@ -801,32 +795,6 @@ func (t Transcript) thinkingHeaderFor(msg message, msgIdx, fragIdx int, txt stri
 		h = t.theme.focusStyle.Render(focusMarker()+" ") + h
 	}
 	return h
-}
-
-// toggleThinking flips one turn's reasoning-block expansion (Enter on the
-// focused block), routing the whole-block force through the seam: a live
-// streamed block flips its force-collapse pin, while any other block is set to
-// the force opposing how it currently renders.
-func (t *Transcript) toggleThinking(i int) {
-	if i < 0 || i >= len(t.messages) {
-		return
-	}
-	msg := &t.messages[i]
-	e := &msg.expansion
-	if msg.streaming && msg.reasoning != "" {
-		// flip the live block's force-collapse pin: pinned-collapsed un-pins to
-		// auto-expand; auto-expanded pins force-collapsed.
-		if f, ok := e.forceFor(blockReasoning, reasoningWholeID); ok && !f {
-			e.set(blockReasoning, reasoningWholeID, true)
-		} else {
-			e.set(blockReasoning, reasoningWholeID, false)
-		}
-	} else {
-		e.mode = t.viewMode()
-		e.cotExpanded = t.cotExpanded
-		e.toggle(blockReasoning, reasoningWholeID)
-	}
-	t.layout.dirty = true // a thinking block expanded/collapsed changes rows
 }
 
 // toggleThinkingFragment flips the expansion of one reasoning fragment (Enter on
