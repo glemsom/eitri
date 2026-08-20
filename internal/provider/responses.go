@@ -39,7 +39,7 @@ type responsesInputItem struct {
 	Name      string                 `json:"name,omitempty"`
 	Arguments string                 `json:"arguments,omitempty"`
 	CallID    string                 `json:"call_id,omitempty"`
-	Output    string                 `json:"output,omitempty"`
+	Output    *string                `json:"output,omitempty"`
 }
 
 type responsesContentPart struct {
@@ -85,10 +85,11 @@ func responsesInput(messages []Message) []responsesInputItem {
 				})
 			}
 		case RoleTool:
+			output := m.Content
 			out = append(out, responsesInputItem{
 				Type:   "function_call_output",
 				CallID: m.ToolCallID,
-				Output: m.Content,
+				Output: &output,
 			})
 		}
 	}
