@@ -9,6 +9,13 @@ type expansionKey struct {
 	id   int
 }
 
+// reasoningWholeID is the ExpansionState id a turn's whole-block reasoning
+// force is keyed on (the migrated thinkingExpanded / thinkingCollapsed flags),
+// distinct from the per-fragment reasoning ids (0..n) so a whole-turn toggle
+// never collides with the first fragment's pin. A callers-owned negative id is
+// safe because fragment indices are always non-negative.
+const reasoningWholeID = -1
+
 // ExpansionState owns Eitri's block-expansion policy: the global view mode plus
 // a per-block expansion force for both reasoning fragments and tool-result
 // entries. Every block's open/collapsed decision flows through one query,
@@ -107,4 +114,16 @@ func (e *ExpansionState) setMode(mode viewMode) {
 // collapsed-by-default decision.
 func (e *ExpansionState) clearForces() {
 	e.forces = nil
+}
+
+// clearReasoningFragments drops every per-fragment reasoning force (ids >= 0),
+// leaving the whole-block force (id < 0) intact — the turn-commit cleanup that
+// discards a live turn's fragment pins once its chain-of-thought collapses to a
+// single committed block.
+func (e *ExpansionState) clearReasoningFragments() {
+	for k := range e.forces {
+		if k.kind == blockReasoning && k.id >= 0 {
+			delete(e.forces, k)
+		}
+	}
 }

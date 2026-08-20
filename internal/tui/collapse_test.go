@@ -110,8 +110,8 @@ func TestTranscript_toolResultsExpandedByDefaultShowsResult(t *testing.T) {
 // Enter toggles the focused block between hint and full body.
 func TestTranscript_blockFocusCyclesAndToggles(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
-	tx := flowTranscript()                  // reasoning + tool + answer, collapsed by default
-	tx.messages[1].thinkingExpanded = false // flowTranscript seeds it expanded; clear the per-block state
+	tx := flowTranscript()                                           // reasoning + tool + answer, collapsed by default
+	tx.messages[1].expansion.clear(blockReasoning, reasoningWholeID) // flowTranscript seeds it expanded; clear the per-block state
 
 	if got := len(tx.collapsibleBlocks()); got != 2 {
 		t.Fatalf("collapsibleBlocks() = %d, want 2 (reasoning + tool)", got)

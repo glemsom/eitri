@@ -31,7 +31,7 @@ func flowTranscript() *Transcript {
 				role:              "eitri",
 				content:           "Done.",
 				thinkingRequested: true,
-				thinkingExpanded:  true,
+				expansion:         expansionWithReasoningForces(true, false),
 				events: []TimelineEvent{
 					{Kind: EventReasoning, Seq: 0, Delta: "Let me check the repo first."},
 					{Kind: EventToolStart, Seq: 1, Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}},
@@ -170,7 +170,7 @@ func TestTranscript_liveTurnRendersFromTimelineFlow(t *testing.T) {
 func TestTranscript_flatFlowCollapsesReasoningOnCompletion(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := flowTranscript()
-	tx.messages[1].thinkingExpanded = false // the turn completed (no expand-all mode)
+	tx.messages[1].expansion.clear(blockReasoning, reasoningWholeID) // the turn completed (no expand-all mode)
 
 	var hist strings.Builder
 	tx.renderHistory(&hist, nil, nil)
@@ -419,7 +419,7 @@ func TestTranscript_committedReasoningSnapshotRendersOnce(t *testing.T) {
 		log:             log,
 		messages: []message{
 			{role: "you", content: "p"},
-			{role: "eitri", content: "done", reasoning: "snapshot reasoning", thinkingRequested: true, thinkingExpanded: true,
+			{role: "eitri", content: "done", reasoning: "snapshot reasoning", thinkingRequested: true, expansion: expansionWithReasoningForces(true, false),
 				events: []TimelineEvent{
 					{Kind: EventReasoning, Seq: 0, Delta: "snapshot reasoning"},
 					{Kind: EventToolStart, Seq: 1, Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}},
@@ -461,7 +461,7 @@ func TestTranscript_committedReasoningSnapshotOnceAtTailWhenNoToolFollows(t *tes
 		histViewport:    newHistoryViewport(),
 		messages: []message{
 			{role: "you", content: "q"},
-			{role: "eitri", content: "done", reasoning: "tail reasoning", thinkingRequested: true, thinkingExpanded: true,
+			{role: "eitri", content: "done", reasoning: "tail reasoning", thinkingRequested: true, expansion: expansionWithReasoningForces(true, false),
 				events: []TimelineEvent{
 					{Kind: EventReasoning, Seq: 0, Delta: "tail reasoning"},
 					{Kind: EventAnswer, Seq: 1, Delta: "done"},

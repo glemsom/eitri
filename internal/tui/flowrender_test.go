@@ -8,6 +8,21 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
+// expansionWithReasoningForces builds an ExpansionState with the whole-block
+// reasoning force pinned from the two directional flags, the test-facing
+// equivalent of the old thinkingExpanded / thinkingCollapsed pair used to seed
+// fixtures. With both false no force is pinned, so the mode/default decide.
+func expansionWithReasoningForces(forceExpand, forceCollapse bool) ExpansionState {
+	e := NewExpansionState(viewDefault, false, false)
+	switch {
+	case forceExpand:
+		e.set(blockReasoning, reasoningWholeID, true)
+	case forceCollapse:
+		e.set(blockReasoning, reasoningWholeID, false)
+	}
+	return e
+}
+
 // renderFlowInput builds the smallest flowInput a flow test needs: a theme for
 // the default theme and a generous width, with no Transcript or tool log in
 // sight. The per-turn event log, the message snapshot, and any paired tool
@@ -44,7 +59,7 @@ func TestRenderFlow_committedRendersReasoningOnceAtFirstToolBoundary(t *testing.
 			{Kind: EventReasoning, Delta: "after tool"},
 			{Kind: EventAnswer, Delta: "Done."},
 		},
-		message{reasoning: "think first", content: "Done.", thinkingRequested: true, thinkingExpanded: true},
+		message{reasoning: "think first", content: "Done.", thinkingRequested: true, expansion: expansionWithReasoningForces(true, false)},
 		[]flowTool{bashTool()},
 	)
 
@@ -86,7 +101,7 @@ func TestRenderFlow_committedReasoningSnapshotOnceAtTailWhenNoToolFollows(t *tes
 			{Kind: EventReasoning, Delta: " think second"},
 			{Kind: EventAnswer, Delta: "Done."},
 		},
-		message{reasoning: "think first think second", content: "Done.", thinkingRequested: true, thinkingExpanded: true},
+		message{reasoning: "think first think second", content: "Done.", thinkingRequested: true, expansion: expansionWithReasoningForces(true, false)},
 		nil,
 	)
 
@@ -155,7 +170,7 @@ func TestRenderFlow_committedCollapsesReasoningToHint(t *testing.T) {
 			{Kind: EventReasoning, Delta: "hidden body"},
 			{Kind: EventAnswer, Delta: "Done."},
 		},
-		message{reasoning: "hidden body", content: "Done.", thinkingRequested: true}, // not thinkingExpanded
+		message{reasoning: "hidden body", content: "Done.", thinkingRequested: true}, // no whole-block force (collapsed default)
 		nil,
 	)
 
