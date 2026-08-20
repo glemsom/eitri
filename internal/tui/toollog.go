@@ -14,30 +14,33 @@ import (
 
 // toolEntry is one rendered tool call in the transcript: the tool name + args, plus the delivered result and its deterministic compression and file line-delta metadata.
 type toolEntry struct {
-	name              string
-	args              string
-	result            string
-	bytesDropped      int
-	lines             int
-	dropped           int
-	compressed        bool
-	added             int
-	removed           int
-	anchor            int // index of the triggering "you" message in messages
-	complete          bool
-	startedAt         time.Time
-	doneAt            time.Time
-	expanded          bool
-	collapsedOverride bool
-	before            string
-	after             string
-	path              string
+	name         string
+	args         string
+	result       string
+	bytesDropped int
+	lines        int
+	dropped      int
+	compressed   bool
+	added        int
+	removed      int
+	anchor       int // index of the triggering "you" message in messages
+	complete     bool
+	startedAt    time.Time
+	doneAt       time.Time
+	before       string
+	after        string
+	path         string
 }
 
 // toolLog is the deep value type that owns the transcript's tool-call entries end to end.
 type toolLog struct {
 	entries   []toolEntry
 	curAnchor int
+	// expansion owns every tool entry's per-block expansion force (keyed by the
+	// entry's log index) and the open/collapsed decision, so the per-entry
+	// expanded / force-collapse flags live behind the ExpansionState seam rather
+	// than on each entry (issue #470).
+	expansion ExpansionState
 }
 
 // Len reports the number of entries the log holds.
@@ -103,67 +106,63 @@ func (l *toolLog) Apply(u ToolUpdate) {
 	}
 }
 
-// Toggle flips one entry's per-entry expansion state with bounds checking.
+// Toggle forces one entry to the opposite of how it renders, routing the
+// per-entry expansion force through the ExpansionState seam with bounds checking.
 func (l *toolLog) Toggle(i int) {
 	if i < 0 || i >= len(l.entries) {
 		return
 	}
-	l.entries[i].expanded = !l.entries[i].expanded
-	l.entries[i].collapsedOverride = false
+	l.expansion.toggle(blockTool, i)
 }
 
-// Expand marks one entry expanded, clearing any collapse override so the
-// per-block toggle can reveal a single result even under a collapsing default.
+// Expand pins one entry force-expanded on the seam so the per-block toggle can
+// reveal a single result even under a collapsing default.
 func (l *toolLog) Expand(i int) {
 	if i < 0 || i >= len(l.entries) {
 		return
 	}
-	l.entries[i].expanded = true
-	l.entries[i].collapsedOverride = false
+	l.expansion.set(blockTool, i, true)
 }
 
-// ForceCollapse marks one entry force-collapsed, beating the expanded-view
-// mode, an expanded default, and any per-entry expanded flag.
+// ForceCollapse pins one entry force-collapsed on the seam, beating the
+// expanded-view mode, an expanded default, and any per-entry expanded flag.
 func (l *toolLog) ForceCollapse(i int) {
 	if i < 0 || i >= len(l.entries) {
 		return
 	}
-	l.entries[i].collapsedOverride = true
-	l.entries[i].expanded = false
+	l.expansion.set(blockTool, i, false)
 }
 
-// ToggleCollapse flips one entry's per-entry collapse-override, the mechanism that keeps a single entry collapsed while the global Ctrl+E expanded-view mode is ON.
+// ToggleCollapse flips one entry's collapse pin on the seam: the mechanism that
+// keeps a single entry collapsed while the global Ctrl+E expanded-view mode is
+// ON. It toggles between force-collapsed and unpinned, never force-expanding, so
+// releasing the pin lets the mode/default show the entry again.
 func (l *toolLog) ToggleCollapse(i int) {
 	if i < 0 || i >= len(l.entries) {
 		return
 	}
-	l.entries[i].collapsedOverride = !l.entries[i].collapsedOverride
-	l.entries[i].expanded = false
+	if force, ok := l.expansion.forceFor(blockTool, i); ok && !force {
+		l.expansion.clear(blockTool, i)
+	} else {
+		l.expansion.set(blockTool, i, false)
+	}
 }
 
-// expandedFor returns whether entry i renders expanded: a per-entry collapse
-// override always wins, a per-entry expanded flag beats any global mode, the
-// expand-all mode expands everything else, the collapse-all mode collapses
-// everything else, and otherwise the entry follows its collapsed-by-default
-// flag (issue #432).
+// expandedFor returns whether entry i renders expanded, read through the
+// ExpansionState seam: a per-block force always wins, the expand-all mode
+// expands everything else, the collapse-all mode collapses everything else, and
+// otherwise the entry follows its collapsed-by-default flag (issue #432). The
+// seam's own mode and toolExpanded default are bound from the render call's
+// params, mirroring how the transcript passes them today, so the decision lives
+// in one place while the per-entry forces persist on l.expansion.
 func (l toolLog) expandedFor(i int, mode viewMode, defaultCollapsed bool) bool {
 	if i < 0 || i >= len(l.entries) {
 		return false
 	}
-	e := l.entries[i]
-	if e.collapsedOverride {
-		return false
-	}
-	if e.expanded {
-		return true
-	}
-	switch mode {
-	case viewExpandAll:
-		return true
-	case viewCollapseAll:
-		return false
-	}
-	return !defaultCollapsed
+	e := l.expansion
+	e.mode = mode
+	e.toolExpanded = !defaultCollapsed
+	return e.expanded(blockTool, i)
 }
 
 // Render renders every entry anchored to the given message into the shared head/text surface and records each rendered entry's content-row range. focusedIdx is the log index of the entry under the block focus, or -1 when none.
@@ -237,7 +236,10 @@ func (l toolLog) AtLine(line int, rows []toolRowRange) (idx int, collapsed bool,
 	for _, r := range rows {
 		if line >= r.start && line <= r.end {
 			if r.idx < len(l.entries) {
-				return r.idx, !l.entries[r.idx].expanded, true
+				// collapsed mirrors the seam's open/collapsed decision in the
+				// default (collapsed-by-default) mode, matching the historical
+				// read of the per-entry expanded flag the seam now owns.
+				return r.idx, !l.expansion.expanded(blockTool, r.idx), true
 			}
 			return 0, false, false
 		}

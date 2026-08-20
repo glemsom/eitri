@@ -56,15 +56,81 @@ func TestToolLog_ToggleBoundsChecks(t *testing.T) {
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: ""}})
 
 	l.Toggle(0)
-	if !l.Entry(0).expanded {
+	if !l.expandedFor(0, viewDefault, true) {
 		t.Errorf("entry should be expanded after Toggle(0)")
 	}
 	l.Toggle(0)
-	if l.Entry(0).expanded {
+	if l.expandedFor(0, viewDefault, true) {
 		t.Errorf("entry should collapse after second Toggle(0)")
 	}
 	l.Toggle(-1)
 	l.Toggle(5)
+}
+
+// TestToolLog_ExpansionSeamOwnsForces locks issue #470's migration: the per-entry
+// expand / force-collapse operations route through the ExpansionState seam, so
+// the per-block force lives on l.expansion (keyed by the flat log index) and
+// every open/collapsed decision reads through it.
+func TestToolLog_ExpansionSeamOwnsForces(t *testing.T) {
+	t.Parallel()
+	var l toolLog
+	l.SetAnchor(0)
+	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: ""}})
+
+	// No force yet: the default (collapsed) decision and no pinned force on the seam.
+	if l.expandedFor(0, viewDefault, true) {
+		t.Errorf("fresh entry must follow the collapsed default, got expanded")
+	}
+	if _, ok := l.expansion.forceFor(blockTool, 0); ok {
+		t.Errorf("fresh entry must carry no seam force")
+	}
+
+	// Expand pins a force-expand on the seam that beats the collapsed default.
+	l.Expand(0)
+	if !l.expandedFor(0, viewDefault, true) {
+		t.Errorf("Expand must leave the entry expanded under the collapsed default")
+	}
+	if f, ok := l.expansion.forceFor(blockTool, 0); !ok || !f {
+		t.Errorf("Expand must pin an expand force on the seam, got ok=%v force=%v", ok, f)
+	}
+
+	// ForceCollapse pins the opposite force, beating even the expand-all mode.
+	l.ForceCollapse(0)
+	if l.expandedFor(0, viewExpandAll, true) {
+		t.Errorf("ForceCollapse must win over expand-all mode, got expanded")
+	}
+	if f, ok := l.expansion.forceFor(blockTool, 0); !ok || f {
+		t.Errorf("ForceCollapse must pin a collapse force on the seam, got ok=%v force=%v", ok, f)
+	}
+}
+
+// TestToolLog_ToggleCollapsePinsAndReleases locks the Ctrl+E collapse-pin
+// semantics through the seam: it toggles only between force-collapsed and
+// unpinned, never force-expanding, and releasing the pin lets the mode show the
+// entry again.
+func TestToolLog_ToggleCollapsePinsAndReleases(t *testing.T) {
+	t.Parallel()
+	var l toolLog
+	l.SetAnchor(0)
+	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: ""}})
+
+	// Pinned: the entry stays collapsed even in expand-all mode.
+	l.ToggleCollapse(0)
+	if l.expandedFor(0, viewExpandAll, true) {
+		t.Errorf("collapse pin must beat expand-all mode, got expanded")
+	}
+	if f, ok := l.expansion.forceFor(blockTool, 0); !ok || f {
+		t.Errorf("ToggleCollapse must pin a collapse force, got ok=%v force=%v", ok, f)
+	}
+
+	// Released: no force remains, so the entry follows the mode (expanded here).
+	l.ToggleCollapse(0)
+	if !l.expandedFor(0, viewExpandAll, true) {
+		t.Errorf("released pin must let expand-all show the entry, got collapsed")
+	}
+	if _, ok := l.expansion.forceFor(blockTool, 0); ok {
+		t.Errorf("released pin must clear the seam force, got a force present")
+	}
 }
 
 func TestToolLog_ReviewProjectsChangedFiles(t *testing.T) {
