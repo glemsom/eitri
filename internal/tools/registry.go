@@ -115,6 +115,23 @@ func (r *Registry) Run(ctx context.Context, name string, args map[string]any) (T
 	return tool.Run(ctx, args)
 }
 
+// ActivateSkill renders the named skill's payload through the skill tool,
+// forcing re-injection even when the skill is already active this session: the
+// TUI slash surface is an explicit human re-invoke that must always re-apply,
+// unlike the model's automatic skill tool call (see skillTool.Run) which dedupes
+// within a single agent turn-loop.
+func (r *Registry) ActivateSkill(ctx context.Context, name string) (ToolResult, error) {
+	t, ok := r.tools["skill"]
+	if !ok {
+		return ToolResult{}, fmt.Errorf("no skills configured")
+	}
+	st, ok := t.(*skillTool)
+	if !ok {
+		return ToolResult{}, fmt.Errorf("skill tool unavailable")
+	}
+	return st.activate(ctx, name, true)
+}
+
 // helper: strArg extracts a required string argument, enforcing presence.
 func strArg(args map[string]any, key string) (string, error) {
 	v, ok := args[key]

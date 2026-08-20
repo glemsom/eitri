@@ -184,6 +184,61 @@ func TestTUISlashSkillThroughEngineSeam(t *testing.T) {
 	}
 }
 
+func TestTUISlashRepeatedActivationReapplies(t *testing.T) {
+	ws := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	skillDir := filepath.Join(ws, ".agents", "skills", "tui-skill")
+	if err := os.MkdirAll(skillDir, 0o700); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	skillMD := "---\nname: tui-skill\ndescription: a slash-invocable demo\n---\n\n# TUI Skill\n\nDo the tui thing.\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillMD), 0o600); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(ws); err != nil {
+		t.Fatalf("chdir workspace: %v", err)
+	}
+	defer func() { _ = os.Chdir(oldWd) }()
+
+	skills := discoverSkills(ws)
+	reg := tools.NewRegistry(tools.Deps{
+		Workspace: ws,
+		TempHost:  t.TempDir(),
+		GUID:      tools.GUID("slash-repeat-" + t.Name()),
+		Skills:    skills,
+	})
+	surface := skillSurface(reg, skills)
+	if surface == nil {
+		t.Fatalf("skillSurface = nil, want non-nil for a discovered skill")
+	}
+
+	first, err := surface.Activate(context.Background(), "tui-skill")
+	if err != nil {
+		t.Fatalf("first slash activation error = %v, want nil", err)
+	}
+	if !strings.Contains(first, "Do the tui thing") {
+		t.Fatalf("first slash activation payload wrong:\n%s", first)
+	}
+
+	// A repeated slash must re-apply the full skill body, not short-circuit to
+	// the model-tool "already active" dedupe notice.
+	second, err := surface.Activate(context.Background(), "tui-skill")
+	if err != nil {
+		t.Fatalf("second slash activation error = %v, want nil", err)
+	}
+	if !strings.Contains(second, "Do the tui thing") {
+		t.Fatalf("second slash activation must re-inject the skill body, got:\n%s", second)
+	}
+	if strings.Contains(second, "already active") {
+		t.Fatalf("second slash activation returned the dedupe notice instead of re-applying:\n%s", second)
+	}
+}
+
 func TestTUISlashListsHiddenSkill(t *testing.T) {
 	ws := t.TempDir()
 	t.Setenv("HOME", t.TempDir())
