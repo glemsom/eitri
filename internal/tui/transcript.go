@@ -364,18 +364,29 @@ func (t Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg mess
 	snapshotAnswerEmitted := false
 
 	flushReasoning := func() {
-		if reasoningEmitted {
-			return // a turn's reasoning snapshot renders once per flow, at its first tool boundary
+		// A live (streaming) turn flushes each reasoning fragment at the
+		// boundary it precedes and resets, so chain-of-thought that resumes
+		// after a tool call renders as its own interleaved block in emission
+		// order. A committed turn's reasoning is one authoritative snapshot
+		// and renders exactly once, at its first tool boundary (or the tail).
+		var txt string
+		if msg.streaming {
+			txt = reasoning.String() // the live delta fragment accumulated since the last boundary
+			reasoning.Reset()
+		} else {
+			if reasoningEmitted {
+				return
+			}
+			txt = msg.reasoning
+			if txt == "" {
+				txt = reasoning.String() // the live log is the fallback when the message carries no snapshot
+			}
+			reasoning.Reset()
+			reasoningEmitted = true
 		}
-		txt := msg.reasoning
-		if txt == "" {
-			txt = reasoning.String() // the live log is the fallback when the message carries no snapshot
-		}
-		reasoning.Reset()
 		if txt == "" || !msg.thinkingRequested {
 			return // nothing to show, or the thinking gate hides a turn that never asked for reasoning
 		}
-		reasoningEmitted = true
 		emit(t.thinkingHeaderFor(msg, msgIdx, txt))
 		if !t.thinkingExpandedFor(msg) {
 			return // collapsed: the hint is the block
