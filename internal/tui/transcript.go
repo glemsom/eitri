@@ -584,9 +584,8 @@ func (t *Transcript) setCollapseAll(v bool) {
 }
 
 // clearCollapseForces drops every per-block force-collapse flag so the
-// expand-all mode can show all blocks: the message-side (reasoning) forces and,
-// once the tool-log migration lands, the tool entries' collapse-direction
-// forces on the ExpansionState seam.
+// expand-all mode can show all blocks: the message-side (reasoning) forces and
+// the tool entries' collapse-direction forces on the ExpansionState seam.
 func (t *Transcript) clearCollapseForces() {
 	for i := range t.messages {
 		t.messages[i].thinkingCollapsed = false
