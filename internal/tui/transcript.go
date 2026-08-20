@@ -101,14 +101,7 @@ func (t Transcript) bandWidth() int {
 
 // scrollRegionHeight returns the height in rows of the history scroll region — the rows left over by the fixed bottom band.
 func (t Transcript) scrollRegionHeight(bandHeight int) int {
-	if t.height <= 0 {
-		return -1
-	}
-	vh := t.height - bandHeight
-	if vh < 0 {
-		return 0
-	}
-	return vh
+	return scrollRegionHeight(t.height, bandHeight)
 }
 
 // railClampHeight returns the maximum number of rows the right context rail may occupy so it matches the history region's visible height: both panes clamp to the rows left over by the fixed bottom band, so the two form one coherent row.
@@ -435,26 +428,27 @@ func (t *Transcript) navigateMouse(msg tea.MouseWheelMsg) bool {
 	return t.histFollow
 }
 
+// scrollRegion assembles the history-region seam from the persisted viewport's
+// current size and scroll position plus the plain content line count, so render,
+// click-drag selection, and wheel scroll route through one region source and
+// coordinates and on-screen rows cannot drift apart.
+func (t *Transcript) scrollRegion() scrollRegion {
+	vp := t.histViewport
+	return scrollRegion{
+		height:  vp.Height(),
+		yOffset: vp.YOffset(),
+		content: len(t.plainLines()),
+	}
+}
+
 // inScrollRegion answers whether a screen row lies inside the history scroll region, read from the single region source — the persisted viewport's height (sized by renderHistoryViewport via scrollRegionHeight).
 func (t *Transcript) inScrollRegion(y int) bool {
-	vp := t.histViewport
-	if vp.Height() <= 0 {
-		return false
-	}
-	return y >= 0 && y < vp.Height()
+	return t.scrollRegion().inRegion(y)
 }
 
 // contentLineAtScreenRow is the scroll-region hit-test seam: it answers "is a screen row y inside the history scroll region, and which content line does it map to".
 func (t *Transcript) contentLineAtScreenRow(y int) (line int, ok bool) {
-	if !t.inScrollRegion(y) {
-		return 0, false
-	}
-	v := t.histViewport
-	line = v.YOffset() + y
-	if line < 0 || line >= len(t.plainLines()) {
-		return 0, false
-	}
-	return line, true
+	return t.scrollRegion().contentLineAtScreenRow(y)
 }
 
 // highlightSelection wraps the cells covered by an in-progress drag in reverse video across the full rendered history content; the persisted viewport clips it to the visible window .
