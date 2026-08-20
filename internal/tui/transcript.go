@@ -707,11 +707,12 @@ func (t *Transcript) focusNext() {
 
 // focused returns the block currently under the focus cursor.
 func (t Transcript) focused() (collapsibleBlock, bool) {
-	idx, ok := t.focus.focusedIndex(len(t.collapsibleBlocks()))
+	blocks := t.collapsibleBlocks()
+	idx, ok := t.focus.focusedIndex(len(blocks))
 	if !ok {
 		return collapsibleBlock{}, false
 	}
-	return t.collapsibleBlocks()[idx], true
+	return blocks[idx], true
 }
 
 // toggleFocused flips the focused block's expansion (Enter on the model), the
