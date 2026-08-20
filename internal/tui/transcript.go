@@ -37,7 +37,7 @@ type Transcript struct {
 	turnSeq      int             // arrival sequence counter feeding the live timeline
 	layout       transcriptLayout
 	telemetry    *Telemetry
-	dragSel      dragSelect
+	weaver       selectionWeaver
 	width        int
 	height       int
 	histFollow   bool
@@ -370,8 +370,8 @@ func (t *Transcript) renderHistoryViewport(content string, reserved int) string 
 	}
 	t.histViewport.SetWidth(t.transcriptWidth())
 	t.histViewport.SetHeight(vh)
-	if t.dragSel.active {
-		content = t.highlightSelection(content)
+	if t.weaver.active {
+		content = t.weaver.highlight(content)
 	}
 	t.histViewport.SetContent(content)
 	if t.histFollow {
@@ -449,30 +449,6 @@ func (t *Transcript) inScrollRegion(y int) bool {
 // contentLineAtScreenRow is the scroll-region hit-test seam: it answers "is a screen row y inside the history scroll region, and which content line does it map to".
 func (t *Transcript) contentLineAtScreenRow(y int) (line int, ok bool) {
 	return t.scrollRegion().contentLineAtScreenRow(y)
-}
-
-// highlightSelection wraps the cells covered by an in-progress drag in reverse video across the full rendered history content; the persisted viewport clips it to the visible window .
-func (t Transcript) highlightSelection(content string) string {
-	if !t.dragSel.active {
-		return content
-	}
-	d := t.dragSel
-	startLine, startCol, endLine, endCol := d.selRange()
-	lines := strings.Split(content, "\n")
-	if startLine >= len(lines) {
-		return content
-	}
-	for i := startLine; i <= endLine && i < len(lines); i++ {
-		from, to := startCol, endCol
-		if i > startLine {
-			from = 0
-		}
-		if i < endLine {
-			to = len([]rune(ansiStrip(lines[i]))) - 1
-		}
-		lines[i] = highlightRange(lines[i], from, to)
-	}
-	return strings.Join(lines, "\n")
 }
 
 // ensureLayout rebuilds the transcript layout cache when it is dirty, at most once per transcript change.

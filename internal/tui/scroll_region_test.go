@@ -105,14 +105,14 @@ func TestScrollRegion_mouseRoutesThroughSeam(t *testing.T) {
 	}
 
 	m = mustUpdate(t, m, dragMsg("press", 2, screenRow))
-	if !m.tx.dragSel.active {
+	if !m.tx.weaver.active {
 		t.Fatalf("press on visible region row %d must start a drag", screenRow)
 	}
 
 	for _, y := range []int{m.tx.height - m.bandHeight(), m.tx.height - 1} {
 		m = mustUpdate(t, m, dragMsg("press", 2, y))
 		m = mustUpdate(t, m, dragMsg("motion", 20, y))
-		if m.tx.dragSel.active {
+		if m.tx.weaver.active {
 			t.Errorf("press on band row %d must not start a selection", y)
 		}
 	}
