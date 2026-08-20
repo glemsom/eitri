@@ -28,11 +28,10 @@ type Transcript struct {
 	// hint/one-liner by default; true renders the full body by default.
 	cotExpanded         bool
 	toolResultsExpanded bool
-	// focusedBlock is the index into collapsibleBlocks() the per-block expand
-	// interaction targets; focusOn gates whether the focus cursor is active at
-	// all (a bare Transcript's zero value means no block is focused).
-	focusOn      bool
-	focusedBlock int
+	// focus owns the block-focus cursor (the per-block Tab/Enter interaction):
+	// whether the cursor is active and which collapsible block it points at.
+	// A bare Transcript's zero value means no block is focused.
+	focus        collapseFocus
 	timeline     []TimelineEvent // live arrival-ordered event log of the in-progress turn
 	turnSeq      int             // arrival sequence counter feeding the live timeline
 	layout       transcriptLayout
@@ -703,30 +702,17 @@ func reasoningFragments(events []TimelineEvent) []string {
 // the first Tab activates the focus cursor on the first block; a transcript
 // with no collapsible blocks stays unfocused.
 func (t *Transcript) focusNext() {
-	n := len(t.collapsibleBlocks())
-	if n == 0 {
-		t.focusOn = false
-		t.focusedBlock = 0
-		return
-	}
-	if !t.focusOn {
-		t.focusOn = true
-		t.focusedBlock = 0
-		return
-	}
-	t.focusedBlock = (t.focusedBlock + 1) % n
+	t.focus.focusNext(len(t.collapsibleBlocks()))
 }
 
 // focused returns the block currently under the focus cursor.
 func (t Transcript) focused() (collapsibleBlock, bool) {
-	if !t.focusOn || t.focusedBlock < 0 {
-		return collapsibleBlock{}, false
-	}
 	blocks := t.collapsibleBlocks()
-	if t.focusedBlock >= len(blocks) {
+	idx, ok := t.focus.focusedIndex(len(blocks))
+	if !ok {
 		return collapsibleBlock{}, false
 	}
-	return blocks[t.focusedBlock], true
+	return blocks[idx], true
 }
 
 // toggleFocused flips the focused block's expansion (Enter on the model), the
