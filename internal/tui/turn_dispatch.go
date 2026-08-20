@@ -123,6 +123,7 @@ func (d *TurnDispatch) handleTurnDone(tx *Transcript, msg turnDoneMsg) (stopped 
 			tx.messages[d.curStream].reasoning = msg.reasoning
 			tx.messages[d.curStream].streaming = false
 			tx.messages[d.curStream].stopped = true
+			tx.messages[d.curStream].fragmentForces = nil
 			d.commitTimeline(tx, d.curStream)
 			d.curStream = -1
 		} else if msg.answer != "" || msg.reasoning != "" {
@@ -145,6 +146,7 @@ func (d *TurnDispatch) handleTurnDone(tx *Transcript, msg turnDoneMsg) (stopped 
 		tx.messages[d.curStream].content = msg.answer
 		tx.messages[d.curStream].reasoning = msg.reasoning
 		tx.messages[d.curStream].streaming = false
+		tx.messages[d.curStream].fragmentForces = nil
 		if !tx.expandAll {
 			tx.messages[d.curStream].thinkingExpanded = false
 		}

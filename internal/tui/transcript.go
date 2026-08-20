@@ -284,8 +284,8 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 			// Legacy assistant block: a message that carries no event log
 			// (system notes, help/skill/login cards, error notes).
 			if msg.thinkingRequested && msg.reasoning != "" {
-				emit(t.thinkingHeaderFor(msg, i, msg.reasoning))
-				if t.thinkingExpandedFor(msg) {
+				emit(t.thinkingHeaderFor(msg, i, 0, msg.reasoning))
+				if t.thinkingExpandedForFragment(msg, 0) {
 					md, _ := RenderMarkdown(msg.reasoning, w-2, t.configTheme)
 					pane := t.theme.thinkingPaneStyle
 					if msg.streaming {
@@ -359,6 +359,7 @@ func (t Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg mess
 	ti := 0
 	var reasoning, answer strings.Builder
 	reasoningEmitted := false
+	reasoningFragIdx := 0
 	anyStreamedAnswer := false
 	emittedAnswerBeforeTail := false
 	snapshotAnswerEmitted := false
@@ -387,8 +388,12 @@ func (t Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg mess
 		if txt == "" || !msg.thinkingRequested {
 			return // nothing to show, or the thinking gate hides a turn that never asked for reasoning
 		}
-		emit(t.thinkingHeaderFor(msg, msgIdx, txt))
-		if !t.thinkingExpandedFor(msg) {
+		// Each interleaved fragment gets its own index so the block focus can
+		// target a single fragment independently (issue #449 user story 3).
+		fragIdx := reasoningFragIdx
+		reasoningFragIdx++
+		emit(t.thinkingHeaderFor(msg, msgIdx, fragIdx, txt))
+		if !t.thinkingExpandedForFragment(msg, fragIdx) {
 			return // collapsed: the hint is the block
 		}
 		md, _ := RenderMarkdown(txt, w-2, t.configTheme)
@@ -402,7 +407,7 @@ func (t Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg mess
 
 	emitTool := func(te toolEntry, idx int) {
 		start := nl
-		s := renderToolEntry(t.theme, te, t.log.expandedFor(idx, t.viewMode(), !t.toolResultsExpanded), now, w, pulse, t.focusedBlockIs(blockTool, 0, idx))
+		s := renderToolEntry(t.theme, te, t.log.expandedFor(idx, t.viewMode(), !t.toolResultsExpanded), now, w, pulse, t.focusedBlockIs(blockTool, 0, idx, 0))
 		emit(s)
 		if n := strings.Count(s, "\n"); n > 0 {
 			rows = append(rows, toolRowRange{start: start, end: start + n - 1, idx: idx})
@@ -748,6 +753,7 @@ func (t *Transcript) setCollapseAll(v bool) {
 func (t *Transcript) clearCollapseForces() {
 	for i := range t.messages {
 		t.messages[i].thinkingCollapsed = false
+		t.messages[i].fragmentForces = nil
 	}
 	for i := range t.log.entries {
 		t.log.entries[i].collapsedOverride = false
@@ -759,6 +765,7 @@ func (t *Transcript) clearCollapseForces() {
 func (t *Transcript) clearExpandForces() {
 	for i := range t.messages {
 		t.messages[i].thinkingExpanded = false
+		t.messages[i].fragmentForces = nil
 	}
 	for i := range t.log.entries {
 		t.log.entries[i].expanded = false
@@ -776,16 +783,19 @@ const (
 
 // collapsibleBlock identifies one collapsible block for the block focus: kind
 // selects the shape, msgIdx the owning message for a reasoning block, toolIdx
-// the log index for a tool block.
+// the log index for a tool block, fragIdx the reasoning fragment index within
+// the turn (0 for single-fragment turns and tool blocks).
 type collapsibleBlock struct {
 	kind    blockKind
 	msgIdx  int
 	toolIdx int
+	fragIdx int
 }
 
 // collapsibleBlocks returns the transcript's collapsible blocks in render
-// order: each turn's reasoning header at its prompt position, then that turn's
-// tool entries in anchored order — the traversal Tab cycles the block focus
+// order: each turn's reasoning fragments at their prompt position (one block per
+// interleaved fragment on a live turn, one whole-turn block otherwise), then that
+// turn's tool entries in anchored order — the traversal Tab cycles the block focus
 // through.
 func (t Transcript) collapsibleBlocks() []collapsibleBlock {
 	var blocks []collapsibleBlock
@@ -798,7 +808,17 @@ func (t Transcript) collapsibleBlocks() []collapsibleBlock {
 			if m.role == "you" {
 				break // the next turn began without a reasoning block here
 			}
-			if m.thinkingRequested && (m.reasoning != "" || hasReasoningEvents(m.events)) {
+			frags := t.reasoningFragmentsFor(m)
+			if m.streaming && len(frags) > 0 {
+				// A live turn renders each interleaved reasoning fragment as its
+				// own block so Tab can focus and Enter toggle any single one
+				// independently (issue #449 user story 3).
+				for k := range frags {
+					blocks = append(blocks, collapsibleBlock{kind: blockReasoning, msgIdx: j, fragIdx: k})
+				}
+				break
+			}
+			if m.thinkingRequested && (m.reasoning != "" || len(frags) > 0) {
 				blocks = append(blocks, collapsibleBlock{kind: blockReasoning, msgIdx: j})
 				break
 			}
@@ -810,16 +830,40 @@ func (t Transcript) collapsibleBlocks() []collapsibleBlock {
 	return blocks
 }
 
-// hasReasoningEvents reports whether a message's event log derives any
-// reasoning text — the committed-turn case where the snapshot lives only in
-// the log until the turn finalizes.
-func hasReasoningEvents(events []TimelineEvent) bool {
+// reasoningFragmentsFor returns the reasoning fragments a message's flow
+// renders: a live (streaming) turn reads its fragments from the live timeline
+// (the per-turn event log mid-run), every other turn from its committed event
+// log.
+func (t Transcript) reasoningFragmentsFor(m message) []string {
+	events := m.events
+	if t.busy && m.streaming && len(t.timeline) > 0 {
+		events = t.timeline
+	}
+	return reasoningFragments(events)
+}
+
+// reasoningFragments splits an event log into its reasoning fragments: each run
+// of consecutive reasoning deltas is one fragment, delimited by the tool
+// boundaries renderEventFlow flushes at. Empty runs are dropped, so the returned
+// slice indexes exactly the fragments the flow actually emits.
+func reasoningFragments(events []TimelineEvent) []string {
+	var out []string
+	var cur strings.Builder
 	for _, ev := range events {
-		if ev.Kind == EventReasoning && ev.Delta != "" {
-			return true
+		switch ev.Kind {
+		case EventReasoning:
+			cur.WriteString(ev.Delta)
+		case EventToolStart, EventToolResult:
+			if cur.Len() > 0 {
+				out = append(out, cur.String())
+				cur.Reset()
+			}
 		}
 	}
-	return false
+	if cur.Len() > 0 {
+		out = append(out, cur.String())
+	}
+	return out
 }
 
 // focusNext advances the block focus to the next collapsible block, wrapping;
@@ -861,17 +905,17 @@ func (t *Transcript) toggleFocused() {
 	}
 	switch blk.kind {
 	case blockReasoning:
-		t.toggleThinking(blk.msgIdx)
+		t.toggleThinkingFragment(blk.msgIdx, blk.fragIdx)
 	case blockTool:
 		t.toggleToolEntry(blk.toolIdx)
 	}
 }
 
-// focusedBlockIs reports whether the block identified by kind/msgIdx/toolIdx
-// is the one under the focus cursor, so the renderer can mark it.
-func (t Transcript) focusedBlockIs(kind blockKind, msgIdx, toolIdx int) bool {
+// focusedBlockIs reports whether the block identified by kind/msgIdx/toolIdx/
+// fragIdx is the one under the focus cursor, so the renderer can mark it.
+func (t Transcript) focusedBlockIs(kind blockKind, msgIdx, toolIdx, fragIdx int) bool {
 	blk, ok := t.focused()
-	return ok && blk.kind == kind && blk.msgIdx == msgIdx && blk.toolIdx == toolIdx
+	return ok && blk.kind == kind && blk.msgIdx == msgIdx && blk.toolIdx == toolIdx && blk.fragIdx == fragIdx
 }
 
 // focusedToolIdx returns the log index of the focused block when it is a tool
@@ -909,10 +953,27 @@ func (t Transcript) thinkingExpandedFor(msg message) bool {
 	return t.cotExpanded
 }
 
-// thinkingHeaderFor renders a turn's reasoning-header line, prefixing it with the focus marker when the block is the one under the focus cursor.
-func (t Transcript) thinkingHeaderFor(msg message, msgIdx int, txt string) string {
+// thinkingExpandedForFragment returns whether the fragIdx-th reasoning fragment
+// of msg renders expanded: a per-fragment force wins over the per-turn flags and
+// the live auto-expand, and a fragment without a force follows the whole-block
+// logic. A force is a per-block override, so it beats the global modes exactly as
+// the per-turn thinkingCollapsed force does (Enter on a focused block collapses it
+// even in expand-all mode); the modes take over only once the forces are cleared
+// on mode entry.
+func (t Transcript) thinkingExpandedForFragment(msg message, fragIdx int) bool {
+	if msg.fragmentForces != nil {
+		if f, ok := msg.fragmentForces[fragIdx]; ok {
+			return f
+		}
+	}
+	return t.thinkingExpandedFor(msg)
+}
+
+// thinkingHeaderFor renders a turn's reasoning-header line, prefixing it with the
+// focus marker when the fragment is the one under the focus cursor.
+func (t Transcript) thinkingHeaderFor(msg message, msgIdx, fragIdx int, txt string) string {
 	h := thinkingHeader(t.theme, txt, t.reasoningEffort)
-	if t.focusedBlockIs(blockReasoning, msgIdx, 0) {
+	if t.focusedBlockIs(blockReasoning, msgIdx, 0, fragIdx) {
 		h = t.theme.focusStyle.Render(focusMarker()+" ") + h
 	}
 	return h
@@ -937,6 +998,22 @@ func (t *Transcript) toggleThinking(i int) {
 		msg.thinkingCollapsed = false
 	}
 	t.layout.dirty = true // a thinking block expanded/collapsed changes rows
+}
+
+// toggleThinkingFragment flips the expansion of one reasoning fragment (Enter on
+// a focused interleaved fragment), targeting only that fragment's rendering while
+// the others keep their own state — the independent per-fragment collapse of
+// issue #449 user story 3.
+func (t *Transcript) toggleThinkingFragment(i, fragIdx int) {
+	if i < 0 || i >= len(t.messages) {
+		return
+	}
+	msg := &t.messages[i]
+	if msg.fragmentForces == nil {
+		msg.fragmentForces = map[int]bool{}
+	}
+	msg.fragmentForces[fragIdx] = !t.thinkingExpandedForFragment(*msg, fragIdx)
+	t.layout.dirty = true // one fragment expanded/collapsed changes its rendered rows
 }
 
 // plainLines returns the history scroll content as plain text per rendered row (ANSI stripped) — the coordinate space drag selection maps into.

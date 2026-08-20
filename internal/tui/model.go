@@ -79,7 +79,14 @@ type message struct {
 	thinkingRequested bool
 	thinkingExpanded  bool
 	thinkingCollapsed bool
-	stopped           bool
+	// fragmentForces holds per-reasoning-fragment expansion forces for a turn
+	// whose reasoning renders as multiple interleaved blocks (issue #449): key =
+	// the reasoning fragment's index in emission order, value = force-expand
+	// (true) / force-collapse (false). A fragment without a force follows the
+	// per-turn thinkingExpanded / thinkingCollapsed flags and the global mode,
+	// so single-fragment turns keep the existing whole-block behavior.
+	fragmentForces map[int]bool
+	stopped        bool
 }
 
 type turnDoneMsg struct {

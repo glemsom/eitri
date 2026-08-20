@@ -320,6 +320,70 @@ func TestTranscript_liveReasoningInterleavesWithToolsInEmissionOrder(t *testing.
 	}
 }
 
+// TestTranscript_liveReasoningFocusTogglesSingleFragmentIndependently pins
+// issue #449 user story 3: a live turn that reasons, calls a tool, then reasons
+// again exposes each reasoning fragment as its own focusable block, so Tab + Enter
+// collapses just the fragment under the cursor and leaves the others expanded.
+func TestTranscript_liveReasoningFocusTogglesSingleFragmentIndependently(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	tx := liveReasoningInterleaveTranscript() // reasoning frag0, tool read, reasoning frag1, tool bash
+
+	// The live turn exposes each reasoning fragment as its own collapsible block,
+	// in emission order, before the anchored tool entries: [frag0, frag1, tool read, tool bash].
+	blocks := tx.collapsibleBlocks()
+	if len(blocks) != 4 {
+		t.Fatalf("collapsibleBlocks() = %d, want 4 (two reasoning fragments + two tools):\n%+v", len(blocks), blocks)
+	}
+	if blocks[0].kind != blockReasoning || blocks[0].fragIdx != 0 {
+		t.Fatalf("first block = %+v, want reasoning fragment 0", blocks[0])
+	}
+	if blocks[1].kind != blockReasoning || blocks[1].fragIdx != 1 {
+		t.Fatalf("second block = %+v, want reasoning fragment 1", blocks[1])
+	}
+	if blocks[3].kind != blockTool {
+		t.Fatalf("fourth block = %+v, want the second tool entry", blocks[3])
+	}
+
+	// Tab to the second reasoning fragment and Enter to collapse only that one.
+	tx.focusNext() // frag0
+	x2, ok := tx.focused()
+	if !ok || x2.fragIdx != 0 {
+		t.Fatalf("after first Tab focused = %+v ok=%v, want reasoning fragment 0", x2, ok)
+	}
+	tx.focusNext() // frag1
+	blk, ok := tx.focused()
+	if !ok || blk.kind != blockReasoning || blk.fragIdx != 1 {
+		t.Fatalf("after second Tab focused = %+v ok=%v, want reasoning fragment 1", blk, ok)
+	}
+	tx.toggleFocused()
+
+	var hist strings.Builder
+	tx.renderHistory(&hist, nil, nil)
+	plain := ansiStrip(hist.String())
+	if strings.Contains(plain, "reasoning two") {
+		t.Errorf("toggling fragment 1 must collapse only its body, got:\n%s", plain)
+	}
+	if !strings.Contains(plain, "reasoning one") {
+		t.Errorf("collapsing fragment 1 must leave fragment 0 expanded, got:\n%s", plain)
+	}
+
+	// The collapsed fragment keeps its own hint (the second 🤔 N tok line), and
+	// toggling again re-expands just it while fragment 0 stays visible.
+	if !strings.Contains(plain, "tok") {
+		t.Errorf("collapsed fragment 1 must keep its 🤔 N tok hint, got:\n%s", plain)
+	}
+	tx.toggleFocused()
+	var hist2 strings.Builder
+	tx.renderHistory(&hist2, nil, nil)
+	plain2 := ansiStrip(hist2.String())
+	if !strings.Contains(plain2, "reasoning two") {
+		t.Errorf("toggling fragment 1 again must re-expand it, got:\n%s", plain2)
+	}
+	if !strings.Contains(plain2, "reasoning one") {
+		t.Errorf("fragment 0 must stay expanded, got:\n%s", plain2)
+	}
+}
+
 func TestRenderHistory_liveInterleavedReasoningRespectsThinkingGate(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := liveReasoningInterleaveTranscript()
