@@ -7,8 +7,11 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// liveAnswerFlow builds a running turn whose live timeline already carries an
-// answer so the merged flow can render it de-emphasized while it streams.
+// liveAnswerFlow builds an assistant turn whose event log already carries an
+// answer, with the message's streaming/stopped flags toggled per case. The merged
+// flow renderer picks the answer pane from those flags (dimmed while streaming,
+// full accent when done, stopped pane when stopped), so the flags are the only
+// variable this helper varies.
 func liveAnswerFlow(t *testing.T, streaming, stopped bool, content string) *Transcript {
 	t.Helper()
 	th := themeFor(config.DefaultTheme)
