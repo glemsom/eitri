@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/glemsom/eitri/internal/config"
 )
@@ -79,23 +80,89 @@ func TestModel_thinkingCollapsible(t *testing.T) {
 	if !strings.Contains(content, "🤔") {
 		t.Errorf("expected a thinking hint in content, got: %q", content)
 	}
-	if strings.Contains(content, "I reason about it first") {
+	if strings.Contains(ansiStrip(content), "I reason about it first") {
 		t.Errorf("reasoning body should be collapsed by default, got: %q", content)
 	}
 
 	toggled, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = asModel(t, toggled)
 	expanded := view(m)
-	if !strings.Contains(expanded, "I reason about it first") {
+	if !strings.Contains(ansiStrip(expanded), "I reason about it first") {
 		t.Errorf("tab should expand the reasoning block, got: %q", expanded)
 	}
-	if !strings.Contains(expanded, "plain") {
+	if !strings.Contains(ansiStrip(expanded), "plain") {
 		t.Errorf("answer still required in content, got: %q", expanded)
 	}
-	thinkingIdx := strings.Index(expanded, "I reason about it first")
-	answerIdx := strings.Index(expanded, "plain")
+	thinkText := ansiStrip(expanded) // glamour splits words into SGR runs; indices read the plain text
+	thinkingIdx := strings.Index(thinkText, "I reason about it first")
+	answerIdx := strings.Index(thinkText, "plain")
 	if thinkingIdx == -1 || answerIdx == -1 || thinkingIdx > answerIdx {
 		t.Errorf("reasoning block must render as its own stream before the answer, got: %q", expanded)
+	}
+}
+
+func TestModel_thinkingLongReasoningWraps(t *testing.T) {
+	t.Parallel()
+	longLine := strings.Repeat("reasoning words ", 30) // single long line, no newlines
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "plain answer", Reasoning: longLine}, nil
+		},
+		Config: config.Config{ThinkingEnabled: true},
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "hi")
+	m = submitAndWait(t, m)
+
+	toggled, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	m = asModel(t, toggled)
+	content := view(m)
+	if !strings.Contains(content, "reasoning words") {
+		t.Fatalf("expanded reasoning body should render, got: %q", content)
+	}
+
+	rows := reasoningPaneRows(t, content)
+	if len(rows) < 3 {
+		t.Fatalf("long single-line reasoning should wrap into multiple rows, got %d: %q", len(rows), rows)
+	}
+	limit := m.tx.transcriptWidth()
+	for i, row := range rows {
+		if w := lipgloss.Width(ansiStrip(row)); w > limit {
+			t.Errorf("reasoning pane row %d is %d cols wide, exceeds transcript width %d: %q", i, w, limit, row)
+		}
+	}
+}
+
+func TestModel_thinkingMarkdownStructure(t *testing.T) {
+	t.Parallel()
+	reasoning := "Plan:\n\n- first step\n- second step\n\n```go\nfunc main() {}\n```"
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "plain answer", Reasoning: reasoning}, nil
+		},
+		Config: config.Config{ThinkingEnabled: true},
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "hi")
+	m = submitAndWait(t, m)
+
+	toggled, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	m = asModel(t, toggled)
+	rows := reasoningPaneRows(t, view(m))
+	body := strings.Join(rows, "\n")
+	stripped := ansiStrip(body) // glamour interleaves SGR runs between words; content checks read the plain text
+
+	if !strings.Contains(stripped, "first step") || !strings.Contains(stripped, "second step") {
+		t.Errorf("bullet list items must survive markdown rendering, got: %q", stripped)
+	}
+	if !strings.Contains(stripped, "func main() {}") {
+		t.Errorf("code fence content must render, got: %q", stripped)
+	}
+	if strings.Contains(stripped, "```") {
+		t.Errorf("code fence backticks must not leak into the render, got: %q", stripped)
+	}
+	if !containsSeq(body, "\x1b[38;2;") {
+		t.Errorf("code fence should carry the theme-remapped truecolor styling, got: %q", body)
 	}
 }
 
@@ -133,12 +200,12 @@ func TestModel_thinkingAutoCollapsesOnAnswer(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m, _ = submitBusy(t, m)
 	m = applyReasoningDelta(t, m, "hidden reasoning")
-	if !strings.Contains(view(m), "hidden reasoning") {
+	if !strings.Contains(ansiStrip(view(m)), "hidden reasoning") {
 		t.Errorf("live block should show reasoning before answer lands, got: %q", view(m))
 	}
 	nm, _ := m.Update(turnDoneMsg{prompt: "hi", answer: "final answer", reasoning: "hidden reasoning"})
 	m = asModel(t, nm)
-	if strings.Contains(view(m), "hidden reasoning") {
+	if strings.Contains(ansiStrip(view(m)), "hidden reasoning") {
 		t.Errorf("thinking block should auto-collapse when the answer lands, got: %q", view(m))
 	}
 }

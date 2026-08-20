@@ -94,14 +94,14 @@ func TestTranscript_thinkingGateScopesReasoningBlock(t *testing.T) {
 		return hist.String()
 	}
 
-	if off := render(false); strings.Contains(off, "🤔") || strings.Contains(off, "sneaked chain-of-thought") {
+	if off := render(false); strings.Contains(off, "🤔") || strings.Contains(ansiStrip(off), "sneaked chain-of-thought") {
 		t.Errorf("thinking-off turn rendered a reasoning block, got: %q", off)
 	}
 	on := render(true)
 	if !strings.Contains(on, "tok") {
 		t.Errorf("thinking-on turn must render the reasoning hint, got: %q", on)
 	}
-	if !strings.Contains(on, "sneaked chain-of-thought") {
+	if !strings.Contains(ansiStrip(on), "sneaked chain-of-thought") {
 		t.Errorf("expanded thinking-on turn must carry its reasoning, got: %q", on)
 	}
 }
@@ -132,16 +132,16 @@ func TestTranscript_expandAllOverridesThinkingExpansion(t *testing.T) {
 		return hist.String()
 	}
 
-	if off := render(false, false, false); strings.Contains(off, "the reasoning body") {
+	if off := render(false, false, false); strings.Contains(ansiStrip(off), "the reasoning body") {
 		t.Errorf("mode OFF collapsed: must not render the body, got: %q", off)
 	}
-	if on := render(true, false, false); !strings.Contains(on, "the reasoning body") {
+	if on := render(true, false, false); !strings.Contains(ansiStrip(on), "the reasoning body") {
 		t.Errorf("mode ON must render the body even when per-turn flag is false, got: %q", on)
 	}
-	if over := render(true, false, true); strings.Contains(over, "the reasoning body") {
+	if over := render(true, false, true); strings.Contains(ansiStrip(over), "the reasoning body") {
 		t.Errorf("mode ON with a collapse override must render collapsed, got: %q", over)
 	}
-	if exp := render(false, true, false); !strings.Contains(exp, "the reasoning body") {
+	if exp := render(false, true, false); !strings.Contains(ansiStrip(exp), "the reasoning body") {
 		t.Errorf("mode OFF per-turn expanded must render the body, got: %q", exp)
 	}
 }
@@ -560,7 +560,7 @@ func TestRenderHistory_completedAssistantUsesAgentPane(t *testing.T) {
 
 func reasoningLineInfo(s, body string) (string, bool) {
 	for _, line := range strings.Split(s, "\n") {
-		if !strings.Contains(line, body) {
+		if !strings.Contains(ansiStrip(line), body) {
 			continue
 		}
 		framed := strings.Contains(line, g("\u2502", "|"))
@@ -601,8 +601,8 @@ func TestRenderHistory_liveReasoningBlockUsesStreamingPane(t *testing.T) {
 	if !liveFramed {
 		t.Errorf("live reasoning body must render inside a pane, got line info for: %q", live)
 	}
-	if liveColor != borderColorStr(th.streamingPaneStyle) {
-		t.Errorf("live reasoning block must use streamingPaneStyle color, got %q", liveColor)
+	if liveColor != borderColorStr(th.streamingThinkingPaneStyle) {
+		t.Errorf("live reasoning block must use streamingThinkingPaneStyle color, got %q", liveColor)
 	}
 
 	done := render(false)
@@ -610,8 +610,8 @@ func TestRenderHistory_liveReasoningBlockUsesStreamingPane(t *testing.T) {
 	if !doneFramed {
 		t.Errorf("completed reasoning body must render inside a pane, got line info for: %q", done)
 	}
-	if doneColor != borderColorStr(th.agentPaneStyle) {
-		t.Errorf("completed reasoning block must use agentPaneStyle color, got %q", doneColor)
+	if doneColor != borderColorStr(th.thinkingPaneStyle) {
+		t.Errorf("completed reasoning block must use thinkingPaneStyle color, got %q", doneColor)
 	}
 }
 
