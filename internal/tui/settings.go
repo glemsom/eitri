@@ -18,6 +18,8 @@ const (
 	fieldEffort
 	fieldMaxTurns
 	fieldFraction
+	fieldCoTCollapsed
+	fieldToolResultsCollapsed
 	fieldTheme
 	fieldPaths
 	fieldSave
@@ -94,6 +96,14 @@ func (f *settingsForm) adjust(d int) {
 	case fieldThinking:
 		if d != 0 {
 			f.cfg.ThinkingEnabled = !f.cfg.ThinkingEnabled
+		}
+	case fieldCoTCollapsed:
+		if d != 0 {
+			f.cfg.CoTCollapsedByDefault = !f.cfg.CoTCollapsedByDefault
+		}
+	case fieldToolResultsCollapsed:
+		if d != 0 {
+			f.cfg.ToolResultsCollapsedByDefault = !f.cfg.ToolResultsCollapsedByDefault
 		}
 	case fieldEffort:
 		f.cfg.ReasoningEffort = cycle(f.cfg.ReasoningEffort, effortTiers, d)
@@ -206,6 +216,8 @@ func settingsView(f settingsForm) string {
 		{"Reasoning", f.cfg.ReasoningEffort},
 		{"Max turns", fmt.Sprintf("%d", f.cfg.MaxTurns)},
 		{"Compaction", fmt.Sprintf("%.2f", f.cfg.CompactionFraction)},
+		{"CoT collapsed", thinkingModeLabel(f.cfg.CoTCollapsedByDefault)},
+		{"Tool results collapsed", thinkingModeLabel(f.cfg.ToolResultsCollapsedByDefault)},
 		{"Theme", f.cfg.Theme},
 		{"Writable", f.pathBuf},
 	}

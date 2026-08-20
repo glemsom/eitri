@@ -40,7 +40,7 @@ func newStreamingModel() Model {
 	return NewModelCfg(Dependencies{
 		Turn:   streamingTurn,
 		Stream: NewStreamer(),
-		Config: config.Config{ThinkingEnabled: true},
+		Config: config.Config{ThinkingEnabled: true, CoTCollapsedByDefault: true, ToolResultsCollapsedByDefault: true},
 	})
 }
 
@@ -154,13 +154,16 @@ func TestModel_thinkingExpandedStreams(t *testing.T) {
 		t.Fatalf("live reasoning should render expanded before any tab, got: %q", view(m))
 	}
 
-	toggled, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	m = asModel(t, toggled)
+	// Tab focuses the live reasoning block, Enter toggles it collapsed and back.
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if strings.Contains(ansiStrip(view(m)), "first ") {
-		t.Fatalf("tab should collapse the live block, got: %q", view(m))
+		t.Fatalf("Enter on the focused live block should collapse it, got: %q", view(m))
 	}
-	toggled, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	m = asModel(t, toggled)
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !strings.Contains(ansiStrip(view(m)), "first ") {
+		t.Fatalf("Enter again should re-expand the live block, got: %q", view(m))
+	}
 
 	m = applyReasoningDelta(t, m, "reasoning")
 	if !strings.Contains(ansiStrip(view(m)), "first reasoning") {
@@ -244,7 +247,7 @@ func TestModel_expandAllOffCollapsesThinking(t *testing.T) {
 	}
 }
 
-func TestModel_expandAllTabToggleIndependent(t *testing.T) {
+func TestModel_expandAllFocusToggleIndependent(t *testing.T) {
 	t.Parallel()
 	m := newStreamingModel()
 	m = resize(t, m)
@@ -253,15 +256,17 @@ func TestModel_expandAllTabToggleIndependent(t *testing.T) {
 	m, _ = submitBusy(t, m)
 	m = applyReasoningDelta(t, m, "hidden reasoning")
 	if !strings.Contains(ansiStrip(view(m)), "hidden reasoning") {
-		t.Fatalf("mode ON: block should render expanded before tab, got: %q", view(m))
+		t.Fatalf("mode ON: block should render expanded before focusing, got: %q", view(m))
 	}
+	// Tab focuses the live reasoning block; Enter collapses it even in mode ON.
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if strings.Contains(ansiStrip(view(m)), "hidden reasoning") {
-		t.Errorf("tab should collapse one thinking block even in mode ON, got: %q", view(m))
+		t.Errorf("Enter on the focused block should collapse it even in mode ON, got: %q", view(m))
 	}
-	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if !strings.Contains(ansiStrip(view(m)), "hidden reasoning") {
-		t.Errorf("tab should re-expand a thinking block even in mode ON, got: %q", view(m))
+		t.Errorf("Enter again should re-expand the block even in mode ON, got: %q", view(m))
 	}
 
 	m2 := newStreamingModel()
@@ -273,12 +278,13 @@ func TestModel_expandAllTabToggleIndependent(t *testing.T) {
 		t.Fatalf("mode OFF: streaming reasoning should render expanded, got: %q", view(m2))
 	}
 	m2 = mustUpdate(t, m2, tea.KeyPressMsg{Code: tea.KeyTab})
+	m2 = mustUpdate(t, m2, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if strings.Contains(ansiStrip(view(m2)), "hidden reasoning") {
-		t.Errorf("mode OFF: tab should collapse the live thinking block, got: %q", view(m2))
+		t.Errorf("mode OFF: Enter on the focused block should collapse it, got: %q", view(m2))
 	}
-	m2 = mustUpdate(t, m2, tea.KeyPressMsg{Code: tea.KeyTab})
+	m2 = mustUpdate(t, m2, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if !strings.Contains(ansiStrip(view(m2)), "hidden reasoning") {
-		t.Errorf("mode OFF: tab should re-expand the live thinking block, got: %q", view(m2))
+		t.Errorf("mode OFF: Enter again should re-expand the live thinking block, got: %q", view(m2))
 	}
 	m2 = asModel(t, mustUpdate(t, m2, turnDoneMsg{prompt: "hi", answer: "final answer", reasoning: "hidden reasoning"}))
 	if strings.Contains(ansiStrip(view(m2)), "hidden reasoning") {

@@ -112,6 +112,26 @@ func (l *toolLog) Toggle(i int) {
 	l.entries[i].collapsedOverride = false
 }
 
+// Expand marks one entry expanded, clearing any collapse override so the
+// per-block toggle can reveal a single result even under a collapsing default.
+func (l *toolLog) Expand(i int) {
+	if i < 0 || i >= len(l.entries) {
+		return
+	}
+	l.entries[i].expanded = true
+	l.entries[i].collapsedOverride = false
+}
+
+// ForceCollapse marks one entry force-collapsed, beating the expanded-view
+// mode, an expanded default, and any per-entry expanded flag.
+func (l *toolLog) ForceCollapse(i int) {
+	if i < 0 || i >= len(l.entries) {
+		return
+	}
+	l.entries[i].collapsedOverride = true
+	l.entries[i].expanded = false
+}
+
 // ToggleCollapse flips one entry's per-entry collapse-override, the mechanism that keeps a single entry collapsed while the global Ctrl+E expanded-view mode is ON.
 func (l *toolLog) ToggleCollapse(i int) {
 	if i < 0 || i >= len(l.entries) {
@@ -121,8 +141,12 @@ func (l *toolLog) ToggleCollapse(i int) {
 	l.entries[i].expanded = false
 }
 
-// expandedFor returns whether entry i renders expanded given the current global Ctrl+E expanded-view mode: a per-entry expanded state wins, a per-entry collapse-override beats the global mode ON, and otherwise the entry reflects the global flag.
-func (l *toolLog) expandedFor(i int, expandAll bool) bool {
+// expandedFor returns whether entry i renders expanded: a per-entry collapse
+// override always wins, a per-entry expanded flag beats any global mode, the
+// expand-all mode expands everything else, the collapse-all mode collapses
+// everything else, and otherwise the entry follows its collapsed-by-default
+// flag (issue #432).
+func (l toolLog) expandedFor(i int, mode viewMode, defaultCollapsed bool) bool {
 	if i < 0 || i >= len(l.entries) {
 		return false
 	}
@@ -130,11 +154,20 @@ func (l *toolLog) expandedFor(i int, expandAll bool) bool {
 	if e.collapsedOverride {
 		return false
 	}
-	return e.expanded || expandAll
+	if e.expanded {
+		return true
+	}
+	switch mode {
+	case viewExpandAll:
+		return true
+	case viewCollapseAll:
+		return false
+	}
+	return !defaultCollapsed
 }
 
-// Render renders every entry anchored to the given message into the shared head/text surface and records each rendered entry's content-row range.
-func (l toolLog) Render(th Theme, expandAll bool, now time.Time, width, anchor int, pulse bool) (string, []toolRowRange) {
+// Render renders every entry anchored to the given message into the shared head/text surface and records each rendered entry's content-row range. focusedIdx is the log index of the entry under the block focus, or -1 when none.
+func (l toolLog) Render(th Theme, mode viewMode, defaultCollapsed bool, now time.Time, width, anchor int, pulse bool, focusedIdx int) (string, []toolRowRange) {
 	var b strings.Builder
 	var rows []toolRowRange
 	nl := 0
@@ -147,7 +180,7 @@ func (l toolLog) Render(th Theme, expandAll bool, now time.Time, width, anchor i
 			continue
 		}
 		start := nl
-		s := renderToolEntry(th, te, l.expandedFor(ti, expandAll), now, width, pulse)
+		s := renderToolEntry(th, te, l.expandedFor(ti, mode, defaultCollapsed), now, width, pulse, ti == focusedIdx)
 		rowsInEntry := strings.Count(s, "\n")
 		emit(s)
 		if rowsInEntry > 0 {
@@ -284,8 +317,8 @@ func toolArgsHint(argsJSON string) string {
 	return ""
 }
 
-// renderToolEntry renders one tool-call entry as a compact, glanceable line — `⊕ tool args` — with the result collapsed by default to a summary, never a raw dump into the scroll.
-func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width int, pulse bool) string {
+// renderToolEntry renders one tool-call entry as a compact, glanceable line — `⊕ tool args` — with the result collapsed by default to a summary, never a raw dump into the scroll. focused marks the entry as the currently focused block for the per-block expand interaction.
+func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width int, pulse bool, focused bool) string {
 	var b strings.Builder
 	outcome := ""
 	if te.complete {
@@ -307,6 +340,9 @@ func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width
 	}
 	if args != "" {
 		head += th.statusStyle.Render(args)
+	}
+	if focused {
+		head = th.focusStyle.Render(focusMarker()) + " " + head
 	}
 	b.WriteString(head + outcome)
 	if !te.startedAt.IsZero() {

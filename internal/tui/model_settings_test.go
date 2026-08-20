@@ -199,6 +199,44 @@ func TestModel_SettingsThinkingTogglePersists(t *testing.T) {
 	}
 }
 
+func TestModel_SettingsCollapseTogglesPersistAndFlipDefaults(t *testing.T) {
+	t.Parallel()
+	var saved config.Config
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+		Models: []string{"deepseek-v4-flash"},
+		Config: cfgFixture(), // both collapsed-by-default on
+		Save:   func(c config.Config) error { saved = c; return nil },
+	})
+	m = resize(t, m)
+	m = keypress(t, m, "ctrl+s")
+	for i := fieldProvider; i < fieldCoTCollapsed; i++ {
+		m = keypress(t, m, "tab")
+	}
+	m = keypress(t, m, "down") // CoT collapsed -> off
+	m = keypress(t, m, "tab")  // focus Tool results collapsed
+	m = keypress(t, m, "down") // tool results collapsed -> off
+	for i := fieldToolResultsCollapsed; i < fieldSave; i++ {
+		m = keypress(t, m, "tab")
+	}
+	m = keypress(t, m, "enter")
+
+	if saved.CoTCollapsedByDefault {
+		t.Fatal("saved CoTCollapsedByDefault = true, want false after toggling off")
+	}
+	if saved.ToolResultsCollapsedByDefault {
+		t.Fatal("saved ToolResultsCollapsedByDefault = true, want false after toggling off")
+	}
+	if m.tx.cotExpanded == false {
+		t.Fatal("transcript cotExpanded = false after save, want true (setting flipped the default)")
+	}
+	if m.tx.toolResultsExpanded == false {
+		t.Fatal("transcript toolResultsExpanded = false after save, want true")
+	}
+}
+
 func TestModel_SettingsDiscoveryLoadsAsync(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{

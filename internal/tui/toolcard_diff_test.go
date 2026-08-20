@@ -20,7 +20,7 @@ func toolCardDiffEntry(name, path, before, after string, added, removed int) too
 }
 
 func cardBody(th Theme, te toolEntry, expanded bool) string {
-	all := renderToolEntry(th, te, expanded, time.Time{}, 80, false)
+	all := renderToolEntry(th, te, expanded, time.Time{}, 80, false, false)
 	parts := strings.SplitN(all, "\n", 2)
 	if len(parts) != 2 {
 		return ""
@@ -50,7 +50,7 @@ func TestToolCard_expandedEditRendersInlineDiff(t *testing.T) {
 	t.Parallel()
 	te := toolCardDiffEntry("edit", "internal/auth.go", "package auth\n\nfunc Old() {}\n", "package auth\n\nfunc New() {}\n", 1, 1)
 
-	expanded := renderToolEntry(defaultTheme, te, true, time.Time{}, 80, false)
+	expanded := renderToolEntry(defaultTheme, te, true, time.Time{}, 80, false, false)
 
 	strip := ansiStrip(expanded)
 	if !strings.Contains(strip, "-func Old() {}") {
@@ -70,7 +70,7 @@ func TestToolCard_expandedEditRendersInlineDiff(t *testing.T) {
 func TestToolCard_expandedWriteDiffStatuses(t *testing.T) {
 	t.Parallel()
 	add := toolCardDiffEntry("write", "internal/new.go", "", "package new\n\nfunc Fresh() {}\n", 3, 0)
-	added := renderToolEntry(defaultTheme, add, true, time.Time{}, 80, false)
+	added := renderToolEntry(defaultTheme, add, true, time.Time{}, 80, false, false)
 	if !strings.Contains(added, "+package new") {
 		t.Errorf("added file must render as all-+ diff, got:\n%s", added)
 	}
@@ -79,7 +79,7 @@ func TestToolCard_expandedWriteDiffStatuses(t *testing.T) {
 	}
 
 	del := toolCardDiffEntry("edit", "internal/gone.go", "package gone\n\nfunc Old() {}\n", "", 0, 3)
-	deleted := renderToolEntry(defaultTheme, del, true, time.Time{}, 80, false)
+	deleted := renderToolEntry(defaultTheme, del, true, time.Time{}, 80, false, false)
 	if !strings.Contains(deleted, "-package gone") {
 		t.Errorf("deleted file must render as all-− diff, got:\n%s", deleted)
 	}
@@ -89,7 +89,7 @@ func TestToolCard_expandedNoDiffFallsBackToSummary(t *testing.T) {
 	t.Parallel()
 	te := toolCardDiffEntry("edit", "internal/auth.go", "", "", 0, 0)
 
-	expanded := renderToolEntry(defaultTheme, te, true, time.Time{}, 80, false)
+	expanded := renderToolEntry(defaultTheme, te, true, time.Time{}, 80, false, false)
 	strip := ansiStrip(expanded)
 	if !strings.Contains(strip, "[+0, −0]") {
 		t.Errorf("no-diff fallback must keep the count summary, got:\n%s", strip)

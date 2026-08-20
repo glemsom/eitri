@@ -12,14 +12,16 @@ import (
 
 func cfgFixture() config.Config {
 	return config.Config{
-		Provider:           "opencode-go",
-		Model:              "deepseek-v4-flash",
-		ReasoningEffort:    "high",
-		ThinkingEnabled:    true,
-		MaxTurns:           250,
-		CompactionFraction: 0.8,
-		ExtraWritablePaths: []string{"/srv"},
-		Theme:              config.DefaultTheme,
+		Provider:                      "opencode-go",
+		Model:                         "deepseek-v4-flash",
+		ReasoningEffort:               "high",
+		ThinkingEnabled:               true,
+		MaxTurns:                      250,
+		CompactionFraction:            0.8,
+		ExtraWritablePaths:            []string{"/srv"},
+		Theme:                         config.DefaultTheme,
+		CoTCollapsedByDefault:         true,
+		ToolResultsCollapsedByDefault: true,
 	}
 }
 
@@ -218,6 +220,38 @@ func TestSettingsView_RendersKnobsAndSave(t *testing.T) {
 	f := newSettingsForm(cfgFixture(), []string{"grok-2"})
 	view := settingsView(f)
 	for _, want := range []string{"Eitri Settings", "opencode-go", "grok-2", "Thinking", "on", "high", "250", "0.80", "Theme", "dark", "[ Save ]", "[ Cancel ]"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("settings view %q missing %q", view, want)
+		}
+	}
+}
+
+func TestSettingsForm_CollapseTogglesAdjust(t *testing.T) {
+	t.Parallel()
+	f := newSettingsForm(cfgFixture(), []string{}) // both collapsed-by-default on
+
+	f.field = fieldCoTCollapsed
+	f.adjust(1)
+	if f.draft().CoTCollapsedByDefault {
+		t.Fatalf("CoTCollapsedByDefault = true after adjust on CoT collapsed, want off")
+	}
+	f.adjust(-1)
+	if !f.draft().CoTCollapsedByDefault {
+		t.Fatalf("CoTCollapsedByDefault = false after adjust back, want on")
+	}
+
+	f.field = fieldToolResultsCollapsed
+	f.adjust(1)
+	if f.draft().ToolResultsCollapsedByDefault {
+		t.Fatalf("ToolResultsCollapsedByDefault = true after adjust on tool results collapsed, want off")
+	}
+}
+
+func TestSettingsView_RendersCollapseRows(t *testing.T) {
+	t.Parallel()
+	f := newSettingsForm(cfgFixture(), []string{})
+	view := settingsView(f)
+	for _, want := range []string{"CoT collapsed", "on", "Tool results collapsed"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("settings view %q missing %q", view, want)
 		}

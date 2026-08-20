@@ -21,6 +21,12 @@ func TestDefaults(t *testing.T) {
 	if !cfg.ThinkingEnabled {
 		t.Fatal("ThinkingEnabled = false, want default true (on)")
 	}
+	if !cfg.CoTCollapsedByDefault {
+		t.Fatal("CoTCollapsedByDefault = false, want default true (collapsed by default)")
+	}
+	if !cfg.ToolResultsCollapsedByDefault {
+		t.Fatal("ToolResultsCollapsedByDefault = false, want default true (collapsed by default)")
+	}
 	if cfg.Provider != "opencode-go" {
 		t.Fatalf("Provider = %q, want default opencode-go primary", cfg.Provider)
 	}
@@ -173,6 +179,49 @@ func TestLoadReadsPersistedConfig(t *testing.T) {
 	}
 	if len(cfg.ExtraWritablePaths) != 1 || cfg.ExtraWritablePaths[0] != "/tmp/x" {
 		t.Fatalf("Load() ExtraWritablePaths = %v, want [/tmp/x]", cfg.ExtraWritablePaths)
+	}
+}
+
+func TestCollapseDefaultsAbsentFromOldConfig(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte(`{"provider":"opencode-go","thinking_enabled":true}`), 0o600); err != nil {
+		t.Fatalf("WriteFile error = %v", err)
+	}
+
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if !got.CoTCollapsedByDefault {
+		t.Fatal("Load() CoTCollapsedByDefault = false, want default true for absent field")
+	}
+	if !got.ToolResultsCollapsedByDefault {
+		t.Fatal("Load() ToolResultsCollapsedByDefault = false, want default true for absent field")
+	}
+}
+
+func TestCollapseDefaultsPersist(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	cfg := Default()
+	cfg.CoTCollapsedByDefault = false
+	cfg.ToolResultsCollapsedByDefault = false
+	if err := Save(cfg, path); err != nil {
+		t.Fatalf("Save() error = %v, want nil", err)
+	}
+
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if got.CoTCollapsedByDefault {
+		t.Fatalf("Load() CoTCollapsedByDefault = true, want persisted off (false)")
+	}
+	if got.ToolResultsCollapsedByDefault {
+		t.Fatalf("Load() ToolResultsCollapsedByDefault = true, want persisted off (false)")
 	}
 }
 

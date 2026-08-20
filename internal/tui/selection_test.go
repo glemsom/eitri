@@ -7,6 +7,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/glemsom/eitri/internal/config"
 )
 
 func TestAnsiStrip_RemovesEscapeSequences(t *testing.T) {
@@ -586,7 +588,8 @@ func TestClickToExpand_togglesToolEntry(t *testing.T) {
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
-		Tools: NewToolFeed(),
+		Tools:  NewToolFeed(),
+		Config: config.Config{CoTCollapsedByDefault: true, ToolResultsCollapsedByDefault: true},
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "run it")

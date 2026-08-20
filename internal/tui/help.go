@@ -25,7 +25,8 @@ func helpView() string {
 
 	b.WriteString("\n# KEYBINDINGS\n\n")
 	writeHelpCategory(&b, "COMPOSER", []helpRow{
-		{"`tab`", "toggle thinking"},
+		{"`tab`", "cycle block focus"},
+		{"`enter`", "toggle focused block"},
 		{"`shift+enter`", "insert newline"},
 	})
 	writeHelpCategory(&b, "NAVIGATION", []helpRow{
@@ -33,6 +34,8 @@ func helpView() string {
 		{"`pgup/pgdn`", "scroll history"},
 	})
 	writeHelpCategory(&b, "PANES", []helpRow{
+		{"`e`", "expand all blocks"},
+		{"`E`", "collapse all blocks"},
 		{"`ctrl+e`", "toggle expanded view"},
 		{"`ctrl+x`", "narrow pane"},
 		{"`ctrl+z`", "widen pane"},
@@ -44,7 +47,8 @@ func helpView() string {
 
 	b.WriteString("\n# CONCEPTS\n\n")
 	writeHelpRows(&b, []helpRow{
-		{"`ctrl+e mode`", "expand/collapse all tool result cards"},
+		{"`expanded mode`", "e/E or ctrl+e expand or collapse all blocks"},
+		{"`block focus`", "tab to focus, enter to expand one block"},
 		{"`drag-select`", "click and drag to select text"},
 		{"`right rail`", "stats, context, and model info"},
 	})

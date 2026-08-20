@@ -8,8 +8,6 @@ import (
 
 	"image/color"
 
-	tea "charm.land/bubbletea/v2"
-
 	"github.com/glemsom/eitri/internal/config"
 )
 
@@ -221,7 +219,7 @@ func TestModel_stylingThinkingDistinct(t *testing.T) {
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer", Reasoning: "hidden reasoning"}, nil
 		},
-		Config: config.Config{ThinkingEnabled: true},
+		Config: config.Config{ThinkingEnabled: true, CoTCollapsedByDefault: true},
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
@@ -248,7 +246,7 @@ func TestModel_stylingThinkingMarker(t *testing.T) {
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok", Reasoning: "hidden reasoning"}, nil
 		},
-		Config: config.Config{ThinkingEnabled: true},
+		Config: config.Config{ThinkingEnabled: true, CoTCollapsedByDefault: true},
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
@@ -269,14 +267,15 @@ func TestModel_stylingThinkingPaneDistinctFromAnswer(t *testing.T) {
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer", Reasoning: "hidden reasoning"}, nil
 		},
-		Config: config.Config{ThinkingEnabled: true},
+		Config: config.Config{ThinkingEnabled: true, CoTCollapsedByDefault: true},
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 	m = submitAndWait(t, m)
 
-	toggled, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	m = asModel(t, toggled)
+	// Tab focuses the reasoning block; Enter expands it.
+	m = keypress(t, m, "tab")
+	m = keypress(t, m, "enter")
 	content := view(m)
 
 	thinkRows := reasoningPaneRows(t, content)

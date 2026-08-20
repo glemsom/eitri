@@ -22,19 +22,53 @@ type Transcript struct {
 	workspacePath   string
 	log             toolLog
 	expandAll       bool
-	timeline        []TimelineEvent // live arrival-ordered event log of the in-progress turn
-	turnSeq         int             // arrival sequence counter feeding the live timeline
-	layout          transcriptLayout
-	telemetry       *Telemetry
-	dragSel         dragSelect
-	width           int
-	height          int
-	histFollow      bool
-	histViewport    viewport.Model
+	collapseAll     bool
+	// cotExpanded and toolResultsExpanded are the render defaults flipped by
+	// the Settings toggles (issue #432): false means the block collapses to its
+	// hint/one-liner by default; true renders the full body by default.
+	cotExpanded         bool
+	toolResultsExpanded bool
+	// focusedBlock is the index into collapsibleBlocks() the per-block expand
+	// interaction targets; focusOn gates whether the focus cursor is active at
+	// all (a bare Transcript's zero value means no block is focused).
+	focusOn      bool
+	focusedBlock int
+	timeline     []TimelineEvent // live arrival-ordered event log of the in-progress turn
+	turnSeq      int             // arrival sequence counter feeding the live timeline
+	layout       transcriptLayout
+	telemetry    *Telemetry
+	dragSel      dragSelect
+	width        int
+	height       int
+	histFollow   bool
+	histViewport viewport.Model
 
 	railWidth int
 
 	rail *Rail
+}
+
+// viewMode is the transcript's global expansion mode: the default (respects
+// the config defaults plus per-block state), the e / ctrl+e expand-all mode,
+// or the E collapse-all-to-hints mode.
+type viewMode int
+
+const (
+	viewDefault viewMode = iota
+	viewExpandAll
+	viewCollapseAll
+)
+
+// viewMode returns the effective expansion mode from the mutually exclusive
+// expand-all / collapse-all flags.
+func (t Transcript) viewMode() viewMode {
+	if t.expandAll {
+		return viewExpandAll
+	}
+	if t.collapseAll {
+		return viewCollapseAll
+	}
+	return viewDefault
 }
 
 // railVisible reports whether the right context rail should render now.
@@ -222,7 +256,7 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 				// still in the tool-heavy gap with no assistant message yet).
 				if t.busy && i == len(t.messages)-1 {
 					base := nl
-					block, rows := t.renderEventFlow(flow, anchor, message{}, now)
+					block, rows := t.renderEventFlow(flow, anchor, message{}, i, now)
 					emit(block)
 					recordToolRows(rows, base)
 				}
@@ -230,27 +264,27 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 				// Legacy note turn (no event log): tool entries anchored to the
 				// prompt render directly beneath it, as before the flat flow.
 				base := nl
-				toolBlock, blockRows := t.log.Render(t.theme, t.expandAll, now, w, i, t.busyPulse > 0)
+				toolBlock, blockRows := t.log.Render(t.theme, t.viewMode(), !t.toolResultsExpanded, now, w, i, t.busyPulse > 0, t.focusedToolIdx())
 				emit(toolBlock)
 				recordToolRows(blockRows, base)
 			}
 		} else if len(msg.events) > 0 {
 			// Committed turn: walk its typed event log as one continuous flow.
 			base := nl
-			block, rows := t.renderEventFlow(msg.events, anchor, msg, now)
+			block, rows := t.renderEventFlow(msg.events, anchor, msg, i, now)
 			emit(block)
 			recordToolRows(rows, base)
 		} else if t.busy && msg.streaming && len(t.timeline) > 0 {
 			// Live turn: walk the in-progress timeline as one continuous flow.
 			base := nl
-			block, rows := t.renderEventFlow(t.timeline, anchor, msg, now)
+			block, rows := t.renderEventFlow(t.timeline, anchor, msg, i, now)
 			emit(block)
 			recordToolRows(rows, base)
 		} else {
 			// Legacy assistant block: a message that carries no event log
 			// (system notes, help/skill/login cards, error notes).
 			if msg.thinkingRequested && msg.reasoning != "" {
-				emit(thinkingHeader(t.theme, msg.reasoning, t.reasoningEffort))
+				emit(t.thinkingHeaderFor(msg, i, msg.reasoning))
 				if t.thinkingExpandedFor(msg) {
 					md, _ := RenderMarkdown(msg.reasoning, w-2, t.configTheme)
 					pane := t.theme.thinkingPaneStyle
@@ -280,7 +314,7 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 				emit(t.theme.statusStyle.Render(stoppedMarker()) + "\n")
 			}
 			base := nl
-			toolBlock, blockRows := t.log.Render(t.theme, t.expandAll, now, w, i, t.busyPulse > 0)
+			toolBlock, blockRows := t.log.Render(t.theme, t.viewMode(), !t.toolResultsExpanded, now, w, i, t.busyPulse > 0, t.focusedToolIdx())
 			emit(toolBlock)
 			recordToolRows(blockRows, base)
 		}
@@ -306,7 +340,7 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 // at the tail. It returns the rendered text and the tool-entry row ranges in
 // the same shape as toolLog.Render, so the shared row->entry hit-test keeps
 // working on the merged stream.
-func (t Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg message, now time.Time) (string, []toolRowRange) {
+func (t Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg message, msgIdx int, now time.Time) (string, []toolRowRange) {
 	var b strings.Builder
 	var rows []toolRowRange
 	nl := 0
@@ -334,7 +368,7 @@ func (t Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg mess
 		if txt == "" || !msg.thinkingRequested {
 			return // nothing to show, or the thinking gate hides a turn that never asked for reasoning
 		}
-		emit(thinkingHeader(t.theme, txt, t.reasoningEffort))
+		emit(t.thinkingHeaderFor(msg, msgIdx, txt))
 		if !t.thinkingExpandedFor(msg) {
 			return // collapsed: the hint is the block
 		}
@@ -349,7 +383,7 @@ func (t Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg mess
 
 	emitTool := func(te toolEntry, idx int) {
 		start := nl
-		s := renderToolEntry(t.theme, te, t.log.expandedFor(idx, t.expandAll), now, w, pulse)
+		s := renderToolEntry(t.theme, te, t.log.expandedFor(idx, t.viewMode(), !t.toolResultsExpanded), now, w, pulse, t.focusedBlockIs(blockTool, 0, idx))
 		emit(s)
 		if n := strings.Count(s, "\n"); n > 0 {
 			rows = append(rows, toolRowRange{start: start, end: start + n - 1, idx: idx})
@@ -544,30 +578,38 @@ func (t *Transcript) recordLayout() {
 	l.builds++
 }
 
-// toolEntryAtLine returns the tool entry whose rendered rows include the given content line, and whether that entry currently renders collapsed under the Ctrl+E expanded-view mode — a click on a collapsed head toggles it open; on an open entry it toggles closed.
+// toolEntryAtLine returns the tool entry whose rendered rows include the given content line, and whether that entry currently renders collapsed (a click on a collapsed head toggles it open; on an open entry it toggles closed).
 func (t *Transcript) toolEntryAtLine(line int) (idx int, collapsed bool, ok bool) {
 	t.ensureLayout()
 	toolIdx, _, ok := t.log.AtLine(line, t.layout.rows)
 	if !ok {
 		return 0, false, false
 	}
-	return toolIdx, !t.log.expandedFor(toolIdx, t.expandAll), true
+	return toolIdx, !t.toolExpandedFor(toolIdx), true
 }
 
-// toggleToolEntry flips one tool entry's expansion state (mouse click click-to-expand, ), kept independent of the Ctrl+E expanded-view mode .
+// toggleToolEntry flips one tool entry's expansion state (mouse click
+// click-to-expand): an expanded entry force-collapses (beating an expanded
+// default or the expand-all mode), a collapsed one force-expands.
 func (t *Transcript) toggleToolEntry(idx int) {
-	if t.expandAll {
-		t.toggleCollapse(idx)
+	if t.toolExpandedFor(idx) {
+		t.log.ForceCollapse(idx)
 	} else {
-		t.log.Toggle(idx)
-		t.layout.dirty = true // an entry expanded/collapsed changes its rendered rows
+		t.log.Expand(idx)
 	}
+	t.layout.dirty = true // an entry expanded/collapsed changes its rendered rows
 }
 
 // toggleCollapse flips one entry's per-entry collapse-override: it keeps a single entry collapsed even while the global expanded-view mode is ON, and flips back to let the mode show it.
 func (t *Transcript) toggleCollapse(idx int) {
 	t.log.ToggleCollapse(idx)
 	t.layout.dirty = true
+}
+
+// toolExpandedFor reports whether tool entry idx renders expanded under the
+// current mode and collapsed-by-default flag.
+func (t Transcript) toolExpandedFor(idx int) bool {
+	return t.log.expandedFor(idx, t.viewMode(), !t.toolResultsExpanded)
 }
 
 // appendMsg appends a finished assistant entry to the transcript and marks the shared message layout dirty in the same step, so the appended block re-wraps at the current transcript width on the next frame instead of rendering at a stale width.
@@ -614,14 +656,184 @@ func (t *Transcript) syncStreamSnapshots(i int) {
 	m.content, m.reasoning = deriveSnapshots(t.timeline)
 }
 
-// toggleExpandAll flips the persistent Ctrl+E expanded-view mode: Ctrl+E on the Model routes here, and it marks the shared layout dirty because showing or hiding all tool results re-wraps the log.
+// toggleExpandAll flips the persistent Ctrl+E expanded-view mode: Ctrl+E on the Model routes here, and it marks the shared layout dirty because showing or hiding all tool results re-wraps the log. Turning the mode on clears the collapse-all mode; turning it off returns to the defaults (issue #432).
 func (t *Transcript) toggleExpandAll() bool {
-	t.expandAll = !t.expandAll
-	t.layout.dirty = true // showing/hiding all tool results re-wraps the log
+	t.setExpandAll(!t.expandAll)
 	return t.expandAll
 }
 
-// thinkingExpandedFor returns whether msg's reasoning block renders expanded given the persistent Ctrl+E expanded-view mode: a per-turn thinkingCollapsed override (tab while the mode is ON) forces this single block collapsed, and otherwise the block reflects the global mode (issue #274).
+// setExpandAll enters or leaves the e / Ctrl+E expand-all mode directly.
+// Entering clears the per-block collapse forces so every block expands;
+// leaving returns to the default mode with per-block state intact.
+func (t *Transcript) setExpandAll(v bool) {
+	t.expandAll = v
+	if v {
+		t.collapseAll = false
+		t.clearCollapseForces()
+	}
+	t.layout.dirty = true // showing/hiding blocks re-wraps the transcript
+}
+
+// setCollapseAll enters or leaves the E collapse-all-to-hints mode: every
+// collapsible block collapses to its hint/one-liner regardless of the defaults.
+// Entering clears the per-block expand forces so the collapse is total; a
+// fresh per-block toggle (Enter on the focused block) can still re-expand one.
+func (t *Transcript) setCollapseAll(v bool) {
+	t.collapseAll = v
+	if v {
+		t.expandAll = false
+		t.clearExpandForces()
+	}
+	t.layout.dirty = true // collapsing/hiding blocks re-wraps the transcript
+}
+
+// clearCollapseForces drops every per-block force-collapse flag so the
+// expand-all mode can show all blocks.
+func (t *Transcript) clearCollapseForces() {
+	for i := range t.messages {
+		t.messages[i].thinkingCollapsed = false
+	}
+	for i := range t.log.entries {
+		t.log.entries[i].collapsedOverride = false
+	}
+}
+
+// clearExpandForces drops every per-block force-expand flag so the
+// collapse-all mode can hide all block bodies.
+func (t *Transcript) clearExpandForces() {
+	for i := range t.messages {
+		t.messages[i].thinkingExpanded = false
+	}
+	for i := range t.log.entries {
+		t.log.entries[i].expanded = false
+	}
+}
+
+// blockKind discriminates a collapsible block: a turn's reasoning header or a
+// tool entry, the two shapes the per-block expand interaction targets.
+type blockKind int
+
+const (
+	blockReasoning blockKind = iota
+	blockTool
+)
+
+// collapsibleBlock identifies one collapsible block for the block focus: kind
+// selects the shape, msgIdx the owning message for a reasoning block, toolIdx
+// the log index for a tool block.
+type collapsibleBlock struct {
+	kind    blockKind
+	msgIdx  int
+	toolIdx int
+}
+
+// collapsibleBlocks returns the transcript's collapsible blocks in render
+// order: each turn's reasoning header at its prompt position, then that turn's
+// tool entries in anchored order — the traversal Tab cycles the block focus
+// through.
+func (t Transcript) collapsibleBlocks() []collapsibleBlock {
+	var blocks []collapsibleBlock
+	for i, msg := range t.messages {
+		if msg.role != "you" {
+			continue
+		}
+		for j := i + 1; j < len(t.messages); j++ {
+			m := t.messages[j]
+			if m.role == "you" {
+				break // the next turn began without a reasoning block here
+			}
+			if m.thinkingRequested && (m.reasoning != "" || hasReasoningEvents(m.events)) {
+				blocks = append(blocks, collapsibleBlock{kind: blockReasoning, msgIdx: j})
+				break
+			}
+		}
+		for _, ti := range t.log.anchoredIndices(i) {
+			blocks = append(blocks, collapsibleBlock{kind: blockTool, toolIdx: ti})
+		}
+	}
+	return blocks
+}
+
+// hasReasoningEvents reports whether a message's event log derives any
+// reasoning text — the committed-turn case where the snapshot lives only in
+// the log until the turn finalizes.
+func hasReasoningEvents(events []TimelineEvent) bool {
+	for _, ev := range events {
+		if ev.Kind == EventReasoning && ev.Delta != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// focusNext advances the block focus to the next collapsible block, wrapping;
+// the first Tab activates the focus cursor on the first block; a transcript
+// with no collapsible blocks stays unfocused.
+func (t *Transcript) focusNext() {
+	n := len(t.collapsibleBlocks())
+	if n == 0 {
+		t.focusOn = false
+		t.focusedBlock = 0
+		return
+	}
+	if !t.focusOn {
+		t.focusOn = true
+		t.focusedBlock = 0
+		return
+	}
+	t.focusedBlock = (t.focusedBlock + 1) % n
+}
+
+// focused returns the block currently under the focus cursor.
+func (t Transcript) focused() (collapsibleBlock, bool) {
+	if !t.focusOn || t.focusedBlock < 0 {
+		return collapsibleBlock{}, false
+	}
+	blocks := t.collapsibleBlocks()
+	if t.focusedBlock >= len(blocks) {
+		return collapsibleBlock{}, false
+	}
+	return blocks[t.focusedBlock], true
+}
+
+// toggleFocused flips the focused block's expansion (Enter on the model), the
+// per-block half of the collapse-by-default interaction.
+func (t *Transcript) toggleFocused() {
+	blk, ok := t.focused()
+	if !ok {
+		return
+	}
+	switch blk.kind {
+	case blockReasoning:
+		t.toggleThinking(blk.msgIdx)
+	case blockTool:
+		t.toggleToolEntry(blk.toolIdx)
+	}
+}
+
+// focusedBlockIs reports whether the block identified by kind/msgIdx/toolIdx
+// is the one under the focus cursor, so the renderer can mark it.
+func (t Transcript) focusedBlockIs(kind blockKind, msgIdx, toolIdx int) bool {
+	blk, ok := t.focused()
+	return ok && blk.kind == kind && blk.msgIdx == msgIdx && blk.toolIdx == toolIdx
+}
+
+// focusedToolIdx returns the log index of the focused block when it is a tool
+// entry, else -1, so the legacy tool renderer marks the same block the flat
+// flow does.
+func (t Transcript) focusedToolIdx() int {
+	blk, ok := t.focused()
+	if !ok || blk.kind != blockTool {
+		return -1
+	}
+	return blk.toolIdx
+}
+
+// thinkingExpandedFor returns whether msg's reasoning block renders expanded: a
+// per-turn thinkingCollapsed override always wins, a per-turn thinkingExpanded
+// flag beats the global modes, the expand-all mode expands, the collapse-all
+// mode collapses, and otherwise the block follows the CoT-collapsed-by-default
+// flag (issue #432). A live streamed block stays expanded unless force-collapsed.
 func (t Transcript) thinkingExpandedFor(msg message) bool {
 	if msg.thinkingCollapsed {
 		return false
@@ -629,10 +841,31 @@ func (t Transcript) thinkingExpandedFor(msg message) bool {
 	if msg.streaming && msg.reasoning != "" {
 		return true
 	}
-	return t.expandAll || msg.thinkingExpanded
+	if msg.thinkingExpanded {
+		return true
+	}
+	switch t.viewMode() {
+	case viewExpandAll:
+		return true
+	case viewCollapseAll:
+		return false
+	}
+	return t.cotExpanded
 }
 
-// toggleThinking flips one turn's reasoning-block expansion (tab in the composer, ), kept independent of the Ctrl+E expanded-view mode .
+// thinkingHeaderFor renders a turn's reasoning-header line, prefixing it with the focus marker when the block is the one under the focus cursor.
+func (t Transcript) thinkingHeaderFor(msg message, msgIdx int, txt string) string {
+	h := thinkingHeader(t.theme, txt, t.reasoningEffort)
+	if t.focusedBlockIs(blockReasoning, msgIdx, 0) {
+		h = t.theme.focusStyle.Render(focusMarker()+" ") + h
+	}
+	return h
+}
+
+// toggleThinking flips one turn's reasoning-block expansion (Enter on the
+// focused block, previously tab), kept independent of the global modes: it
+// sets the force that opposes how the block currently renders, so a collapsed
+// block expands and an expanded block collapses.
 func (t *Transcript) toggleThinking(i int) {
 	if i < 0 || i >= len(t.messages) {
 		return
@@ -640,10 +873,12 @@ func (t *Transcript) toggleThinking(i int) {
 	msg := &t.messages[i]
 	if msg.streaming && msg.reasoning != "" {
 		msg.thinkingCollapsed = !msg.thinkingCollapsed
-	} else if t.expandAll {
-		msg.thinkingCollapsed = !msg.thinkingCollapsed
+	} else if t.thinkingExpandedFor(*msg) {
+		msg.thinkingCollapsed = true // expanded: flip to a forced collapse
+		msg.thinkingExpanded = false
 	} else {
-		msg.thinkingExpanded = !msg.thinkingExpanded
+		msg.thinkingExpanded = true // collapsed: flip to a forced expand
+		msg.thinkingCollapsed = false
 	}
 	t.layout.dirty = true // a thinking block expanded/collapsed changes rows
 }
