@@ -231,6 +231,71 @@ func TestToolPulse_runningEntryRendersAccent(t *testing.T) {
 	}
 }
 
+// TestToolPulse_busyBandFlashesWithCollapsedCoT locks AC2 of issue #436 (retain
+// busy band, Phase, tool-start pulse): on a thinking-off turn the chain of
+// thought is collapsed away entirely, so the brief tool-start pulse in the
+// bottom busy band is the only "something started" signal. While the pulse is
+// armed the band line must flash to the accent hue; once it expires the band
+// must fall back to the faint secondary style — and the band must keep
+// reporting the derived Phase throughout.
+func TestToolPulse_busyBandFlashesWithCollapsedCoT(t *testing.T) {
+	if !motionEnabled() {
+		t.Skip("motion disabled in this environment; the static fallback is covered separately")
+	}
+	th := themeFor(config.DefaultTheme)
+	tx := &Transcript{
+		theme:           th,
+		configTheme:     config.DefaultTheme,
+		reasoningEffort: "medium",
+		width:           100,
+		height:          12,
+		busy:            true,
+		spinner:         0,
+		histFollow:      true,
+		histViewport:    newHistoryViewport(),
+		messages: []message{
+			{role: "you", content: "run it"},
+			{role: "eitri", content: "", streaming: true, thinkingRequested: false},
+		},
+		timeline: []TimelineEvent{
+			{Kind: EventReasoning, Seq: 0, Delta: "secret reasoning"},
+			{Kind: EventToolStart, Seq: 1, Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}},
+		},
+	}
+	tx.busyPulse = 3 // the tool start armed the pulse (model.applyToolUpdate)
+
+	renderBand := func() string {
+		var hist strings.Builder
+		tx.renderHistory(&hist, nil, nil)
+		for _, ln := range strings.Split(hist.String(), "\n") {
+			if strings.Contains(ansiStrip(ln), "Working") {
+				return ln
+			}
+		}
+		t.Fatalf("busy band must report the Working phase, got: %q", ansiStrip(hist.String()))
+		return ""
+	}
+
+	const accent = "38;2;122;162;247" // default theme accent #7AA2F7
+
+	band := renderBand()
+	if strings.Contains(ansiStrip(band), "secret reasoning") {
+		t.Errorf("thinking-off turn must keep its CoT collapsed (hidden), band: %q", band)
+	}
+	if !strings.Contains(band, accent) {
+		t.Errorf("pulse-armed band must flash to the accent hue, got: %q", band)
+	}
+
+	tx.busyPulse = 0 // the pulse expired after its 3 ticks
+	settled := renderBand()
+	if strings.Contains(settled, accent) {
+		t.Errorf("band must fall back off the pulse once it expires, got: %q", settled)
+	}
+	if !strings.Contains(settled, "\x1b[2m") {
+		t.Errorf("settled band must render faint (statusStyle), got: %q", settled)
+	}
+}
+
 func TestComposerRail_modeColor(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
