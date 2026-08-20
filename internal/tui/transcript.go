@@ -786,20 +786,11 @@ func thinkingExpandedForBlock(msg message, mode viewMode, cotExpanded bool) bool
 	return e.expanded(blockReasoning, reasoningWholeID)
 }
 
-// thinkingExpandedFor returns whether msg's reasoning block renders expanded,
-// delegating to the seam.
-func (t Transcript) thinkingExpandedFor(msg message) bool {
-	return thinkingExpandedForBlock(msg, t.viewMode(), t.cotExpanded)
-}
-
 // thinkingExpandedForFrag is the free-function form of the per-fragment
 // expansion decision, shared by the Transcript and the FlowRenderer: a
 // fragment's own pin on the seam wins, else it follows the whole-block decision.
 func thinkingExpandedForFrag(msg message, fragIdx int, mode viewMode, cotExpanded bool) bool {
-	e := msg.expansion
-	e.mode = mode
-	e.cotExpanded = cotExpanded
-	if f, ok := e.forceFor(blockReasoning, fragIdx); ok {
+	if f, ok := msg.expansion.forceFor(blockReasoning, fragIdx); ok {
 		return f
 	}
 	return thinkingExpandedForBlock(msg, mode, cotExpanded)

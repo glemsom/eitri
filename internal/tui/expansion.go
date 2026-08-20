@@ -116,10 +116,10 @@ func (e *ExpansionState) clearForces() {
 	e.forces = nil
 }
 
-// clearReasoningFragments drops every per-fragment reasoning force (ids >= 0)
-// for kind, leaving a whole-block force (id < 0) intact — the turn-commit
-// cleanup that discards a live turn's fragment pins once its chain-of-thought
-// collapses to a single committed block.
+// clearReasoningFragments drops every per-fragment reasoning force (ids >= 0),
+// leaving the whole-block force (id < 0) intact — the turn-commit cleanup that
+// discards a live turn's fragment pins once its chain-of-thought collapses to a
+// single committed block.
 func (e *ExpansionState) clearReasoningFragments() {
 	for k := range e.forces {
 		if k.kind == blockReasoning && k.id >= 0 {
