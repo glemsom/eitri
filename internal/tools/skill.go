@@ -268,7 +268,7 @@ type skillTool struct {
 func (s *skillTool) Name() string { return "skill" }
 
 func (s *skillTool) Description() string {
-	return "Activate an Agent Skill pack, injecting its instructions into context as a tool result. Choose the matching skill by name from the provided enum; the pack's markdown and bundled resources are returned for you to follow. Skill instructions are tool results and never elevated to a system message."
+	return "Activate an Agent Skill pack and apply its instructions. Choose the matching skill by name from the provided enum; the pack's markdown and bundled resources are returned for you to follow. Follow the skill's instructions faithfully."
 }
 
 func (s *skillTool) Schema() map[string]any {

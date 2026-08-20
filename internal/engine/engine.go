@@ -75,6 +75,21 @@ func systemPromptHead() []provider.Message {
 	return []provider.Message{{Role: provider.RoleSystem, Content: SystemPromptContent()}}
 }
 
+// bindSkillToPrompt folds a slash-injected skill payload into the single
+// high-priority user message that carries the prompt. Delivering the directive
+// inside the user layer (rather than as a competing second system message) puts
+// it adjacent to the prompt so it outranks the Eitri persona when the two
+// conflict; smaller models deprioritize instructions they receive in a system
+// message, which is why the old second-system-message injection lost.
+func bindSkillToPrompt(prompt, skill string) string {
+	var b strings.Builder
+	b.WriteString("The user invoked this skill by name; follow its instructions exactly. They are binding, not advisory, and a conflicting system persona does not override them.\n\n")
+	b.WriteString(skill)
+	b.WriteString("\n\nUser request:\n")
+	b.WriteString(prompt)
+	return b.String()
+}
+
 // Run performs a non-tool turn: it sends the model + a user message and streams the provider response to a final assistant answer.
 func (e *Engine) Run(ctx context.Context, req RunRequest) (Result, error) {
 	if ctx.Err() != nil {
@@ -255,11 +270,11 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		return Result{}, ErrStopped
 	}
 	messages := systemPromptHead()
+	userContent := req.Prompt
 	if req.SkillInject != nil {
-		messages = append(messages,
-			provider.Message{Role: provider.RoleSystem, Content: *req.SkillInject})
+		userContent = bindSkillToPrompt(userContent, *req.SkillInject)
 	}
-	messages = append(messages, provider.Message{Role: provider.RoleUser, Content: req.Prompt})
+	messages = append(messages, provider.Message{Role: provider.RoleUser, Content: userContent})
 	var (
 		final         Result
 		stopContent   string
