@@ -404,12 +404,18 @@ func (t *Transcript) apply(u ToolUpdate) {
 	t.layout.dirty = true // an entry changed the tool log's rendered rows
 }
 
+// recordLive appends one event to the live per-turn log in arrival order,
+// stamping it with the turn's next sequence number.
+func (t *Transcript) recordLive(ev TimelineEvent) {
+	ev.Seq = t.turnSeq
+	t.turnSeq++
+	t.timeline = append(t.timeline, ev)
+}
+
 // recordTurnEvent logs one event on the per-turn event timeline: while a turn runs it lands on the live log the TurnDispatch commits at turn completion; after the turn it attaches to the most recent assistant message so trailing tool results still appear in that turn's log. Seq continues wherever the last log left off, so post-turn appends stay arrival-ordered with the turn's own events.
 func (t *Transcript) recordTurnEvent(ev TimelineEvent) {
 	if t.busy {
-		ev.Seq = t.turnSeq
-		t.turnSeq++
-		t.timeline = append(t.timeline, ev)
+		t.recordLive(ev)
 		return
 	}
 	for i := len(t.messages) - 1; i >= 0; i-- {

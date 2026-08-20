@@ -70,20 +70,12 @@ func (d *TurnDispatch) turnCmd(prompt, payload string) tea.Cmd {
 	})
 }
 
-// streamEvent builds the timeline entry for one streamed delta and records it
-// on the transcript's live per-turn log in arrival order.
-func (d *TurnDispatch) streamEvent(tx *Transcript, delta string, kind EventKind) {
-	ev := TimelineEvent{Kind: kind, Seq: tx.turnSeq, Delta: delta}
-	tx.turnSeq++
-	tx.timeline = append(tx.timeline, ev)
-}
-
 // appendStreamDelta grows the in-progress assistant message by one streamed delta and records the delta on the turn's arrival-ordered event timeline.
 func (d *TurnDispatch) appendStreamDelta(tx *Transcript, kind StreamKind, delta string) {
 	if delta == "" {
 		return
 	}
-	d.streamEvent(tx, delta, streamEventKind(kind))
+	tx.recordLive(TimelineEvent{Kind: streamEventKind(kind), Delta: delta})
 	if d.curStream >= 0 && d.curStream < len(tx.messages) && tx.messages[d.curStream].streaming {
 		tx.syncStreamSnapshots(d.curStream)
 		return
@@ -101,6 +93,16 @@ func (d *TurnDispatch) commitTimeline(tx *Transcript, i int) {
 	if i >= 0 && i < len(tx.messages) {
 		tx.messages[i].events = tx.timeline
 	}
+	tx.timeline = nil
+	tx.turnSeq = 0
+}
+
+// commitNewAssistant attaches the live event log to the freshly appended
+// assistant message (the turn that completed without a streaming message) and
+// resets the live log.
+func (d *TurnDispatch) commitNewAssistant(tx *Transcript) {
+	idx := len(tx.messages) - 1
+	tx.messages[idx].events = tx.timeline
 	tx.timeline = nil
 	tx.turnSeq = 0
 }
@@ -124,9 +126,8 @@ func (d *TurnDispatch) handleTurnDone(tx *Transcript, msg turnDoneMsg) (stopped 
 			d.commitTimeline(tx, d.curStream)
 			d.curStream = -1
 		} else if msg.answer != "" || msg.reasoning != "" {
-			tx.messages = append(tx.messages, message{role: "eitri", content: msg.answer, reasoning: msg.reasoning, stopped: true, events: tx.timeline, thinkingRequested: d.thinkingEnabled})
-			tx.timeline = nil
-			tx.turnSeq = 0
+			tx.messages = append(tx.messages, message{role: "eitri", content: msg.answer, reasoning: msg.reasoning, stopped: true, thinkingRequested: d.thinkingEnabled})
+			d.commitNewAssistant(tx)
 		}
 		return true, nil
 	}
@@ -136,9 +137,8 @@ func (d *TurnDispatch) handleTurnDone(tx *Transcript, msg turnDoneMsg) (stopped 
 			d.commitTimeline(tx, d.curStream)
 		}
 		d.curStream = -1
-		tx.messages = append(tx.messages, message{role: "eitri", content: failurePrefix() + msg.err.Error(), events: tx.timeline, thinkingRequested: d.thinkingEnabled})
-		tx.timeline = nil
-		tx.turnSeq = 0
+		tx.messages = append(tx.messages, message{role: "eitri", content: failurePrefix() + msg.err.Error(), thinkingRequested: d.thinkingEnabled})
+		d.commitNewAssistant(tx)
 		return false, msg.err
 	}
 	if wasStreaming {
@@ -151,9 +151,8 @@ func (d *TurnDispatch) handleTurnDone(tx *Transcript, msg turnDoneMsg) (stopped 
 		d.commitTimeline(tx, d.curStream)
 		d.curStream = -1
 	} else {
-		tx.messages = append(tx.messages, message{role: "eitri", content: msg.answer, reasoning: msg.reasoning, events: tx.timeline, thinkingRequested: d.thinkingEnabled})
-		tx.timeline = nil
-		tx.turnSeq = 0
+		tx.messages = append(tx.messages, message{role: "eitri", content: msg.answer, reasoning: msg.reasoning, thinkingRequested: d.thinkingEnabled})
+		d.commitNewAssistant(tx)
 	}
 	return false, nil
 }
