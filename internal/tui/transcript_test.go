@@ -502,6 +502,55 @@ func newStreamPaneTestTranscript(th Theme, msgs []message) Transcript {
 	}
 }
 
+// liveReasoningFlowTranscript builds a Transcript mid-live-turn whose
+// in-progress assistant streams one reasoning delta on the per-turn timeline —
+// the merged flat-flow path a live reasoning block now renders through, in
+// place of the three-pane layout's standalone-message fallback.
+func liveReasoningFlowTranscript(reasoning string) *Transcript {
+	th := themeFor(config.DefaultTheme)
+	return &Transcript{
+		theme:           th,
+		configTheme:     config.DefaultTheme,
+		reasoningEffort: "medium",
+		width:           80,
+		height:          12,
+		histFollow:      true,
+		histViewport:    newHistoryViewport(),
+		busy:            true,
+		messages: []message{
+			{role: "you", content: "hi"},
+			{role: "eitri", reasoning: reasoning, streaming: true, thinkingRequested: true},
+		},
+		timeline: []TimelineEvent{
+			{Kind: EventReasoning, Seq: 0, Delta: reasoning},
+		},
+	}
+}
+
+// committedReasoningFlowTranscript builds a completed turn whose committed
+// event log walks a reasoning delta then the answer — the flat flow a finished
+// reasoning block renders through after finalize.
+func committedReasoningFlowTranscript(reasoning, answer string) *Transcript {
+	th := themeFor(config.DefaultTheme)
+	return &Transcript{
+		theme:           th,
+		configTheme:     config.DefaultTheme,
+		reasoningEffort: "medium",
+		width:           80,
+		height:          12,
+		histFollow:      true,
+		histViewport:    newHistoryViewport(),
+		messages: []message{
+			{role: "you", content: "hi"},
+			{role: "eitri", content: answer, reasoning: reasoning, thinkingRequested: true,
+				events: []TimelineEvent{
+					{Kind: EventReasoning, Seq: 0, Delta: reasoning},
+					{Kind: EventAnswer, Seq: 1, Delta: answer},
+				}},
+		},
+	}
+}
+
 func TestRenderHistory_streamingAssistantUsesDimmedPane(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
@@ -583,13 +632,13 @@ func TestRenderHistory_liveReasoningBlockUsesStreamingPane(t *testing.T) {
 
 	render := func(streaming bool) string {
 		var hist strings.Builder
-		tx := newStreamPaneTestTranscript(th, []message{{
-			role:              "eitri",
-			reasoning:         "the live reasoning body",
-			streaming:         streaming,
-			thinkingRequested: true,
-			thinkingExpanded:  true,
-		}})
+		var tx *Transcript
+		if streaming {
+			tx = liveReasoningFlowTranscript("the live reasoning body")
+		} else {
+			tx = committedReasoningFlowTranscript("the live reasoning body", "final answer")
+			tx.messages[1].thinkingExpanded = true
+		}
 		tx.renderHistory(&hist, nil, nil)
 		return hist.String()
 	}
@@ -617,17 +666,10 @@ func TestRenderHistory_liveReasoningBlockUsesStreamingPane(t *testing.T) {
 
 func TestRenderHistory_liveReasoningRespectsTabCollapse(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
-	th := themeFor(config.DefaultTheme)
+	tx := liveReasoningFlowTranscript("hidden reasoning")
+	tx.messages[1].thinkingCollapsed = true
+
 	var hist strings.Builder
-	tx := newStreamPaneTestTranscript(th, []message{{
-		role:              "eitri",
-		content:           "final answer",
-		reasoning:         "hidden reasoning",
-		streaming:         true,
-		thinkingRequested: true,
-		thinkingExpanded:  true,
-		thinkingCollapsed: true,
-	}})
 	tx.renderHistory(&hist, nil, nil)
 	if strings.Contains(ansiStrip(hist.String()), "hidden reasoning") {
 		t.Errorf("tab-collapsed live reasoning block must render collapsed, got: %q", hist.String())
@@ -636,16 +678,10 @@ func TestRenderHistory_liveReasoningRespectsTabCollapse(t *testing.T) {
 
 func TestRenderHistory_liveReasoningBlockRespectsThinkingGate(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
-	th := themeFor(config.DefaultTheme)
+	tx := liveReasoningFlowTranscript("sneaked reasoning")
+	tx.messages[1].thinkingRequested = false
+
 	var hist strings.Builder
-	tx := newStreamPaneTestTranscript(th, []message{{
-		role:              "eitri",
-		content:           "final answer",
-		reasoning:         "sneaked reasoning",
-		streaming:         true,
-		thinkingRequested: false,
-		thinkingExpanded:  true,
-	}})
 	tx.renderHistory(&hist, nil, nil)
 	rendered := hist.String()
 	if strings.Contains(ansiStrip(rendered), "sneaked reasoning") {
@@ -655,14 +691,8 @@ func TestRenderHistory_liveReasoningBlockRespectsThinkingGate(t *testing.T) {
 
 func TestTranscript_liveReasoningBlockTogglesViaTab(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
-	th := themeFor(config.DefaultTheme)
 
-	tx := newStreamPaneTestTranscript(th, []message{{
-		role:              "eitri",
-		reasoning:         "visible reasoning",
-		streaming:         true,
-		thinkingRequested: true,
-	}})
+	tx := liveReasoningFlowTranscript("visible reasoning")
 
 	var live strings.Builder
 	tx.renderHistory(&live, nil, nil)
@@ -670,25 +700,31 @@ func TestTranscript_liveReasoningBlockTogglesViaTab(t *testing.T) {
 		t.Fatalf("streaming reasoning must render its body expanded, got: %q", live.String())
 	}
 
-	tx.toggleThinking(0)
+	tx.toggleThinking(1)
 	var collapsed strings.Builder
 	tx.renderHistory(&collapsed, nil, nil)
 	if strings.Contains(ansiStrip(collapsed.String()), "visible reasoning") {
 		t.Errorf("tab must collapse the live reasoning block, got: %q", collapsed.String())
 	}
 
-	tx.toggleThinking(0)
+	tx.toggleThinking(1)
 	var reexpanded strings.Builder
 	tx.renderHistory(&reexpanded, nil, nil)
 	if !strings.Contains(ansiStrip(reexpanded.String()), "visible reasoning") {
 		t.Errorf("tab must re-expand the live reasoning block, got: %q", reexpanded.String())
 	}
 
-	tx.messages[0].streaming = false
-	var done strings.Builder
-	tx.renderHistory(&done, nil, nil)
-	if strings.Contains(ansiStrip(done.String()), "visible reasoning") {
-		t.Errorf("a completed turn's reasoning block must collapse to the hint, got: %q", done.String())
+	// A completed (finalized) turn collapses its reasoning to the hint by
+	// default, so it can never push tool calls out of view (issue #432 lock).
+	done := committedReasoningFlowTranscript("visible reasoning", "final answer")
+	var doneStr strings.Builder
+	done.renderHistory(&doneStr, nil, nil)
+	donePlain := ansiStrip(doneStr.String())
+	if strings.Contains(donePlain, "visible reasoning") {
+		t.Errorf("a completed turn's reasoning block must collapse to the hint, got: %q", donePlain)
+	}
+	if !strings.Contains(donePlain, "tok") {
+		t.Errorf("a completed turn's collapsed reasoning must keep the 🤔 N tok hint, got: %q", donePlain)
 	}
 }
 
