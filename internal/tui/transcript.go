@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -279,37 +278,16 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 			emitFlow(t.timeline, anchor, i, msg)
 		} else {
 			// Legacy assistant block: a message that carries no event log
-			// (system notes, help/skill/login cards, error notes).
+			// (system notes, help/skill/login cards, error notes). Its reasoning
+			// block renders through the same single emitter the FlowRenderer
+			// uses, so the header/pane rendering stays identical across paths.
 			if msg.thinkingRequested && msg.reasoning != "" {
-				emit(t.thinkingHeaderFor(msg, i, 0, msg.reasoning))
-				if t.thinkingExpandedForFragment(msg, 0) {
-					md, _ := RenderMarkdown(msg.reasoning, w-2, t.configTheme)
-					pane := t.theme.thinkingPaneStyle
-					if msg.streaming {
-						pane = t.theme.streamingThinkingPaneStyle
-					}
-					pane = pane.Border(lipgloss.Border{Left: g("│", "|")})
-					emit(fmt.Sprintf("%s\n", pane.Render(strings.TrimRight(md, "\n"))))
-				}
+				emit(renderReasoningBlock(t.theme, t.configTheme, w, t.reasoningEffort, msg, i, 0, msg.reasoning, t.thinkingExpandedForFragment(msg, 0), t.focusedBlockIs(blockReasoning, i, 0, 0)))
 			}
-			md, _ := RenderMarkdown(msg.content, w-2, t.configTheme)
-			pane := t.theme.agentPaneStyle
-			if msg.stopped {
-				pane = t.theme.stoppedPaneStyle
-			} else if strings.HasPrefix(msg.content, failurePrefix()) {
-				if msg.streaming {
-					pane = t.theme.streamingErrorPaneStyle
-				} else {
-					pane = t.theme.errorPaneStyle
-				}
-			} else if msg.streaming {
-				pane = t.theme.streamingPaneStyle
-			}
-			pane = pane.Border(lipgloss.Border{Left: g("│", "|")})
-			emit(fmt.Sprintf("%s\n", pane.Render(strings.TrimRight(md, "\n"))))
-			if msg.stopped {
-				emit(t.theme.statusStyle.Render(stoppedMarker()) + "\n")
-			}
+			// The legacy answer block renders through the same single emitter the
+			// FlowRenderer uses, so the answer pane/stopped rendering stays
+			// identical across paths.
+			emit(renderAnswerBlock(t.theme, t.configTheme, w, msg, msg.content, true))
 			base := nl
 			toolBlock, blockRows := t.log.Render(t.theme, t.viewMode(), !t.toolResultsExpanded, now, w, i, t.busyPulse > 0, t.focusedToolIdx())
 			emit(toolBlock)
@@ -790,16 +768,6 @@ func thinkingExpandedForFrag(msg message, fragIdx int, mode viewMode, cotExpande
 // entry.
 func (t Transcript) thinkingExpandedForFragment(msg message, fragIdx int) bool {
 	return thinkingExpandedForFrag(msg, fragIdx, t.viewMode(), t.cotExpanded)
-}
-
-// thinkingHeaderFor renders a turn's reasoning-header line, prefixing it with the
-// focus marker when the fragment is the one under the focus cursor.
-func (t Transcript) thinkingHeaderFor(msg message, msgIdx, fragIdx int, txt string) string {
-	h := thinkingHeader(t.theme, txt, t.reasoningEffort)
-	if t.focusedBlockIs(blockReasoning, msgIdx, 0, fragIdx) {
-		h = t.theme.focusStyle.Render(focusMarker()+" ") + h
-	}
-	return h
 }
 
 // toggleThinkingFragment flips the expansion of one reasoning fragment (Enter on
