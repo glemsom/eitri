@@ -232,6 +232,18 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 			*toolRows = append(*toolRows, toolRowRange{start: base + r.start, end: base + r.end, idx: r.idx})
 		}
 	}
+	// emitFlow renders one turn's event sequence through the single FlowRenderer
+	// emitter and records its tool rows into the shared index. Every flow-worthy
+	// turn funnels through this one emission path — a committed turn (its
+	// finalized event log), a live turn (the in-progress timeline), and the
+	// tool-heavy gap before any assistant message — so no parallel in-loop flow
+	// code can drift from RenderFlow.
+	emitFlow := func(events []TimelineEvent, anchor, msgIdx int, msg message) {
+		base := nl
+		block, rows := t.renderEventFlow(events, anchor, msg, msgIdx, now)
+		emit(block)
+		recordToolRows(rows, base)
+	}
 	for i, msg := range t.messages {
 		msgStart := nl // content row where this message's block begins
 		w := t.transcriptWidth()
@@ -247,10 +259,7 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 				// assistant message, the live flow right here when the run is
 				// still in the tool-heavy gap with no assistant message yet).
 				if t.busy && i == len(t.messages)-1 {
-					base := nl
-					block, rows := t.renderEventFlow(flow, anchor, message{}, i, now)
-					emit(block)
-					recordToolRows(rows, base)
+					emitFlow(flow, anchor, i, message{})
 				}
 			} else {
 				// Legacy note turn (no event log): tool entries anchored to the
@@ -261,17 +270,13 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 				recordToolRows(blockRows, base)
 			}
 		} else if len(msg.events) > 0 {
-			// Committed turn: walk its typed event log as one continuous flow.
-			base := nl
-			block, rows := t.renderEventFlow(msg.events, anchor, msg, i, now)
-			emit(block)
-			recordToolRows(rows, base)
+			// Committed turn: walk its typed event log as one continuous flow
+			// through the shared FlowRenderer emitter.
+			emitFlow(msg.events, anchor, i, msg)
 		} else if t.busy && msg.streaming && len(t.timeline) > 0 {
-			// Live turn: walk the in-progress timeline as one continuous flow.
-			base := nl
-			block, rows := t.renderEventFlow(t.timeline, anchor, msg, i, now)
-			emit(block)
-			recordToolRows(rows, base)
+			// Live turn: walk the in-progress timeline as one continuous flow
+			// through the shared FlowRenderer emitter.
+			emitFlow(t.timeline, anchor, i, msg)
 		} else {
 			// Legacy assistant block: a message that carries no event log
 			// (system notes, help/skill/login cards, error notes).
