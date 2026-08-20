@@ -20,6 +20,66 @@ func compactCfg() *CompactionConfig {
 	}
 }
 
+func TestMaybeCompactKeepsSkillInjectSystemMessage(t *testing.T) {
+	t.Parallel()
+	// A fail-safe provider: summary generation returns nothing, so maybeCompact
+	// takes its head+tail path and must still preserve the injected skill head.
+	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
+		return provider.StreamFunc(provider.Chunk{Done: true}), nil
+	}), &mockTranscript{})
+
+	skill := "<skill_content name=\"improve-codebase-architecture\">\nDo the architecture thing.\n</skill_content>\n"
+	// A long run whose message list opens [system(Eitri), system(<skill_content>), user, ...]:
+	// the two assistant legs force the tail floor past the skill head, so without the
+	// stable-head fix the skill system message is evicted into the body and lost.
+	messages := []provider.Message{
+		{Role: provider.RoleSystem, Content: SystemPromptContent()},
+		{Role: provider.RoleSystem, Content: skill},
+		{Role: provider.RoleUser, Content: "old prompt"},
+		{Role: provider.RoleAssistant, Content: "old answer one"},
+		{Role: provider.RoleTool, ToolCallID: "t1", Content: "result"},
+		{Role: provider.RoleUser, Content: "mid prompt"},
+		{Role: provider.RoleAssistant, Content: "old answer two"},
+		{Role: provider.RoleUser, Content: "latest prompt"},
+	}
+
+	cfg := compactCfg()
+	cfg.Prune = true
+	got, ok := e.maybeCompact(context.Background(), RunRequest{}, AgentOptions{
+		Compaction: cfg,
+		lastUsage:  &provider.Usage{PromptTokens: 999},
+	}, messages, true, 1)
+	if !ok {
+		t.Fatal("expected compaction to fire on a forced overflow")
+	}
+
+	var saw bool
+	for _, m := range got {
+		if m.Role == provider.RoleSystem && strings.Contains(m.Content, "skill_content") {
+			saw = true
+		}
+	}
+	if !saw {
+		t.Fatalf("injected skill system message dropped by compaction:\n%s", got)
+	}
+}
+
+func TestIsSkillMessageRecognizesSkillContentSystemMessage(t *testing.T) {
+	t.Parallel()
+	if !isSkillMessage(provider.Message{Role: provider.RoleSystem,
+		Content: "<skill_content name=\"go\">follow the guidelines</skill_content>"}) {
+		t.Fatal("isSkillMessage must recognize the injected <skill_content> system message")
+	}
+	// A model-invoked skill tool call and its SKILL-carrying tool result stay recognized.
+	if !isSkillMessage(provider.Message{Role: provider.RoleAssistant,
+		ToolCalls: []provider.ToolCall{{Name: "skill"}}}) {
+		t.Fatal("isSkillMessage must keep recognizing the assistant skill tool call")
+	}
+	if !isSkillMessage(provider.Message{Role: provider.RoleTool, Content: "SKILL activated"}) {
+		t.Fatal("isSkillMessage must keep recognizing a SKILL tool result")
+	}
+}
+
 func TestEvictPruneRingFenceProtectsSkillContent(t *testing.T) {
 	t.Parallel()
 	msgs := []provider.Message{
