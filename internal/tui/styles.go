@@ -41,6 +41,7 @@ type Theme struct {
 	diffAddStyle               lipgloss.Style
 	diffDelStyle               lipgloss.Style
 	slashSelectStyle           lipgloss.Style // the selected slash-completion candidate
+	focusStyle                 lipgloss.Style // the focused collapsible block's head/hint marker
 	bandSeparatorStyle         lipgloss.Style // the separator row framing the bottom band
 	bandStatusStyle            lipgloss.Style
 
@@ -309,6 +310,7 @@ func newTheme(accent, err, ok, shell, file, web, skill, bubble color.Color, rail
 			Foreground(err).
 			Background(dimmed(err, 0.14)),
 		slashSelectStyle:   lipgloss.NewStyle().Bold(true).Foreground(accent),
+		focusStyle:         lipgloss.NewStyle().Bold(true).Foreground(accent),
 		bandSeparatorStyle: lipgloss.NewStyle().Foreground(accent),
 		bandStatusStyle:    lipgloss.NewStyle().Foreground(accent),
 	}

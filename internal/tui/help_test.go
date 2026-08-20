@@ -78,7 +78,7 @@ func TestHelpView_codeSpans(t *testing.T) {
 			t.Errorf("helpView() missing code span %q", want)
 		}
 	}
-	for _, name := range []string{"tab", "shift+enter", "?", "pgup/pgdn", "ctrl+e", "ctrl+x", "ctrl+z", "ctrl+s", "ctrl+o"} {
+	for _, name := range []string{"tab", "enter", "shift+enter", "?", "pgup/pgdn", "e", "E", "ctrl+e", "ctrl+x", "ctrl+z", "ctrl+s", "ctrl+o"} {
 		if want := "`" + name + "`"; !strings.Contains(got, want) {
 			t.Errorf("helpView() missing keybinding code span %q", want)
 		}
@@ -132,7 +132,8 @@ func TestHelpView_alignedColumns(t *testing.T) {
 			"interactive provider login", "show this help message",
 		}},
 		{"CONCEPTS", []string{
-			"expand/collapse all tool result cards",
+			"e/E or ctrl+e expand or collapse all blocks",
+			"tab to focus, enter to expand one block",
 			"click and drag to select text",
 			"stats, context, and model info",
 		}},
@@ -147,9 +148,9 @@ func TestHelpView_alignedColumns(t *testing.T) {
 		name  string
 		descs []string
 	}{
-		{"COMPOSER", []string{"toggle thinking", "insert newline"}},
+		{"COMPOSER", []string{"cycle block focus", "toggle focused block", "insert newline"}},
 		{"NAVIGATION", []string{"show help", "scroll history"}},
-		{"PANES", []string{"toggle expanded view", "narrow pane", "widen pane"}},
+		{"PANES", []string{"expand all blocks", "collapse all blocks", "toggle expanded view", "narrow pane", "widen pane"}},
 		{"ACTIONS", []string{"open settings", "copy transcript"}},
 	}
 	for _, cat := range categories {
@@ -200,8 +201,8 @@ func TestHelpView_keybindingsComplete(t *testing.T) {
 
 	sec := keybindingsSection(t, got)
 	keys := []string{
-		"ctrl+s", "ctrl+o", "ctrl+e", "tab", "shift+enter",
-		"?", "pgup/pgdn", "ctrl+x", "ctrl+z",
+		"`ctrl+s`", "`ctrl+o`", "`ctrl+e`", "`tab`", "`enter`", "`shift+enter`", "`e`", "`E`",
+		"`?`", "`pgup/pgdn`", "`ctrl+x`", "`ctrl+z`",
 	}
 	for _, k := range keys {
 		if n := strings.Count(sec, k); n != 1 {

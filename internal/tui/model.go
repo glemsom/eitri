@@ -223,16 +223,18 @@ func NewModelCfg(d Dependencies) Model {
 	comp.SetStyles(st)
 
 	transcript := &Transcript{
-		theme:           th,
-		configTheme:     d.Config.Theme,
-		workspacePath:   d.WorkspacePath,
-		reasoningEffort: d.Config.ReasoningEffort,
-		telemetry:       d.Telemetry,
-		rail:            d.Rail,
-		railWidth:       d.Config.RailWidth,
-		histFollow:      true,
-		histViewport:    newHistoryViewport(),
-		layout:          transcriptLayout{dirty: true},
+		theme:               th,
+		configTheme:         d.Config.Theme,
+		workspacePath:       d.WorkspacePath,
+		reasoningEffort:     d.Config.ReasoningEffort,
+		telemetry:           d.Telemetry,
+		rail:                d.Rail,
+		railWidth:           d.Config.RailWidth,
+		histFollow:          true,
+		histViewport:        newHistoryViewport(),
+		layout:              transcriptLayout{dirty: true},
+		cotExpanded:         !d.Config.CoTCollapsedByDefault,
+		toolResultsExpanded: !d.Config.ToolResultsCollapsedByDefault,
 	}
 
 	m := Model{
@@ -411,6 +413,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+e":
 			m.tx.toggleExpandAll()
 			return m, nil
+		case "e":
+			if m.composer.Value() != "" {
+				break // composing: the letter goes to the textarea
+			}
+			m.tx.setExpandAll(true)
+			return m, nil
+		case "E":
+			if m.composer.Value() != "" {
+				break // composing: the letter goes to the textarea
+			}
+			m.tx.setCollapseAll(true)
+			return m, nil
 		case "ctrl+j", "shift+enter":
 			if m.tx.busy {
 				return m, nil
@@ -419,11 +433,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.syncComposerHeight()
 			return m, nil
 		case "enter":
-			if m.tx.busy {
-				return m, nil
-			}
 			prompt := strings.TrimSpace(m.composer.Value())
 			if prompt == "" {
+				m.tx.toggleFocused() // empty composer: Enter toggles the focused block (works while busy too)
+				return m, nil
+			}
+			if m.tx.busy {
 				return m, nil
 			}
 			m.tx.histFollow = true
@@ -455,17 +470,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.completeSlashCommand()
 				return m, nil
 			}
-			if m.td.curStream >= 0 && m.td.curStream < len(m.tx.messages) {
-				m.tx.toggleThinking(m.td.curStream)
-			} else {
-				for i := len(m.tx.messages) - 1; i >= 0; i-- {
-					if m.tx.messages[i].role != "you" {
-						m.tx.toggleThinking(i)
-						break
-					}
-				}
+			if m.composer.Value() == "" {
+				m.tx.focusNext() // empty composer: Tab cycles the block focus
+				return m, nil
 			}
-			return m, nil
+			break // non-slash draft: the textarea handles the tab
 		case "ctrl+x", "ctrl+shift+[":
 			m.adjustRailWidth(-2)
 			return m, nil
@@ -681,6 +690,9 @@ func (s *settingsForm) save(m *Model) {
 	m.deps.Config = cfg
 	m.tx.theme = themeFor(cfg.Theme)
 	m.tx.configTheme = cfg.Theme
+	m.tx.cotExpanded = !cfg.CoTCollapsedByDefault
+	m.tx.toolResultsExpanded = !cfg.ToolResultsCollapsedByDefault
+	m.tx.layout.dirty = true // the flip can re-wrap the transcript
 	m.settings = nil
 }
 

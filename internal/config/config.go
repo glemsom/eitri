@@ -36,29 +36,37 @@ type OpenAIConfig struct {
 
 // Config is the persisted Eitri configuration.
 type Config struct {
-	Provider           string        `json:"provider"`
-	Model              string        `json:"model"`
-	ReasoningEffort    string        `json:"reasoning_effort"`
-	ThinkingEnabled    bool          `json:"thinking_enabled"`
-	MaxTurns           int           `json:"max_turns"`
-	CompactionFraction float64       `json:"compaction_fraction"`
-	ExtraWritablePaths []string      `json:"extra_writable_paths,omitempty"`
-	Theme              string        `json:"theme"`
-	RailWidth          int           `json:"rail_width,omitempty"`
-	Copilot            CopilotConfig `json:"copilot,omitempty"`
-	CustomOpenAI       OpenAIConfig  `json:"custom_openai,omitempty"`
+	Provider        string `json:"provider"`
+	Model           string `json:"model"`
+	ReasoningEffort string `json:"reasoning_effort"`
+	ThinkingEnabled bool   `json:"thinking_enabled"`
+	// CoTCollapsedByDefault and ToolResultsCollapsedByDefault are the
+	// collapsed-by-default flags (issue #432): true means chain-of-thought and
+	// tool results render as hints/one-liners until expanded, so a large CoT
+	// never pushes tool calls out of view.
+	CoTCollapsedByDefault         bool          `json:"cot_collapsed_by_default"`
+	ToolResultsCollapsedByDefault bool          `json:"tool_results_collapsed_by_default"`
+	MaxTurns                      int           `json:"max_turns"`
+	CompactionFraction            float64       `json:"compaction_fraction"`
+	ExtraWritablePaths            []string      `json:"extra_writable_paths,omitempty"`
+	Theme                         string        `json:"theme"`
+	RailWidth                     int           `json:"rail_width,omitempty"`
+	Copilot                       CopilotConfig `json:"copilot,omitempty"`
+	CustomOpenAI                  OpenAIConfig  `json:"custom_openai,omitempty"`
 }
 
 // Default returns a config populated with Eitri's defaults.
 func Default() Config {
 	return Config{
-		Provider:           DefaultProvider,
-		Model:              DefaultModel,
-		ReasoningEffort:    DefaultReasoningEffort,
-		ThinkingEnabled:    DefaultThinkingEnabled,
-		MaxTurns:           DefaultMaxTurns,
-		CompactionFraction: constants.DefaultCompactionFraction,
-		Theme:              DefaultTheme,
+		Provider:                      DefaultProvider,
+		Model:                         DefaultModel,
+		ReasoningEffort:               DefaultReasoningEffort,
+		ThinkingEnabled:               DefaultThinkingEnabled,
+		CoTCollapsedByDefault:         true,
+		ToolResultsCollapsedByDefault: true,
+		MaxTurns:                      DefaultMaxTurns,
+		CompactionFraction:            constants.DefaultCompactionFraction,
+		Theme:                         DefaultTheme,
 	}
 }
 
@@ -85,6 +93,20 @@ func Load(path string) (Config, error) {
 	}
 	if cfg.ReasoningEffort == "" {
 		cfg.ReasoningEffort = DefaultReasoningEffort
+	}
+	// The collapse flags shipped defaulting to on; a config file written
+	// before they existed lacks the keys, so an absent key means the default.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err == nil {
+		if _, ok := raw["cot_collapsed_by_default"]; !ok {
+			cfg.CoTCollapsedByDefault = true
+		}
+		if _, ok := raw["tool_results_collapsed_by_default"]; !ok {
+			cfg.ToolResultsCollapsedByDefault = true
+		}
+	} else {
+		cfg.CoTCollapsedByDefault = true
+		cfg.ToolResultsCollapsedByDefault = true
 	}
 	return cfg, nil
 }

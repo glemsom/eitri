@@ -42,6 +42,9 @@ func toolGlyph(name string) string {
 // brandMark returns the ⚒ brand glyph with its "+" ASCII fallback.
 func brandMark() string { return g("⚒", "+") }
 
+// focusMarker returns the ▸ cursor glyph prefixing a focused collapsible block's hint/head line, with its ASCII fallback.
+func focusMarker() string { return g("▸", ">") }
+
 // hr returns a horizontal-rule separator (──) with its "--" ASCII fallback.
 func hr() string { return g("──", "--") }
 

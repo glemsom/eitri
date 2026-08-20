@@ -96,7 +96,7 @@ func TestToolLog_RenderWritesEntryWithRowRanges(t *testing.T) {
 	l.SetAnchor(0)
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
 
-	got, rows := l.Render(defaultTheme, false, time.Time{}, 80, 0, false)
+	got, rows := l.Render(defaultTheme, viewDefault, true, time.Time{}, 80, 0, false, -1)
 	if !strings.Contains(got, "🔧 bash") {
 		t.Errorf("Render must emit the tool head, got %q", got)
 	}
@@ -210,7 +210,7 @@ func TestToolLog_RenderRowAccountCollapsed(t *testing.T) {
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"go test"}`}})
 	l.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "ok\n", Lines: 5}})
 
-	_, rows := l.Render(defaultTheme, false, time.Time{}, 80, 0, false)
+	_, rows := l.Render(defaultTheme, viewDefault, true, time.Time{}, 80, 0, false, -1)
 	if len(rows) != 1 {
 		t.Fatalf("expected one row range, got %d", len(rows))
 	}
@@ -233,7 +233,7 @@ func TestToolLog_RenderRowAccountExpanded(t *testing.T) {
 	l.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "ok\n", Lines: 1}})
 	l.Toggle(0) // flip the entry open
 
-	_, rows := l.Render(defaultTheme, true, time.Time{}, 80, 0, false)
+	_, rows := l.Render(defaultTheme, viewExpandAll, true, time.Time{}, 80, 0, false, -1)
 	if len(rows) != 1 {
 		t.Fatalf("expected one row range, got %d", len(rows))
 	}
@@ -250,7 +250,7 @@ func TestToolLog_RenderRowAccountSkipsOtherAnchors(t *testing.T) {
 	l.SetAnchor(7)
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "read", Args: ""}})
 
-	_, rows := l.Render(defaultTheme, false, time.Time{}, 80, 2, false)
+	_, rows := l.Render(defaultTheme, viewDefault, true, time.Time{}, 80, 2, false, -1)
 	if len(rows) != 1 {
 		t.Fatalf("expected the anchor-2 entry only, got %d ranges", len(rows))
 	}
@@ -268,7 +268,7 @@ func TestToolLog_RenderOutcomeElapsedAndTruncation(t *testing.T) {
 	start := time.Now().Add(-105 * time.Second)
 	l.SetStart(0, start)
 
-	got, _ := l.Render(defaultTheme, false, time.Now(), 80, 0, false)
+	got, _ := l.Render(defaultTheme, viewDefault, true, time.Now(), 80, 0, false, -1)
 	if !strings.Contains(got, "🔧 bash") {
 		t.Errorf("head missing, got %q", got)
 	}
@@ -279,7 +279,7 @@ func TestToolLog_RenderOutcomeElapsedAndTruncation(t *testing.T) {
 		t.Errorf("outcome marker missing, got %q", got)
 	}
 
-	narrow, _ := l.Render(defaultTheme, false, time.Time{}, 18, 0, false)
+	narrow, _ := l.Render(defaultTheme, viewDefault, true, time.Time{}, 18, 0, false, -1)
 	if strings.Contains(narrow, "make build") || !strings.Contains(narrow, "…") {
 		t.Errorf("args should truncate with an ellipsis at width 18, got %q", narrow)
 	}
@@ -294,7 +294,7 @@ func TestToolLog_AtLineMapping(t *testing.T) {
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "read", Args: ""}})
 	l.Apply(ToolUpdate{Result: &ToolResult{Name: "read", Result: "c\n", Lines: 1}}) // rows 2..3
 
-	_, rows := l.Render(defaultTheme, false, time.Time{}, 80, 0, false)
+	_, rows := l.Render(defaultTheme, viewDefault, true, time.Time{}, 80, 0, false, -1)
 	if len(rows) != 2 {
 		t.Fatalf("expected two row ranges, got %d", len(rows))
 	}
@@ -307,7 +307,7 @@ func TestToolLog_AtLineMapping(t *testing.T) {
 	}
 
 	l.Toggle(1)
-	_, rows2 := l.Render(defaultTheme, false, time.Time{}, 80, 0, false)
+	_, rows2 := l.Render(defaultTheme, viewDefault, true, time.Time{}, 80, 0, false, -1)
 	if idx, collapsed, ok := l.AtLine(2, rows2); !ok || idx != 1 || collapsed {
 		t.Errorf("AtLine(2) = %d/%v/%v, want entry 1 expanded (collapsed=false)", idx, collapsed, ok)
 	}
@@ -327,7 +327,7 @@ func TestToolLog_RenderFailureOutcome(t *testing.T) {
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: ""}})
 	l.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "error executing tool: boom", Lines: 0}})
 
-	got, _ := l.Render(defaultTheme, false, time.Time{}, 80, 0, false)
+	got, _ := l.Render(defaultTheme, viewDefault, true, time.Time{}, 80, 0, false, -1)
 	if !strings.Contains(got, "✗") {
 		t.Errorf("failure entry must render ✗, got %q", got)
 	}
@@ -341,7 +341,7 @@ func TestToolLog_RenderBytesTruncatedHint(t *testing.T) {
 	l.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "a\nb\nc\n+3 more\n",
 		Lines: 4, Dropped: 3, Compressed: true, BytesDropped: 2048}})
 
-	got, _ := l.Render(defaultTheme, false, time.Time{}, 80, 0, false)
+	got, _ := l.Render(defaultTheme, viewDefault, true, time.Time{}, 80, 0, false, -1)
 	if !strings.Contains(got, "4 lines (+3 more, +2048 bytes truncated)") {
 		t.Errorf("collapsed summary missing merged truncated hint, got %q", got)
 	}
@@ -351,7 +351,7 @@ func TestToolLog_RenderBytesTruncatedHint(t *testing.T) {
 	l2.Apply(ToolUpdate{Start: &ToolStart{Name: "read", Args: ""}})
 	l2.Apply(ToolUpdate{Result: &ToolResult{Name: "read", Result: strings.Repeat("x", 70000),
 		Lines: 1, BytesDropped: 4444}})
-	got2, _ := l2.Render(defaultTheme, false, time.Time{}, 80, 0, false)
+	got2, _ := l2.Render(defaultTheme, viewDefault, true, time.Time{}, 80, 0, false, -1)
 	if !strings.Contains(got2, "1 line (+4444 bytes truncated)") {
 		t.Errorf("collapsed summary missing bytes-only hint, got %q", got2)
 	}
@@ -368,7 +368,7 @@ func TestToolLog_RenderBothHintsWithoutCompressedFlag(t *testing.T) {
 	l.Apply(ToolUpdate{Result: &ToolResult{Name: "read", Result: strings.Repeat("x", 70000),
 		Lines: 4, Dropped: 3, Compressed: false, BytesDropped: 2048}})
 
-	got, _ := l.Render(defaultTheme, false, time.Time{}, 80, 0, false)
+	got, _ := l.Render(defaultTheme, viewDefault, true, time.Time{}, 80, 0, false, -1)
 	if !strings.Contains(got, "4 lines (+3 more, +2048 bytes truncated)") {
 		t.Errorf("collapsed summary must show both hints regardless of Compressed, got %q", got)
 	}
@@ -383,7 +383,7 @@ func TestToolLog_ExpandedRendersFullRawResult(t *testing.T) {
 		Lines: 1, BytesDropped: 9000}})
 	l.Toggle(0)
 
-	got, _ := l.Render(defaultTheme, false, time.Time{}, 80, 0, false)
+	got, _ := l.Render(defaultTheme, viewDefault, true, time.Time{}, 80, 0, false, -1)
 	if !strings.Contains(got, "RAW FULL RESULT") {
 		t.Errorf("expanded view must render the full raw result, got %q", got)
 	}

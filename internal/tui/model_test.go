@@ -70,7 +70,7 @@ func TestModel_thinkingCollapsible(t *testing.T) {
 				Reasoning: "I reason about it first.",
 			}, nil
 		},
-		Config: config.Config{ThinkingEnabled: true},
+		Config: config.Config{ThinkingEnabled: true, CoTCollapsedByDefault: true},
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
@@ -84,11 +84,12 @@ func TestModel_thinkingCollapsible(t *testing.T) {
 		t.Errorf("reasoning body should be collapsed by default, got: %q", content)
 	}
 
-	toggled, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	m = asModel(t, toggled)
+	// Tab focuses the reasoning block; Enter expands it (per-block expand).
+	m = keypress(t, m, "tab")
+	m = keypress(t, m, "enter")
 	expanded := view(m)
 	if !strings.Contains(ansiStrip(expanded), "I reason about it first") {
-		t.Errorf("tab should expand the reasoning block, got: %q", expanded)
+		t.Errorf("Enter on the focused block should expand the reasoning, got: %q", expanded)
 	}
 	if !strings.Contains(ansiStrip(expanded), "plain") {
 		t.Errorf("answer still required in content, got: %q", expanded)
@@ -108,14 +109,15 @@ func TestModel_thinkingLongReasoningWraps(t *testing.T) {
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer", Reasoning: longLine}, nil
 		},
-		Config: config.Config{ThinkingEnabled: true},
+		Config: config.Config{ThinkingEnabled: true, CoTCollapsedByDefault: true},
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 	m = submitAndWait(t, m)
 
-	toggled, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	m = asModel(t, toggled)
+	// Tab focuses the reasoning block; Enter expands it.
+	m = keypress(t, m, "tab")
+	m = keypress(t, m, "enter")
 	content := view(m)
 	if !strings.Contains(content, "reasoning words") {
 		t.Fatalf("expanded reasoning body should render, got: %q", content)
@@ -140,14 +142,15 @@ func TestModel_thinkingMarkdownStructure(t *testing.T) {
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer", Reasoning: reasoning}, nil
 		},
-		Config: config.Config{ThinkingEnabled: true},
+		Config: config.Config{ThinkingEnabled: true, CoTCollapsedByDefault: true},
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 	m = submitAndWait(t, m)
 
-	toggled, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	m = asModel(t, toggled)
+	// Tab focuses the reasoning block; Enter expands it.
+	m = keypress(t, m, "tab")
+	m = keypress(t, m, "enter")
 	rows := reasoningPaneRows(t, view(m))
 	body := strings.Join(rows, "\n")
 	stripped := ansiStrip(body) // glamour interleaves SGR runs between words; content checks read the plain text
@@ -172,7 +175,7 @@ func TestModel_thinkingHintReportsTokensAndEffort(t *testing.T) {
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer", Reasoning: strings.Repeat("reasoning words. ", 400)}, nil
 		},
-		Config: config.Config{ThinkingEnabled: true, ReasoningEffort: "medium"},
+		Config: config.Config{ThinkingEnabled: true, CoTCollapsedByDefault: true, ReasoningEffort: "medium"},
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
