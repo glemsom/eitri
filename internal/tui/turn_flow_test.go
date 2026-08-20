@@ -444,6 +444,48 @@ func TestTranscript_committedReasoningSnapshotRendersOnce(t *testing.T) {
 	}
 }
 
+// TestTranscript_committedReasoningSnapshotOnceAtTailWhenNoToolFollows locks the
+// #451 no-tool leg: a committed turn that streams no tool renders its reasoning
+// snapshot exactly once, at the tail (directly before the answer), through the
+// full Transcript render path rather than only the flow fold.
+func TestTranscript_committedReasoningSnapshotOnceAtTailWhenNoToolFollows(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	th := themeFor(config.DefaultTheme)
+	tx := &Transcript{
+		theme:           th,
+		configTheme:     config.DefaultTheme,
+		reasoningEffort: "medium",
+		width:           100,
+		height:          30,
+		histFollow:      true,
+		histViewport:    newHistoryViewport(),
+		messages: []message{
+			{role: "you", content: "q"},
+			{role: "eitri", content: "done", reasoning: "tail reasoning", thinkingRequested: true, thinkingExpanded: true,
+				events: []TimelineEvent{
+					{Kind: EventReasoning, Seq: 0, Delta: "tail reasoning"},
+					{Kind: EventAnswer, Seq: 1, Delta: "done"},
+				}},
+		},
+	}
+
+	var hist strings.Builder
+	tx.renderHistory(&hist, nil, nil)
+	plain := ansiStrip(hist.String())
+
+	ri := strings.Index(plain, "tail reasoning")
+	ai := strings.Index(plain, "done")
+	if ri < 0 || ai < 0 {
+		t.Fatalf("no-tool committed transcript missing reasoning/answer (r=%d a=%d):\n%s", ri, ai, plain)
+	}
+	if !(ri < ai) {
+		t.Errorf("no-tool committed reasoning must sit at the tail before the answer, got r=%d a=%d:\n%s", ri, ai, plain)
+	}
+	if n := strings.Count(plain, "tail reasoning"); n != 1 {
+		t.Errorf("no-tool committed reasoning rendered %d times, want exactly once at the tail:\n%s", n, plain)
+	}
+}
+
 func TestTranscript_partialAnswersInterleaveWithToolsInArrivalOrder(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := answerInterleaveTranscript()
