@@ -10,9 +10,6 @@ import (
 	"testing"
 )
 
-// recordingRunner captures the exact argv handed to bwrap so tests can lock
-// the sandbox construction (host network, read-only root, workspace RW at
-// host path, separate PID namespace, session temp as /tmp).
 type recordingRunner struct {
 	calls [][]string
 	out   *Output
@@ -24,8 +21,6 @@ func (r *recordingRunner) Run(_ context.Context, name string, args []string) (*O
 	return r.out, r.err
 }
 
-// TestSandboxBuildsBwrapArgv locks the sandbox flag set by capturing the argv
-// a fake runner receives for `bash`.
 func TestSandboxBuildsBwrapArgv(t *testing.T) {
 	t.Parallel()
 	rr := &recordingRunner{out: &Output{Stdout: "ok"}}
@@ -38,7 +33,6 @@ func TestSandboxBuildsBwrapArgv(t *testing.T) {
 		t.Fatalf("runner calls = %d, want 1", len(rr.calls))
 	}
 	argv := rr.calls[0]
-	// argv[0] must be bwrap.
 	if argv[0] != "bwrap" {
 		t.Fatalf("argv[0] = %q, want bwrap", argv[0])
 	}
@@ -47,8 +41,6 @@ func TestSandboxBuildsBwrapArgv(t *testing.T) {
 		"--share-net", // host network
 		"--unshare-pid",
 		"--ro-bind", "/", "/",
-		// The sanitized, user-owned ssh_config.d shadows the system files
-		// (host-root, nobody-owned in-cage) so ssh -G / git-over-ssh work.
 		"--ro-bind", "/tmp/eitri-abc/etc-ssh-config.d", "/etc/ssh/ssh_config.d",
 		"--proc", "/proc",
 		"--dev", "/dev",
@@ -72,8 +64,6 @@ func TestSandboxBuildsBwrapArgv(t *testing.T) {
 	}
 }
 
-// TestSandboxRunPropagatesOutput checks the runner result surfaces to the
-// caller.
 func TestSandboxRunPropagatesOutput(t *testing.T) {
 	t.Parallel()
 	rr := &recordingRunner{out: &Output{Stdout: "hello\n", Stderr: "warn\n"}}
@@ -87,7 +77,6 @@ func TestSandboxRunPropagatesOutput(t *testing.T) {
 	}
 }
 
-// TestSandboxRunPropagatesError verifies a failing command surfaces the error.
 func TestSandboxRunPropagatesError(t *testing.T) {
 	t.Parallel()
 	sentinel := errors.New("boom")
@@ -99,9 +88,6 @@ func TestSandboxRunPropagatesError(t *testing.T) {
 	}
 }
 
-// TestSandboxRegistersSshConfigMount verifies a user-owned sanitized
-// ssh_config.d is included in the bwrap argv so
-// ssh -G is not caged to the host-root (nobody-owned in-cage) /etc/ssh tree.
 func TestSandboxRegistersSshConfigMount(t *testing.T) {
 	t.Parallel()
 	rr := &recordingRunner{out: &Output{Stdout: "ok"}}
@@ -115,14 +101,11 @@ func TestSandboxRegistersSshConfigMount(t *testing.T) {
 	if !hasArgvPair(argv, "--ro-bind", sshSrc, "/etc/ssh/ssh_config.d") {
 		t.Fatalf("argv does not bind sanitized ssh config over /etc/ssh/ssh_config.d: %v", argv)
 	}
-	// Root stays read-only; the override is a ro-bind too.
 	if !hasArgvPair(argv, "--ro-bind", "/", "/") {
 		t.Fatalf("root is not re-mounted read-only: %v", argv)
 	}
 }
 
-// hasArgvPair reports whether argv contains a bwrap option directly followed by
-// src and dst, in that order.
 func hasArgvPair(argv []string, opt, src, dst string) bool {
 	for i, a := range argv {
 		if a == opt && i+2 < len(argv) && argv[i+1] == src && argv[i+2] == dst {
@@ -132,21 +115,14 @@ func hasArgvPair(argv []string, opt, src, dst string) bool {
 	return false
 }
 
-// TestSandboxRealBwrapIntegration runs an actual bash command inside the real
-// bubblewrap cage, verifying the workspace is writable and /tmp is remapped to
-// the session temp. Skipped when sudo-less CI lacks bwrap; our dev host has it.
 func TestSandboxRealBwrapIntegration(t *testing.T) {
 	t.Parallel()
 	if !bwrapAvailable() {
 		t.Skip("bwrap not present; skipping real sandbox test")
 	}
-	// The workspace must NOT live under /tmp, because the sandbox remaps /tmp to
-	// the session temp; an in-/tmp workspace path would be shadowed in-cage. Use a
-	// base dir under the user's home to mirror a real project path.
 	ws := newNonRemappedWorkspace(t)
 	tempHost := t.TempDir()
 	sb := NewSandbox(ws, tempHost, defaultRunner{})
-	// Workspace writable + /tmp remapped to the session temp host dir.
 	o, err := sb.Run(context.Background(), "cwd=$PWD; touch workspace-gone.txt; echo \"$cwd|workspace-written\" > $PWD/probe.txt; echo done")
 	if err != nil {
 		t.Fatalf("Run() error = %v, want nil", err)
@@ -157,29 +133,21 @@ func TestSandboxRealBwrapIntegration(t *testing.T) {
 	if _, err := os.Stat(ws + "/probe.txt"); err != nil {
 		t.Fatalf("workspace write did not land host-side: %v", err)
 	}
-	// Session temp remap: write to /tmp inside the sandbox -> host tempHost dir.
 	if _, err := sb.Run(context.Background(), "echo tmp-data > /tmp/inside.tmp"); err != nil {
 		t.Fatalf("tmp write error = %v", err)
 	}
 	if _, err := os.Stat(tempHost + "/inside.tmp"); err != nil {
 		t.Fatalf("sandbox /tmp write did not land in session temp host dir: %v", err)
 	}
-	// Fresh procfs: PID 1 in the pid namespace is the bwrap supervisor (the
-	// in-ns reaper), never the host's PID 1 (systemd here).
 	if _, err := sb.Run(context.Background(), "test \"$(cat /proc/1/comm)\" = bwrap || exit 1"); err != nil {
 		t.Fatalf("sandbox /proc is not pid-namespace-scoped: %v", err)
 	}
-	// devtmpfs: device nodes exist and are not host devices.
 	if _, err := sb.Run(context.Background(), "test -c /dev/null && test -c /dev/zero || exit 1"); err != nil {
 		t.Fatalf("sandbox /dev lacks devtmpfs device nodes: %v", err)
 	}
-	// Private writable /dev/shm.
 	if _, err := sb.Run(context.Background(), "touch /dev/shm/shm-probe && test -f /dev/shm/shm-probe || exit 1"); err != nil {
 		t.Fatalf("sandbox /dev/shm not writable: %v", err)
 	}
-	// The sanitized, user-owned ssh_config.d is bound over the system one, so
-	// ssh -G (which checks ownership of the include files) must succeed inside
-	// the cage. On hosts without ssh the whole integration is moot.
 	sshBin, _ := exec.LookPath("ssh")
 	if sshBin != "" {
 		if _, err := sb.Run(context.Background(), "ssh -G github.com >/dev/null"); err != nil {
@@ -189,24 +157,14 @@ func TestSandboxRealBwrapIntegration(t *testing.T) {
 		t.Log("ssh not present; skipping ssh -G regression check")
 	}
 
-	// git-over-ssh also exercises the same OpenSSH ownership check on the
-	// include files. Pre-fix, `git ls-remote` failed with "Bad owner or
-	// permissions on
-	// /etc/ssh/ssh_config.d/..." (exit 128). We intentionally do NOT assert a
-	// strict exit 0 here: the live remote depends on a reachable network and the
-	// user's ssh credentials, both of which may be absent in CI. The specific
-	// regression this guards is the *absence of the ownership error*; any other
-	// failure (no network, no creds) is environmental and must not fail the test.
 	gitBin, _ := exec.LookPath("git")
 	if gitBin != "" && sshBin != "" {
 		o, err := sb.Run(context.Background(), "git ls-remote git@github.com:glemsom/eitri.git >/dev/null")
 		switch {
 		case err == nil:
-			// Network + creds were available; ownership fix verified end-to-end.
 		case strings.Contains(o.Stderr, "Bad owner or permissions"):
 			t.Fatalf("git ls-remote hit the ownership error inside the cage: %v\n%s", err, o.Stderr)
 		default:
-			// Unrelated env failure (no network/creds); not an ownership regression.
 			t.Logf("git ls-remote not verifiable (no network/creds): %v", err)
 		}
 	} else {
@@ -214,8 +172,6 @@ func TestSandboxRealBwrapIntegration(t *testing.T) {
 	}
 }
 
-// newNonRemappedWorkspace creates a workspace directory under the user's home
-// (not /tmp), so it survives the sandbox's /tmp remap at the same path in-cage.
 func newNonRemappedWorkspace(t *testing.T) string {
 	t.Helper()
 	home, err := os.UserHomeDir()
@@ -230,7 +186,6 @@ func newNonRemappedWorkspace(t *testing.T) string {
 	return ws
 }
 
-// bwrapAvailable reports whether the real bubblewrap binary exists on PATH.
 func bwrapAvailable() bool {
 	_, err := exec.LookPath("bwrap")
 	return err == nil

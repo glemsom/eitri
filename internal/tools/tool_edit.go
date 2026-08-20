@@ -7,9 +7,7 @@ import (
 	"strings"
 )
 
-// editTool replaces a uniquely-occurring old_string with new_string in an
-// existing file. It is host-side and validates the target against the
-// writable roots like write.
+// editTool replaces a uniquely-occurring old_string with new_string in an existing file.
 type editTool struct {
 	val *Validator
 }
@@ -66,7 +64,6 @@ func (e *editTool) Run(ctx context.Context, args map[string]any) (ToolResult, er
 	case 0:
 		return ToolResult{}, fmt.Errorf("edit %s: old_string not found", path)
 	case 1:
-		// fall through
 	default:
 		return ToolResult{}, fmt.Errorf("edit %s: old_string matched %d times; make it unique", path, count)
 	}

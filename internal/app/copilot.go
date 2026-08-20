@@ -14,15 +14,10 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// copilotTokenURL is GitHub's Copilot OAuth access-token endpoint: the same host
-// as the device-flow handshake, reused for the non-interactive refresh path
-// batch may take. It is a package-level var (not a const) so the renewal path
-// can be pointed at an httptest server in tests.
+// copilotTokenURL is GitHub's Copilot OAuth access-token endpoint: the same host as the device-flow handshake, reused for the non-interactive refresh path batch may take.
 var copilotTokenURL = "https://github.com/login/oauth/access_token"
 
-// copilotRefresh returns a provider.RefreshFunc that renews a Copilot
-// credential from a refresh token via GitHub's OAuth token endpoint. It is the
-// batch-sanctioned automatic renewal path: no device flow, no user interaction.
+// copilotRefresh returns a provider.RefreshFunc that renews a Copilot credential from a refresh token via GitHub's OAuth token endpoint.
 func copilotRefresh(httpc *http.Client) func(ctx context.Context, refreshToken string) (config.CopilotConfig, error) {
 	return func(ctx context.Context, refreshToken string) (config.CopilotConfig, error) {
 		form := url.Values{}
@@ -69,13 +64,7 @@ func copilotRefresh(httpc *http.Client) func(ctx context.Context, refreshToken s
 	}
 }
 
-// CopilotConnect runs the TUI-side GitHub device-flow handshake end to end:
-// it starts the flow, presents the user code + verification URI to stdErr, polls
-// to completion, and persists the fresh token set to config. It is the
-// interactive re-auth surface driveable by the TUI; batch never calls it. onCode
-// is called with the code to display once the flow starts (nil → the code is
-// printed to stderr).
-// newDeviceFlow constructs the device-flow client; package-level seam so tests stub the GitHub endpoints.
+// CopilotConnect runs the TUI-side GitHub device-flow handshake end to end: it starts the flow, presents the user code + verification URI to stdErr, polls to completion, and persists the fresh token set to config.
 var newDeviceFlow = provider.NewDeviceFlow
 
 func CopilotConnect(ctx context.Context, cfgPath string, httpc *http.Client, onCode func(provider.DeviceCode)) (config.Config, error) {

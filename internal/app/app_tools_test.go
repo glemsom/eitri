@@ -16,9 +16,6 @@ import (
 	"github.com/glemsom/eitri/internal/tui"
 )
 
-// scriptedBashOnly answers with a single bash tool call, then echoes the tool
-// result in a final answer. It drives the app's batch dispatch path against the
-// real sandbox registry wiring.
 func scriptedBashOnly() *provider.Scripted {
 	return provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
 		hasTool := false
@@ -49,12 +46,7 @@ func scriptedBashOnly() *provider.Scripted {
 	})
 }
 
-// TestBatchDispatchesToolThroughRegistry runs batch mode end-to-end with a
-// scripted provider that makes a bash tool call, verifying app.Run wires the
-// shared tool registry into the engine and the final answer carries real
-// sandbox output.
 func TestBatchDispatchesToolThroughRegistry(t *testing.T) {
-	// The batch engine uses the current working directory as the workspace.
 	home, err := os.UserHomeDir()
 	if err != nil {
 		t.Fatalf("home dir: %v", err)
@@ -90,7 +82,6 @@ func TestBatchDispatchesToolThroughRegistry(t *testing.T) {
 	}
 }
 
-// stubFetcher serves a canned HTML body for engine-seam web_fetch turns.
 type stubFetcher struct {
 	body string
 }
@@ -99,8 +90,6 @@ func (s *stubFetcher) Fetch(_ context.Context, _ string) (io.ReadCloser, error) 
 	return io.NopCloser(strings.NewReader(s.body)), nil
 }
 
-// recordingBrowser records the target handed to open_in_browser, standing in
-// for the host browser launch.
 type recordingBrowser struct {
 	targets []string
 }
@@ -110,9 +99,6 @@ func (r *recordingBrowser) Open(_ context.Context, target string) error {
 	return nil
 }
 
-// scriptedWebTurn drives batch mode through a provider that makes one web_fetch
-// call, then echoes the fetched markdown as the final answer. It exercises the
-// engine seam's dispatch of web_fetch end-to-end.
 func scriptedWebTurn() *provider.Scripted {
 	return provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
 		hasTool := false
@@ -143,9 +129,6 @@ func scriptedWebTurn() *provider.Scripted {
 	})
 }
 
-// TestBatchWebFetchThroughEngineSeam runs batch mode with a fake provider issuing
-// a web_fetch turn and asserts the fetched content is converted to markdown and
-// routed back through the tool-result channel into the final answer.
 func TestBatchWebFetchThroughEngineSeam(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -184,8 +167,6 @@ func TestBatchWebFetchThroughEngineSeam(t *testing.T) {
 	}
 }
 
-// scriptedBrowserTurn drives batch mode through a provider that makes one
-// open_in_browser call on a file in the session temp, then confirms.
 func scriptedBrowserTurn() *provider.Scripted {
 	return provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
 		hasTool := false
@@ -209,9 +190,6 @@ func scriptedBrowserTurn() *provider.Scripted {
 	})
 }
 
-// scriptedEditTurn drives a scripted provider through one edit tool call on a
-// workspace file, then confirms. It exercises the app's real edit tool path
-// end-to-end against the shared registry path resolution.
 func scriptedEditTurn(ws string) *provider.Scripted {
 	return provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
 		hasTool := false
@@ -235,12 +213,6 @@ func scriptedEditTurn(ws string) *provider.Scripted {
 	})
 }
 
-// TestBatchEditToolReportsLineDelta drives a real edit tool call through the
-// app's shared registry and asserts the TUI-side delta observer computes the
-// same before/after line delta: the file gains two lines as one is swapped for
-// three, so the observer reports +2, -0. The observer is fed from the engine's
-// event stream (ToolCallEvent → pre-edit snapshot, ToolResultEvent → diff)
-// exactly as the app's TUI listener wires it.
 func TestBatchEditToolReportsLineDelta(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -260,8 +232,6 @@ func TestBatchEditToolReportsLineDelta(t *testing.T) {
 		TempHost:  filepath.Join(t.TempDir(), "eitri-tmp"),
 		Runner:    tools.RealRunner,
 	})
-	// The observer's path-resolution seam is the same wiring runTUI uses: the
-	// registry's shared path translator + workspace root.
 	obs := tui.NewDeltaObserver(fileDeltaResolver(reg))
 	e := engine.New(scriptedEditTurn(ws), mockTranscript{})
 	var gotAdded, gotRemoved int
@@ -302,8 +272,6 @@ func TestBatchEditToolReportsLineDelta(t *testing.T) {
 	if gotAdded != 2 || gotRemoved != 0 {
 		t.Errorf("edit delta = +%d-%d, want +2-0", gotAdded, gotRemoved)
 	}
-	// The observer must also report the real before/after file content and host
-	// path so the TUI can render the expanded card's inline diff.
 	if gotBefore != "a\nb\n" || gotAfter != "a\nb\nc\nd\n" {
 		t.Errorf("content = before %q after %q, want a\nb\n -> a\nb\nc\nd\n", gotBefore, gotAfter)
 	}
@@ -312,9 +280,6 @@ func TestBatchEditToolReportsLineDelta(t *testing.T) {
 	}
 }
 
-// issuing an open_in_browser turn on a session-temp file:// target, asserting the
-// host-side launch translates the sandbox /tmp path to the host /tmp/eitri-GUID
-// form.
 func TestBatchOpenInBrowserThroughEngineSeam(t *testing.T) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -349,8 +314,6 @@ func TestBatchOpenInBrowserThroughEngineSeam(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run(batch open_in_browser) error = %v, want nil", err)
 	}
-	// The GUID is random per run, so assert the host temp form structurally
-	// (root /tmp/eitri- + the file path) rather than an exact GUID.
 	if len(br.targets) != 1 || !strings.HasPrefix(br.targets[0], "file:///tmp/eitri-") || !strings.HasSuffix(br.targets[0], "/report.html") {
 		t.Fatalf("browser targets = %v, want one host-translated file:///tmp/eitri-*/report.html", br.targets)
 	}

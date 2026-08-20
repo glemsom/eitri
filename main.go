@@ -1,6 +1,4 @@
-// Command eitri is the Eitri single-binary agent CLI. With no flags it starts
-// the interactive fullscreen TUI; with -b it runs once in batch mode. Both are
-// driven through the shared run engine.
+// Command eitri is the Eitri single-binary agent CLI.
 package main
 
 import (

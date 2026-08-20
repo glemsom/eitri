@@ -12,8 +12,6 @@ import (
 	"time"
 )
 
-// withCopilotTokenURL points the copilotRefresh seam at an httptest server and
-// restores the production endpoint when the test finishes.
 func withCopilotTokenURL(t *testing.T, tokenURL string) {
 	t.Helper()
 	orig := copilotTokenURL
@@ -21,10 +19,6 @@ func withCopilotTokenURL(t *testing.T, tokenURL string) {
 	t.Cleanup(func() { copilotTokenURL = orig })
 }
 
-// TestCopilotRefreshRenewsTokens drives the happy path: the token endpoint
-// returns a fresh token set and the renewal round-trips it into the config,
-// deriving ExpiresAt from expires_in. It also pins the wire shape the endpoint
-// must receive (POST form on the access-token path with the Copilot client id).
 func TestCopilotRefreshRenewsTokens(t *testing.T) {
 	var method, path, contentType, accept string
 	var form url.Values
@@ -80,12 +74,6 @@ func TestCopilotRefreshRenewsTokens(t *testing.T) {
 	}
 }
 
-// TestCopilotRefreshErrorResponses covers the endpoint-side error branches
-// table-driven: a server error status with no tokens must surface a
-// no-credential failure naming the HTTP status, and a non-JSON response must
-// surface the decode error rather than fabricating a zero config. Each row
-// expects exactly one of wantErrSubstring (a message match) or wantSyntaxErr
-// (a JSON decode error).
 func TestCopilotRefreshErrorResponses(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -124,10 +112,6 @@ func TestCopilotRefreshErrorResponses(t *testing.T) {
 	}
 }
 
-// TestCopilotRefreshTransportErrorSurfaces covers the transport-failure branch:
-// when the HTTP layer itself fails (refused connection, deadline), that error
-// is the one surfaced to the caller unchanged. The seam does not need to be set
-// up here because the transport fails before any request is issued.
 func TestCopilotRefreshTransportErrorSurfaces(t *testing.T) {
 	boom := errors.New("connection refused")
 	client := &http.Client{Transport: failedTransport{err: boom}}
@@ -142,8 +126,6 @@ func TestCopilotRefreshTransportErrorSurfaces(t *testing.T) {
 	}
 }
 
-// failedTransport is a RoundTripper that always fails, standing in for a
-// refused or dead HTTP endpoint.
 type failedTransport struct{ err error }
 
 func (t failedTransport) RoundTrip(*http.Request) (*http.Response, error) {

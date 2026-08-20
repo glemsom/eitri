@@ -4,9 +4,6 @@ import (
 	"testing"
 )
 
-// TestPathTranslatorIsBidirectional verifies the prefix-map translates both
-// directions: sandbox /tmp -> host /tmp/eitri-<GUID> and the reverse, while
-// leaving workspace host paths untouched.
 func TestPathTranslatorIsBidirectional(t *testing.T) {
 	t.Parallel()
 	g := GUID("abc123")
@@ -45,8 +42,6 @@ func TestPathTranslatorIsBidirectional(t *testing.T) {
 	}
 }
 
-// TestPathTranslatorIsIdempotent verifies repeated
-// translation never compounds or double-applies the GUID segment.
 func TestPathTranslatorIsIdempotent(t *testing.T) {
 	t.Parallel()
 	g := GUID("xyz99")
@@ -55,19 +50,14 @@ func TestPathTranslatorIsIdempotent(t *testing.T) {
 	if host, _ := tr.SandboxToHost("/tmp/a"); host != "/tmp/eitri-xyz99/a" {
 		t.Fatalf("first host = %q", host)
 	}
-	// Re-applying the host path in the sandbox direction must return it as-is
-	// (it is already host form), and re-applying must not double the GUID.
 	if host, _ := tr.SandboxToHost("/tmp/eitri-xyz99/a"); host != "/tmp/eitri-xyz99/a" {
 		t.Fatalf("idempotent host = %q, want unchanged", host)
 	}
-	// A host path fed through the sandbox direction must not grow a second GUID.
 	if h, _ := tr.SandboxToHost("/tmp"); h != "/tmp/eitri-xyz99" {
 		t.Fatalf("sandbox->host /tmp = %q, want %q", h, "/tmp/eitri-xyz99")
 	}
 }
 
-// TestPathTranslatorTempIdentityDefinesGuestRoot verifies the model-facing
-// temp identity is always sandbox /tmp.
 func TestPathTranslatorTempIdentityDefinesGuestRoot(t *testing.T) {
 	t.Parallel()
 	tr := NewPathTranslator(GUID("aaa"))

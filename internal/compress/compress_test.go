@@ -5,9 +5,6 @@ import (
 	"testing"
 )
 
-// TestCompressNeverInflates verifies the never-inflate gate:
-// when the compressed form is not strictly shorter than the raw input, the raw
-// input is returned unchanged. Short, already-terse outputs pass through.
 func TestCompressNeverInflates(t *testing.T) {
 	t.Parallel()
 	cases := []string{
@@ -23,8 +20,6 @@ func TestCompressNeverInflates(t *testing.T) {
 	}
 }
 
-// TestCompressIsDeterministic verifies the same input always yields the same
-// output (protects the byte-stable cache prefix).
 func TestCompressIsDeterministic(t *testing.T) {
 	t.Parallel()
 	raw := "file1.txt\nfile2.txt\nfile1.txt\nfile3.txt\n"
@@ -34,8 +29,6 @@ func TestCompressIsDeterministic(t *testing.T) {
 	}
 }
 
-// TestCompressIsIdempotent verifies re-applying never changes the result: a
-// given input collapses on the first pass and stays stable thereafter.
 func TestCompressIsIdempotent(t *testing.T) {
 	t.Parallel()
 	raw := buildLongListing(1000)
@@ -46,7 +39,6 @@ func TestCompressIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestCompressStripsANSI verifies ANSI escape sequences are removed.
 func TestCompressStripsANSI(t *testing.T) {
 	t.Parallel()
 	raw := "\x1b[31mred file\x1b[0m\n\x1b[1mgreen file\x1b[0m\n"
@@ -59,8 +51,6 @@ func TestCompressStripsANSI(t *testing.T) {
 	}
 }
 
-// TestCompressDedupesConsecutiveLines verifies repeated consecutive output
-// lines collapse to one, keeping order (predictable for an agent).
 func TestCompressDedupesConsecutiveLines(t *testing.T) {
 	t.Parallel()
 	raw := "a\nb\nb\nb\nc\nc\n"
@@ -71,8 +61,6 @@ func TestCompressDedupesConsecutiveLines(t *testing.T) {
 	}
 }
 
-// TestCompressTruncatesTailWithExplicitMarker verifies heavy listings truncate
-// the tail with an explicit "+N more" marker rather than silently dropping it.
 func TestCompressTruncatesTailWithExplicitMarker(t *testing.T) {
 	t.Parallel()
 	n := maxLines + 50
@@ -81,24 +69,15 @@ func TestCompressTruncatesTailWithExplicitMarker(t *testing.T) {
 	if !hasMarker(got) {
 		t.Fatalf("Compress output missing explicit tail marker: %q", got)
 	}
-	// The kept prefix is exactly maxLines distinct entries (dedupe can't collapse
-	// them; they differ by index) plus the explicit "+N more" tail marker.
 	if kept := strings.Count(got, "entry."); kept != maxLines {
 		t.Fatalf("Compress kept %d entries, want %d", kept, maxLines)
 	}
-	// The marker reports the exact number of dropped lines: never silent, always
-	// accurate so the agent knows how much detail the escape must recover.
 	wantMarker := "+" + itoa(n-maxLines) + " more"
 	if !strings.Contains(got, wantMarker) {
 		t.Fatalf("Compress output = %q, want it to carry %q", got, wantMarker)
 	}
 }
 
-// TestCompressHonestEconomics verifies real, measurable token savings rather
-// than a self-reported counter: a noisy listing crosses the compressor in
-// fewer billing-shaped tokens than its raw form ("honest
-// economics"). Tokens are counted independently, by whitespace/punct splitting
-// the way a billing tokenizer would slice a CLI line listing.
 func TestCompressHonestEconomics(t *testing.T) {
 	t.Parallel()
 	raw := buildLongListing(400) // distinct entries, the expensive shape
@@ -109,20 +88,13 @@ func TestCompressHonestEconomics(t *testing.T) {
 		t.Fatalf("compression saved nothing: raw=%d tokens, compressed=%d tokens (must be strictly fewer)",
 			rawTokens, compressedTokens)
 	}
-	// Sanity: the compressor must still be the *only* thing between the raw bytes
-	// and the model — confirm the raw listing truly was heavy enough to exercise it.
 	if len(compressed) >= len(raw) {
 		t.Fatalf("expected a real reduction; raw=%d bytes, compressed=%d bytes", len(raw), len(compressed))
 	}
 }
 
-// TestCompressResultReportsTruth verifies CompressResult's bool is the
-// never-inflate gate's verdict — true only when the output really is the
-// compressed form — so callers never pattern-match a look-alike "+N more"
-// tail as if it were the compressor's marker.
 func TestCompressResultReportsTruth(t *testing.T) {
 	t.Parallel()
-	// A heavy listing: genuinely compressed, bool true.
 	raw := buildLongListing(1000)
 	if out, compressed := CompressResult(raw); !compressed {
 		t.Fatalf("CompressResult(heavy listing) compressed = false, want true")
@@ -131,7 +103,6 @@ func TestCompressResultReportsTruth(t *testing.T) {
 	} else if !strings.Contains(out, " more") {
 		t.Fatalf("compressed form missing the +N more tail marker: %q", out[len(out)-40:])
 	}
-	// Terse output hit the never-inflate gate: raw passed through, bool false.
 	for _, raw := range []string{"", "ok\n", "+300 more\n"} {
 		if out, compressed := CompressResult(raw); compressed || out != raw {
 			t.Fatalf("CompressResult(%q) = (%q, %v), want raw unchanged and false", raw, out, compressed)
@@ -139,8 +110,6 @@ func TestCompressResultReportsTruth(t *testing.T) {
 	}
 }
 
-// TestCompressScreensProgressFrames verifies carriage-return progress redraws
-// collapse to their final frame (deterministic, non-inflating).
 func TestCompressScreensProgressFrames(t *testing.T) {
 	t.Parallel()
 	raw := "Downloading 10%...\rDownloading 50%...\rDownloading 100%...\r\nDone\n"
@@ -156,9 +125,6 @@ func TestCompressScreensProgressFrames(t *testing.T) {
 	}
 }
 
-// roughTokens counts billing-shaped tokens as whitespace-delimited words — the
-// standard cheap proxy for model tokens on line-oriented CLI output. Independent
-// of the compressor's internals.
 func roughTokens(s string) int {
 	if s == "" {
 		return 0
@@ -166,8 +132,6 @@ func roughTokens(s string) int {
 	return len(strings.Fields(s))
 }
 
-// hasMarker reports whether s ends with an explicit "+N more" truncation
-// marker (the never-silent-truncation signal).
 func hasMarker(s string) bool {
 	trimmed := strings.TrimSuffix(s, "\n")
 	if i := strings.LastIndex(trimmed, "\n"); i >= 0 {
@@ -176,8 +140,6 @@ func hasMarker(s string) bool {
 	return markerRE.MatchString(trimmed)
 }
 
-// buildLongListing renders a many-line listing of distinct entries, the
-// "ls"/"find" output shape that triggers tail truncation.
 func buildLongListing(n int) string {
 	var b strings.Builder
 	for i := 0; i < n; i++ {

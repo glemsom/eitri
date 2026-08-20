@@ -2,10 +2,6 @@ package diff
 
 import "testing"
 
-// Equal lines collapse to context (' '); changed regions surface as hunks
-// with +/- lines and @@ position headers. Expected values are hand-computed
-// canonical diffs, independent of the engine's internals (tdd: vertical slice,
-// independent source of truth).
 func TestDiffReportsChgChanges(t *testing.T) {
 	t.Parallel()
 	old := "#!/usr/bin/env bash\necho hello\n"
@@ -14,7 +10,6 @@ func TestDiffReportsChgChanges(t *testing.T) {
 	if len(got) == 0 {
 		t.Fatal("expected at least one hunk, got none")
 	}
-	// Collapse to the flat line list for direct assertion.
 	var flat []Line
 	for _, h := range got {
 		flat = append(flat, h.Lines...)
@@ -34,7 +29,6 @@ func TestDiffReportsChgChanges(t *testing.T) {
 	}
 }
 
-// Identical inputs produce no hunks at all.
 func TestDiffIdenticalIsEmpty(t *testing.T) {
 	t.Parallel()
 	src := "a\nb\nc\n"
@@ -43,7 +37,6 @@ func TestDiffIdenticalIsEmpty(t *testing.T) {
 	}
 }
 
-// A fully new file reports every line as added, with a fresh @@ header.
 func TestDiffAddedFile(t *testing.T) {
 	t.Parallel()
 	got := Diff("", "line1\nline2\n")
@@ -60,7 +53,6 @@ func TestDiffAddedFile(t *testing.T) {
 	}
 }
 
-// A deleted file reports every line removed with a zero-length new side.
 func TestDiffDeletedFile(t *testing.T) {
 	t.Parallel()
 	got := Diff("keep\n", "")
@@ -77,7 +69,6 @@ func TestDiffDeletedFile(t *testing.T) {
 	}
 }
 
-// Context lines bracket a change so a reader can see where it happened.
 func TestDiffIncludesContext(t *testing.T) {
 	t.Parallel()
 	old := "one\ntwo\nthree\nfour\nfive\nCHANGED\nseven\neight\nnine\nten\n"
@@ -96,7 +87,6 @@ func TestDiffIncludesContext(t *testing.T) {
 	}
 }
 
-// Insertion and deletion in one hunk report correct +/- ordering and counts.
 func TestDiffMixedInsertAndDelete(t *testing.T) {
 	t.Parallel()
 	old := "a\nb\nc\nd\n"
@@ -129,8 +119,6 @@ func flatten(hunks []Hunk) []Line {
 	return out
 }
 
-// Changes far apart split into separate non-overlapping hunks, each with
-// correct 1-based @@ positions (git convention).
 func TestDiffSeparatesDistantHunks(t *testing.T) {
 	t.Parallel()
 	old := stringsJoinLines("h1", "h2", "h3", "h4", "h5", "h6", "h7", "h8", "h9", "h10", "h11", "h12")
@@ -139,7 +127,6 @@ func TestDiffSeparatesDistantHunks(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("hunks = %d (chan 3 and 12 are 8 context lines apart), want 2", len(got))
 	}
-	// First hunk spans h1..h6 (leading context h1,h2; trailing h4,h5,h6).
 	h1 := got[0]
 	if h1.OldStart != 1 || h1.OldLines != 6 || h1.NewStart != 1 || h1.NewLines != 6 {
 		t.Errorf("hunk1 = old %d:+%d new %d:+%d, want old 1:+6 new 1:+6",
@@ -148,30 +135,25 @@ func TestDiffSeparatesDistantHunks(t *testing.T) {
 	if h1.Lines[len(h1.Lines)-1].Text != "h6" {
 		t.Errorf("hunk1 tail = %q, want h6 (hunk1 must stop before hunk2)", h1.Lines[len(h1.Lines)-1].Text)
 	}
-	// Second hunk spans h9..h12 (leading context h9,h10,h11; the h12 change).
 	h2 := got[1]
 	if h2.OldStart != 9 || h2.OldLines != 4 || h2.NewStart != 9 || h2.NewLines != 4 {
 		t.Errorf("hunk2 = old %d:+%d new %d:+%d, want old 9:+4 new 9:+4",
 			h2.OldStart, h2.OldLines, h2.NewStart, h2.NewLines)
 	}
-	// Hunks must not overlap: hunk2's first line is h9, never a duplicate h6.
 	if h2.Lines[0].Text != "h9" {
 		t.Errorf("hunk2 head = %q, want h9 (no overlap with hunk1)", h2.Lines[0].Text)
 	}
 }
 
-// Insertion shifts new-side line numbers while the old side stays intact.
 func TestDiffHeaderShiftOnInsert(t *testing.T) {
 	t.Parallel()
 	old := "a\nb\nc\ne\nf\ng\nh\n"
-	// Insert a line between c and e (old line 4).
 	new := "a\nb\nc\nINS\ne\nf\ng\nh\n"
 	got := Diff(old, new)
 	if len(got) == 0 {
 		t.Fatal("expected a hunk")
 	}
 	h := got[0]
-	// Hunk spans a..g: context a,b,c + insertion + context e,f,g.
 	if h.OldStart != 1 || h.OldLines != 6 {
 		t.Errorf("old side = %d:+%d, want 1:+6", h.OldStart, h.OldLines)
 	}

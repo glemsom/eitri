@@ -10,16 +10,10 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// streamingTurn is a stand-in Turn seam that never completes on its own; the
-// test finalizes it explicitly with a turnDoneMsg, mirroring how the engine
-// turn and the answer-delta stream run concurrently.
 func streamingTurn(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 	return TurnResult{Answer: "IGNORED"}, nil
 }
 
-// submitBusy feeds Enter on a non-empty composer and returns the model in the
-// busy state plus the pending commands (without resolving the turn), so the
-// streaming and completion messages can be applied by hand.
 func submitBusy(t *testing.T, m Model) (Model, tea.Cmd) {
 	t.Helper()
 	if m.tx.busy {
@@ -36,31 +30,20 @@ func submitBusy(t *testing.T, m Model) (Model, tea.Cmd) {
 	return out, cmd
 }
 
-// applyDelta grows the in-progress assistant answer with one streamed answer
-// delta by delivering a streamDeltaMsg through the model's Update seam.
 func applyDelta(t *testing.T, m Model, delta string) Model {
 	t.Helper()
 	nm, _ := m.Update(streamDeltaMsg{kind: AnswerStream, delta: delta})
 	return asModel(t, nm)
 }
 
-// newStreamingModel builds a model wired to a live answer Streamer,
-// the configuration the app uses for streaming; the test feeds deltas into the
-// in-progress reply by hand through the Update seam.
 func newStreamingModel() Model {
 	return NewModelCfg(Dependencies{
 		Turn:   streamingTurn,
 		Stream: NewStreamer(),
-		// Streaming tests drive reasoning deltas; request thinking so those
-		// turns legitimately render chain-of-thought .
 		Config: config.Config{ThinkingEnabled: true},
 	})
 }
 
-// TestModel_streamAnswerGrowsInPlace asserts streamed answer deltas grow the
-// in-progress assistant message incrementally: the partial markdown renders in
-// the view before the turn completes, and each delta re-renders in place rather
-// than waiting for one full-reply render on completion .
 func TestModel_streamAnswerGrowsInPlace(t *testing.T) {
 	t.Parallel()
 	m := newStreamingModel()
@@ -68,21 +51,15 @@ func TestModel_streamAnswerGrowsInPlace(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m, _ = submitBusy(t, m)
 
-	// First delta creates the assistant message and renders partial markdown.
 	m = applyDelta(t, m, "Hello **glad**")
 	content := view(m)
-	// The partial answer content is buffered on the in-progress assistant
-	// message, growing in place before completion .
 	if got := m.tx.messages[len(m.tx.messages)-1].content; got != "Hello **glad**" {
 		t.Errorf("first delta content = %q, want %q", got, "Hello **glad**")
 	}
-	// Partial markdown is styled through Glamour, not shown as raw syntax
-	//: bold "glad" must carry SGR emphasis in the content.
 	if !hasSGRBold(content) {
 		t.Errorf("expected partial markdown bold to render, got: %q", content)
 	}
 
-	// A second delta extends the same message in place.
 	m = applyDelta(t, m, " to help.")
 	view2 := view(m)
 	if got := m.tx.messages[len(m.tx.messages)-1].content; got != "Hello **glad** to help." {
@@ -93,10 +70,6 @@ func TestModel_streamAnswerGrowsInPlace(t *testing.T) {
 	}
 }
 
-// TestModel_streamFinalizeDropsRawDeltas asserts the turn's completion replaces
-// the incremental buffer with the full, single-markdown-rendered answer — a
-// no-op visual diff when the stream was complete, and a
-// guaranteed-correct final render when the last delta raced past completion.
 func TestModel_streamFinalize(t *testing.T) {
 	t.Parallel()
 	m := newStreamingModel()
@@ -105,7 +78,6 @@ func TestModel_streamFinalize(t *testing.T) {
 	m, _ = submitBusy(t, m)
 
 	m = applyDelta(t, m, "Hello ")
-	// Completion arrives with the full answer; the last delta never followed.
 	nm, _ := m.Update(turnDoneMsg{prompt: "hi", answer: "Hello **glad** to help."})
 	m = asModel(t, nm)
 
@@ -121,9 +93,6 @@ func TestModel_streamFinalize(t *testing.T) {
 	}
 }
 
-// TestModel_streamFallbackWithoutStreamer asserts a model configured without a
-// Streamer keeps the historical non-streaming behaviour: a completed turn
-// appends the full answer once .
 func TestModel_streamFallbackWithoutStreamer(t *testing.T) {
 	t.Parallel()
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -137,18 +106,12 @@ func TestModel_streamFallbackWithoutStreamer(t *testing.T) {
 	}
 }
 
-// applyReasoningDelta grows the in-progress assistant message's reasoning
-// buffer with one streamed reasoning delta by delivering a streamDeltaMsg
-// through the model's Update seam .
 func applyReasoningDelta(t *testing.T, m Model, delta string) Model {
 	t.Helper()
 	nm, _ := m.Update(streamDeltaMsg{kind: ReasoningStream, delta: delta})
 	return asModel(t, nm)
 }
 
-// TestModel_thinkingStreamsLive asserts reasoning deltas from the engine seam
-// grow a distinct thinking block live during the turn, alongside (but never
-// merged into) the growing answer .
 func TestModel_thinkingStreamsLive(t *testing.T) {
 	t.Parallel()
 	m := newStreamingModel()
@@ -156,8 +119,6 @@ func TestModel_thinkingStreamsLive(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m, _ = submitBusy(t, m)
 
-	// Reasoning deltas accumulate onto the in-progress message's thinking
-	// buffer, distinct from the answer buffer.
 	m = applyReasoningDelta(t, m, "I check the env.")
 	m = applyReasoningDelta(t, m, " Then I edit.")
 	n := len(m.tx.messages) - 1
@@ -167,8 +128,6 @@ func TestModel_thinkingStreamsLive(t *testing.T) {
 	if m.tx.messages[n].content != "" {
 		t.Errorf("reasoning must not write into the answer buffer, got %q", m.tx.messages[n].content)
 	}
-	// The thinking block is live and auto-expanded (issue #364): the reasoning
-	// body renders so the user watches it grow, alongside the hint header.
 	content := view(m)
 	if !strings.Contains(content, "🤔") {
 		t.Errorf("live reasoning should render a thinking hint, got: %q", content)
@@ -177,17 +136,12 @@ func TestModel_thinkingStreamsLive(t *testing.T) {
 		t.Errorf("live reasoning body should render expanded while streaming, got: %q", content)
 	}
 
-	// An answer delta still grows the answer buffer untouched.
 	m = applyDelta(t, m, "Hi there.")
 	if got := m.tx.messages[n].content; got != "Hi there." {
 		t.Errorf("answer delta content = %q, want %q (reasoning not merged into answer)", got, "Hi there.")
 	}
 }
 
-// TestModel_thinkingExpandedStreams asserts the live reasoning block renders
-// expanded by default as reasoning streams (issue #364), that tab collapses
-// and re-expands it, and that subsequent reasoning deltas keep streaming into
-// the expanded block (issue #85 AC2: "expands in place").
 func TestModel_thinkingExpandedStreams(t *testing.T) {
 	t.Parallel()
 	m := newStreamingModel()
@@ -195,13 +149,11 @@ func TestModel_thinkingExpandedStreams(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m, _ = submitBusy(t, m)
 
-	// The first reasoning delta auto-expands the live block.
 	m = applyReasoningDelta(t, m, "first ")
 	if !strings.Contains(view(m), "first ") {
 		t.Fatalf("live reasoning should render expanded before any tab, got: %q", view(m))
 	}
 
-	// Tab collapses the live block, then re-expands it.
 	toggled, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = asModel(t, toggled)
 	if strings.Contains(view(m), "first ") {
@@ -210,16 +162,12 @@ func TestModel_thinkingExpandedStreams(t *testing.T) {
 	toggled, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = asModel(t, toggled)
 
-	// A subsequent reasoning delta must render live in the expanded block.
 	m = applyReasoningDelta(t, m, "reasoning")
 	if !strings.Contains(view(m), "first reasoning") {
 		t.Errorf("expanded block should show streamed reasoning, got: %q", view(m))
 	}
 }
 
-// TestModel_streamViewNeverClearsPrimary asserts streaming renders into the
-// primary buffer: no clear-screen or alt-screen escape sequence, preserving
-// native selection/scrollback/search .
 func TestModel_streamViewNeverClearsPrimary(t *testing.T) {
 	t.Parallel()
 	m := newStreamingModel()
@@ -237,28 +185,20 @@ func TestModel_streamViewNeverClearsPrimary(t *testing.T) {
 	}
 }
 
-// TestModel_expandAllKeepsThinkingExpandedOnAnswer asserts the Ctrl+E
-// expanded-view mode overrides thinking auto-collapse: with the
-// mode ON a turn's reasoning block stays expanded after the final answer lands
-// and renders expanded while streaming (AC5).
 func TestModel_expandAllKeepsThinkingExpandedOnAnswer(t *testing.T) {
 	t.Parallel()
 	m := newStreamingModel()
 	m = resize(t, m)
 
-	// Turn the Ctrl+E expanded-view mode ON before the turn starts.
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
 	m = typeText(t, m, "hi")
 	m, _ = submitBusy(t, m)
 
-	// Reasoning streams live and, with the mode ON, renders expanded.
 	m = applyReasoningDelta(t, m, "hidden reasoning")
 	if !strings.Contains(view(m), "hidden reasoning") {
 		t.Fatalf("mode ON: streaming reasoning should render expanded, got: %q", view(m))
 	}
 
-	// The final answer lands; with the mode ON the block must stay expanded
-	// (the today auto-collapse reset does not fire).
 	nm, _ := m.Update(turnDoneMsg{prompt: "hi", answer: "final answer", reasoning: "hidden reasoning"})
 	m = asModel(t, nm)
 	if !strings.Contains(view(m), "hidden reasoning") {
@@ -266,17 +206,12 @@ func TestModel_expandAllKeepsThinkingExpandedOnAnswer(t *testing.T) {
 	}
 }
 
-// TestModel_expandAllNewTurnRendersExpanded asserts a turn STARTED while the
-// Ctrl+E mode is ON renders its reasoning expanded immediately — no per-turn
-// thinkingExpanded opt-in is needed because the mode overrides the default
-// auto-collapse .
 func TestModel_expandAllNewTurnRendersExpanded(t *testing.T) {
 	t.Parallel()
 	m := newStreamingModel()
 	m = resize(t, m)
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
 
-	// Complete one turn with the mode ON, then start a fresh one.
 	m = typeText(t, m, "first")
 	m, _ = submitBusy(t, m)
 	m = applyReasoningDelta(t, m, "first reasoning")
@@ -290,9 +225,6 @@ func TestModel_expandAllNewTurnRendersExpanded(t *testing.T) {
 	}
 }
 
-// TestModel_expandAllOffCollapsesThinking asserts toggling the Ctrl+E mode OFF
-// collapses reasoning blocks back to the one-line hint: a
-// block held expanded only by the mode renders collapsed once the mode is off.
 func TestModel_expandAllOffCollapsesThinking(t *testing.T) {
 	t.Parallel()
 	m := newStreamingModel()
@@ -306,20 +238,14 @@ func TestModel_expandAllOffCollapsesThinking(t *testing.T) {
 		t.Fatalf("mode ON: block should be expanded before toggling off, got: %q", view(m))
 	}
 
-	// Flip the mode OFF: the block collapses back to the hint.
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
 	if strings.Contains(view(m), "hidden reasoning") {
 		t.Errorf("toggling mode OFF should collapse thinking back to a hint, got: %q", view(m))
 	}
 }
 
-// TestModel_expandAllTabToggleIndependent asserts the per-turn tab thinking
-// toggle stays independent of the Ctrl+E mode: in mode ON tab still collapses
-// the focused block (mirroring the tool card per-entry override), and in mode
-// OFF it behaves exactly as today .
 func TestModel_expandAllTabToggleIndependent(t *testing.T) {
 	t.Parallel()
-	// Mode ON: tab collapses then re-expands a single block.
 	m := newStreamingModel()
 	m = resize(t, m)
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
@@ -338,9 +264,6 @@ func TestModel_expandAllTabToggleIndependent(t *testing.T) {
 		t.Errorf("tab should re-expand a thinking block even in mode ON, got: %q", view(m))
 	}
 
-	// Mode OFF (the default): the live reasoning block is now auto-expanded
-	// (issue #364), so tab collapses it and toggles it back, and the answer
-	// landing still auto-collapses it to a hint.
 	m2 := newStreamingModel()
 	m2 = resize(t, m2)
 	m2 = typeText(t, m2, "hi")
@@ -357,8 +280,6 @@ func TestModel_expandAllTabToggleIndependent(t *testing.T) {
 	if !strings.Contains(view(m2), "hidden reasoning") {
 		t.Errorf("mode OFF: tab should re-expand the live thinking block, got: %q", view(m2))
 	}
-	// With the mode OFF the answer landing still auto-collapses the block back
-	// to a hint: the live auto-collapse fires on stream end.
 	m2 = asModel(t, mustUpdate(t, m2, turnDoneMsg{prompt: "hi", answer: "final answer", reasoning: "hidden reasoning"}))
 	if strings.Contains(view(m2), "hidden reasoning") {
 		t.Errorf("mode OFF: answer-land should auto-collapse thinking back to a hint, got: %q", view(m2))

@@ -7,21 +7,15 @@ import (
 	"testing"
 )
 
-// capableProvider is a deterministic Provider that declares a fixed set of
-// supported generation controls via the GenerationControlProvider capability, so
-// the negotiation helper is testable at the provider seam.
 type capableProvider struct {
 	Scripted
 	supported []GenerationControl
 }
 
-// SupportedGenerationControls implements GenerationControlProvider.
 func (c *capableProvider) SupportedGenerationControls(context.Context) ([]GenerationControl, error) {
 	return append([]GenerationControl(nil), c.supported...), nil
 }
 
-// TestNegotiateAllSupported verifies a special turn whose controls the provider
-// supports negotiates all of them through unchanged.
 func TestNegotiateAllSupported(t *testing.T) {
 	t.Parallel()
 	p := &capableProvider{supported: []GenerationControl{
@@ -44,21 +38,14 @@ func TestNegotiateAllSupported(t *testing.T) {
 	}
 }
 
-// failingProvider is a GenerationControlProvider whose capability query fails,
-// so negotiation surfaces the failure instead of silently degrading.
 type failingProvider struct {
 	Scripted
 }
 
-// SupportedGenerationControls implements GenerationControlProvider and always
-// fails.
 func (f *failingProvider) SupportedGenerationControls(context.Context) ([]GenerationControl, error) {
 	return nil, errors.New("capability query failed")
 }
 
-// TestNegotiateCapabilityErrorPropagates verifies a provider whose capability
-// query fails surfaces that error (the Error branch of the thinking-control
-// negotiation) rather than degrading or no-op'ing.
 func TestNegotiateCapabilityErrorPropagates(t *testing.T) {
 	t.Parallel()
 	reqs := []ControlRequirement{{Control: GenerationControlThinkingSuppression, Required: false}}
@@ -71,13 +58,8 @@ func TestNegotiateCapabilityErrorPropagates(t *testing.T) {
 	}
 }
 
-// TestNegotiateUnsupportedRequiredFails verifies a required control the provider
-// cannot honor fails before any wire call, returning an error that names the
-// offending control.
 func TestNegotiateUnsupportedRequiredFails(t *testing.T) {
 	t.Parallel()
-	// Provider supports only tool-schema enforcement; the special turn requires
-	// JSON Object Mode, which it cannot honor.
 	p := &capableProvider{supported: []GenerationControl{GenerationControlToolSchemaEnforcement}}
 	reqs := []ControlRequirement{
 		{Control: GenerationControlJSONObjectMode, Required: true},
@@ -95,9 +77,6 @@ func TestNegotiateUnsupportedRequiredFails(t *testing.T) {
 	}
 }
 
-// TestNegotiateUnsupportedOptionalDegrades verifies an optional control the
-// provider cannot honor is dropped (observable degradation) while supported
-// optional controls pass through and required controls still fail independently.
 func TestNegotiateUnsupportedOptionalDegrades(t *testing.T) {
 	t.Parallel()
 	p := &capableProvider{supported: []GenerationControl{
@@ -118,12 +97,8 @@ func TestNegotiateUnsupportedOptionalDegrades(t *testing.T) {
 	}
 }
 
-// TestNegotiateProviderWithoutCapability verifies a Provider that does not
-// implement the GenerationControlProvider capability honors nothing: any
-// required control fails, any optional control is dropped.
 func TestNegotiateProviderWithoutCapability(t *testing.T) {
 	t.Parallel()
-	// Scripted does not implement the capability surface.
 	p := NewScripted(nil)
 	reqs := []ControlRequirement{
 		{Control: GenerationControlGenerationBudget, Required: false},
@@ -136,16 +111,12 @@ func TestNegotiateProviderWithoutCapability(t *testing.T) {
 		t.Fatalf("NegotiateGenerationControls() = %v, want none honored without capability", got)
 	}
 
-	// A required control on a provider with no capability surface is an error.
 	reqs = []ControlRequirement{{Control: GenerationControlGenerationBudget, Required: true}}
 	if _, err := NegotiateGenerationControls(context.Background(), p, reqs); err == nil {
 		t.Fatal("NegotiateGenerationControls() error = nil, want unsupported-required error")
 	}
 }
 
-// TestNegotiateDeduplicatesRepeatedControls verifies a control listed more than
-// once in the requirements negotiates once, and that repeated optional + required
-// entries resolve to required.
 func TestNegotiateDeduplicatesRepeatedControls(t *testing.T) {
 	t.Parallel()
 	p := &capableProvider{supported: []GenerationControl{GenerationControlSamplingPolicy}}
@@ -163,8 +134,6 @@ func TestNegotiateDeduplicatesRepeatedControls(t *testing.T) {
 	}
 }
 
-// sameControls reports whether got and want contain the same controls in order,
-// comparing against string names.
 func sameControls(got []GenerationControl, want []string) bool {
 	if len(got) != len(want) {
 		return false
@@ -177,8 +146,6 @@ func sameControls(got []GenerationControl, want []string) bool {
 	return true
 }
 
-// isUnsupportedRequired reports whether err is the unsupported-required error
-// for the named control.
 func isUnsupportedRequired(err error, ctrl GenerationControl) bool {
 	var ue *UnsupportedRequiredControlError
 	return errors.As(err, &ue) && ue.Control == ctrl

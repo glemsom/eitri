@@ -7,9 +7,6 @@ import (
 	"testing"
 )
 
-// TestSSEParserSplitsEvents verifies the SSE scanner yields one event per
-// logical event (data lines joined), ignoring comment-only events and blank
-// separators, and stops at EOF.
 func TestSSEParserSplitsEvents(t *testing.T) {
 	t.Parallel()
 	in := `data: {"a":1}
@@ -47,8 +44,6 @@ data: [DONE]
 	}
 }
 
-// TestSSEParserEndsAtEOF verifies the scanner terminates cleanly on a body with
-// no trailing blank line.
 func TestSSEParserEndsAtEOF(t *testing.T) {
 	t.Parallel()
 	r := newSSE(strings.NewReader("data: only-one\n"))

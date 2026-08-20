@@ -8,22 +8,17 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// mustUpdate pumps one message and returns the model as a Model value.
 func mustUpdate(t *testing.T, m Model, msg tea.Msg) Model {
 	t.Helper()
 	nm, _ := m.Update(msg)
 	return asModel(t, nm)
 }
 
-// ctrlD delivers the previously-review-bound ctrl+d keypress (released in
-// ) to the model and returns the resulting view.
 func ctrlD(t *testing.T, m Model) Model {
 	t.Helper()
 	return mustUpdate(t, m, tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 }
 
-// fileEditModel builds a model with one completed edit tool entry carrying
-// before/after content, so the transcript has a changed file to inspect.
 func fileEditModel(t *testing.T) Model {
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -42,13 +37,6 @@ func fileEditModel(t *testing.T) Model {
 	return m
 }
 
-// TestCtrlD_unbound asserts the released Ctrl+D keybinding does nothing at
-// all: it neither opens a review surface nor disturbs the
-// transcript or composer, whether or not the session has changed files. The
-// regression the panel's empty-state guard used to cover ('s
-// "no changes" surface) is subsumed: there is no surface to open. In-flow
-// file-change inspection is covered by the expanded-card tests in
-// toolcard_diff_test.go and render_regions_test.go (Ctrl+E path, ).
 func TestCtrlD_unbound(t *testing.T) {
 	t.Parallel()
 	t.Run("no-changed-files", func(t *testing.T) {

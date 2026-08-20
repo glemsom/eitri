@@ -1,25 +1,15 @@
-// Package diff is a minimal, dependency-free line diff engine for the TUI's
-// inline card diff (issues #90/#275). It computes an LCS-based unified-style
-// diff of two file contents and groups the changes into hunks with surrounding
-// context so the terminal can render a file's inline diff without any external
-// renderer (pure Go, no Node, honoring the single-binary/no-deps constraint).
+// Package diff is a minimal, dependency-free line diff engine for the TUI's inline card diff (issues #90/#275).
 package diff
 
 import "strings"
 
 // Line is one line of a rendered diff hunk: a context, addition, or removal.
-// Type is ' ' for unchanged context, '+' for an added line, '-' for a removed
-// line; Text is the line content without the trailing newline.
 type Line struct {
 	Type byte
 	Text string
 }
 
-// Hunk is a contiguous block of changed lines in a file diff, bracketed by
-// unchanged context lines on each side. OldStart/NewStart are the 1-based
-// starting line numbers in the old and new files ('+1' offsets in the @@
-// header); OldLines/NewLines are the counts covered by the hunk. Lines holds
-// the hunk body in output order.
+// Hunk is a contiguous block of changed lines in a file diff, bracketed by unchanged context lines on each side.
 type Hunk struct {
 	OldStart, OldLines int
 	NewStart, NewLines int
@@ -29,10 +19,7 @@ type Hunk struct {
 // contextRadius is how many unchanged lines frame a hunk on each side.
 const contextRadius = 3
 
-// Diff computes a unified-style line diff of old vs. new text. It returns nil
-// when the two are equal. The hunk list is deterministic and empty-agnostic: a
-// wholly new file yields one hunk of all '+' lines, a wholly deleted file one
-// hunk of all '-' lines.
+// Diff computes a unified-style line diff of old vs. new text.
 func Diff(old, new string) []Hunk {
 	oldLines := split(old)
 	newLines := split(new)
@@ -40,10 +27,8 @@ func Diff(old, new string) []Hunk {
 		return nil
 	}
 
-	// Decide edit script on the LCS path.
 	ops := buildOps(oldLines, newLines)
 
-	// Annotate every line with its type, then group into context-bounded hunks.
 	typed := make([]Line, 0, len(oldLines)+len(newLines))
 	for _, op := range ops {
 		switch op.kind {
@@ -63,7 +48,6 @@ func split(s string) []string {
 	if s == "" {
 		return nil
 	}
-	// TrimSuffix so trailing newlines don't produce an empty trailing line.
 	s = strings.TrimSuffix(s, "\n")
 	if s == "" {
 		return nil
@@ -96,9 +80,7 @@ type op struct {
 	text string // the line text for equal/delete/insert ops
 }
 
-// buildOps returns the LCS-derived sequence of equal/delete/insert ops that
-// transforms oldLines into newLines. It uses the classic O(n*m) DP table over
-// the equality matrix; fine for the file contents a terminal diff will show.
+// buildOps returns the LCS-derived sequence of equal/delete/insert ops that transforms oldLines into newLines.
 func buildOps(oldLines, newLines []string) []op {
 	n, m := len(oldLines), len(newLines)
 	lcs := make([][]int, n+1)
@@ -142,14 +124,9 @@ func buildOps(oldLines, newLines []string) []op {
 	return ops
 }
 
-// groupHunks scans the typed line list and assembles hunks: each change or
-// run of nearby changes, bracketed by up to contextRadius unchanged context
-// lines on either side, forms one hunk. Each line already carries its 1-based
-// old/new position, so the hunk header and line counts drop straight out of
-// the final window.
+// groupHunks scans the typed line list and assembles hunks: each change or run of nearby changes, bracketed by up to contextRadius unchanged context lines on either side, forms one hunk.
 func groupHunks(typed []Line) []Hunk {
-	// Annotate every line with its 1-based old/new position. Context lines carry
-	// both; a '-' line carries only the old position, a '+' only the new.
+	// Annotate every line with its 1-based old/new position.
 	type posline struct {
 		line Line
 		old  int
@@ -176,15 +153,12 @@ func groupHunks(typed []Line) []Hunk {
 	i := 0
 	prevEnd := 0 // first index not yet consumed; guards against hunk overlap
 	for i < len(pl) {
-		// First change starting this hunk.
 		for i < len(pl) && pl[i].line.Type == ' ' {
 			i++
 		}
 		if i >= len(pl) {
 			break
 		}
-		// Grow the hunk: from the change, walk forward while changes keep
-		// arriving within the context window (merge nearby changes).
 		j := i
 		spaceSinceChange := 0
 		for j < len(pl) {
@@ -196,14 +170,11 @@ func groupHunks(typed []Line) []Hunk {
 				j++
 				continue
 			}
-			// A change: merge.
 			spaceSinceChange = 0
 			j++
 		}
 		end := j
 
-		// Rewind the leading context to include up to contextRadius lines before
-		// the first change of this hunk, but never into a prior hunk.
 		start := i
 		if start-contextRadius > prevEnd {
 			start = i - contextRadius

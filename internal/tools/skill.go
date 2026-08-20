@@ -9,17 +9,12 @@ import (
 	"strings"
 )
 
-// SkillWarner receives lenient-discovery warnings so a caller can surface them
-// (log/stderr) without failing the run. Fail-closed: unparseable skills are
-// omitted, and the warning is the only trace.
+// SkillWarner receives lenient-discovery warnings so a caller can surface them (log/stderr) without failing the run.
 type SkillWarner interface {
 	Warnf(format string, args ...any)
 }
 
-// Skill is one discovered, validated skill pack. Body is the SKILL.md content
-// with any YAML frontmatter stripped; Resources lists the relative paths of
-// the pack's bundled files (excluding SKILL.md) so the model can resolve them
-// against Dir via the read/list tools.
+// Skill is one discovered, validated skill pack.
 type Skill struct {
 	Description string
 	Body        string
@@ -28,8 +23,6 @@ type Skill struct {
 }
 
 // Catalog is the filtered, trust-gated set of discoverable skills for a run.
-// It owns the discovery-order name list (for the strict enum), the per-name
-// install scope (user/project) and the per-run activation set (for dedupe).
 type Catalog struct {
 	skills    map[string]*Skill
 	scopes    map[string]string // skill name -> install scope ("user" or "project")
@@ -38,9 +31,7 @@ type Catalog struct {
 	activated map[string]bool
 }
 
-// Names returns the discovered skill names in stable (scope, then sorted)
-// order. Zero skills yields an empty slice — the caller then omits the skill
-// tool entirely.
+// Names returns the discovered skill names in stable (scope, then sorted) order.
 func (c *Catalog) Names() []string {
 	out := make([]string, len(c.order))
 	copy(out, c.order)
@@ -52,8 +43,7 @@ func (c *Catalog) Skill(name string) *Skill {
 	return c.skills[name]
 }
 
-// Scope returns the install scope ("user" or "project") for the named skill,
-// or "" when the name is not in the catalog.
+// Scope returns the install scope ("user" or "project") for the named skill, or "" when the name is not in the catalog.
 func (c *Catalog) Scope(name string) string {
 	if c == nil {
 		return ""
@@ -61,10 +51,7 @@ func (c *Catalog) Scope(name string) string {
 	return c.scopes[name]
 }
 
-// Enum returns the strict-schema enum values: only the names the model may
-// invoke. Hidden (disable-model-invocation) skills are human-invoked via the
-// slash surface and so are excluded from the model-facing enum (hide-not-
-// block), even though Names() still surfaces them for the `/` completion.
+// Enum returns the strict-schema enum values: only the names the model may invoke.
 func (c *Catalog) Enum() []any {
 	out := make([]any, 0, len(c.order))
 	for _, n := range c.order {
@@ -76,26 +63,19 @@ func (c *Catalog) Enum() []any {
 	return out
 }
 
-// IsActive reports whether name has already been injected into this session's
-// context (used to skip re-injection on re-activation).
+// IsActive reports whether name has already been injected into this session's context (used to skip re-injection on re-activation).
 func (c *Catalog) IsActive(name string) bool {
 	return c.activated[name]
 }
 
-// MarkActive records that name has been injected, so a later activation
-// dedupes. Unknown names are ignored.
+// MarkActive records that name has been injected, so a later activation dedupes.
 func (c *Catalog) MarkActive(name string) {
 	if _, ok := c.skills[name]; ok {
 		c.activated[name] = true
 	}
 }
 
-// Discover scans the user-global root (~/.agents/skills) and the project root
-// (.agents/skills) for skill packs (a subdir containing a parseable SKILL.md).
-// A project pack shadows a user pack of the exact same name. Only valid,
-// filtered packs are retained; a pack whose frontmatter cannot be parsed
-// leniently is omitted with a warning (fail-closed). It never returns a
-// partially-populated catalog on error.
+// Discover scans the user-global root (~/.agents/skills) and the project root (.agents/skills) for skill packs (a subdir containing a parseable SKILL.md).
 func Discover(userRoot, projectRoot string, w SkillWarner) (*Catalog, error) {
 	c := &Catalog{
 		skills:    map[string]*Skill{},
@@ -104,7 +84,6 @@ func Discover(userRoot, projectRoot string, w SkillWarner) (*Catalog, error) {
 		activated: map[string]bool{},
 	}
 
-	// User scope first; project scope then overwrites on exact-name collision.
 	if err := discoverScope(userRoot, c, "user", w); err != nil {
 		return nil, err
 	}
@@ -124,18 +103,11 @@ func Discover(userRoot, projectRoot string, w SkillWarner) (*Catalog, error) {
 type skillParseStatus int
 
 const (
-	// skillCataloged: the pack parsed and is cataloged (hidden-or-invocable; the
-	// disable-model-invocation distinction rides on the hidden bool).
 	skillCataloged skillParseStatus = iota
-	// skillUnparseable: the frontmatter is invalid; omit fail-closed with a warn.
 	skillUnparseable
 )
 
-// discoverScope walks root for skill pack directories and folds them into c.
-// root is the scope's <scope>/skills parent (may not exist). Unparseable packs
-// are omitted fail-closed with a warn; disable-model-invocation packs are kept
-// (human slash-invocable) but flagged hidden so Enum() excludes them from the
-// model-facing surface.
+// discoverScope walks root for skill pack directories and folds them into c. root is the scope's <scope>/skills parent (may not exist).
 func discoverScope(root string, c *Catalog, scope string, w SkillWarner) error {
 	entries, err := os.ReadDir(root)
 	if os.IsNotExist(err) {
@@ -160,23 +132,14 @@ func discoverScope(root string, c *Catalog, scope string, w SkillWarner) error {
 			}
 			continue
 		}
-		// Project shadows user (and a later project entry wins over an earlier
-		// one) by simple overwrite of the same keyed name.
 		c.skills[name] = skill
 		c.scopes[name] = scope
-		// Hide-not-block: a disable-model-invocation pack is still human-
-		// invocable via the slash `/` surface (it lists+activates it), but is
-		// excluded from the model-facing enum by Enum(). Zero value stays false
-		// for invocable packs; shadowing overwrites it per winning scope.
 		c.hidden[name] = hidden
 	}
 	return nil
 }
 
-// parseSkill reads a pack's SKILL.md, strips its frontmatter leniently, and
-// collects the packaged resources. It returns the parsed skill, a hidden bool
-// (disable-model-invocation: true, aliased to human-only invocation), and
-// skillUnparseable (fail-closed) when the frontmatter cannot be parsed.
+// parseSkill reads a pack's SKILL.md, strips its frontmatter leniently, and collects the packaged resources.
 func parseSkill(packDir string) (*Skill, bool, skillParseStatus) {
 	md := filepath.Join(packDir, "SKILL.md")
 	data, err := os.ReadFile(md)
@@ -209,9 +172,7 @@ func parseSkill(packDir string) (*Skill, bool, skillParseStatus) {
 	}, hidden, skillCataloged
 }
 
-// disableModelInvocation reports whether the disable-model-invocation
-// frontmatter field is truthy (true/1/yes), so the pack is hidden from the
-// model (hide-not-block).
+// disableModelInvocation reports whether the disable-model-invocation frontmatter field is truthy (true/1/yes), so the pack is hidden from the model (hide-not-block).
 func disableModelInvocation(v string) bool {
 	switch strings.ToLower(strings.TrimSpace(v)) {
 	case "true", "1", "yes":
@@ -221,8 +182,7 @@ func disableModelInvocation(v string) bool {
 	}
 }
 
-// bundledResources lists the pack's files (relative paths) excluding SKILL.md,
-// deterministically sorted. Resources are advertised, never read eagerly.
+// bundledResources lists the pack's files (relative paths) excluding SKILL.md, deterministically sorted.
 func bundledResources(packDir, exclude string) []string {
 	var out []string
 	_ = filepath.WalkDir(packDir, func(p string, d os.DirEntry, err error) error {
@@ -236,9 +196,7 @@ func bundledResources(packDir, exclude string) []string {
 	return out
 }
 
-// validSkillName enforces the Agent Skills name rule (lowercase alphanumeric
-// plus hyphens, 1..64 chars) cheaply at discovery so malformed dir names are
-// excluded without being parsed.
+// validSkillName enforces the Agent Skills name rule (lowercase alphanumeric plus hyphens, 1..64 chars) cheaply at discovery so malformed dir names are excluded without being parsed.
 func validSkillName(s string) bool {
 	if len(s) == 0 || len(s) > 64 {
 		return false
@@ -256,9 +214,7 @@ func validSkillName(s string) bool {
 	return true
 }
 
-// splitFrontmatter splits SKILL.md content into a frontmatter string and the
-// body. It returns ok=false when no `---`-delimited frontmatter block exists at
-// the top of the file.
+// splitFrontmatter splits SKILL.md content into a frontmatter string and the body.
 func splitFrontmatter(s string) (body, front string, ok bool) {
 	if !strings.HasPrefix(s, "---") {
 		return "", "", false
@@ -269,7 +225,6 @@ func splitFrontmatter(s string) (body, front string, ok bool) {
 		return "", "", false
 	}
 	rest = rest[nl+1:]
-	// Find the closing `---` on its own line.
 	end := strings.Index(rest, "\n---")
 	if end < 0 {
 		return "", "", false
@@ -279,10 +234,7 @@ func splitFrontmatter(s string) (body, front string, ok bool) {
 	return body, front, true
 }
 
-// parseFrontmatter leniently extracts `key: value` fields from a frontmatter
-// block. It folds continuations after the first `key:` into the value and
-// handles quoted values by trimming surrounding quotes. Fields are lowercased
-// keys for case-insensitive lookup.
+// parseFrontmatter leniently extracts `key: value` fields from a frontmatter block.
 func parseFrontmatter(s string) map[string]string {
 	out := map[string]string{}
 	var curKey string
@@ -291,8 +243,6 @@ func parseFrontmatter(s string) map[string]string {
 		if trimmed == "" {
 			continue
 		}
-		// A value continuation line (starts with whitespace) appends to the
-		// current key, matching YAML block-scalar style for description.
 		if curKey != "" && (line[0] == ' ' || line[0] == '\t') {
 			out[curKey] += " " + strings.TrimSpace(trimmed)
 			continue
@@ -310,10 +260,7 @@ func parseFrontmatter(s string) map[string]string {
 	return out
 }
 
-// skillTool is the dedicated skill activation tool. Its name is constrained to
-// an enum of the catalog's names and it returns the pack body wrapped per the
-// agentskills-io payload shape. It omits disabled/filtered skills (already
-// filtered from the catalog) and dedupes re-activation of an in-context skill.
+// skillTool is the dedicated skill activation tool.
 type skillTool struct {
 	c *Catalog
 }
@@ -350,9 +297,7 @@ func (s *skillTool) Run(ctx context.Context, args map[string]any) (ToolResult, e
 	return ToolResult{Text: renderSkillPayload(name, sk)}, nil
 }
 
-// renderSkillPayload builds the structured agentskills-io payload: the body
-// wrapped in <skill_content name="..."> plus a <skill_resources> listing of the
-// bundled files. The wrapping tags double as the compaction ring-fence marker.
+// renderSkillPayload builds the structured agentskills-io payload: the body wrapped in <skill_content name="..."> plus a <skill_resources> listing of the bundled files.
 func renderSkillPayload(name string, sk *Skill) string {
 	var b strings.Builder
 	b.WriteString("skill content for active session; tags: [\"skill\"]\n\n")

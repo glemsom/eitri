@@ -8,9 +8,6 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// schemaHandler records every request it serves and returns a fixed final
-// answer, so a test can assert exactly what a tool-capable agent loop opted the
-// provider request into.
 type schemaHandler struct {
 	requests []provider.Request
 }
@@ -22,9 +19,6 @@ func (s *schemaHandler) stream(_ context.Context, req provider.Request) (provide
 	), nil
 }
 
-// capableScriptedSchema is a Scripted provider that additionally declares
-// tool_schema_enforcement support through the generation-control capability
-// surface.
 type capableScriptedSchema struct {
 	*provider.Scripted
 }
@@ -33,10 +27,6 @@ func (c *capableScriptedSchema) SupportedGenerationControls(context.Context) ([]
 	return []provider.GenerationControl{provider.GenerationControlToolSchemaEnforcement}, nil
 }
 
-// TestRunAgentOptsToolSchemaEnforcementOnSupportingProvider verifies that an
-// agent loop with ToolSchemaEnforcement opted in, on a provider that honors the
-// tool_schema_enforcement control, flags the provider request so the supporting
-// client wire-emits strict tool manifests.
 func TestRunAgentOptsToolSchemaEnforcementOnSupportingProvider(t *testing.T) {
 	t.Parallel()
 	h := &schemaHandler{}
@@ -60,16 +50,9 @@ func TestRunAgentOptsToolSchemaEnforcementOnSupportingProvider(t *testing.T) {
 	}
 }
 
-// TestRunAgentDegradesWhenToolSchemaUnsupported verifies the deterministic
-// degradation spelled out by the generation-control contract: a provider
-// without the tool_schema_enforcement capability honors
-// no controls, so an opted-in optional requirement is dropped — strict is
-// omitted on the wire — while the loop still runs with local validation as the
-// safety floor.
 func TestRunAgentDegradesWhenToolSchemaUnsupported(t *testing.T) {
 	t.Parallel()
 	h := &schemaHandler{}
-	// NewScripted has no generation-control capability surface: it honors nothing.
 	e := New(provider.NewScripted(h.stream), &mockTranscript{})
 
 	res, err := e.RunAgent(context.Background(), RunRequest{
@@ -94,9 +77,6 @@ func TestRunAgentDegradesWhenToolSchemaUnsupported(t *testing.T) {
 	}
 }
 
-// TestRunAgentDefaultOmitsToolSchemaEnforcement verifies that an ordinary agent
-// loop without the opt-in never flags the provider request, keeping the default
-// wire surface byte-identical.
 func TestRunAgentDefaultOmitsToolSchemaEnforcement(t *testing.T) {
 	t.Parallel()
 	h := &schemaHandler{}
@@ -119,18 +99,11 @@ func TestRunAgentDefaultOmitsToolSchemaEnforcement(t *testing.T) {
 	}
 }
 
-// TestRunAgentLocalValidationStaysMandatoryWhenEnforcementActive verifies the
-// second acceptance half: even when provider-side Tool Schema
-// Enforcement is active on a supporting provider, Eitri's local tool-argument
-// validation remains the mandatory safety floor before execution — a
-// schema-violating tool call is still rejected and the executor is never
-// called, exactly as without enforcement.
 func TestRunAgentLocalValidationStaysMandatoryWhenEnforcementActive(t *testing.T) {
 	t.Parallel()
 	capable := &capableScriptedSchema{}
 	capable.Scripted = provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
 		if len(toolResultContents(req.Messages)) == 0 {
-			// bash requires "command"; the call omits it.
 			return provider.StreamFunc(
 				provider.Chunk{FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{
 					{ID: "call_bad", Type: "function", Name: "bash", Arguments: `{"typo":"echo hi"}`},
@@ -162,10 +135,6 @@ func TestRunAgentLocalValidationStaysMandatoryWhenEnforcementActive(t *testing.T
 	}
 }
 
-// runReadEnforcement drives one read tool call through the agent loop with
-// provider-side Tool Schema Enforcement active on a capable provider, returning
-// the recorded executor calls, the resubmitted tool results, and the final
-// answer so a test can pin the read call's wire tolerance end to end.
 func runReadEnforcement(t *testing.T, args string) ([]callRecord, []string, string) {
 	t.Helper()
 	var results []string
@@ -197,11 +166,6 @@ func runReadEnforcement(t *testing.T, args string) ([]callRecord, []string, stri
 	return rec.calls, results, res.Answer
 }
 
-// TestReadRequiredSubsetExecutesUnderSchemaEnforcement pins that, with
-// provider-side Tool Schema Enforcement active, a required-subset read call
-// that omits the optional line-range fields (whole-file form) validates and
-// executes end to end: the call reaches the executor and no schema-error result
-// is resubmitted.
 func TestReadRequiredSubsetExecutesUnderSchemaEnforcement(t *testing.T) {
 	t.Parallel()
 	calls, results, answer := runReadEnforcement(t, `{"path":"f.txt"}`)
@@ -218,10 +182,6 @@ func TestReadRequiredSubsetExecutesUnderSchemaEnforcement(t *testing.T) {
 	}
 }
 
-// TestReadNullOptionalsToleratedUnderSchemaEnforcement pins that a read call
-// that still sends null for the optional fields remains tolerated on the wire
-// under Tool Schema Enforcement: it validates, executes, and produces no
-// schema-error result.
 func TestReadNullOptionalsToleratedUnderSchemaEnforcement(t *testing.T) {
 	t.Parallel()
 	calls, results, answer := runReadEnforcement(t, `{"path":"f.txt","start_line":null,"end_line":null}`)

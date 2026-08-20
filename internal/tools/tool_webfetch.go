@@ -6,11 +6,7 @@ import (
 	"strings"
 )
 
-// webFetchTool is the web_fetch tool: it fetches a URL over HTTP and returns
-// the page rendered as Markdown. It is its own execution path — never a bash
-// invocation and not network-restricted. The result
-// rides the normal tool-result channel so untrusted web content never reaches
-// operator-level text.
+// webFetchTool is the web_fetch tool: it fetches a URL over HTTP and returns the page rendered as Markdown.
 type webFetchTool struct {
 	f Fetcher
 }
@@ -49,6 +45,5 @@ func (w *webFetchTool) Run(ctx context.Context, args map[string]any) (ToolResult
 	if err != nil {
 		return ToolResult{}, fmt.Errorf("web_fetch %s: %w", url, err)
 	}
-	// Prepend the origin so the model can attribute the fetched content.
 	return ToolResult{Text: "Source: " + url + "\n\n" + md}, nil
 }

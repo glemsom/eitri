@@ -5,10 +5,6 @@ import (
 	"testing"
 )
 
-// TestMarshalResponsesBodyKeepsEmptyFunctionCallOutput pins Copilot Responses
-// wire behavior for empty tool results: a function_call_output item must carry
-// an explicit output field even when tool result text is empty, else provider
-// rejects request with HTTP 400 "Missing required parameter: 'input[N].output'".
 func TestMarshalResponsesBodyKeepsEmptyFunctionCallOutput(t *testing.T) {
 	t.Parallel()
 	body, err := marshalResponsesBody(Request{Model: "gpt-5.4-mini", Messages: []Message{

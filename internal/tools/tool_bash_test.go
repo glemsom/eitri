@@ -5,14 +5,6 @@ import (
 	"testing"
 )
 
-// TestBashDescriptionGuidance locks in the provider-facing bash description:
-// it must advertise, in the model's own terms, that output is
-// combined stdout+stderr passed through a deterministic compressor (ANSI
-// stripped, repeated consecutive lines collapsed, progress/redraw frames
-// collapsed), that listings longer than a bounded line budget are truncated
-// with an explicit "+N more" marker and never silently, and that re-running a
-// command is the recovery path. A future edit that drops any of this guidance
-// fails the test.
 func TestBashDescriptionGuidance(t *testing.T) {
 	t.Parallel()
 	desc := (&bashTool{}).Description()

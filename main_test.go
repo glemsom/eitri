@@ -10,8 +10,6 @@ import (
 	"testing"
 )
 
-// TestCLISmoke exercises the compiled eitri binary end-to-end: boot success
-// under a stubbed data dir, --version, and the hard bwrap-missing failure path.
 func TestCLISmoke(t *testing.T) {
 	bin := buildBinary(t)
 
@@ -20,10 +18,6 @@ func TestCLISmoke(t *testing.T) {
 		cmd := exec.Command(bin)
 		cmd.Env = append(os.Environ(), "EITRI_DIR="+dataDir)
 		out, err := cmd.CombinedOutput()
-		// With no args, eitri boots then launches the interactive TUI. A
-		// headless run has no TTY, so the non-interactive guard (T7, issue
-		// #125) refuses the TUI with a message directing the user to batch
-		// mode (-b) while boot still completes (the data dir was created).
 		if err != nil && !strings.Contains(string(out), "-b") {
 			t.Fatalf("eitri exit error = %v, output:\n%s", err, out)
 		}
@@ -48,7 +42,6 @@ func TestCLISmoke(t *testing.T) {
 	})
 
 	t.Run("hard-fails without bwrap", func(t *testing.T) {
-		// A PATH that contains no bwrap forces the missing-prerequisite path.
 		empty := t.TempDir()
 		dataDir := filepath.Join(t.TempDir(), ".eitri")
 		cmd := exec.Command(bin)
@@ -69,10 +62,6 @@ func TestCLISmoke(t *testing.T) {
 	})
 }
 
-// TestCLIBatchWithStubProvider runs the compiled binary in batch mode against a
-// local stub Chat-Completions server, exercising the full CLI → app → engine →
-// provider path end-to-end without a network. It asserts the final answer lands
-// on stdout.
 func TestCLIBatchWithStubProvider(t *testing.T) {
 	fixture, err := os.ReadFile("internal/provider/testdata/hello.sse")
 	if err != nil {
@@ -100,7 +89,6 @@ func TestCLIBatchWithStubProvider(t *testing.T) {
 	}
 }
 
-// buildBinary compiles cmd/eitri into a temp path and returns it.
 func buildBinary(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "eitri")
@@ -112,7 +100,6 @@ func buildBinary(t *testing.T) string {
 	return bin
 }
 
-// cleanEnvs returns the current environment with the named variables unset.
 func cleanEnvs(t *testing.T, names ...string) []string {
 	t.Helper()
 	drop := make(map[string]bool, len(names))

@@ -6,10 +6,6 @@ import (
 	"testing"
 )
 
-// newObserverFixture writes a scratch file set and builds a DeltaObserver whose
-// injected path-resolution seam maps sandbox paths to the real fixture files:
-// the observer owns the file reads, the fake resolver only translates paths,
-// so unit tests drive the observer with no engine and no registry.
 func newObserverFixture(t *testing.T) (*DeltaObserver, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -17,11 +13,6 @@ func newObserverFixture(t *testing.T) (*DeltaObserver, string) {
 	return NewDeltaObserver(resolve), dir
 }
 
-// TestDeltaObserver_computesEditLineDelta asserts a paired edit tool start +
-// result produces the same [+N,-M] line delta and before/after content the
-// engine's ToolDelta seam used to report: the observer snapshots the target
-// file on start and diffs it on result. The fixture gains two lines as one is
-// swapped for three, so the observer reports +2, -0.
 func TestDeltaObserver_computesEditLineDelta(t *testing.T) {
 	t.Parallel()
 	obs, dir := newObserverFixture(t)
@@ -47,11 +38,6 @@ func TestDeltaObserver_computesEditLineDelta(t *testing.T) {
 	}
 }
 
-// TestDeltaObserver_writeCreatesFile asserts a write tool creating a brand-new
-// file reports the full new content as added with empty before (the review
-// panel's "added" status source. The count follows the engine seam's
-// convention (trailing newline counts as one more line), so "x\ny\nz\n" is 4
-// lines.
 func TestDeltaObserver_writeCreatesFile(t *testing.T) {
 	t.Parallel()
 	obs, dir := newObserverFixture(t)
@@ -74,8 +60,6 @@ func TestDeltaObserver_writeCreatesFile(t *testing.T) {
 	}
 }
 
-// TestDeltaObserver_ignoresNonFileTools asserts non-file tools (bash, read)
-// never produce a delta or content — the observer only tracks edit/write.
 func TestDeltaObserver_ignoresNonFileTools(t *testing.T) {
 	t.Parallel()
 	obs, _ := newObserverFixture(t)
@@ -86,9 +70,6 @@ func TestDeltaObserver_ignoresNonFileTools(t *testing.T) {
 	}
 }
 
-// TestDeltaObserver_unresolvablePath asserts a path-resolution seam returning
-// the empty host path yields a zero delta and no content (best-effort degrade,
-// same as the removed engine seam).
 func TestDeltaObserver_unresolvablePath(t *testing.T) {
 	t.Parallel()
 	obs := NewDeltaObserver(func(string) string { return "" })
@@ -99,9 +80,6 @@ func TestDeltaObserver_unresolvablePath(t *testing.T) {
 	}
 }
 
-// TestDeltaObserver_pairsToolCallsById asserts in-flight snapshots are keyed by
-// the provider-assigned tool_call id, so each result diffs its own start even
-// when multiple file-mutating calls are outstanding.
 func TestDeltaObserver_pairsToolCallsById(t *testing.T) {
 	t.Parallel()
 	obs, dir := newObserverFixture(t)
@@ -133,9 +111,6 @@ func TestDeltaObserver_pairsToolCallsById(t *testing.T) {
 	}
 }
 
-// TestDeltaObserver_missingStartYieldsZero asserts a result with no matching
-// start (a non-file tool, or an update whose start was dropped) degrades to a
-// zero delta and empty content rather than erroring.
 func TestDeltaObserver_missingStartYieldsZero(t *testing.T) {
 	t.Parallel()
 	obs, _ := newObserverFixture(t)
@@ -145,9 +120,6 @@ func TestDeltaObserver_missingStartYieldsZero(t *testing.T) {
 	}
 }
 
-// TestDeltaObserver_nilResolverIsFailClosed asserts a nil path-resolution seam
-// degrades to unresolvable (zero delta, no content) instead of reading sandbox
-// paths as host paths — a forgotten wiring must never misreport edits.
 func TestDeltaObserver_nilResolverIsFailClosed(t *testing.T) {
 	t.Parallel()
 	obs := NewDeltaObserver(nil)

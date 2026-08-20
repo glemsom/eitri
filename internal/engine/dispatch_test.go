@@ -12,10 +12,6 @@ import (
 	"github.com/glemsom/eitri/internal/tools"
 )
 
-// scriptedBashReadTurn returns a scripted provider that drives a two-tool
-// round trip: bash (writes to sandbox /tmp), read (reads it back), then a
-// final answer that echoes the read. This exercises the engine dispatch loop
-// against the real sandbox seam.
 func scriptedBashReadTurn(t *testing.T) *provider.Scripted {
 	t.Helper()
 	return provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
@@ -41,7 +37,6 @@ func scriptedBashReadTurn(t *testing.T) *provider.Scripted {
 				}, Done: true},
 			), nil
 		default:
-			// Echo the second (read) tool result into the final answer.
 			lastResult := ""
 			for i := len(req.Messages) - 1; i >= 0; i-- {
 				if req.Messages[i].Role == provider.RoleTool {
@@ -58,12 +53,8 @@ func scriptedBashReadTurn(t *testing.T) *provider.Scripted {
 	})
 }
 
-// TestDispatchBashThenReadReturnsSandboxOutput drives a bash-then-read tool
-// turn through the engine seam with the real sandbox, asserting the final
-// answer carries real sandbox output (the acceptance criterion).
 func TestDispatchBashThenReadReturnsSandboxOutput(t *testing.T) {
 	t.Parallel()
-	// Workspace must not live under /tmp or the sandbox /tmp remap would shadow it.
 	home, err := os.UserHomeDir()
 	if err != nil {
 		t.Fatalf("home dir: %v", err)
@@ -102,7 +93,6 @@ func TestDispatchBashThenReadReturnsSandboxOutput(t *testing.T) {
 	}
 }
 
-// executor adapts the tools registry to the engine's ToolExecutor seam.
 func executor(r *tools.Registry) ToolExecutor {
 	return &registryExecutor{r: r}
 }

@@ -7,14 +7,6 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// renderSurfaceTestTheme returns a Theme whose chrome styles are unstyled, so
-// every helper's .Render call echoes its input verbatim. This fixes the value
-// surface as a plain-text data-in → string-out mapping, letting the tests in
-// this file assert the exact hint/header/welcome strings without coupling them
-// to any particular palette.
-//
-// The tests force the ASCII glyph fallback via EITRI_ASCII_GLYPHS so the
-// decorative separators (· vs ".") are deterministic regardless of locale.
 func renderSurfaceTestTheme() Theme {
 	var plain lipgloss.Style // zero-value style: Render passes text through
 	return Theme{
@@ -25,11 +17,6 @@ func renderSurfaceTestTheme() Theme {
 	}
 }
 
-// TestRender_idleWelcome table-tests the empty-transcript welcome block: the
-// brand line, the capability hint, and the keybinding strip, exactly as
-// render.go concatenates them. It pins the value-only signature
-// idleWelcome(th Theme) string and watches that the welcome never reaches a
-// live *Model.
 func TestRender_idleWelcome(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := renderSurfaceTestTheme()
@@ -56,8 +43,6 @@ func TestRender_idleWelcome(t *testing.T) {
 	}
 }
 
-// TestRender_promptView table-tests the max-turns continuation prompt: the
-// title, the question, and the y/n/esc binding row.
 func TestRender_promptView(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := renderSurfaceTestTheme()
@@ -82,10 +67,6 @@ func TestRender_promptView(t *testing.T) {
 	}
 }
 
-// TestRender_thinkingHeader table-tests the collapsed reasoning header: the
-// glyph, token estimate, and optional effort tier suffix. It pins
-// thinkingHeader(th Theme, reasoning, effort string) string and the
-// effort-empty (suffix dropped) vs effort-set (suffix appended) branches.
 func TestRender_thinkingHeader(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := renderSurfaceTestTheme()
@@ -128,11 +109,6 @@ func TestRender_thinkingHeader(t *testing.T) {
 	}
 }
 
-// TestRender_bandHints pins the status-strip keybinding hint set: only the
-// regular bindings are advertised — ctrl+s settings, ctrl+o copy, ctrl+e
-// expand, shift+enter newline. The review-open hint set (enter diff / o
-// browser / ctrl+d close) went with the modal review panel, and the released
-// Ctrl+D key is deliberately never advertised.
 func TestRender_bandHints(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 
@@ -143,8 +119,6 @@ func TestRender_bandHints(t *testing.T) {
 	}
 }
 
-// TestRender_idleWelcome_brandMark asserts the welcome screen contains the
-// ⚒ brand mark, horizontal rules, and emoji-decorated hint lines.
 func TestRender_idleWelcome_brandMark(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := renderSurfaceTestTheme()
@@ -157,26 +131,20 @@ func TestRender_idleWelcome_brandMark(t *testing.T) {
 	}
 }
 
-// TestHelpView_glyphs asserts the help view carries Markdown `#` section
-// headers and backtick code spans (issue #387) and keeps the #386 category
-// glyphs, rather than the legacy spaced-emoji section/command prefixes.
 func TestHelpView_glyphs(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()
 
-	// Section titles are Markdown `#` headers, not emoji-prefixed rows.
 	for _, want := range []string{"# COMMANDS", "# KEYBINDINGS", "# CONCEPTS"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("helpView() missing Markdown header %q", want)
 		}
 	}
-	// Command names are backtick code spans.
 	for _, want := range []string{"`/settings`", "`/copy`", "`/login`", "`/help`"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("helpView() missing command code span %q", want)
 		}
 	}
-	// Keybinding categories keep their #386 category glyphs.
 	for _, want := range []string{"c COMPOSER", "n NAVIGATION", "p PANES", "a ACTIONS"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("helpView() missing keybinding category %q", want)

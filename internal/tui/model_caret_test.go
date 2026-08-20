@@ -8,22 +8,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// Hardware caret policy: the composer's caret is the terminal's
-// hardware cursor — not the reverse-video software cell bubbles v2 paints by
-// default — and it must track the true edit position across every composer
-// state. Its shape and blink follow the explicit caret style policy (issue
-// #170): a steady block. Tests drive the public Update/View seam and assert on
-// the attached tea.View.Cursor (cell coordinates, 0-indexed from the frame's
-// top-left) and the rendered surface.
-//
-// The composer's internal viewport scrolls as the draft wraps/grows, so the
-// caret's expected frame position is derived from the rendered surface — the
-// caret must sit at the end (or on) the visible row that renders the edit
-// line — rather than from hardcoded scroll state.
-
-// caretModel builds a sized chat model with a small transcript, so the band
-// layout is deterministic: separator row + composer rows pinned at the bottom
-// of the 80x24 frame, no status strip (no telemetry), no slash completion.
 func caretModel(t *testing.T) Model {
 	t.Helper()
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -32,8 +16,6 @@ func caretModel(t *testing.T) Model {
 	return resize(t, m)
 }
 
-// caret returns the frame's attached hardware caret, failing the test when the
-// composer is expected to be the active surface but no caret is attached.
 func caret(t *testing.T, m Model) tea.Cursor {
 	t.Helper()
 	c := m.View().Cursor
@@ -43,19 +25,12 @@ func caret(t *testing.T, m Model) tea.Cursor {
 	return *c
 }
 
-// newline inserts a line break in the composer the way legacy terminals
-// deliver Shift+Enter — the line-feed byte surfaced as KeyCtrlJ (
-// AC2).
 func newline(t *testing.T, m Model) Model {
 	t.Helper()
 	nm, _ := m.Update(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
 	return asModel(t, nm)
 }
 
-// TestComposer_HardwareCaretReplacesSoftwareCell asserts the composer paints no
-// reverse-video caret cell while focused — the character under the caret is
-// plain text — and the frame attaches the terminal's hardware caret instead
-// .
 func TestComposer_HardwareCaretReplacesSoftwareCell(t *testing.T) {
 	t.Parallel()
 	m := caretModel(t)
@@ -66,15 +41,6 @@ func TestComposer_HardwareCaretReplacesSoftwareCell(t *testing.T) {
 	caret(t, m)
 }
 
-// TestComposer_CaretStylePolicy asserts the explicit caret style policy
-//: the composer's hardware caret is a steady (non-blinking) block,
-// requested deliberately rather than inherited from the textarea default or the
-// terminal's own settings. A terminal that ignores the shape request falls back
-// to its own default block caret — still visible, never hidden.
-//
-// The policy does not force a caret color: the caret renders in the
-// terminal's configured cursor color, so Eitri never overwrites it with a fixed
-// white. Color stays nil so the renderer emits no SetCursorColor sequence.
 func TestComposer_CaretStylePolicy(t *testing.T) {
 	t.Parallel()
 	m := caretModel(t)
@@ -90,11 +56,6 @@ func TestComposer_CaretStylePolicy(t *testing.T) {
 	}
 }
 
-// TestComposer_CaretTracksTyping asserts the hardware caret follows the edit
-// position on a single line: at the prompt end when empty, then one column per
-// typed rune, on the composer's top row . The composer rests at
-// minComposerRows, so a single-line draft sits at the composer's first row with
-// the empty rows below it; the band stays pinned to the bottom of the frame.
 func TestComposer_CaretTracksTyping(t *testing.T) {
 	t.Parallel()
 	m := caretModel(t)
@@ -108,10 +69,6 @@ func TestComposer_CaretTracksTyping(t *testing.T) {
 	}
 }
 
-// TestComposer_CaretTracksWrappedDraft asserts the caret stays on the true
-// edit cell when the draft soft-wraps: a draft longer than one composer row
-// wraps, and the caret sits at the end of the last rendered draft line (issue
-// #168 AC2, soft-wrapped lines).
 func TestComposer_CaretTracksWrappedDraft(t *testing.T) {
 	t.Parallel()
 	m := caretModel(t)
@@ -122,10 +79,6 @@ func TestComposer_CaretTracksWrappedDraft(t *testing.T) {
 	caretAtEndOfVisibleRow(t, m, "a")
 }
 
-// TestComposer_CaretTracksMultiLineDraft asserts the caret follows the edit
-// line as the composer grows within the band: each new line
-// pushes the band up a row, the caret sits on the new line's visible row, and
-// cursor navigation moves it within the grown composer.
 func TestComposer_CaretTracksMultiLineDraft(t *testing.T) {
 	t.Parallel()
 	m := caretModel(t)
@@ -136,20 +89,13 @@ func TestComposer_CaretTracksMultiLineDraft(t *testing.T) {
 		t.Fatalf("two-line draft must grow the composer to 2 rows, got %d", len(rows))
 	}
 	caretAtEndOfVisibleRow(t, m, "line two")
-	// CursorUp moves the caret to the first draft line.
 	m = asModel(t, mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyUp}))
 	caretAtEndOfVisibleRow(t, m, "line one")
 }
 
-// TestComposer_CaretTracksInternalScroll asserts the caret never goes stale
-// when the draft exceeds the composer's bound and the band scrolls internally
-//: with more draft rows than maxComposerRows, the caret stays
-// on the visible row that renders the edit line, at the correct column,
-// instead of drifting above the band.
 func TestComposer_CaretTracksInternalScroll(t *testing.T) {
 	t.Parallel()
 	m := caretModel(t)
-	// 9 draft rows exceed the 8-row composer bound, forcing internal scroll.
 	m = typeText(t, m, "a")
 	for i := 0; i < 8; i++ {
 		m = newline(t, m)
@@ -161,9 +107,6 @@ func TestComposer_CaretTracksInternalScroll(t *testing.T) {
 	caretAtEndOfVisibleRow(t, m, "z")
 }
 
-// TestComposer_CaretAbsentOnNonComposerSurfaces asserts no hardware caret is
-// attached when the Settings surface or the continuation prompt is up — the
-// composer is not on screen there .
 func TestComposer_CaretAbsentOnNonComposerSurfaces(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
@@ -178,7 +121,6 @@ func TestComposer_CaretAbsentOnNonComposerSurfaces(t *testing.T) {
 	if c := m.View().Cursor; c != nil {
 		t.Errorf("Settings surface must not attach a caret, got %+v", c)
 	}
-	// Close Settings, then flip into the continuation-prompt state.
 	m = asModel(t, mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyEscape}))
 	m.prompting = true
 	if c := m.View().Cursor; c != nil {
@@ -186,11 +128,6 @@ func TestComposer_CaretAbsentOnNonComposerSurfaces(t *testing.T) {
 	}
 }
 
-// TestComposer_CaretHiddenWhileBusy asserts no hardware caret is attached while
-// an agent turn is running — the composer is on screen but inert, its keys are
-// ignored (ticket #57), so a blinking caret would promise editability the
-// surface does not have . The caret returns as soon as the
-// turn completes and the composer regains the editing surface .
 func TestComposer_CaretHiddenWhileBusy(t *testing.T) {
 	t.Parallel()
 	m := newStreamingModel()
@@ -200,18 +137,12 @@ func TestComposer_CaretHiddenWhileBusy(t *testing.T) {
 	if c := m.View().Cursor; c != nil {
 		t.Errorf("agent turn running must not attach a caret, got %+v", c)
 	}
-	// The turn completes: the composer is the active editing surface again.
 	m = mustUpdate(t, m, turnDoneMsg{prompt: "hi", answer: "ok"})
 	if c := m.View().Cursor; c == nil {
 		t.Error("completing the turn must restore the hardware caret")
 	}
 }
 
-// TestComposer_CaretStaysAttachedOnCtrlD asserts de-allocating ctrl+d (issue
-// #276) keeps the composer editable surface intact: the hardware caret stays
-// attached through the keypress and the focus never leaves the composer. The
-// panel that used to steal keys on ctrl+d is gone, so nothing can detach the
-// caret .
 func TestComposer_CaretStaysAttachedOnCtrlD(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
@@ -232,11 +163,6 @@ func TestComposer_CaretStaysAttachedOnCtrlD(t *testing.T) {
 	}
 }
 
-// caretAtEndOfVisibleRow asserts the hardware caret sits right after the last
-// character of the composer's visible row that renders needle: the caret's
-// column equals that row's plain width and its row equals that row's frame
-// row. This pins the caret to the rendered edit line no matter how the
-// composer's internal viewport scrolls.
 func caretAtEndOfVisibleRow(t *testing.T, m Model, needle string) {
 	t.Helper()
 	lines := frameLines(m)
@@ -260,12 +186,6 @@ func caretAtEndOfVisibleRow(t *testing.T, m Model, needle string) {
 	}
 }
 
-// composerRows returns the plain (ANSI-stripped), right-trimmed rows of the
-// composer region: the rows after the band's accent separator. The separator
-// row is located as the bottom-most row containing ─ — some frames fuse it
-// onto the last history row (no trailing newline between regions), others
-// render it standalone; both forms are accepted. Draft rows in these tests
-// never contain ─.
 func composerRows(m Model) []string {
 	lines := frameLines(m)
 	sep := -1
@@ -285,12 +205,10 @@ func composerRows(m Model) []string {
 	return rows
 }
 
-// frameLines returns the frame's rendered rows.
 func frameLines(m Model) []string {
 	return strings.Split(view(m), "\n")
 }
 
-// plainWidth returns the display width of a plain (ANSI-stripped) row.
 func plainWidth(s string) int {
 	return len([]rune(s))
 }

@@ -5,8 +5,6 @@ import (
 	"time"
 )
 
-// TestRender_formatElapsed table-tests the tool-timer vocabulary: seconds under
-// a minute, minutes+seconds under an hour, hours+minutes beyond.
 func TestRender_formatElapsed(t *testing.T) {
 	cases := []struct {
 		d    time.Duration
@@ -27,13 +25,7 @@ func TestRender_formatElapsed(t *testing.T) {
 	}
 }
 
-// TestRender_busyLine table-tests the in-progress working indicator: the animated
-// braille spinner frame cycled by index when motion is enabled, and the static
-// "… thinking" line under reduced motion. The index wraps by modulo over the
-// frame set so the spinner loops, and the stage verb renders under the frame
-// (issue #365 — here PhaseAnswering shows "Answering").
 func TestRender_busyLine(t *testing.T) {
-	// Animated path: no EITRI_NO_MOTION, UTF-8 locale (the default in tests).
 	idxCases := []int{0, 1, len(busySpinnerFrames) - 1, len(busySpinnerFrames), len(busySpinnerFrames) + 1}
 	for _, idx := range idxCases {
 		i := idx % len(busySpinnerFrames)
@@ -51,7 +43,6 @@ func TestRender_busyLine(t *testing.T) {
 	})
 }
 
-// TestRender_plural table-tests the plural suffix: "" for one, "s" otherwise.
 func TestRender_plural(t *testing.T) {
 	cases := []struct {
 		n    int
@@ -66,8 +57,6 @@ func TestRender_plural(t *testing.T) {
 	}
 }
 
-// TestRender_truncateWidth table-tests the width-aware truncation: the longest
-// rune prefix of width at most w (the caller appends the ellipsis).
 func TestRender_truncateWidth(t *testing.T) {
 	cases := []struct {
 		s    string
@@ -88,7 +77,6 @@ func TestRender_truncateWidth(t *testing.T) {
 	}
 }
 
-// TestRender_tokenEstimate table-tests the ~4 chars/token yardstick.
 func TestRender_tokenEstimate(t *testing.T) {
 	cases := []struct {
 		s    string
@@ -106,8 +94,6 @@ func TestRender_tokenEstimate(t *testing.T) {
 	}
 }
 
-// TestRender_lineCount table-tests the row-count derivation: the number of
-// newline-separated lines, where a trailing newline adds no extra row.
 func TestRender_lineCount(t *testing.T) {
 	cases := []struct {
 		s    string
@@ -126,13 +112,6 @@ func TestRender_lineCount(t *testing.T) {
 	}
 }
 
-// TestRender_clipReviewRegion is obsolete with the modal review panel (issue
-// #276): the height-clipped review region it clipped is gone, so the helper
-// and its table test are deleted rather than re-homed — tall card diffs now
-// clip against the native history viewport's own height clamp.
-
-// TestRender_readRangeHint table-tests the read range extraction: both
-// start_line and end_line must be present as positive integers.
 func TestRender_readRangeHint(t *testing.T) {
 	cases := []struct {
 		name string
@@ -153,8 +132,6 @@ func TestRender_readRangeHint(t *testing.T) {
 	}
 }
 
-// TestRender_toolArgsHint table-tests the display-arg extraction: path for file
-// tools, command for bash, url for web, else the trimmed raw string.
 func TestRender_toolArgsHint(t *testing.T) {
 	cases := []struct {
 		name string

@@ -13,18 +13,10 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// proxyBody is the wire request shape the OpenCode-shaped proxy server sees. It
-// mirrors only the field the cache-prefix assertion needs — the message list —
-// so a recorded request body can be decoded independent of provider internals.
 type proxyBody struct {
 	Messages []provider.Message `json:"messages"`
 }
 
-// proxyHandler is a recorded OpenCode-proxy stand-in: an httptest server that
-// captures the exact request body of every turn and serves the recorded SSE
-// turn-by-turn. Sending the request body through the real OpenAICompatible HTTP
-// client means the bytes it marshals are exactly what the proxy gateway would
-// see — the proxy-shaped (not unit-marshaled) view of the head.
 type proxyHandler struct {
 	fixtures []string // recorded .sse fixtures, one per turn
 	bodies   [][]byte // raw request bodies, one per received turn
@@ -42,9 +34,6 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	if h.turns >= len(h.fixtures) {
-		// An unexpected extra turn is a test failure, not a silent empty stream:
-		// surfacing a non-2xx here fails the RunAgent call loudly instead of
-		// masking the missing recorded fixture.
 		http.Error(w, "unexpected turn: fixture exhausted", http.StatusTeapot)
 		return
 	}
@@ -52,10 +41,6 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.turns++
 }
 
-// proxyFixture returns the recorded SSE fixture bytes for the named turn, or
-// fails the test if the fixture cannot be read. The D3 recorded session lives
-// under the provider package's testdata/, so tests here reach it
-// via the package-relative path.
 func proxyFixture(t *testing.T, name string) string {
 	t.Helper()
 	b, err := os.ReadFile("../provider/testdata/" + name)
@@ -65,13 +50,6 @@ func proxyFixture(t *testing.T, name string) string {
 	return string(b)
 }
 
-// TestRunAgentKeepsByteIdenticalHeadThroughProxy drives the engine seam over a
-// recorded 2-turn, OpenCode-proxy-shaped session: requests go out through the
-// real OpenAI-compatible HTTP client (so the head bytes are the actual marshaled
-// wire body) and responses are the recorded SSE stream. The shared-prefix head
-// must marshal byte-identically across turns and only grow at the tail — the
-// proxy-shaped form of the prompt-cache invariant that unit marshaling tests
-// cannot observe.
 func TestRunAgentKeepsByteIdenticalHeadThroughProxy(t *testing.T) {
 	t.Parallel()
 	h := &proxyHandler{
@@ -93,10 +71,8 @@ func TestRunAgentKeepsByteIdenticalHeadThroughProxy(t *testing.T) {
 	}, AgentOptions{
 		Tools:      strictToolDefs(),
 		ToolChoice: "auto",
-		// Executor stubs the recorded read tool call with a canned result so
-		// the tool-result turn appends deterministically.
-		Executor: &mockToolRecorder{},
-		MaxTurns: 10,
+		Executor:   &mockToolRecorder{},
+		MaxTurns:   10,
 	})
 	if err != nil {
 		t.Fatalf("RunAgent error = %v, want nil", err)
@@ -115,9 +91,6 @@ func TestRunAgentKeepsByteIdenticalHeadThroughProxy(t *testing.T) {
 		t.Fatalf("proxy received %d request bodies, want 2 turns", len(h.bodies))
 	}
 
-	// Decode each recorded wire body to its message list. Marshaling through the
-	// real HTTP client is the point: the bytes compared below are the exact
-	// request body the OpenCode proxy would cache against.
 	heads := make([][]provider.Message, len(h.bodies))
 	for i, body := range h.bodies {
 		var pb proxyBody
@@ -130,9 +103,6 @@ func TestRunAgentKeepsByteIdenticalHeadThroughProxy(t *testing.T) {
 	head1 := headMessages(heads[0])
 	head2 := headMessages(heads[1])
 
-	// The shared prefix of the two recorded request bodies must be byte-identical
-	// and the head may only grow (the appended assistant tool-call turn + tool
-	// result), never be rewritten in place.
 	shared := min(len(head1), len(head2))
 	if shared == 0 {
 		t.Fatal("no shared request head to compare")

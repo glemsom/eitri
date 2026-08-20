@@ -5,9 +5,6 @@ import (
 	"testing"
 )
 
-// TestWordDiff_marksChangedTokens asserts wordDiff flags exactly the tokens
-// that differ between two lines, keeping shared words and punctuation
-// unchanged (benchmark §4.2 word-level diff emphasis).
 func TestWordDiff_marksChangedTokens(t *testing.T) {
 	t.Parallel()
 	oldToks, newToks := wordDiff("func start(port int) error {", "func start(port uint16) error {")
@@ -24,7 +21,6 @@ func TestWordDiff_marksChangedTokens(t *testing.T) {
 	if oldJoin != "func start(port int) error {" || newJoin != "func start(port uint16) error {" {
 		t.Fatalf("wordDiff joined output = %q / %q, want the original lines", oldJoin, newJoin)
 	}
-	// The shared words must be unchanged in both.
 	for _, toks := range [][]wordToken{oldToks, newToks} {
 		for _, tok := range toks {
 			if (tok.text == "func" || tok.text == "start" || tok.text == "port" || tok.text == "error") && tok.changed {
@@ -49,9 +45,6 @@ func changedText(toks []wordToken) string {
 	return sb.String()
 }
 
-// TestRenderWordDiff_prefixContiguous asserts the +/- prefix folds into the
-// first styled token so the rendered text stays contiguous (+world, not
-// +<escape>world) and the changed token carries bold emphasis (SGR 1).
 func TestRenderWordDiff_prefixContiguous(t *testing.T) {
 	t.Parallel()
 	_, newToks := wordDiff("a=b", "a==b")
@@ -59,7 +52,6 @@ func TestRenderWordDiff_prefixContiguous(t *testing.T) {
 	if !strings.Contains(rendered, "+") {
 		t.Fatalf("prefix missing, got %q", rendered)
 	}
-	// "+" must be immediately followed by the styled text, not an escape.
 	if idx := strings.Index(rendered, "+"); idx >= 0 {
 		if rendered[idx+1] == '\x1b' {
 			t.Errorf("prefix must fold into the first styled token, got %q", rendered)

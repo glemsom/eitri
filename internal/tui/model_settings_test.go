@@ -11,8 +11,6 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// TestModel_OpenSettingsRendersSurface verifies ctrl+s opens the Settings
-// surface, which renders the provider/model and knob rows .
 func TestModel_OpenSettingsRendersSurface(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
@@ -34,9 +32,6 @@ func TestModel_OpenSettingsRendersSurface(t *testing.T) {
 	}
 }
 
-// TestModel_SettingsSavePersistsAndCloses verifies navigating to Save and
-// pressing Enter invokes the Save seam with the edited config and closes the
-// Settings surface.
 func TestModel_SettingsSavePersistsAndCloses(t *testing.T) {
 	t.Parallel()
 	var saved config.Config
@@ -50,7 +45,6 @@ func TestModel_SettingsSavePersistsAndCloses(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+s")
-	// Advance focus from Provider(0) to the Save field (last).
 	for i := fieldProvider; i < fieldSave; i++ {
 		m = keypress(t, m, "tab")
 	}
@@ -64,8 +58,6 @@ func TestModel_SettingsSavePersistsAndCloses(t *testing.T) {
 	}
 }
 
-// TestModel_SettingsAdjustedValuePersists verifies a value changed in the
-// panel (cycling the model) reaches the persisted config.
 func TestModel_SettingsAdjustedValuePersists(t *testing.T) {
 	t.Parallel()
 	var saved config.Config
@@ -91,9 +83,6 @@ func TestModel_SettingsAdjustedValuePersists(t *testing.T) {
 	}
 }
 
-// TestModel_SettingsEffortSelectingMediumPersists verifies a reasoning-effort
-// tier selected in the panel (medium) persists to config through the Save seam
-// .
 func TestModel_SettingsEffortSelectingMediumPersists(t *testing.T) {
 	t.Parallel()
 	var saved config.Config
@@ -107,11 +96,9 @@ func TestModel_SettingsEffortSelectingMediumPersists(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+s")
-	// Advance focus from Provider(0) to the Reasoning effort field (3).
 	for i := fieldProvider; i < fieldEffort; i++ {
 		m = keypress(t, m, "tab")
 	}
-	// From "high", one up selects "medium".
 	m = keypress(t, m, "up")
 	for i := fieldEffort; i < fieldSave; i++ {
 		m = keypress(t, m, "tab")
@@ -123,8 +110,6 @@ func TestModel_SettingsEffortSelectingMediumPersists(t *testing.T) {
 	}
 }
 
-// TestModel_SettingsPathsBackspaceEdits verifies the free-form writable-paths
-// field supports backspace to delete the trailing char before Save.
 func TestModel_SettingsPathsBackspaceEdits(t *testing.T) {
 	t.Parallel()
 	var saved config.Config
@@ -138,7 +123,6 @@ func TestModel_SettingsPathsBackspaceEdits(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+s")
-	// Advance focus to the paths field (index 7).
 	for i := fieldProvider; i < fieldPaths; i++ {
 		m = keypress(t, m, "tab")
 	}
@@ -154,10 +138,6 @@ func TestModel_SettingsPathsBackspaceEdits(t *testing.T) {
 	}
 }
 
-// TestModel_SettingsPathsSpaceTypesASpace asserts a space key types a literal
-// space in the free-form paths field (parity pass 2, ): bubbletea v2
-// reports a space key's String() as "space", not " ", so the field must
-// append the key's Text to keep a hand-written path with spaces intact.
 func TestModel_SettingsPathsSpaceTypesASpace(t *testing.T) {
 	t.Parallel()
 	var saved config.Config
@@ -174,8 +154,6 @@ func TestModel_SettingsPathsSpaceTypesASpace(t *testing.T) {
 	for i := fieldProvider; i < fieldPaths; i++ {
 		m = keypress(t, m, "tab")
 	}
-	// The paths fixture value is "/srv"; a space must append " " (a literal
-	// space, not the four characters "space").
 	m = keypress(t, m, " ")
 	m = keypress(t, m, "v2")
 	for i := fieldPaths; i < fieldSave; i++ {
@@ -188,9 +166,6 @@ func TestModel_SettingsPathsSpaceTypesASpace(t *testing.T) {
 	}
 }
 
-// TestModel_SettingsThinkingTogglePersists verifies flipping the reasoning
-// mode off in the panel persists ThinkingEnabled=false through the Save seam
-// while retaining the effort dial .
 func TestModel_SettingsThinkingTogglePersists(t *testing.T) {
 	t.Parallel()
 	var saved config.Config
@@ -204,13 +179,10 @@ func TestModel_SettingsThinkingTogglePersists(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+s")
-	// Advance focus from Provider(0) to the Thinking mode field (2).
 	for i := fieldProvider; i < fieldThinking; i++ {
 		m = keypress(t, m, "tab")
 	}
-	// Toggle thinking off with an arrow.
 	m = keypress(t, m, "down")
-	// Advance to Save and persist.
 	for i := fieldThinking; i < fieldSave; i++ {
 		m = keypress(t, m, "tab")
 	}
@@ -219,20 +191,14 @@ func TestModel_SettingsThinkingTogglePersists(t *testing.T) {
 	if saved.ThinkingEnabled {
 		t.Fatal("saved ThinkingEnabled = true, want false after toggling off in Settings")
 	}
-	// The effort dial is retained so re-enabling later restores it.
 	if saved.ReasoningEffort != "high" {
 		t.Fatalf("saved ReasoningEffort = %q, want retained \"high\"", saved.ReasoningEffort)
 	}
-	// Other seeded knobs are untouched.
 	if saved.Provider != "opencode-go" || saved.MaxTurns != 250 {
 		t.Fatalf("saved config = %+v, want untouched provider/maxTurns", saved)
 	}
 }
 
-// TestModel_SettingsDiscoveryLoadsAsync verifies the settings panel reports a
-// loading state then folds in on-demand provider model discovery (
-// AC2): opening settings with no pre-seeded list and a DiscoverModels seam
-// starts discovery, which delives the model list back through the model loop.
 func TestModel_SettingsDiscoveryLoadsAsync(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
@@ -249,8 +215,6 @@ func TestModel_SettingsDiscoveryLoadsAsync(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+s")
-	// While discovery is in flight the panel shows a loading state and renders
-	// it, so the user knows a fetch is underway rather than seeing an empty list.
 	if m.settings.discoverState != discoverLoading {
 		t.Fatalf("settings discoverState after open = %v, want discoverLoading", m.settings.discoverState)
 	}
@@ -258,7 +222,6 @@ func TestModel_SettingsDiscoveryLoadsAsync(t *testing.T) {
 		t.Fatalf("settings view %q missing loading state", view(m))
 	}
 
-	// The discovery command's delivery folds the model list into the panel.
 	nm, _ := m.Update(discoverDoneMsg{provider: cfgFixture().Provider, models: []string{"deepseek-v4-flash", "grok-2"}})
 	m = asModel(t, nm)
 	if m.settings.discoverState != discoverIdle {
@@ -269,9 +232,6 @@ func TestModel_SettingsDiscoveryLoadsAsync(t *testing.T) {
 	}
 }
 
-// TestModel_SettingsDiscoveryErrorState verifies model discovery that fails
-// returns an error state in the panel rather than failing silently (
-// AC2), while the configured model still stays usable.
 func TestModel_SettingsDiscoveryErrorState(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
@@ -288,7 +248,6 @@ func TestModel_SettingsDiscoveryErrorState(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+s")
-	// Fold in the discovery result (the async command's delivery).
 	nm, _ := m.Update(discoverDoneMsg{provider: cfgFixture().Provider, err: errors.New("connection refused")})
 	m = asModel(t, nm)
 
@@ -299,7 +258,6 @@ func TestModel_SettingsDiscoveryErrorState(t *testing.T) {
 		t.Fatal("settings discovery error message not recorded")
 	}
 	content := view(m)
-	// The error surfaces to the panel, and the configured model remains selectable.
 	if !strings.Contains(content, "connection refused") {
 		t.Fatalf("settings content %q missing discovery error", content)
 	}
@@ -308,8 +266,6 @@ func TestModel_SettingsDiscoveryErrorState(t *testing.T) {
 	}
 }
 
-// TestModel_SettingsThemeSelectingPersists verifies a theme selected in the
-// panel (light) persists to config through the Save seam .
 func TestModel_SettingsProviderChangeStartsDiscoveryForDraftProvider(t *testing.T) {
 	t.Parallel()
 	var providers []string
@@ -369,11 +325,9 @@ func TestModel_SettingsThemeSelectingPersists(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+s")
-	// Advance focus from Provider(0) to the Theme field (after Fraction).
 	for i := fieldProvider; i < fieldTheme; i++ {
 		m = keypress(t, m, "tab")
 	}
-	// From "dark", one down selects "light".
 	m = keypress(t, m, "down")
 	for i := fieldTheme; i < fieldSave; i++ {
 		m = keypress(t, m, "tab")
@@ -385,12 +339,6 @@ func TestModel_SettingsThemeSelectingPersists(t *testing.T) {
 	}
 }
 
-// TestSettingsView_ThinkingSuppressionWarning verifies the settings panel warns
-// when thinking is off AND the run's provider cannot actually suppress
-// reasoning on the wire: the warning renders only when the
-// seam is wired, reports false, and thinking is off. A nil seam (unknown
-// provider) assumes support and renders nothing; a supporting provider or a
-// thinking-on run never warns.
 func TestSettingsView_ThinkingSuppressionWarning(t *testing.T) {
 	t.Parallel()
 	cfg := cfgFixture()
@@ -424,9 +372,6 @@ func TestSettingsView_ThinkingSuppressionWarning(t *testing.T) {
 	}
 }
 
-// TestModel_SettingsWiringSurfacesThinkingSuppression verifies the Model wires
-// the run's provider thinking-suppression seam into the settings form when the
-// panel opens, so the warning reflects the real capability.
 func TestModel_SettingsWiringSurfacesThinkingSuppression(t *testing.T) {
 	t.Parallel()
 	cfg := cfgFixture()
@@ -453,21 +398,14 @@ func TestModel_SettingsWiringSurfacesThinkingSuppression(t *testing.T) {
 	}
 }
 
-// TestModel_ContinuationPromptAnswersYes verifies the interactive max-turns
-// path: an engine that hits the cap signals a prompt, the Model renders it, and
-// a "y" answer grants continuation. The engine-side hook
-// blocks on the Model's channels, which the main loop services; this test
-// drives the Model side deterministically.
 func TestModel_ContinuationPromptAnswersYes(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{})
 	m = resize(t, m)
 
-	// The running engine reached the cap and signalled for a decision.
 	m.continueReq <- struct{}{}
 	m = keypress(t, m, "y")
 
-	// The engine's blocked hook must receive the grant.
 	select {
 	case got := <-m.continueResp:
 		if !got {
@@ -478,8 +416,6 @@ func TestModel_ContinuationPromptAnswersYes(t *testing.T) {
 	}
 }
 
-// TestModel_ContinuationPromptAnswersNo verifies the interactive max-turns
-// path refuses continuation on an "n" answer.
 func TestModel_ContinuationPromptAnswersNo(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{})
@@ -498,17 +434,12 @@ func TestModel_ContinuationPromptAnswersNo(t *testing.T) {
 	}
 }
 
-// keypress sends a named keypress (ctrl+s, tab, down, up, enter, esc, y, n…)
-// and returns the updated model.
 func keypress(t *testing.T, m Model, key string) Model {
 	t.Helper()
 	nm, _ := m.Update(namedKey(key))
 	return asModel(t, nm)
 }
 
-// namedKey maps a textual key name to its bubbletea v2 tea.KeyPressMsg. Rune
-// names ('y', 'n', letters) become a printable-text keypress so the
-// composer/settings accumulate them.
 func namedKey(name string) tea.Msg {
 	switch name {
 	case "ctrl+s":

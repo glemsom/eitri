@@ -11,15 +11,6 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// The T4 styling pass gives the TUI its modern look: visually
-// distinct user vs agent messages, consistent emoji markers, a coherent
-// bottom band, and a single-agent-accent palette centralized in lipgloss.
-// These tests assert that look through the render seam — renderHistory /
-// renderBand / renderPane and the View output — never through internal style
-// plumbing, so the styling stays observable at the same Update/View surface
-// the rest of the suite drives.
-
-// lineContaining returns the first rendered line holding want, or "".
 func lineContaining(s, want string) string {
 	for _, l := range strings.Split(s, "\n") {
 		if strings.Contains(l, want) {
@@ -29,9 +20,6 @@ func lineContaining(s, want string) string {
 	return ""
 }
 
-// TestModel_stylingNoRoleLabels asserts the transcript renders prompt and
-// answer without any "you"/"eitri" role labels: the user prompt is plain
-// markdown, and only the agent pane's left border marks the answer side.
 func TestModel_stylingNoRoleLabels(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
@@ -52,9 +40,6 @@ func TestModel_stylingNoRoleLabels(t *testing.T) {
 	}
 }
 
-// TestModel_stylingAgentPaneBordered asserts assistant answers render as a
-// left-bordered pane, visually distinct from the user chip (:
-// "left-bordered agent panes").
 func TestModel_stylingAgentPaneBordered(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
@@ -75,9 +60,6 @@ func TestModel_stylingAgentPaneBordered(t *testing.T) {
 	}
 }
 
-// TestModel_stylingToolOutcomeMarkers asserts a completed tool entry carries a
-// ✓ outcome tag and a failed one a ✗ tag, next to the per-tool glyph
-// ").
 func TestModel_stylingToolOutcomeMarkers(t *testing.T) {
 	t.Parallel()
 	feed := NewToolFeed()
@@ -91,7 +73,6 @@ func TestModel_stylingToolOutcomeMarkers(t *testing.T) {
 	m = typeText(t, m, "go")
 	m = submitAndWait(t, m)
 
-	// A successful tool: per-tool glyph kept, ✓ outcome tag added.
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"true"}`}})
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Result: &ToolResult{Name: "bash", Result: "done\n"}})
 	content := view(m)
@@ -105,7 +86,6 @@ func TestModel_stylingToolOutcomeMarkers(t *testing.T) {
 		t.Errorf("successful tool must not carry a ✗ tag, got: %q", content)
 	}
 
-	// A failed tool (engine error-shaped result): ✗ outcome tag.
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"/nope"}`}})
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Result: &ToolResult{Name: "read", Result: "error executing tool: boom"}})
 	if view := view(m); !strings.Contains(view, "✗") {
@@ -113,9 +93,6 @@ func TestModel_stylingToolOutcomeMarkers(t *testing.T) {
 	}
 }
 
-// TestModel_stylingErrorMarker asserts a failing turn renders with the ⚠ error
-// marker inside a bordered agent pane "), so an
-// error is as readable as a normal answer.
 func TestModel_stylingErrorMarker(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
@@ -140,12 +117,6 @@ func TestModel_stylingErrorMarker(t *testing.T) {
 	}
 }
 
-// TestModel_stylingToolCategoryColors asserts tool entries render with the
-// per-category hue from the theme palette: shell tools in the
-// shell color, file tools in the file color, web tools in the web color and
-// skill activations in the skill color, while an unknown tool keeps the
-// generic faint line. The per-tool glyph stays on every entry — meaning never rides
-// on color alone .
 func TestModel_stylingToolCategoryColors(t *testing.T) {
 	t.Parallel()
 	feed := NewToolFeed()
@@ -159,8 +130,6 @@ func TestModel_stylingToolCategoryColors(t *testing.T) {
 	m = typeText(t, m, "go")
 	m = submitAndWait(t, m)
 
-	// Per-category tool entries, each rendered through the model's default
-	// theme: shell amber, file light-blue, web purple, skill pink.
 	cases := []struct {
 		tool string
 		hue  string
@@ -198,7 +167,6 @@ func TestModel_stylingToolCategoryColors(t *testing.T) {
 		}
 	}
 
-	// An unknown tool falls back to the generic faint entry — no category hue.
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: "future_tool", Args: "{}"}})
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Result: &ToolResult{Name: "future_tool", Result: "done"}})
 	line := lineContaining(view(m), "⊕ future_tool")
@@ -212,11 +180,6 @@ func TestModel_stylingToolCategoryColors(t *testing.T) {
 	}
 }
 
-// TestModel_stylingThinkingDistinct asserts the thinking hint renders as a
-// visually distinct treatment from the assistant answer body (
-// AC2): the collapsed 🤔 line carries the accent hue and italic, while the
-// answer text itself stays plain — the 🤔 glyph plus the accent+italic pair
-// mark the hint, never color alone .
 func TestModel_stylingThinkingDistinct(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
@@ -233,8 +196,6 @@ func TestModel_stylingThinkingDistinct(t *testing.T) {
 	if hint == "" {
 		t.Fatalf("expected a thinking hint in view, got: %q", view(m))
 	}
-	// lipgloss merges italic + faint + foreground into one escape: the hint
-	// line opens with \x1b[3;2; then the accent's truecolor pair.
 	if !strings.Contains(hint, "\x1b[3;2;") {
 		t.Errorf("thinking hint should render italic, got line: %q", hint)
 	}
@@ -246,8 +207,6 @@ func TestModel_stylingThinkingDistinct(t *testing.T) {
 	}
 }
 
-// TestModel_stylingThinkingMarker asserts the thinking block keeps its 🤔
-// marker ") on the collapsed hint line.
 func TestModel_stylingThinkingMarker(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
@@ -269,9 +228,6 @@ func TestModel_stylingThinkingMarker(t *testing.T) {
 	}
 }
 
-// TestModel_stylingBandCoherent asserts the bottom band reads as one coherent
-// region: a top border separates it from the transcript, and it still carries
-// the live status strip and the composer .
 func TestModel_stylingBandCoherent(t *testing.T) {
 	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
@@ -302,16 +258,6 @@ func TestModel_stylingBandCoherent(t *testing.T) {
 	}
 }
 
-// TestModel_stylingPaletteCentralized asserts the whole surface draws from the
-// one centralized lipgloss style set: the user chip and the agent pane both
-// carry the single agent accent, the error pane uses the semantic error color,
-// and every color is a hex value lipgloss adapts to any color profile — so the
-// surface degrades safely on a non-truecolor terminal .
-// cellBGFill resolves an ANSI line into per-cell booleans: whether the bubble
-// background is active at each display column. It walks SGR sequences tracking
-// background state (resets clear it; a 48;2/48;5/40-47/100-107 sets it), which
-// is exactly how a terminal renders the card. Foreground-only and unknown
-// params leave the background untouched, mirroring real cell semantics.
 func cellBGFill(s string) []bool {
 	out := []bool{}
 	bg := false
@@ -379,14 +325,6 @@ func cellBGFill(s string) []bool {
 	return out
 }
 
-// TestModel_userBubbleFillsFullWidth is the regression test for the user-prompt
-// carded bubble (benchmark §4.1): glamour's per-token SGR resets clear lipgloss's
-// Background, so the fill only ever lands in the 2-col gutters and the prompt
-// text falls through to the default terminal background — a ragged, un-filled
-// box, most visible over a code block. A prompt containing a code block must
-// render every cell of the card with the bubble background. The transcript's
-// right scroll/follow gutter (transcript width minus composer width) is out of
-// scope: only the card's own columns are asserted.
 func TestModel_userBubbleFillsFullWidth(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
@@ -430,11 +368,6 @@ func TestModel_stylingPaletteCentralized(t *testing.T) {
 	if got := defaultTheme.errorPaneStyle.GetBorderLeftForeground(); got != defaultTheme.error {
 		t.Errorf("error pane border foreground = %v, want error color %v", got, defaultTheme.error)
 	}
-	// Every palette entry is a hex color: lipgloss v2 maps a "#RRGGBB" string
-	// to a concrete color.RGBA value (ANSI colors stay ansi.BasicColor /
-	// ANSIColor), so a hex palette entry is detectable by its concrete type and
-	// adapts to any color profile (256-color floor in a terminal), never
-	// truecolor-only .
 	for name, c := range map[string]color.Color{
 		"accent": defaultTheme.accent,
 		"error":  defaultTheme.error,
@@ -445,13 +378,6 @@ func TestModel_stylingPaletteCentralized(t *testing.T) {
 		}
 	}
 
-	// Color downsampling on a non-truecolor terminal moved to the output layer
-	// in lipgloss v2 / bubbletea v2: Render() always emits
-	// full-fidelity ANSI, and Bubble Tea v2 downsamples to the terminal's color
-	// profile at render time — so the model's view content carries truecolor
-	// sequences by design. The 256-color downsampling parity check is part of
-	// the v2 migration audit, not a
-	// Render()-level assertion.
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer"}, nil

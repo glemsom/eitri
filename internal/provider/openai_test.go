@@ -13,9 +13,6 @@ import (
 	"testing"
 )
 
-// strictToolList returns the canonical strict-shaped Chat-Completions tool
-// manifest the tool-schema-enforcement wire tests assert on: two strict-shaped
-// function tools.
 func strictToolList() []Tool {
 	return []Tool{
 		{Type: "function", Function: ToolFunction{
@@ -41,10 +38,6 @@ func strictToolList() []Tool {
 	}
 }
 
-// TestOpenAIStreamsChatCompletions exercises the real Chat-Completions HTTP
-// client against a local text/event-stream server: the request body carries
-// model + messages, and the streamed deltas/usage/Done/EOF round-trip through
-// the provider seam without touching the network.
 func TestOpenAIStreamsChatCompletions(t *testing.T) {
 	t.Parallel()
 	fixture, err := os.ReadFile("testdata/hello.sse")
@@ -100,10 +93,6 @@ func TestOpenAIStreamsChatCompletions(t *testing.T) {
 	}
 }
 
-// TestOpenAIEmitsGenerationBudget verifies the request head carries
-// max_completion_tokens when the caller opts into a Generation Budget, and that
-// ordinary turns with no budget omit the field entirely (bytes stay clean for
-// the shared request head).
 func TestOpenAIEmitsGenerationBudget(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -134,7 +123,6 @@ func TestOpenAIEmitsGenerationBudget(t *testing.T) {
 		t.Fatalf("consume error = %v, want nil", err)
 	}
 
-	// An ordinary turn with no budget must not leak the field.
 	zero := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		if strings.Contains(string(body), "max_completion_tokens") {
@@ -160,11 +148,6 @@ func TestOpenAIEmitsGenerationBudget(t *testing.T) {
 	}
 }
 
-// TestOpenAIEmitsToolSchemaEnforcement verifies that a request opted into
-// provider-side Tool Schema Enforcement re-emits the tool manifest
-// with strict:true on each tool function so a supporting provider enforces the
-// JSON-Schema at generation time; strict lives beside the parameters in the
-// function wrapper, exactly as the OpenAI structured-output wire expects.
 func TestOpenAIEmitsToolSchemaEnforcement(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -208,9 +191,6 @@ func TestOpenAIEmitsToolSchemaEnforcement(t *testing.T) {
 	}
 }
 
-// TestOpenAIOmitsToolSchemaEnforcementByDefault verifies the default wire shape
-// for an ordinary agent/tool turn: no strict marker on any tool function, so the
-// request head stays byte-identical to the pre-enforcement surface.
 func TestOpenAIOmitsToolSchemaEnforcementByDefault(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -239,10 +219,6 @@ func TestOpenAIOmitsToolSchemaEnforcementByDefault(t *testing.T) {
 	}
 }
 
-// TestOpenAIEmitsJSONObjectMode verifies that a JSON-Object-Mode finalization
-// turn carries response_format:{type:json_object} on the wire, and
-// that an ordinary turn with the flag off omits the field entirely (bytes stay
-// clean for the shared request head).
 func TestOpenAIEmitsJSONObjectMode(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -270,7 +246,6 @@ func TestOpenAIEmitsJSONObjectMode(t *testing.T) {
 		t.Fatalf("consume error = %v, want nil", err)
 	}
 
-	// An ordinary turn with JSON Object Mode off must not leak the field.
 	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		if strings.Contains(string(body), "response_format") {
@@ -296,16 +271,8 @@ func TestOpenAIEmitsJSONObjectMode(t *testing.T) {
 	}
 }
 
-// TestOpenAIEmitsSamplingPolicy verifies the Sampling Policy special-turn
-// wire: a temperature policy emits `temperature` and
-// never `top_p`; a nucleus (top-p) policy emits `top_p` and never `temperature`;
-// an ordinary turn with no policy emits neither field, so the shared request head
-// stays untouched. The two sampling modes are mutually exclusive on the wire.
 func TestOpenAIEmitsSamplingPolicy(t *testing.T) {
 	t.Parallel()
-	// A sample float value >1.0 catches a stray temperature/top_p mis-reuse: the
-	// policy value must round-trip unchanged so the provider applies the caller's
-	// sampling, not a reinterpretation.
 	const wantValue = 0.82
 
 	tempSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -336,7 +303,6 @@ func TestOpenAIEmitsSamplingPolicy(t *testing.T) {
 		t.Fatalf("consume temperature error = %v, want nil", err)
 	}
 
-	// A nucleus (top-p) policy must emit top_p and never temperature.
 	const wantTopP = 0.95
 	topPSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -366,7 +332,6 @@ func TestOpenAIEmitsSamplingPolicy(t *testing.T) {
 		t.Fatalf("consume top_p error = %v, want nil", err)
 	}
 
-	// An ordinary turn with no sampling policy must not leak either field.
 	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		if strings.Contains(string(body), "temperature") {
@@ -395,10 +360,6 @@ func TestOpenAIEmitsSamplingPolicy(t *testing.T) {
 	}
 }
 
-// TestOpenAIOptsDeepseekSessionCache verifies that when a Request asks for the
-// deepseek session cache (SetCacheKey + SessionKey), the Chat-Completions body
-// carries prompt_cache_key:<sessionID> so the gateway can hit on a stable
-// byte-identical prefix.
 func TestOpenAIOptsDeepseekSessionCache(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -428,8 +389,6 @@ func TestOpenAIOptsDeepseekSessionCache(t *testing.T) {
 	}
 }
 
-// TestOpenAIStreamsPromptCacheUsage verifies the streamed usage carries the
-// deepseek prompt-cache hit/miss token telemetry parsed at the provider seam.
 func TestOpenAIStreamsPromptCacheUsage(t *testing.T) {
 	t.Parallel()
 	fixture, err := os.ReadFile("testdata/usage-cache.sse")
@@ -460,12 +419,6 @@ func TestOpenAIStreamsPromptCacheUsage(t *testing.T) {
 	}
 }
 
-// TestOpenAIUsageWithoutCacheKeys verifies the absent-key safe-parse
-// hardening: a usage blob that carries only prompt_tokens — an OpenCode
-// proxy omitting the DeepSeek-native prompt_cache_* shape — reports an honest
-// Hit=0 with every input token treated as a cold Miss. No fake hit is ever
-// fabricated, so the TUI gauge reads cache:0% instead of collapsing to an
-// indeterminate ratio.
 func TestOpenAIUsageWithoutCacheKeys(t *testing.T) {
 	t.Parallel()
 	fixture, err := os.ReadFile("testdata/usage-nocache.sse")
@@ -499,14 +452,6 @@ func TestOpenAIUsageWithoutCacheKeys(t *testing.T) {
 	}
 }
 
-// TestOpenAIUsagePartialCacheKeys covers a proxy that emits only one of the
-// two DeepSeek-native prompt_cache_* keys. No
-// fake hit is ever fabricated:
-//   - hit-only: the reported hits are kept, and the remaining prompt tokens are
-//     inferred as cold misses so Hit+Miss still equals PromptTokens (honest
-//     denominator for the gauge).
-//   - miss-only: Hit stays 0 (a hit is never invented), and the reported miss
-//     count is honored as-is.
 func TestOpenAIUsagePartialCacheKeys(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -552,8 +497,6 @@ func TestOpenAIUsagePartialCacheKeys(t *testing.T) {
 	}
 }
 
-// TestOpenAIMalformedEventReturnsCleanError verifies an invalid SSE payload is
-// surfaced as ErrMalformed, never a crash.
 func TestOpenAIMalformedEventReturnsCleanError(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -573,14 +516,8 @@ func TestOpenAIMalformedEventReturnsCleanError(t *testing.T) {
 	}
 }
 
-// TestAssistantMessageAlwaysCarriesReasoningContent encodes the hard DeepSeek
-// 400-avoidance wire guarantee: an assistant message must
-// marshal `reasoning_content` even when empty, so a tool-turn against a
-// reasoning provider never trips the empty-field 400. The field is never
-// dropped by omitempty.
 func TestAssistantMessageAlwaysCarriesReasoningContent(t *testing.T) {
 	t.Parallel()
-	// Empty reasoning on an assistant message must still serialize the field.
 	body, err := json.Marshal(Message{Role: RoleAssistant, Content: "resumed"})
 	if err != nil {
 		t.Fatalf("Marshal(assistant, empty reasoning) error = %v", err)
@@ -589,7 +526,6 @@ func TestAssistantMessageAlwaysCarriesReasoningContent(t *testing.T) {
 		t.Fatalf("assistant message body %s dropped empty reasoning_content (DeepSeek 400 risk)", body)
 	}
 
-	// Real reasoning must round-trip on the wire unchanged.
 	full, err := json.Marshal(Message{Role: RoleAssistant, Content: "final", ReasoningContent: "think carefully"})
 	if err != nil {
 		t.Fatalf("Marshal(assistant, real reasoning) error = %v", err)
@@ -599,11 +535,6 @@ func TestAssistantMessageAlwaysCarriesReasoningContent(t *testing.T) {
 	}
 }
 
-// TestOpenAIDeclaresGenerationControlCapabilities verifies the Chat-Completions
-// client advertises the generation_budget, json_object_mode, sampling_policy,
-// tool_schema_enforcement, and thinking_suppression controls through the
-// generation-control capability surface, so the engine can pre-flight a
-// special/tool turn's requirements before any wire call.
 func TestOpenAIDeclaresGenerationControlCapabilities(t *testing.T) {
 	t.Parallel()
 	cl := NewOpenAICompatible("k", "http://example.invalid/v1/chat/completions")
@@ -622,11 +553,6 @@ func TestOpenAIDeclaresGenerationControlCapabilities(t *testing.T) {
 	}
 }
 
-// TestOpenAIEmitsThinkingAndReasoningEffort verifies the request head carries
-// DeepSeek's reasoning controls — `thinking` default-enabled and a normalized
-// `reasoning_effort` — when the caller opts into them. The
-// effort is normalized (xhigh→high; low/medium/high/max pass through) so the
-// body emits only the tiers the primary provider accepts.
 func TestOpenAIEmitsThinkingAndReasoningEffort(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -660,12 +586,6 @@ func TestOpenAIEmitsThinkingAndReasoningEffort(t *testing.T) {
 	}
 }
 
-// TestOpenAICapabilityMatchesWireBehavior ties the advertised thinking-
-// suppression control to the wire shape that honors it: negotiation honors a
-// required thinking_suppression request, and a
-// thinking-off stream omits the thinking toggle entirely — the omission IS the
-// suppression on this path. TestOpenAIOmitsThinkingWhenDisabled
-// pins the wire shape alone; this test asserts advertisement and wire agree.
 func TestOpenAICapabilityMatchesWireBehavior(t *testing.T) {
 	t.Parallel()
 	cl := NewOpenAICompatible("k", "http://example.invalid/v1/chat/completions")
@@ -675,12 +595,6 @@ func TestOpenAICapabilityMatchesWireBehavior(t *testing.T) {
 	}, "opencode-go")
 }
 
-// TestOpenAIOmitsThinkingWhenDisabled verifies the wire-level shape of a
-// non-thinking run: when the caller disables
-// thinking, the request body must omit both the DeepSeek `thinking` toggle and
-// `reasoning_effort` — exactly like the compaction summarizer's non-thinking
-// summary call. This is the acceptance guarantee that lets a user turn
-// reasoning off without the provider forcing chain-of-thought.
 func TestOpenAIOmitsThinkingWhenDisabled(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -708,17 +622,12 @@ func TestOpenAIOmitsThinkingWhenDisabled(t *testing.T) {
 		Model:           "deepseek-v4-flash",
 		Messages:        []Message{{Role: RoleUser, Content: "hi"}},
 		ThinkingEnabled: false,
-		// Effort is retained in config but must be dropped from the wire when
-		// thinking is off, so a re-enable restores it without a stale send.
 		ReasoningEffort: "high",
 	}); err != nil {
 		t.Fatalf("OpenAI.Stream() error = %v, want nil", err)
 	}
 }
 
-// TestNormalizeReasoningEffort tables the reasoning-effort tier mapping
-// low, medium, high and max are first-class tiers that pass
-// through unchanged; xhigh maps to high per the official API reference.
 func TestNormalizeReasoningEffort(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{

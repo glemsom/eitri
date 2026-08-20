@@ -10,9 +10,6 @@ import (
 	"github.com/glemsom/eitri/internal/tui"
 )
 
-// stubTUI replaces the TUI program launcher with a no-op and reports a normal
-// interactive host terminal, letting boot-path tests exercise Run without a
-// real terminal and without tripping the non-interactive guard.
 func stubTUI(t *testing.T) {
 	t.Helper()
 	stubTUIEnv(t, interactiveEnv)
@@ -66,7 +63,6 @@ func TestRunErrorsWithoutBwrap(t *testing.T) {
 }
 
 func TestRunHonorsNoUnsandboxedFallback(t *testing.T) {
-	// The absent-bwrap outcome must be a hard error, never a silent success.
 	dir := t.TempDir()
 	if err := Run(Options{DataDir: filepath.Join(dir, ".eitri"), LookPath: missingLookPath}); !errors.Is(err, ErrMissingBwrap) {
 		t.Fatalf("Run() error = %v, want ErrMissingBwrap; bwrap absence must be a hard failure", err)
@@ -75,7 +71,6 @@ func TestRunHonorsNoUnsandboxedFallback(t *testing.T) {
 
 func TestVersionShortCircuitsBoot(t *testing.T) {
 	dir := t.TempDir()
-	// Even with bwrap missing, --version must succeed and create no data dir.
 	dataDir := filepath.Join(dir, ".eitri")
 	if err := Run(Options{Version: true, DataDir: dataDir, LookPath: missingLookPath}); err != nil {
 		t.Fatalf("Run(version) error = %v, want nil", err)
@@ -85,9 +80,6 @@ func TestVersionShortCircuitsBoot(t *testing.T) {
 	}
 }
 
-// TestBootLoadsConfigAndCreatesSession drives the boot seam: the config file
-// is created with defaults when absent, and a session transcript directory is
-// established under the data dir.
 func TestBootLoadsConfigAndCreatesSession(t *testing.T) {
 	stubTUI(t)
 	dir := t.TempDir()
@@ -98,7 +90,6 @@ func TestBootLoadsConfigAndCreatesSession(t *testing.T) {
 		t.Fatalf("Run() error = %v, want nil", err)
 	}
 
-	// Config persisted with defaults.
 	cfgData, err := os.ReadFile(cfgPath)
 	if err != nil {
 		t.Fatalf("config not created at %s: %v", cfgPath, err)
@@ -113,7 +104,6 @@ func TestBootLoadsConfigAndCreatesSession(t *testing.T) {
 		t.Fatalf("config MaxTurns = %d, want default 250", got.MaxTurns)
 	}
 
-	// A session transcript directory is created under sessions/<GUID>.
 	sessions := filepath.Join(dataDir, "sessions")
 	entries, err := os.ReadDir(sessions)
 	if err != nil {
@@ -127,9 +117,6 @@ func TestBootLoadsConfigAndCreatesSession(t *testing.T) {
 	}
 }
 
-// TestBootDebugCreatesTraceCapableSession verifies the -d flag, plumbed as
-// Debug, creates a session directory (the trace sink itself is covered in the
-// session package).
 func TestBootDebugCreatesTraceCapableSession(t *testing.T) {
 	stubTUI(t)
 	dir := t.TempDir()
@@ -144,8 +131,6 @@ func TestBootDebugCreatesTraceCapableSession(t *testing.T) {
 	}
 }
 
-// TestBootUsesDataDirForConfig verifies config lands at dataDir/config.json
-// when no explicit config path is given.
 func TestBootUsesDataDirForConfig(t *testing.T) {
 	stubTUI(t)
 	dir := t.TempDir()

@@ -9,7 +9,6 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// mockTranscript records transcript writes so we can assert at the seam.
 type mockTranscript struct {
 	lines []string
 }
@@ -19,9 +18,6 @@ func (m *mockTranscript) WriteTranscript(line []byte) error {
 	return nil
 }
 
-// TestRunProducesFinalAnswer drives the engine end-to-end through the fake
-// provider seam for a non-tool turn and asserts the final assistant answer,
-// reasoning channel, usage, and the transcript write.
 func TestRunProducesFinalAnswer(t *testing.T) {
 	t.Parallel()
 	tr := &mockTranscript{}
@@ -48,8 +44,6 @@ func TestRunProducesFinalAnswer(t *testing.T) {
 	}
 }
 
-// TestRunWritesAnswerToTranscript verifies the final answer lands in the
-// transcript via the T1b trace/sink seam.
 func TestRunWritesAnswerToTranscript(t *testing.T) {
 	t.Parallel()
 	tr := &mockTranscript{}
@@ -73,7 +67,6 @@ func TestRunWritesAnswerToTranscript(t *testing.T) {
 	}
 }
 
-// contains reports whether s contains the substring sub.
 func contains(s, sub string) bool {
 	for i := 0; i+len(sub) <= len(s); i++ {
 		if s[i:i+len(sub)] == sub {
@@ -83,16 +76,10 @@ func contains(s, sub string) bool {
 	return false
 }
 
-// capturedRequests records every provider.Request the engine issues, so a test
-// can assert the reasoning-control head (thinking + normalized effort) is
-// threaded through the engine seam.
 type capturedRequests struct {
 	reqs []provider.Request
 }
 
-// TestRunThreadsThinkingAndEffort verifies the engine passes the reasoning
-// controls through to the provider: thinking enabled and the configured
-// reasoning_effort are set on every outgoing Request.
 func TestRunThreadsThinkingAndEffort(t *testing.T) {
 	t.Parallel()
 	cap := &capturedRequests{}
@@ -121,19 +108,11 @@ func TestRunThreadsThinkingAndEffort(t *testing.T) {
 	}
 }
 
-// TestRunAgentPersistsReasoningOnToolTurns drives a reasoning-then-tool-call
-// fixture through the engine: turn one streams real reasoning and a tool call;
-// turn two streams real reasoning and the final answer. The engine must keep
-// the reasoning on the assistant message it re-emits for the tool turn (so the
-// resubmitted history never strips it, tripping DeepSeek's 400) and surface
-// the final turn's reasoning on the result.
 func TestRunAgentPersistsReasoningOnToolTurns(t *testing.T) {
 	t.Parallel()
 	assistantTurn := 0
 	var assistantReasons []string // reasoning_content the engine re-emits per assistant turn
 	scripted := provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
-		// Collect the reasoning_content of every assistant message the engine
-		// carries forward into a later request.
 		for _, m := range req.Messages {
 			if m.Role == provider.RoleAssistant {
 				assistantReasons = append(assistantReasons, m.ReasoningContent)
@@ -173,31 +152,21 @@ func TestRunAgentPersistsReasoningOnToolTurns(t *testing.T) {
 	if res.Reasoning != "turn-two reasoning" {
 		t.Fatalf("Result.Reasoning = %q, want the final turn's reasoning", res.Reasoning)
 	}
-	// The resubmitted history must carry the first turn's real reasoning on its
-	// assistant message (the tool-call turn), so the provider never 400s.
 	found := slices.Contains(assistantReasons, "turn-one reasoning")
 	if !found {
 		t.Fatalf("assistant reasoning re-emitted = %v, want turn-one reasoning preserved on the tool turn", assistantReasons)
 	}
 }
 
-// capableScripted is a Provider that both scripts turns and declares a fixed set
-// of supported generation controls, exercising the engine's negotiation seam
-// the seam.
 type capableScripted struct {
 	*provider.Scripted
 	supported []provider.GenerationControl
 }
 
-// SupportedGenerationControls implements provider.GenerationControlProvider.
 func (c *capableScripted) SupportedGenerationControls(context.Context) ([]provider.GenerationControl, error) {
 	return append([]provider.GenerationControl(nil), c.supported...), nil
 }
 
-// TestEngineNegotiatesGenerationControls verifies the engine forwards a special
-// turn's generation-control requirements to the provider capability surface,
-// returning the honored controls and failing a required control the provider
-// cannot honor (before any wire call).
 func TestEngineNegotiatesGenerationControls(t *testing.T) {
 	t.Parallel()
 	p := &capableScripted{
@@ -206,7 +175,6 @@ func TestEngineNegotiatesGenerationControls(t *testing.T) {
 	}
 	e := New(p, &mockTranscript{})
 
-	// An unsupported required control fails negotiation before any stream.
 	_, err := e.NegotiateGenerationControls(context.Background(), []provider.ControlRequirement{{
 		Control:  provider.GenerationControlJSONObjectMode,
 		Required: true,
@@ -215,7 +183,6 @@ func TestEngineNegotiatesGenerationControls(t *testing.T) {
 		t.Fatal("NegotiateGenerationControls() error = nil, want unsupported-required error")
 	}
 
-	// A supported optional control is honored and returned.
 	got, err := e.NegotiateGenerationControls(context.Background(), []provider.ControlRequirement{{
 		Control:  provider.GenerationControlGenerationBudget,
 		Required: false,
@@ -228,10 +195,6 @@ func TestEngineNegotiatesGenerationControls(t *testing.T) {
 	}
 }
 
-// TestRunAgentWritesStoppedTranscriptBetweenToolCalls verifies that a stop
-// landing between tool calls (after the stream completes but before the next
-// turn opens) still writes a [stopped] transcript record with the partial
-// content accumulated so far, so the on-disk trail never silently omits it.
 func TestRunAgentWritesStoppedTranscriptBetweenToolCalls(t *testing.T) {
 	t.Parallel()
 	tr := &mockTranscript{}
@@ -259,7 +222,6 @@ func TestRunAgentWritesStoppedTranscriptBetweenToolCalls(t *testing.T) {
 	if !errors.Is(err, ErrStopped) {
 		t.Fatalf("error = %v, want ErrStopped", err)
 	}
-	// There must be exactly one transcript write with the stopped marker.
 	if len(tr.lines) != 1 {
 		t.Fatalf("transcript writes = %d, want 1; lines = %v", len(tr.lines), tr.lines)
 	}

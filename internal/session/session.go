@@ -1,6 +1,4 @@
-// Package session provides the on-disk session trail: every run gets a GUID
-// transcript directory under the data dir (sessions/<GUID>/), and debug mode
-// attaches a pluggable HTTP trace sink for deep-dive provider debugging.
+// Package session provides the on-disk session trail: every run gets a GUID transcript directory under the data dir (sessions/<GUID>/), and debug mode attaches a pluggable HTTP trace sink for deep-dive provider debugging.
 package session
 
 import (
@@ -14,9 +12,7 @@ import (
 // transcriptName is the session transcript file inside a session dir.
 const transcriptName = "transcript.md"
 
-// TraceSink records full HTTP traffic to/from the provider. The provider
-// layer (T1c, later tickets) calls it with the raw request/response bodies;
-// nil receivers are accepted so a session may be used without a sink.
+// TraceSink records full HTTP traffic to/from the provider.
 type TraceSink interface {
 	TraceRequest(body []byte)
 	TraceResponse(body []byte)
@@ -24,14 +20,12 @@ type TraceSink interface {
 
 // Session is a single run's persistent, auditable on-disk trail.
 type Session struct {
-	dir  string
-	data *os.File
-	// trace writes requests and responses when debug is on; nil otherwise.
+	dir   string
+	data  *os.File
 	trace *fileTrace
 }
 
-// New creates a session under dataDir/sessions/<GUID>, GUID-named so runs are
-// unique and auditable. debug enables the HTTP trace sink.
+// New creates a session under dataDir/sessions/<GUID>, GUID-named so runs are unique and auditable. debug enables the HTTP trace sink.
 func New(dataDir string, debug bool) (*Session, error) {
 	guid, err := newGUID()
 	if err != nil {
@@ -59,8 +53,7 @@ func (s *Session) Dir() string {
 	return s.dir
 }
 
-// WriteTranscript appends a line to the session transcript file, creating it
-// on first write.
+// WriteTranscript appends a line to the session transcript file, creating it on first write.
 func (s *Session) WriteTranscript(line []byte) error {
 	if s.data == nil {
 		f, err := os.OpenFile(filepath.Join(s.dir, transcriptName), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
@@ -76,7 +69,6 @@ func (s *Session) WriteTranscript(line []byte) error {
 }
 
 // TraceSink returns the HTTP trace sink when debug mode is enabled, else nil.
-// The nil result lets the provider layer check whether traces are wanted.
 func (s *Session) TraceSink() TraceSink {
 	if s.trace == nil {
 		return nil
@@ -84,8 +76,7 @@ func (s *Session) TraceSink() TraceSink {
 	return s.trace
 }
 
-// Close flushes and closes the transcript file. It is safe to call multiple
-// times and always returns nil.
+// Close flushes and closes the transcript file.
 func (s *Session) Close() error {
 	if s.data != nil {
 		_ = s.data.Close()
@@ -94,8 +85,7 @@ func (s *Session) Close() error {
 	return nil
 }
 
-// fileTrace writes HTTP request/response bodies to sibling files in the
-// session dir, one per direction.
+// fileTrace writes HTTP request/response bodies to sibling files in the session dir, one per direction.
 type fileTrace struct {
 	dir string
 }

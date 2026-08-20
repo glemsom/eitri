@@ -10,9 +10,6 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// TestRunBatchReturnsAnswer drives batch mode end-to-end: an injected fake
-// provider backs the engine, and Run prints the final assistant answer to the
-// configured output writer.
 func TestRunBatchReturnsAnswer(t *testing.T) {
 	var out bytes.Buffer
 	dir := t.TempDir()
@@ -33,8 +30,6 @@ func TestRunBatchReturnsAnswer(t *testing.T) {
 	}
 }
 
-// TestRunBatchSuppressesThinkingByDefault verifies reasoning is not printed to
-// stdout unless Verbose is set.
 func TestRunBatchSuppressesThinkingByDefault(t *testing.T) {
 	var out bytes.Buffer
 	dir := t.TempDir()
@@ -54,7 +49,6 @@ func TestRunBatchSuppressesThinkingByDefault(t *testing.T) {
 	}
 }
 
-// TestRunBatchVerboseShowsThinking verifies -v surfaces reasoning.
 func TestRunBatchVerboseShowsThinking(t *testing.T) {
 	var out bytes.Buffer
 	dir := t.TempDir()
@@ -75,8 +69,6 @@ func TestRunBatchVerboseShowsThinking(t *testing.T) {
 	}
 }
 
-// TestRunBatchWritesTranscript verifies the batch answer lands on the session
-// transcript.
 func TestRunBatchWritesTranscript(t *testing.T) {
 	dir := t.TempDir()
 	dataDir := filepath.Join(dir, ".eitri")

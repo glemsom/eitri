@@ -10,9 +10,6 @@ import (
 	"github.com/glemsom/eitri/internal/tools"
 )
 
-// TestRunEngineTurnReadsCurrentConfig verifies the TUI turn seam reads the
-// current config on each turn rather than the boot snapshot, so a later
-// settings save or login applies to subsequent turns in the same session.
 func TestRunEngineTurnReadsCurrentConfig(t *testing.T) {
 	var reqs []provider.Request
 	e := engine.New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
@@ -71,9 +68,6 @@ func (p *namedProvider) SupportedGenerationControls(context.Context) ([]provider
 	return p.controls, nil
 }
 
-// TestHotProviderSwapsCapabilities verifies the provider wrapper bound into the
-// engine/TUI can switch to a fresh provider after login and immediately expose
-// the new stream, model-discovery, and generation-control behavior.
 func TestHotProviderSwapsCapabilities(t *testing.T) {
 	var calls []string
 	h := newHotProvider(&namedProvider{

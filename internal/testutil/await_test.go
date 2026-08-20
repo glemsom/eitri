@@ -7,8 +7,6 @@ import (
 	"time"
 )
 
-// fakeFataler records the fatal call instead of aborting the goroutine, so the
-// timeout path of Await is assertable directly.
 type fakeFataler struct {
 	fatalMsg string
 }
@@ -16,8 +14,6 @@ type fakeFataler struct {
 func (f *fakeFataler) Fatalf(format string, args ...any) { f.fatalMsg = fmt.Sprintf(format, args...) }
 func (f *fakeFataler) Helper()                           {}
 
-// TestAwaitReturnsWhenSignalFires asserts a fired signal unblocks Await before
-// the default timeout, so a ready stream never trips the backstop.
 func TestAwaitReturnsWhenSignalFires(t *testing.T) {
 	t.Parallel()
 	sig := make(chan struct{})
@@ -27,9 +23,6 @@ func TestAwaitReturnsWhenSignalFires(t *testing.T) {
 	Await(t, "test signal", sig)
 }
 
-// TestAwaitReportsChannelNameOnTimeout asserts a signal that never fires makes
-// Await fail with the channel name in the message, so the stranded wait is
-// identifiable rather than a silent hang.
 func TestAwaitReportsChannelNameOnTimeout(t *testing.T) {
 	t.Parallel()
 	f := &fakeFataler{}

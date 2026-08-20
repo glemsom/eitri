@@ -11,9 +11,6 @@ import (
 	"github.com/glemsom/eitri/internal/tui"
 )
 
-// stubTUIEnv replaces the host-terminal facts seam with a fixed value, so boot
-// tests drive the TUI refusal conditions without a real terminal (same pattern
-// as stubTUI / runProgram).
 func stubTUIEnv(t *testing.T, env tuiEnv) {
 	t.Helper()
 	orig := currentTUIEnv
@@ -21,8 +18,6 @@ func stubTUIEnv(t *testing.T, env tuiEnv) {
 	t.Cleanup(func() { currentTUIEnv = orig })
 }
 
-// recordingTUI replaces the TUI program launcher with a recorder so a test can
-// assert whether the interactive TUI was (not) launched.
 func recordingTUI(t *testing.T) *bool {
 	t.Helper()
 	called := false
@@ -32,14 +27,8 @@ func recordingTUI(t *testing.T) *bool {
 	return &called
 }
 
-// interactiveEnv is the host-terminal context a normal interactive launch sees.
 var interactiveEnv = tuiEnv{stdoutTTY: true, term: "xterm-256color", width: 120}
 
-// TestTUIBootError tables the guard decision across every host-terminal context:
-// stdout piped, unset/dumb TERM (any case, incl. dumb-* variants), sub-threshold
-// width, the 80-column boundary, a healthy interactive launch, and an unknown
-// width (0) which never refuses. Each refusal case must wrap
-// ErrTUINotInteractive and direct the user to batch mode (-b).
 func TestTUIBootError(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -73,9 +62,6 @@ func TestTUIBootError(t *testing.T) {
 	}
 }
 
-// TestRunTUIGuard drives the boot seam: Run must refuse the TUI (and never
-// launch the interactive program) in every non-interactive context, and must
-// still enter the TUI on a normal interactive launch.
 func TestRunTUIGuard(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -113,9 +99,6 @@ func TestRunTUIGuard(t *testing.T) {
 	}
 }
 
-// TestRunBatchUnaffectedByNonInteractiveEnv asserts the refusal lives on the
-// interactive entrant only: batch mode (-b) still runs end to end even when
-// the host context is non-interactive.
 func TestRunBatchUnaffectedByNonInteractiveEnv(t *testing.T) {
 	stubTUIEnv(t, tuiEnv{stdoutTTY: false, term: "", width: 0})
 	dir := t.TempDir()

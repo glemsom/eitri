@@ -6,15 +6,10 @@ import (
 	"time"
 )
 
-// toolEntryFor returns a minimal real toolEntry with the identifying fields
-// set, so a test can assert on what the log stores without constructing
-// zero-value noise.
 func toolEntryFor(name, args string) toolEntry {
 	return toolEntry{name: name, args: args}
 }
 
-// TestToolLog_ApplyPairsStartWithResult asserts a Start then a matching name
-// Result fold into one complete entry with the result field filled.
 func TestToolLog_ApplyPairsStartWithResult(t *testing.T) {
 	t.Parallel()
 	var l toolLog
@@ -34,9 +29,6 @@ func TestToolLog_ApplyPairsStartWithResult(t *testing.T) {
 	}
 }
 
-// TestToolLog_ApplyPairsMostRecentIncompleteSameName asserts a Result pairs back
-// to the most recent not-yet-complete entry for that tool name, so a stray or
-// out-of-order result cannot corrupt an already-complete entry.
 func TestToolLog_ApplyPairsMostRecentIncompleteSameName(t *testing.T) {
 	t.Parallel()
 	var l toolLog
@@ -44,7 +36,6 @@ func TestToolLog_ApplyPairsMostRecentIncompleteSameName(t *testing.T) {
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"a"}`}})
 	l.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "a out", Lines: 1}})
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"b"}`}})
-	// The second result must pair to the still-incomplete bash entry.
 	l.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "b out", Lines: 1}})
 
 	if l.Len() != 2 {
@@ -58,8 +49,6 @@ func TestToolLog_ApplyPairsMostRecentIncompleteSameName(t *testing.T) {
 	}
 }
 
-// TestToolLog_ToggleBoundsChecks asserts Toggle flips expansion within bounds
-// and no-ops outside them.
 func TestToolLog_ToggleBoundsChecks(t *testing.T) {
 	t.Parallel()
 	var l toolLog
@@ -74,14 +63,10 @@ func TestToolLog_ToggleBoundsChecks(t *testing.T) {
 	if l.Entry(0).expanded {
 		t.Errorf("entry should collapse after second Toggle(0)")
 	}
-	// Out-of-bounds toggles must not panic or corrupt.
 	l.Toggle(-1)
 	l.Toggle(5)
 }
 
-// TestToolLog_ReviewProjectsChangedFiles asserts Review consolidates the
-// file-mutating (edit/write) entries by path, keeping the most recent state per
-// path.
 func TestToolLog_ReviewProjectsChangedFiles(t *testing.T) {
 	t.Parallel()
 	var l toolLog
@@ -100,15 +85,11 @@ func TestToolLog_ReviewProjectsChangedFiles(t *testing.T) {
 	if rev[0].path != "a.go" {
 		t.Errorf("review entry = %+v, want a.go", rev[0])
 	}
-	// The most recent (write) state wins.
 	if !strings.Contains(rev[0].after, "func x()") {
 		t.Errorf("review should keep the most recent after-content, got: %q", rev[0].after)
 	}
 }
 
-// TestToolLog_RenderWritesEntryWithRowRanges asserts Render emits the tool
-// entry text and records each entry's content-row range for the anchor (issue
-// #208 US6: one layout pass shared by transcript and hit-test).
 func TestToolLog_RenderWritesEntryWithRowRanges(t *testing.T) {
 	t.Parallel()
 	var l toolLog
@@ -127,8 +108,6 @@ func TestToolLog_RenderWritesEntryWithRowRanges(t *testing.T) {
 	}
 }
 
-// TestToolLog_PlainTextRendersEntry asserts PlainText emits the ⊕ tool head and
-// indents the complete result, mirroring the clipboard transcript.
 func TestToolLog_PlainTextRendersEntry(t *testing.T) {
 	t.Parallel()
 	var l toolLog
@@ -145,17 +124,11 @@ func TestToolLog_PlainTextRendersEntry(t *testing.T) {
 	}
 }
 
-// TestToolLog_PlainTextCollapsedAndExpanded asserts PlainText renders the head
-// alone for an entry whose result has not landed yet (collapsed) and the head
-// plus the indented full result once it is complete (expanded) — the two
-// shapes the clipboard transcript never truncates.
 func TestToolLog_PlainTextCollapsedAndExpanded(t *testing.T) {
 	t.Parallel()
 	var l toolLog
 	l.SetAnchor(0)
-	// A Start with no Result: incomplete, so the head is all there is.
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
-	// A completed entry whose head carries the delta tag and whose result is indented.
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "edit", Args: `{"path":"a.go"}`}})
 	l.Apply(ToolUpdate{Result: &ToolResult{Name: "edit", Result: "change\n", Lines: 1,
 		Before: "a", After: "b", Path: "a.go", Added: 1, Removed: 1}})
@@ -166,9 +139,6 @@ func TestToolLog_PlainTextCollapsedAndExpanded(t *testing.T) {
 	}
 }
 
-// TestToolLog_ReviewKeepsMostRecentState asserts Review consolidates repeated
-// writes to one path by keeping the most recent before/after content span,
-// replacing the older entry's content wholesale.
 func TestToolLog_ReviewKeepsMostRecentState(t *testing.T) {
 	t.Parallel()
 	applyFile := func(l *toolLog, name, path, before, after string) {
@@ -201,9 +171,6 @@ func TestToolLog_ReviewKeepsMostRecentState(t *testing.T) {
 	}
 }
 
-// TestToolLog_HeadForms asserts the shared head builders render the compact
-// per-tool-glyph `tool  args` head in its three forms — plain args, the read `:start-end`
-// range, and the file-edit `[+N, −M]` delta tag.
 func TestToolLog_HeadForms(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -236,9 +203,6 @@ func TestToolLog_HeadForms(t *testing.T) {
 	}
 }
 
-// TestToolLog_RenderRowAccountCollapsed asserts Render counts a collapsed entry's
-// content rows (head + collapsed summary) and that those ranges feed AtLine
-// (render and hit-test share one layout).
 func TestToolLog_RenderRowAccountCollapsed(t *testing.T) {
 	t.Parallel()
 	var l toolLog
@@ -250,7 +214,6 @@ func TestToolLog_RenderRowAccountCollapsed(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("expected one row range, got %d", len(rows))
 	}
-	// Collapsed: line-summary head + the "5 lines" readout = rows 0..1.
 	if rows[0].start != 0 || rows[0].end != 1 {
 		t.Errorf("collapsed row range = %d..%d, want 0..1", rows[0].start, rows[0].end)
 	}
@@ -262,9 +225,6 @@ func TestToolLog_RenderRowAccountCollapsed(t *testing.T) {
 	}
 }
 
-// TestToolLog_RenderRowAccountExpanded asserts Render counts an expanded entry's
-// rows (head + the full framed result lines) as its own row range, so a click on
-// any of them toggles the same entry.
 func TestToolLog_RenderRowAccountExpanded(t *testing.T) {
 	t.Parallel()
 	var l toolLog
@@ -277,16 +237,11 @@ func TestToolLog_RenderRowAccountExpanded(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("expected one row range, got %d", len(rows))
 	}
-	// Expanded result "ok" renders as a framed card: the head row plus the
-	// card's top padding, content row, and bottom padding = rows 0..3.
 	if rows[0].start != 0 || rows[0].end != 3 {
 		t.Errorf("expanded row range = %d..%d, want 0..3", rows[0].start, rows[0].end)
 	}
 }
 
-// TestToolLog_RenderRowAccountSkipsOtherAnchors asserts Render only accounts
-// entries for the requested anchor, so content-row ranges stay relative to each
-// message's own block and multiple turns share the same Render pass.
 func TestToolLog_RenderRowAccountSkipsOtherAnchors(t *testing.T) {
 	t.Parallel()
 	var l toolLog
@@ -304,10 +259,6 @@ func TestToolLog_RenderRowAccountSkipsOtherAnchors(t *testing.T) {
 	}
 }
 
-// TestToolLog_RenderOutcomeElapsedAndTruncation asserts the entry head carries
-// the ✓/✗ outcome marker, the elapsed readout for a completed timed tool, and
-// arg truncation at narrow widths — the presentation forms Render must preserve
-// byte-for-byte.
 func TestToolLog_RenderOutcomeElapsedAndTruncation(t *testing.T) {
 	t.Parallel()
 	var l toolLog
@@ -317,9 +268,6 @@ func TestToolLog_RenderOutcomeElapsedAndTruncation(t *testing.T) {
 	start := time.Now().Add(-105 * time.Second)
 	l.SetStart(0, start)
 
-	// A completed entry freezes its elapsed span from SetStart to now. The few
-	// sub-second ms between Apply (which stamps doneAt) and SetStart only shave
-	// the fractional part, so the 105s window reads deterministically as 1m 44s.
 	got, _ := l.Render(defaultTheme, false, time.Now(), 80, 0, false)
 	if !strings.Contains(got, "🔧 bash") {
 		t.Errorf("head missing, got %q", got)
@@ -327,22 +275,16 @@ func TestToolLog_RenderOutcomeElapsedAndTruncation(t *testing.T) {
 	if !strings.Contains(got, "1m 44s") {
 		t.Errorf("elapsed readout missing, got %q", got)
 	}
-	// A success outcome renders the ✓ marker (default glyph mode).
 	if !strings.Contains(got, "✓") {
 		t.Errorf("outcome marker missing, got %q", got)
 	}
 
-	// A narrow-but-viable width truncates the args with an ellipsis rather than
-	// cutting abruptly: budget = width − label(6) − 8, so width 18 leaves a
-	// budget of 4, and the 10-wide "make build" args truncate.
 	narrow, _ := l.Render(defaultTheme, false, time.Time{}, 18, 0, false)
 	if strings.Contains(narrow, "make build") || !strings.Contains(narrow, "…") {
 		t.Errorf("args should truncate with an ellipsis at width 18, got %q", narrow)
 	}
 }
 
-// TestToolLog_AtLineMapping asserts AtLine resolves the owning entry, reports its
-// collapsed state, and no-ops outside every recorded range.
 func TestToolLog_AtLineMapping(t *testing.T) {
 	t.Parallel()
 	var l toolLog
@@ -357,7 +299,6 @@ func TestToolLog_AtLineMapping(t *testing.T) {
 		t.Fatalf("expected two row ranges, got %d", len(rows))
 	}
 
-	// Collapsed entries report collapsed=true (a click expands them).
 	if idx, collapsed, ok := l.AtLine(1, rows); !ok || idx != 0 || !collapsed {
 		t.Errorf("AtLine(1) = %d/%v/%v, want entry 0 collapsed=ok", idx, collapsed, ok)
 	}
@@ -365,27 +306,20 @@ func TestToolLog_AtLineMapping(t *testing.T) {
 		t.Errorf("AtLine(2) = %d/%v/%v, want entry 1 collapsed=ok", idx, collapsed, ok)
 	}
 
-	// An expanded entry reports collapsed=false (a click collapses it). Expand
-	// only that entry and re-render so the other entry's rows stay put: the
-	// "read" (idx 1) head row remains at absolute line 2.
 	l.Toggle(1)
 	_, rows2 := l.Render(defaultTheme, false, time.Time{}, 80, 0, false)
 	if idx, collapsed, ok := l.AtLine(2, rows2); !ok || idx != 1 || collapsed {
 		t.Errorf("AtLine(2) = %d/%v/%v, want entry 1 expanded (collapsed=false)", idx, collapsed, ok)
 	}
 
-	// Bounds: lines above and below the recorded ranges are inert.
 	if _, _, ok := l.AtLine(99, rows); ok {
 		t.Errorf("AtLine(99) should be out of range")
 	}
-	// AtLine never panics on an empty row account.
 	if _, _, ok := l.AtLine(0, nil); ok {
 		t.Errorf("AtLine over nil rows should be out of range")
 	}
 }
 
-// TestToolLog_RenderFailureOutcome asserts a tool whose result is error-shaped
-// renders the ✗ outcome marker.
 func TestToolLog_RenderFailureOutcome(t *testing.T) {
 	t.Parallel()
 	var l toolLog
@@ -399,10 +333,6 @@ func TestToolLog_RenderFailureOutcome(t *testing.T) {
 	}
 }
 
-// TestToolLog_RenderBytesTruncatedHint asserts a byte-capped delivery renders
-// a "(+N bytes truncated)" hint on the collapsed summary line when bytes were
-// dropped, and merges with the existing "(+N more)" hint when both line and
-// byte truncation happened (never silent for the user either).
 func TestToolLog_RenderBytesTruncatedHint(t *testing.T) {
 	t.Parallel()
 	var l toolLog
@@ -416,7 +346,6 @@ func TestToolLog_RenderBytesTruncatedHint(t *testing.T) {
 		t.Errorf("collapsed summary missing merged truncated hint, got %q", got)
 	}
 
-	// Byte truncation alone (no line marker): only the bytes hint renders.
 	l2 := toolLog{}
 	l2.SetAnchor(0)
 	l2.Apply(ToolUpdate{Start: &ToolStart{Name: "read", Args: ""}})
@@ -431,11 +360,6 @@ func TestToolLog_RenderBytesTruncatedHint(t *testing.T) {
 	}
 }
 
-// TestToolLog_RenderBothHintsWithoutCompressedFlag asserts the collapsed summary
-// shows BOTH hints whenever both truncations happened, even when the separate
-// Compressed flag is false: the "+N more" hint derives from
-// Dropped alone, so a byte-cap that also dropped lines never loses the line
-// count just because the result is byte-only-capped in the seam's model.
 func TestToolLog_RenderBothHintsWithoutCompressedFlag(t *testing.T) {
 	t.Parallel()
 	var l toolLog
@@ -450,9 +374,6 @@ func TestToolLog_RenderBothHintsWithoutCompressedFlag(t *testing.T) {
 	}
 }
 
-// TestToolLog_ExpandedRendersFullRawResult asserts the expanded view renders
-// the entry's full pre-cap Result even when the delivered form was byte-capped
-// (nothing silently truncated on the expand path).
 func TestToolLog_ExpandedRendersFullRawResult(t *testing.T) {
 	t.Parallel()
 	var l toolLog

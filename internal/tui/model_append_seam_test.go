@@ -11,16 +11,6 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// The append seam (issue #390) says every finished assistant entry routes
-// through the Transcript appendMsg seam — the message lands and the shared
-// layout is marked dirty in the same step. Each migrated path's behavioral
-// test below clears the dirty flag first so that only the seam may re-mark it,
-// then asserts the note appended and the layout was invalidated (the same
-// isolation the existing `/help` seam test uses).
-
-// TestModel_skillResultAppendsThroughSeam verifies the slash-skill activation
-// result (skillDoneMsg) appends through the seam instead of touching message
-// state directly.
 func TestModel_skillResultAppendsThroughSeam(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
@@ -40,8 +30,6 @@ func TestModel_skillResultAppendsThroughSeam(t *testing.T) {
 	}
 }
 
-// TestModel_loginCodeAppendsThroughSeam verifies the device-flow code note
-// (loginCodeMsg) appends through the seam.
 func TestModel_loginCodeAppendsThroughSeam(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
@@ -63,8 +51,6 @@ func TestModel_loginCodeAppendsThroughSeam(t *testing.T) {
 	}
 }
 
-// TestModel_loginDoneErrorAppendsThroughSeam verifies the login-error note
-// (loginDoneMsg with err) appends through the seam.
 func TestModel_loginDoneErrorAppendsThroughSeam(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
@@ -85,8 +71,6 @@ func TestModel_loginDoneErrorAppendsThroughSeam(t *testing.T) {
 	}
 }
 
-// TestModel_loginDoneSuccessAppendsThroughSeam verifies the login-success note
-// (loginDoneMsg with cfg) appends through the seam and persists the config.
 func TestModel_loginDoneSuccessAppendsThroughSeam(t *testing.T) {
 	t.Parallel()
 	var applied config.Config
@@ -112,15 +96,12 @@ func TestModel_loginDoneSuccessAppendsThroughSeam(t *testing.T) {
 	}
 }
 
-// TestModel_skillNoActivationAppendsThroughSeam verifies the "no skill
-// activation available" failure note in activateSkill appends through the seam.
 func TestModel_skillNoActivationAppendsThroughSeam(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
-		// No Skills surface: the activation failure note path.
 	})
 	m = resize(t, m)
 	m.tx.layout.dirty = false // isolate the append: only the seam may re-mark it
@@ -134,8 +115,6 @@ func TestModel_skillNoActivationAppendsThroughSeam(t *testing.T) {
 	}
 }
 
-// TestModel_loginNoFlowAppendsThroughSeam verifies the "no login flow
-// available" failure note in startLogin appends through the seam.
 func TestModel_loginNoFlowAppendsThroughSeam(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
@@ -143,7 +122,6 @@ func TestModel_loginNoFlowAppendsThroughSeam(t *testing.T) {
 			return TurnResult{Answer: "ok"}, nil
 		},
 		Config: cfgFixture(),
-		// No Login seam: the login failure note path.
 	})
 	m = resize(t, m)
 	m.tx.layout.dirty = false // isolate the append: only the seam may re-mark it
@@ -157,8 +135,6 @@ func TestModel_loginNoFlowAppendsThroughSeam(t *testing.T) {
 	}
 }
 
-// lastEitri returns the content of the most recent eitri-role transcript
-// message, failing if the transcript is empty.
 func lastEitri(t *testing.T, m Model) string {
 	t.Helper()
 	if n := len(m.tx.messages); n == 0 {

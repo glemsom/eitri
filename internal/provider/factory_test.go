@@ -12,8 +12,6 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// TestFromConfigRoutesOpenCodeGo verifies the saved opencode-go provider builds
-// the OpenAI-compatible primary client.
 func TestFromConfigRoutesOpenCodeGo(t *testing.T) {
 	t.Parallel()
 	p, err := FromConfig(config.Config{Provider: "opencode-go", Model: "deepseek-v4-flash"}, ProviderEnv{OpenCodeKey: "k"})
@@ -25,9 +23,6 @@ func TestFromConfigRoutesOpenCodeGo(t *testing.T) {
 	}
 }
 
-// TestFromConfigRoutesCustomOpenAI verifies a saved custom-openai provider builds
-// an OpenAI-compatible client against the user-supplied base URL and key,
-// routed through the same Chat-Completions dialect.
 func TestFromConfigRoutesCustomOpenAI(t *testing.T) {
 	t.Parallel()
 	cfg := config.Config{
@@ -51,9 +46,6 @@ func TestFromConfigRoutesCustomOpenAI(t *testing.T) {
 	}
 }
 
-// TestFromConfigCustomOpenAIMissingSettingsFails verifies a custom-openai
-// selection without a configured endpoint fails cleanly at build time rather
-// than silently talking nowhere.
 func TestFromConfigCustomOpenAIMissingSettingsFails(t *testing.T) {
 	t.Parallel()
 	_, err := FromConfig(config.Config{Provider: "custom-openai"}, ProviderEnv{})
@@ -62,8 +54,6 @@ func TestFromConfigCustomOpenAIMissingSettingsFails(t *testing.T) {
 	}
 }
 
-// TestFromConfigRoutesCopilot verifies a saved github-copilot provider builds a
-// Copilot provider carrying the persisted device-flow credential.
 func TestFromConfigRoutesCopilot(t *testing.T) {
 	t.Parallel()
 	cfg := config.Config{
@@ -88,19 +78,6 @@ func TestFromConfigRoutesCopilot(t *testing.T) {
 	}
 }
 
-// TestFromConfigThinkingSuppressionMatchesWireBehavior asserts each provider
-// family's advertised thinking-suppression capability matches its actual wire
-// shape: negotiations against the factory-built provider
-// honor a required thinking_suppression request, and a stream against the same
-// factory routing emits the family's suppression form — omission of the
-// thinking toggle on the openai-compatible path and an explicit
-// thinking:{type:disabled} on the copilot path. The opencode-go
-// and custom-openai families route their endpoint through the factory seams
-// (ProviderEnv.OpenCodeURL / CustomOpenAI.BaseURL) so the streamed instance is
-// the one FromConfig built. Copilot's endpoint is a factory constant, so its
-// wire check streams a sibling bound to the test server; the negotiation still
-// runs against the factory-built instance. Deterministic httptest servers, no
-// network.
 func TestFromConfigThinkingSuppressionMatchesWireBehavior(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -137,11 +114,9 @@ func TestFromConfigThinkingSuppressionMatchesWireBehavior(t *testing.T) {
 			},
 		},
 		{
-			name: "github-copilot",
-			cfg:  config.Config{Provider: ProviderCopilot, Copilot: config.CopilotConfig{AccessToken: "x"}},
-			env:  ProviderEnv{},
-			// FromConfig pins Copilot's endpoint to DefaultCopilotURL with no env
-			// seam, so the wire check uses a sibling bound to the test server.
+			name:        "github-copilot",
+			cfg:         config.Config{Provider: ProviderCopilot, Copilot: config.CopilotConfig{AccessToken: "x"}},
+			env:         ProviderEnv{},
 			wireThrough: nil,
 		},
 	}
@@ -154,8 +129,6 @@ func TestFromConfigThinkingSuppressionMatchesWireBehavior(t *testing.T) {
 			}
 			assertSuppressionHonored(t, p)
 
-			// Negotiation ran on the factory-built p; the wire check streams a
-			// provider with the same factory routing bound to a live server.
 			streamAssertSuppression(t, func(url string) Provider {
 				if tc.wireThrough != nil {
 					return tc.wireThrough(t, url)
@@ -166,11 +139,6 @@ func TestFromConfigThinkingSuppressionMatchesWireBehavior(t *testing.T) {
 	}
 }
 
-// streamAssertSuppression streams one thinking-off Request through a provider
-// built against the returned server URL and asserts the wire carries the
-// family's suppression form: omission of the thinking toggle on the
-// openai-compatible path, an explicit thinking:{type:disabled} on
-// the copilot path.
 func streamAssertSuppression(t *testing.T, build func(url string) Provider, family string) {
 	t.Helper()
 	var sawThinking bool
@@ -199,8 +167,6 @@ func streamAssertSuppression(t *testing.T, build func(url string) Provider, fami
 	}
 }
 
-// assertSuppressionHonored negotiates a required thinking-suppression request
-// against p and fails unless it is honored.
 func assertSuppressionHonored(t *testing.T, p Provider) {
 	t.Helper()
 	honored, err := NegotiateGenerationControls(context.Background(), p, []ControlRequirement{
@@ -214,8 +180,6 @@ func assertSuppressionHonored(t *testing.T, p Provider) {
 	}
 }
 
-// thinkingWireServer serves an SSE fixture and reports each request's parsed
-// body to inspect.
 func thinkingWireServer(t *testing.T, inspect func(map[string]any)) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -234,8 +198,6 @@ func thinkingWireServer(t *testing.T, inspect func(map[string]any)) *httptest.Se
 	return srv
 }
 
-// TestFromConfigUnknownProviderFails verifies an unsupported provider selection
-// is rejected explicitly rather than silently defaulting.
 func TestFromConfigUnknownProviderFails(t *testing.T) {
 	t.Parallel()
 	_, err := FromConfig(config.Config{Provider: "nope"}, ProviderEnv{})

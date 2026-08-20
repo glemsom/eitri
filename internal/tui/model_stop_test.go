@@ -13,18 +13,11 @@ import (
 	"github.com/glemsom/eitri/internal/testutil"
 )
 
-// blockingTurn is a Turn seam that runs until its context is canceled and then
-// reports the cancellation, modeling a real engine turn that esc aborts.
 func blockingTurn(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 	<-ctx.Done()
 	return TurnResult{}, ctx.Err()
 }
 
-// TestModel_escWhileBusyCancelsTurnAndKeepsPartial asserts pressing esc during
-// a running turn cancels the in-flight turn's context (the running work dies
-// at the ctx boundary), the partial content the turn produced stays in the
-// transcript, the turn is marked stopped (not rendered as an error), the busy
-// state clears, and a subsequent prompt runs normally.
 func TestModel_escWhileBusyCancelsTurnAndKeepsPartial(t *testing.T) {
 	var canceled atomic.Bool
 	var enteredOnce sync.Once
@@ -33,22 +26,17 @@ func TestModel_escWhileBusyCancelsTurnAndKeepsPartial(t *testing.T) {
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		calls.Add(1)
 		if calls.Load() > 1 {
-			// A subsequent prompt runs normally and completes on its own.
 			return TurnResult{Answer: "second answer"}, nil
 		}
 		enteredOnce.Do(func() { close(entered) })
 		<-ctx.Done()
 		canceled.Store(true)
-		// The engine stand-in keeps the partial content it had produced when
-		// the cancellation lands, as the real engine does in its stop outcome.
 		return TurnResult{Answer: "partial answer"}, ctx.Err()
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 	m, cmd := submitBusy(t, m)
 
-	// Run the turn command on its own goroutine (it blocks until the cancel
-	// lands); done fires once the turn goroutine returns after cancellation.
 	done := make(chan struct{})
 	var doneMsg tea.Msg
 	go func() {
@@ -56,15 +44,11 @@ func TestModel_escWhileBusyCancelsTurnAndKeepsPartial(t *testing.T) {
 		doneMsg = cmd()
 	}()
 
-	// Await readiness the test drives (the running turn entered), not sleep.
 	testutil.Await(t, "running turn to start", entered)
 
-	// esc while busy must cancel the running turn.
 	nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 	m = asModel(t, nm)
 
-	// The aborted turn's completion lands as a stopped result, not an error.
-	// The shared await's timeout is a fatal backstop, never the happy path.
 	testutil.Await(t, "turn goroutine to return after esc", done)
 	m = mustUpdate(t, m, doneMsg)
 	if !canceled.Load() {
@@ -91,7 +75,6 @@ func TestModel_escWhileBusyCancelsTurnAndKeepsPartial(t *testing.T) {
 		t.Errorf("stream pointer = %d, want -1 after stop", m.td.curStream)
 	}
 
-	// A subsequent normal prompt works.
 	m = typeText(t, m, "next")
 	m = submitAndWait(t, m)
 	last := m.tx.messages[len(m.tx.messages)-1]
@@ -100,11 +83,6 @@ func TestModel_escWhileBusyCancelsTurnAndKeepsPartial(t *testing.T) {
 	}
 }
 
-// TestModel_escWhileBusyMarksStoppedNotError asserts the stopped outcome is
-// surface-distinct from an error: `TurnResult{Stopped:true}` (the app adapter's
-// mapping of the engine stop sentinel) keeps the partial answer, appends no
-// error line, and the message renders with the stopped marker rather than the
-// error prefix.
 func TestModel_escWhileBusyMarksStoppedNotError(t *testing.T) {
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		return TurnResult{Stopped: true, Answer: "prior reasoning"}, nil
@@ -113,9 +91,6 @@ func TestModel_escWhileBusyMarksStoppedNotError(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m, cmd := submitBusy(t, m)
 
-	// The turn completes as a stopped result (mapped by the app adapter from
-	// engine.ErrStopped): the partial answer must stay, marked stopped, with no
-	// error rendering.
 	m = runSubmitted(t, m, cmd)
 
 	last := m.tx.messages[len(m.tx.messages)-1]
@@ -137,9 +112,6 @@ func TestModel_escWhileBusyMarksStoppedNotError(t *testing.T) {
 	}
 }
 
-// TestModel_escIdleStaysNoop asserts esc with no running turn leaves state
-// untouched: no cancel handle is invoked, the composer keeps focus, and no
-// turn starts (vim-normal mode is gone; esc remains an idle no-op).
 func TestModel_escIdleStaysNoop(t *testing.T) {
 	var canceled atomic.Bool
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -166,9 +138,6 @@ func TestModel_escIdleStaysNoop(t *testing.T) {
 	}
 }
 
-// TestModel_stoppedBeforeAnyDeltaAppendsPartialMessage asserts a turn stopped
-// before the first stream delta still surfaces the partial answer the engine
-// accumulated, as a stopped message rather than an error.
 func TestModel_stoppedBeforeAnyDeltaAppendsPartialMessage(t *testing.T) {
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		return TurnResult{Stopped: true, Answer: "first words"}, nil
@@ -187,10 +156,6 @@ func TestModel_stoppedBeforeAnyDeltaAppendsPartialMessage(t *testing.T) {
 	}
 }
 
-// TestModel_stoppedStreamKeepsStreamedBuffer asserts a stopped turn that was
-// streaming reconciles the in-progress message with the engine's authoritative
-// partial answer: the buffer keeps the streamed text, streaming clears, and
-// the message is marked stopped.
 func TestModel_stoppedStreamKeepsStreamedBuffer(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn:   streamingTurn,
@@ -220,8 +185,6 @@ func TestModel_stoppedStreamKeepsStreamedBuffer(t *testing.T) {
 	}
 }
 
-// TestModel_stoppedThenNewTurnWorks asserts a fresh prompt after a stop runs
-// normally: the new turn is a normal (non-stopped) assistant reply.
 func TestModel_stoppedThenNewTurnWorks(t *testing.T) {
 	turns := 0
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -252,9 +215,6 @@ func TestModel_stoppedThenNewTurnWorks(t *testing.T) {
 	}
 }
 
-// TestModel_turnCancelErrorSurfacesAsStopped asserts a turn that dies to a raw
-// context.Canceled (a generic engine stand-in that does not map the stop to
-// TurnResult.Stopped) is still rendered as stopped, not as an error.
 func TestModel_turnCancelErrorSurfacesAsStopped(t *testing.T) {
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		<-ctx.Done()
@@ -281,8 +241,6 @@ func TestModel_turnCancelErrorSurfacesAsStopped(t *testing.T) {
 	}
 }
 
-// TestRender_stoppedMarkerPin pins the stopped marker string so the render
-// surface and tests agree on its shape.
 func TestRender_stoppedMarkerPin(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	if stoppedMarker() != "! stopped" {
@@ -290,10 +248,6 @@ func TestRender_stoppedMarkerPin(t *testing.T) {
 	}
 }
 
-// TestModel_ctrlCWhileBusyStopsTurnAndKeepsPartial asserts pressing Ctrl+C
-// during a running turn cancels it (same outcome as esc): the partial content
-// stays, the turn is marked stopped, and busy clears. Ctrl+C is the natural
-// stop binding — a second Ctrl+C after the stop quits because busy is false.
 func TestModel_ctrlCWhileBusyStopsTurnAndKeepsPartial(t *testing.T) {
 	var canceled atomic.Bool
 	var enteredOnce sync.Once
@@ -314,15 +268,11 @@ func TestModel_ctrlCWhileBusyStopsTurnAndKeepsPartial(t *testing.T) {
 		defer close(done)
 		doneMsg = cmd()
 	}()
-	// Await readiness the test drives (the running turn entered), not sleep.
 	testutil.Await(t, "running turn to start", entered)
 
-	// Ctrl+C while busy must cancel the running turn.
 	nm, _ := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	m = asModel(t, nm)
 
-	// The turn's completion lands as a stopped result; the shared await's
-	// timeout is a fatal backstop, never the happy path.
 	testutil.Await(t, "turn goroutine to return after ctrl+c", done)
 	m = mustUpdate(t, m, doneMsg)
 	if !canceled.Load() {
@@ -347,8 +297,6 @@ func TestModel_ctrlCWhileBusyStopsTurnAndKeepsPartial(t *testing.T) {
 	}
 }
 
-// TestModel_ctrlCWhenIdleQuits asserts Ctrl+C with no running turn issues
-// tea.Quit — the natural exit binding when the model is idle.
 func TestModel_ctrlCWhenIdleQuits(t *testing.T) {
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		return TurnResult{Answer: "never"}, nil
@@ -362,15 +310,12 @@ func TestModel_ctrlCWhenIdleQuits(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("idle ctrl+c must emit a quit command")
 	}
-	// Execute the command; it should return a tea.QuitMsg.
 	msg := cmd()
 	if _, ok := msg.(tea.QuitMsg); !ok {
 		t.Errorf("idle ctrl+c command returned %T, want QuitMsg", msg)
 	}
 }
 
-// TestModel_ctrlCAfterStopQuits asserts Ctrl+C after a stopped turn quits
-// (busy is false post-stop, so ctrl+c falls through to quit).
 func TestModel_ctrlCAfterStopQuits(t *testing.T) {
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		return TurnResult{Stopped: true, Answer: "partial"}, nil
@@ -384,7 +329,6 @@ func TestModel_ctrlCAfterStopQuits(t *testing.T) {
 		t.Fatal("busy must clear after the stopped turn")
 	}
 
-	// Ctrl+C after a stop must quit (busy is false).
 	nm, cmd := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	m = asModel(t, nm)
 

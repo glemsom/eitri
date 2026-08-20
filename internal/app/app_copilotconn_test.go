@@ -12,10 +12,6 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// TestCopilotConnectPersistsFreshToken drives the TUI-side device-flow handshake
-// end to end against a stub OAuth server: it starts the flow, surfaces the user
-// code, polls to completion, and persists the fresh token set to config so a
-// later batch run reuses it without re-auth.
 func TestCopilotConnectPersistsFreshToken(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -27,7 +23,6 @@ func TestCopilotConnectPersistsFreshToken(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Point the device-flow client at the stub server.
 	orig := newDeviceFlow
 	newDeviceFlow = func(h *http.Client, _ map[string]string) *provider.DeviceFlow {
 		return provider.NewDeviceFlow(h, map[string]string{
@@ -55,7 +50,6 @@ func TestCopilotConnectPersistsFreshToken(t *testing.T) {
 		t.Fatalf("copilot config = %+v, want the fresh device-flow tokens", cfg.Copilot)
 	}
 
-	// The token must be persisted on disk for a later batch run to reuse.
 	raw, err := os.ReadFile(cfgPath)
 	if err != nil {
 		t.Fatalf("read persisted config: %v", err)
@@ -65,9 +59,6 @@ func TestCopilotConnectPersistsFreshToken(t *testing.T) {
 	}
 }
 
-// TestCopilotConnectRetriesAuthorizationPending verifies the interactive
-// Copilot login path keeps polling after GitHub reports authorization_pending,
-// instead of surfacing that interim state as a terminal user-visible error.
 func TestCopilotConnectRetriesAuthorizationPending(t *testing.T) {
 	var polls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

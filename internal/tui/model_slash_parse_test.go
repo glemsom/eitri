@@ -4,12 +4,6 @@ import (
 	"testing"
 )
 
-// TestModel_parseSkillNameAndArgs is the acceptance boundary for issue
-// #238: slashCommand must recognise both a bare `/skillname` and a
-// `/skillname <args>` line, splitting the trailing args on the first
-// whitespace after the detected skill name. It must leave every other `/...`
-// line untouched (real paths and unknown skills fall through as a normal
-// prompt), and never return args when the line is skill-only.
 func TestModel_parseSkillNameAndArgs(t *testing.T) {
 	t.Parallel()
 	skills := []SkillItem{{Name: "review"}, {Name: "plan"}}

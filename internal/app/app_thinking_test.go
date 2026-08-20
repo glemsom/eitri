@@ -10,16 +10,10 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// captureThinking records the thinking-control head of every provider request,
-// so a test can assert the run seam reads config.ThinkingEnabled instead of
-// hardcoding thinking on (#55).
 type captureThinking struct {
 	seen []bool
 }
 
-// TestRunReadsThinkingEnabledConfigFalse drives batch mode with a config that
-// has thinking_enabled:false and asserts the provider request carries
-// ThinkingEnabled off and no reasoning_effort — the non-thinking run path.
 func TestRunReadsThinkingEnabledConfigFalse(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.json")
@@ -57,9 +51,6 @@ func TestRunReadsThinkingEnabledConfigFalse(t *testing.T) {
 	}
 }
 
-// TestRunReadsThinkingEnabledConfigDefaultTrue verifies the default config
-// keeps thinking on: batch mode with an injected provider yields a request
-// with ThinkingEnabled true (unchanged default behaviour).
 func TestRunReadsThinkingEnabledConfigDefaultTrue(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.json")

@@ -5,13 +5,6 @@ import (
 	"testing"
 )
 
-// TestReadDescriptionGuidance locks in the provider-facing read description:
-// the same string every wire dialect sends to the model. It must state that
-// the ENTIRE file (whole-file default, no error), recommend explicit 1-based
-// line ranges for large files, mention line-numbered output and the explicit
-// "+N more" truncation marker, and never regress to the cost-blind
-// "optionally limited" phrasing. A future edit that drops any of this guidance
-// fails the test.
 func TestReadDescriptionGuidance(t *testing.T) {
 	t.Parallel()
 	desc := (&readTool{}).Description()

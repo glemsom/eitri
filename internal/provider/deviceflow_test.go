@@ -12,9 +12,6 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// TestDeviceFlowStartRequestsCode verifies Start hits the GitHub /login/device/code
-// endpoint and surfaces the verification URL + device code for the TUI approval
-// screen.
 func TestDeviceFlowStartRequestsCode(t *testing.T) {
 	t.Parallel()
 	var path, contentType string
@@ -43,9 +40,6 @@ func TestDeviceFlowStartRequestsCode(t *testing.T) {
 	}
 }
 
-// TestDeviceFlowPollExchangesTokens verifies Poll exchanges the device code for
-// a credential on approval, giving the TUI a fresh token set to persist to
-// config. Expiry is derived from the endpoint's expires_in.
 func TestDeviceFlowPollExchangesTokens(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -74,9 +68,6 @@ func TestDeviceFlowPollExchangesTokens(t *testing.T) {
 	}
 }
 
-// TestDeviceFlowPollTokenExchangeError verifies a device-login exchange that
-// responds with an error (no access/refresh token) surfaces the flowError
-// mismatch-value error rather than silently succeeding.
 func TestDeviceFlowPollTokenExchangeError(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -99,8 +90,6 @@ func TestDeviceFlowPollTokenExchangeError(t *testing.T) {
 	}
 }
 
-// TestDeviceFlowPollAuthorizationPending verifies a not-yet-approved poll is a
-// clean retryable signal, and the TUI keeps waiting.
 func TestDeviceFlowPollAuthorizationPending(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -116,9 +105,6 @@ func TestDeviceFlowPollAuthorizationPending(t *testing.T) {
 	}
 }
 
-// TestDeviceFlowToConfig verifies a completed device flow yields a credential
-// ready to persist into config (acceptance criterion (c) wiring: TUI device-flow
-// re-auth produces the fresh token set stored for later batch runs).
 func TestDeviceFlowToConfig(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -153,7 +139,6 @@ func TestDeviceFlowToConfig(t *testing.T) {
 	}
 }
 
-// TestDeviceFlowConcurrentSafe guards the shared poll against data races.
 func TestDeviceFlowConcurrentSafe(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -170,8 +155,6 @@ func TestDeviceFlowConcurrentSafe(t *testing.T) {
 	wg.Wait()
 }
 
-// codeEndpoints points the device-flow client's code/token endpoints at the
-// httptest server with the real GitHub path suffixes.
 func codeEndpoints(srv *httptest.Server) map[string]string {
 	return map[string]string{
 		"code":  srv.URL + "/login/device/code",

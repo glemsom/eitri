@@ -7,9 +7,7 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// hotProvider is a mutable provider handle shared by the engine and TUI: the
-// current concrete provider can be swapped after an in-TUI config mutation
-// (Settings save, Copilot login) without rebuilding the whole session.
+// hotProvider is a mutable provider handle shared by the engine and TUI: the current concrete provider can be swapped after an in-TUI config mutation (Settings save, Copilot login) without rebuilding the whole session.
 type hotProvider struct {
 	mu sync.RWMutex
 	p  provider.Provider

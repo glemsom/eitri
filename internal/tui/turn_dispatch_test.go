@@ -8,7 +8,6 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// newTestTx returns a minimal Transcript suitable for TurnDispatch tests.
 func newTestTx() Transcript {
 	th := themeFor(config.DefaultTheme)
 	return Transcript{
@@ -19,14 +18,11 @@ func newTestTx() Transcript {
 	}
 }
 
-// stubTurn returns a Turn seam that immediately returns the given answer.
 func stubTurn(answer string, err error) Turn {
 	return func(_ context.Context, _ string, _ string) (TurnResult, error) {
 		return TurnResult{Answer: answer}, err
 	}
 }
-
-// --- startTurn tests ---
 
 func TestTurnDispatch_startTurn_installsContext(t *testing.T) {
 	t.Parallel()
@@ -98,13 +94,10 @@ func TestTurnDispatch_startTurn_setsAnchor(t *testing.T) {
 
 	d.startTurn(&tx, "hello", "")
 
-	// The anchor should be the index of the just-appended user message.
 	if tx.log.curAnchor != 0 {
 		t.Errorf("tool log anchor = %d, want 0", tx.log.curAnchor)
 	}
 }
-
-// --- stopTurn tests ---
 
 func TestTurnDispatch_stopTurn_cancelsContext(t *testing.T) {
 	t.Parallel()
@@ -112,7 +105,6 @@ func TestTurnDispatch_stopTurn_cancelsContext(t *testing.T) {
 	tx := newTestTx()
 	d.startTurn(&tx, "hello", "")
 
-	// Context should be live before stop.
 	if d.turnCtx.Err() != nil {
 		t.Fatal("context already cancelled before stop")
 	}
@@ -127,11 +119,8 @@ func TestTurnDispatch_stopTurn_cancelsContext(t *testing.T) {
 func TestTurnDispatch_stopTurn_noopWhenNil(t *testing.T) {
 	t.Parallel()
 	d := NewTurnDispatch(stubTurn("ok", nil))
-	// No startTurn — cancel is nil.
 	d.stopTurn() // must not panic
 }
-
-// --- turnCmd tests ---
 
 func TestTurnDispatch_turnCmd_returnsTurnDoneMsg(t *testing.T) {
 	t.Parallel()
@@ -187,8 +176,6 @@ func TestTurnDispatch_turnCmd_errorReturnsErr(t *testing.T) {
 		t.Errorf("err = %q, want %q", tdm.err.Error(), "boom")
 	}
 }
-
-// --- appendStreamDelta tests ---
 
 func TestTurnDispatch_appendStreamDelta_createsMessageOnFirstDelta(t *testing.T) {
 	t.Parallel()
@@ -288,21 +275,18 @@ func TestTurnDispatch_appendStreamDelta_doesNotResetBusyPulseOnSubsequentDelta(t
 	}
 }
 
-// --- handleTurnDone tests (5 branches) ---
-
 func TestTurnDispatch_handleTurnDone_stoppedStreaming(t *testing.T) {
 	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
 	d.startTurn(&tx, "q", "")
 
-	// Simulate a streaming message.
 	tx.messages = append(tx.messages, message{role: "eitri", content: "partial", streaming: true})
 	d.curStream = 0
 
 	stopped, err := d.handleTurnDone(&tx, turnDoneMsg{
-		stopped:  true,
-		answer:   "final-partial",
+		stopped:   true,
+		answer:    "final-partial",
 		reasoning: "thought",
 	})
 	if !stopped {
@@ -348,7 +332,6 @@ func TestTurnDispatch_handleTurnDone_stoppedNoStreaming(t *testing.T) {
 	if err != nil {
 		t.Errorf("expected nil error, got %v", err)
 	}
-	// Should append a new stopped message (no streaming message to update).
 	if len(tx.messages) != 2 {
 		t.Fatalf("expected 2 messages, got %d", len(tx.messages))
 	}
@@ -376,7 +359,6 @@ func TestTurnDispatch_handleTurnDone_error(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected non-nil error")
 	}
-	// Error message appended.
 	if len(tx.messages) != 2 {
 		t.Fatalf("expected 2 messages, got %d", len(tx.messages))
 	}
@@ -394,12 +376,11 @@ func TestTurnDispatch_handleTurnDone_successStreaming(t *testing.T) {
 	tx := newTestTx()
 	d.startTurn(&tx, "q", "")
 
-	// Simulate a streaming message.
 	tx.messages = append(tx.messages, message{role: "eitri", content: "partial", streaming: true})
 	d.curStream = 0
 
 	stopped, err := d.handleTurnDone(&tx, turnDoneMsg{
-		answer:   "final answer",
+		answer:    "final answer",
 		reasoning: "reasoned",
 	})
 	if stopped {
@@ -441,7 +422,6 @@ func TestTurnDispatch_handleTurnDone_successNoStreaming(t *testing.T) {
 	if err != nil {
 		t.Errorf("expected nil error, got %v", err)
 	}
-	// Should append a new message (no streaming to reconcile).
 	if len(tx.messages) != 2 {
 		t.Fatalf("expected 2 messages, got %d", len(tx.messages))
 	}
@@ -454,8 +434,6 @@ func TestTurnDispatch_handleTurnDone_successNoStreaming(t *testing.T) {
 	}
 }
 
-// --- turnCmd dispatch integration ---
-
 func TestTurnDispatch_turnCmd_dispatchesTurn(t *testing.T) {
 	t.Parallel()
 	var calledPrompt string
@@ -467,7 +445,6 @@ func TestTurnDispatch_turnCmd_dispatchesTurn(t *testing.T) {
 	tx := newTestTx()
 	cmd := d.startTurn(&tx, "hello", "")
 
-	// Execute the command.
 	msg := cmd()
 	tdm := msg.(turnDoneMsg)
 	if tdm.prompt != "hello" {
@@ -478,14 +455,11 @@ func TestTurnDispatch_turnCmd_dispatchesTurn(t *testing.T) {
 	}
 }
 
-// --- full cycle test ---
-
 func TestTurnDispatch_fullCycle(t *testing.T) {
 	t.Parallel()
 	d := NewTurnDispatch(stubTurn("final", nil))
 	tx := newTestTx()
 
-	// startTurn
 	cmd := d.startTurn(&tx, "go", "")
 	if cmd == nil {
 		t.Fatal("startTurn returned nil")
@@ -494,11 +468,9 @@ func TestTurnDispatch_fullCycle(t *testing.T) {
 		t.Fatal("should be busy")
 	}
 
-	// Simulate some stream deltas.
 	d.appendStreamDelta(&tx, AnswerStream, "par")
 	d.appendStreamDelta(&tx, AnswerStream, "tial")
 
-	// Handle completion.
 	msg := cmd()
 	tdm := msg.(turnDoneMsg)
 	stopped, err := d.handleTurnDone(&tx, tdm)
@@ -509,7 +481,6 @@ func TestTurnDispatch_fullCycle(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Final answer should be reconciled.
 	if tx.messages[1].content != "final" {
 		t.Errorf("final content = %q, want %q", tx.messages[1].content, "final")
 	}

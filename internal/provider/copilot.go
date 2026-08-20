@@ -15,52 +15,31 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// ErrReauthRequired is returned by a Copilot batch run when no usable
-// credential is available — a valid access token nor a refresh path. Batch
-// never runs the interactive device flow; the message directs the user to
-// re-authenticate in the TUI, which persists a fresh token to config.
+// ErrReauthRequired is returned by a Copilot batch run when no usable credential is available — a valid access token nor a refresh path.
 var ErrReauthRequired = errors.New("Copilot: no valid credential; re-authenticate in the TUI, which saves a fresh token to config")
 
-// RefreshFunc renews a Copilot credential from a refresh token,
-// non-interactively, returning a fresh token set. It is the batch-sanctioned
-// automatic renewal path; full device-flow OAuth is TUI-only.
+// RefreshFunc renews a Copilot credential from a refresh token, non-interactively, returning a fresh token set.
 type RefreshFunc func(ctx context.Context, refreshToken string) (config.CopilotConfig, error)
 
-// CopilotProvider is the GitHub Copilot provider (device-flow OAuth via the
-// TUI). It re-expresses through the same Chat-Completions wire seam as the
-// primary provider — only authentication differs — so a Copilot model maps into
-// the same reasoning/tool channel the engine already handles (acceptance: Copilot
-// streaming/reasoning through the shared seam). Batch consumes a stored/refreshed
-// bearer token non-interactively; the interactive device-flow handshake is the
-// TUI's job.
+// CopilotProvider is the GitHub Copilot provider (device-flow OAuth via the TUI).
 type CopilotProvider struct {
 	url  string
 	http *http.Client
 
-	cfg config.CopilotConfig
-	// refresh renews an expired/absent access token via the refresh path.
+	cfg     config.CopilotConfig
 	refresh RefreshFunc
-	// persist stores a renewed token set back to config for later runs.
 	persist func(config.CopilotConfig) error
 
 	mu              sync.RWMutex
 	responsesModels map[string]bool
 }
 
-// NewCopilot returns a Copilot provider talking to the Chat-Completions url
-// (e.g. https://api.githubcopilot.com/chat/completions) with the stored
-// credential cfg. refresh provides the non-interactive renewal path (nil means
-// no refresh is available); persist saves renewed tokens to config (nil skips).
+// NewCopilot returns a Copilot provider talking to the Chat-Completions url (e.g. https://api.githubcopilot.com/chat/completions) with the stored credential cfg. refresh provides the non-interactive renewal path (nil means no refresh is available); persist saves renewed tokens to config (nil skips).
 func NewCopilot(cfg config.CopilotConfig, url string, httpc *http.Client, refresh RefreshFunc, persist func(config.CopilotConfig) error) *CopilotProvider {
 	return &CopilotProvider{url: url, http: httpc, cfg: cfg, refresh: refresh, persist: persist, responsesModels: map[string]bool{}}
 }
 
-// copilotThinkingControl returns the DeepSeek thinking-mode toggle in its
-// explicit form for the Copilot wire: enabled when the caller keeps thinking
-// on, and disabled when thinking is off. Unlike the primary/openai path (where
-// an off thinking omits the field entirely), the Copilot backend follows its
-// server default (on) unless an explicit suppression is sent, so the toggle is
-// always carried here.
+// copilotThinkingControl returns the DeepSeek thinking-mode toggle in its explicit form for the Copilot wire: enabled when the caller keeps thinking on, and disabled when thinking is off.
 func copilotThinkingControl(req Request) *thinkingEnabler {
 	t := "enabled"
 	if !req.ThinkingEnabled {
@@ -69,19 +48,12 @@ func copilotThinkingControl(req Request) *thinkingEnabler {
 	return &thinkingEnabler{Type: t}
 }
 
-// SupportedGenerationControls declares that Copilot can honor the Generation
-// Budget control, since it streams through the same Chat-Completions wire as the
-// primary provider and emits max_completion_tokens on special turns, plus
-// Thinking Suppression, carried as an explicit thinking:{type:disabled} toggle
-// when thinking is off. The other three generation controls are not supported
-// here.
+// SupportedGenerationControls declares that Copilot can honor the Generation Budget control, since it streams through the same Chat-Completions wire as the primary provider and emits max_completion_tokens on special turns, plus Thinking Suppression, carried as an explicit thinking:{type:disabled} toggle when thinking is off.
 func (cp *CopilotProvider) SupportedGenerationControls(context.Context) ([]GenerationControl, error) {
 	return []GenerationControl{GenerationControlGenerationBudget, GenerationControlThinkingSuppression}, nil
 }
 
-// bearer resolves the bearer token for a run. Batch logic: a valid stored
-// access token is used directly; otherwise a refresh token, when present,
-// renews non-interactively; otherwise no usable credential — ErrReauthRequired.
+// bearer resolves the bearer token for a run.
 func (cp *CopilotProvider) bearer(ctx context.Context) (string, error) {
 	cfg := cp.cfg
 	switch {
@@ -108,9 +80,7 @@ func (cp *CopilotProvider) bearer(ctx context.Context) (string, error) {
 	}
 }
 
-// Stream implements Provider, authenticating with the resolved bearer token and
-// streaming Copilot's chat endpoint by default, with an automatic retry on the
-// Responses endpoint for models Copilot rejects as responses-only.
+// Stream implements Provider, authenticating with the resolved bearer token and streaming Copilot's chat endpoint by default, with an automatic retry on the Responses endpoint for models Copilot rejects as responses-only.
 func (cp *CopilotProvider) Stream(ctx context.Context, req Request) (Stream, error) {
 	tok, err := cp.bearer(ctx)
 	if err != nil {
@@ -206,12 +176,7 @@ func retryResponses(err error) bool {
 	return strings.Contains(he.Body, "unsupported_api_for_model") && strings.Contains(he.Body, "/chat/completions")
 }
 
-// Models implements the optional ModelLister capability so the TUI Settings
-// surface can surface the Copilot model lineup. The models URL is derived from
-// the Chat-Completions url by stripping the /chat/completions suffix, mirroring
-// the primary provider's derivation. Any discovered Responses-only model is
-// cached into the runtime routing map so first contact skips the known-bad chat
-// endpoint.
+// Models implements the optional ModelLister capability so the TUI Settings surface can surface the Copilot model lineup.
 func (cp *CopilotProvider) Models(ctx context.Context) ([]ModelInfo, error) {
 	tok, err := cp.bearer(ctx)
 	if err != nil {

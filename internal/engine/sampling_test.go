@@ -8,21 +8,14 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// samplingScripted wraps a Scripted handler so it also declares, via the
-// generation-control capability surface, that it honors the Sampling Policy
-// control. The engine opts a sampling-policy
-// special turn into that control, so the turn's request must carry the policy.
 type samplingScripted struct {
 	provider.Scripted
 }
 
-// SupportedGenerationControls implements provider.GenerationControlProvider.
 func (s *samplingScripted) SupportedGenerationControls(context.Context) ([]provider.GenerationControl, error) {
 	return []provider.GenerationControl{provider.GenerationControlSamplingPolicy}, nil
 }
 
-// samplingHandler records every request it serves and returns a fixed answer so
-// a test can assert the path end to end.
 type samplingHandler struct {
 	requests []provider.Request
 }
@@ -35,12 +28,6 @@ func (s *samplingHandler) stream(_ context.Context, req provider.Request) (provi
 	), nil
 }
 
-// TestRunSamplingPolicyTemperatureOnSupportingProvider verifies the
-// temperature-based Sampling Policy special turn:
-// on a provider that honors the control, the engine issues a non-tool turn
-// carrying a temperature sampling policy — so the wire emits temperature and
-// never top_p — and returns the generated answer. The session key and prompt
-// thread through unchanged.
 func TestRunSamplingPolicyTemperatureOnSupportingProvider(t *testing.T) {
 	t.Parallel()
 	h := &samplingHandler{}
@@ -77,9 +64,6 @@ func TestRunSamplingPolicyTemperatureOnSupportingProvider(t *testing.T) {
 	}
 }
 
-// TestRunSamplingPolicyNucleusOnSupportingProvider verifies the nucleus
-// (top-p) sampling form of the special turn carries the nucleus
-// policy so the wire emits top_p and never temperature.
 func TestRunSamplingPolicyNucleusOnSupportingProvider(t *testing.T) {
 	t.Parallel()
 	h := &samplingHandler{}
@@ -100,14 +84,8 @@ func TestRunSamplingPolicyNucleusOnSupportingProvider(t *testing.T) {
 	}
 }
 
-// TestRunSamplingPolicyFailsFastWhenUnsupported verifies the generation-control
-// contract: a provider without the Sampling
-// Policy capability honors no controls, so a required sampling-policy special
-// turn fails negotiation fast — before any wire call.
 func TestRunSamplingPolicyFailsFastWhenUnsupported(t *testing.T) {
 	t.Parallel()
-	// NewScripted has no generation-control capability surface: it honors no
-	// controls, so a required Sampling Policy fails the contract.
 	h := &samplingHandler{}
 	e := New(provider.NewScripted(h.stream), &mockTranscript{})
 
@@ -127,10 +105,6 @@ func TestRunSamplingPolicyFailsFastWhenUnsupported(t *testing.T) {
 	}
 }
 
-// TestRunOrdinaryTurnOmitsSamplingPolicy verifies that an ordinary agent/tool
-// turn never carries a sampling policy, so the byte-identical request head is
-// preserved for the prompt cache: the sampling
-// seam is special-turn only.
 func TestRunOrdinaryTurnOmitsSamplingPolicy(t *testing.T) {
 	t.Parallel()
 	h := &samplingHandler{}

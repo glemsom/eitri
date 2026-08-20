@@ -7,11 +7,7 @@ import (
 	"github.com/glemsom/eitri/internal/compress"
 )
 
-// bashTool runs a shell command inside the bwrap sandbox with host network,
-// returning the combined stdout+stderr (token-efficient single stream). Its
-// output is routed through the deterministic tool-output compressor so noisy
-// `ls`/`find`/`grep`/`rg` reads stay cheap; the never-inflate
-// gate keeps terse output untouched, and recovery is a re-run of the command.
+// bashTool runs a shell command inside the bwrap sandbox with host network, returning the combined stdout+stderr (token-efficient single stream).
 type bashTool struct {
 	sb *Sandbox
 }
@@ -40,21 +36,13 @@ func (b *bashTool) Run(ctx context.Context, args map[string]any) (ToolResult, er
 	}
 	o, err := b.sb.Run(ctx, cmd)
 	if err != nil {
-		// Failing commands carry their (uncompressed) combined output so the
-		// model can read the error; never compressed, never a marker.
 		return ToolResult{Text: o.Combined()}, err
 	}
-	// Compress at the tool-result boundary so the compressed bytes land in the
-	// cache prefix. Never-inflate gate preserves terse output. CompressResult
-	// reports whether the output really IS the compressed form: only then may
-	// the engine's byte-cap treat a trailing "+N more"
-	// line as the compressor's marker.
 	text, compressed := compress.CompressResult(o.Combined())
 	return ToolResult{Text: text, Compressed: compressed}, nil
 }
 
-// Combined returns stdout then stderr joined, prioritizing stdout for token
-// efficiency while keeping stderr visible.
+// Combined returns stdout then stderr joined, prioritizing stdout for token efficiency while keeping stderr visible.
 func (o *Output) Combined() string {
 	switch {
 	case o.Stdout != "" && o.Stderr != "":

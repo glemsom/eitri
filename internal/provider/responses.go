@@ -8,8 +8,7 @@ import (
 	"strings"
 )
 
-// responsesBody is minimal OpenAI Responses request shape Eitri needs on the
-// Copilot path for models unavailable on /chat/completions.
+// responsesBody is minimal OpenAI Responses request shape Eitri needs on the Copilot path for models unavailable on /chat/completions.
 type responsesBody struct {
 	Model           string               `json:"model"`
 	Input           []responsesInputItem `json:"input"`
@@ -148,8 +147,7 @@ func responsesReasoningControl(req Request) *responsesReasoning {
 	return &responsesReasoning{Effort: effort}
 }
 
-// responsesStream adapts OpenAI Responses SSE events into Eitri's provider
-// stream seam.
+// responsesStream adapts OpenAI Responses SSE events into Eitri's provider stream seam.
 type responsesStream struct {
 	ev        *sse
 	acc       *responsesToolAccumulator

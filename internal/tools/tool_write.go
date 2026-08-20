@@ -6,8 +6,7 @@ import (
 	"os"
 )
 
-// writeTool writes a whole file, creating or overwriting it. The target is
-// validated against the writable roots on the translated host form.
+// writeTool writes a whole file, creating or overwriting it.
 type writeTool struct {
 	val *Validator
 }

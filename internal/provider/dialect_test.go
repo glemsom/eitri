@@ -5,8 +5,6 @@ import (
 	"testing"
 )
 
-// canonicalDefs is one canonical schema set shared across both dialects, the
-// single source of truth that must not be duplicated per transport.
 func canonicalDefs() []DialectDefinition {
 	readSchema := map[string]any{
 		"type":                 "object",
@@ -21,8 +19,6 @@ func canonicalDefs() []DialectDefinition {
 	}
 }
 
-// TestReExpressChatWrapsParameters verifies the canonical schema is emitted
-// under function.parameters for the Chat Completions dialect.
 func TestReExpressChatWrapsParameters(t *testing.T) {
 	t.Parallel()
 	tools := ReExpress(canonicalDefs(), DialectChat).([]Tool)
@@ -31,8 +27,6 @@ func TestReExpressChatWrapsParameters(t *testing.T) {
 	}
 	got := tools[0]
 	want := canonicalDefs()[0].Schema
-	// The exact same schema map instance must be used, not a copy: the strict
-	// shape is shared, never re-authored per dialect.
 	if got.Function.Name != "read" || got.Function.Description != "read a file" {
 		t.Fatalf("chat tool = %+v", got)
 	}
@@ -41,8 +35,6 @@ func TestReExpressChatWrapsParameters(t *testing.T) {
 	}
 }
 
-// TestReExpressAnthropicWrapsInputSchema verifies the same canonical schema is
-// emitted under input_schema (with a strict flag) for the Anthropic dialect.
 func TestReExpressAnthropicWrapsInputSchema(t *testing.T) {
 	t.Parallel()
 	tools := ReExpress(canonicalDefs(), DialectAnthropic).([]AnthropicTool)
@@ -57,8 +49,6 @@ func TestReExpressAnthropicWrapsInputSchema(t *testing.T) {
 	if !reflect.DeepEqual(got.InputSchema, want) {
 		t.Fatalf("anthropic input_schema = %#v, want canonical schema %#v", got.InputSchema, want)
 	}
-	// The two dialects must produce an identical schema surface so strict mode
-	// is valid across transports.
 	chat := ReExpress(canonicalDefs(), DialectChat).([]Tool)[0].Function.Parameters
 	if !reflect.DeepEqual(chat, got.InputSchema) {
 		t.Fatalf("dialect schemas diverged: chat %#v vs anthropic %#v", chat, got.InputSchema)

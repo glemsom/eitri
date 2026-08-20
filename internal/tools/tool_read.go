@@ -7,10 +7,7 @@ import (
 	"strconv"
 )
 
-// readTool reads a file by explicit line range so the agent need not dump
-// whole files into context. It is host-side (outside the cage) but resolves
-// the shared path namespace via the translator only: read applies no writable
-// root gate, so it can reach any host file the sandbox exposes to bash.
+// readTool reads a file by explicit line range so the agent need not dump whole files into context.
 type readTool struct {
 	tr        *PathTranslator
 	workspace string
@@ -77,8 +74,6 @@ func (r *readTool) Run(ctx context.Context, args map[string]any) (ToolResult, er
 func argInt(args map[string]any, key string, def int) (int, error) {
 	v, ok := args[key]
 	if !ok || v == nil {
-		// Treat a nullable-union optional expressed as null (strict-shaped
-		// schemas) as absent so it falls to its default.
 		return def, nil
 	}
 	var out int

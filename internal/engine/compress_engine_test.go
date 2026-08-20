@@ -9,11 +9,6 @@ import (
 	"github.com/glemsom/eitri/internal/tools"
 )
 
-// TestAgentBashTurnReturnsCompressedOutput drives a bash turn that emits a
-// noisy listing through the engine seam and asserts the tool result carried
-// back into the conversation is the compressed form: truncated with the
-// explicit "+ more" marker, strictly shorter than the raw bytes, and
-// deterministic so a re-run recovers the full output.
 func TestAgentBashTurnReturnsCompressedOutput(t *testing.T) {
 	t.Parallel()
 	var raw strings.Builder
@@ -38,8 +33,6 @@ func TestAgentBashTurnReturnsCompressedOutput(t *testing.T) {
 				}, Done: true},
 			), nil
 		}
-		// Second round: report what the compressed bash result actually was, so the
-		// test can assert on the compressed form from inside the conversation.
 		var lastResult string
 		for i := len(req.Messages) - 1; i >= 0; i-- {
 			if req.Messages[i].Role == provider.RoleTool {
@@ -81,9 +74,6 @@ func TestAgentBashTurnReturnsCompressedOutput(t *testing.T) {
 	}
 }
 
-// fakeBashRunner supplies canned noisy output for the compressor boundary test
-// without needing a live bwrap sandbox. It ignores the bwrap argv and returns
-// the canned combined output on every invocation.
 type fakeBashRunner struct {
 	out string
 }

@@ -12,8 +12,6 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// recordedProvider is a scripted provider that records every outgoing request
-// so a test can assert which configured values the engine actually used.
 func recordedProvider(t *testing.T, reqs *[]provider.Request, finish bool) provider.Provider {
 	t.Helper()
 	return provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
@@ -23,7 +21,6 @@ func recordedProvider(t *testing.T, reqs *[]provider.Request, finish bool) provi
 				provider.Chunk{Content: "ans", FinishReason: "stop", Done: true},
 			), nil
 		}
-		// Never finish: a real cap (not provider behavior) must bound the loop.
 		return provider.StreamFunc(
 			provider.Chunk{FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{
 				{ID: "call_bash", Name: "bash", Arguments: `{"command":"ls"}`},
@@ -32,9 +29,6 @@ func recordedProvider(t *testing.T, reqs *[]provider.Request, finish bool) provi
 	})
 }
 
-// TestRunSettingsRespectsPersistedConfig verifies settings saved to config
-// round-trip and drive a subsequent run: a Custom model + max-effort persisted
-// in config.json are used by the engine on the next batch run.
 func TestRunSettingsRespectsPersistedConfig(t *testing.T) {
 	dir := t.TempDir()
 	dataDir := filepath.Join(dir, ".eitri")
@@ -72,10 +66,6 @@ func TestRunSettingsRespectsPersistedConfig(t *testing.T) {
 	}
 }
 
-// TestRunBatchHonorsMaxTurnsFromConfig verifies the persisted max_turns cap is
-// honored by the engine in batch: with a low cap and no continuation hook (the
-// batch default), the run auto-denies with ErrMaxTurns instead of looping
-// forever.
 func TestRunBatchHonorsMaxTurnsFromConfig(t *testing.T) {
 	dir := t.TempDir()
 	dataDir := filepath.Join(dir, ".eitri")
@@ -97,5 +87,3 @@ func TestRunBatchHonorsMaxTurnsFromConfig(t *testing.T) {
 		t.Fatalf("Run() error = %v, want engine.ErrMaxTurns (batch auto-deny at cap)", err)
 	}
 }
-
-// test; kept minimal to ensure strings stays imported for compile.

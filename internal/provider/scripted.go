@@ -6,9 +6,7 @@ import (
 	"io"
 )
 
-// StreamFunc builds a Stream that yields a fixed sequence of chunks and then
-// io.EOF. It is the low-level helper behind Scripted, giving tests precise
-// control over what a provider turn emits without hand-rolling SSE text.
+// StreamFunc builds a Stream that yields a fixed sequence of chunks and then io.EOF.
 func StreamFunc(chunks ...Chunk) Stream {
 	return &sliceStream{chunks: chunks}
 }
@@ -29,13 +27,10 @@ func (s *sliceStream) Next() (Chunk, error) {
 	return c, nil
 }
 
-// Handler decides how a Scripted provider responds to one request. Returning a
-// Stream lets tests script multi-turn tool-call loops deterministically.
+// Handler decides how a Scripted provider responds to one request.
 type Handler func(ctx context.Context, req Request) (Stream, error)
 
-// Scripted is a deterministic Provider driven by a Handler, letting engine and
-// dispatch tests script exact tool-call turns without SSE fixtures. It is the
-// programmatic sibling of the static-Fixture Fake.
+// Scripted is a deterministic Provider driven by a Handler, letting engine and dispatch tests script exact tool-call turns without SSE fixtures.
 type Scripted struct {
 	h Handler
 }

@@ -10,9 +10,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// feedToolUpdate drives one tool update through the live-delivery path the
-// program uses (the tool waiter wakes the loop with a toolUpdateMsg), asserting
-// it leaves the feed's wait channel functional for the next update.
 func feedToolUpdate(t *testing.T, m *Model, f *ToolFeed, u ToolUpdate) Model {
 	t.Helper()
 	f.updates <- u
@@ -25,9 +22,6 @@ func feedToolUpdate(t *testing.T, m *Model, f *ToolFeed, u ToolUpdate) Model {
 	return asModel(t, nm)
 }
 
-// TestModel_toolEditEntryRenders asserts a file-edit tool call renders as a
-// single-line collapsed entry with the tool name and a [+N,-M] delta tag (issue
-// #84 AC1, AC3), and that toggling expansion reveals the full result.
 func TestModel_toolEditEntryRenders(t *testing.T) {
 	t.Parallel()
 	feed := NewToolFeed()
@@ -38,8 +32,6 @@ func TestModel_toolEditEntryRenders(t *testing.T) {
 		Tools: feed,
 	})
 	m = resize(t, m)
-	// A turn is submitted so the tool entries anchor after its "you" message
-	// (tools belong to a user turn).
 	m = typeText(t, m, "edit it")
 	m = submitAndWait(t, m)
 
@@ -60,10 +52,6 @@ func TestModel_toolEditEntryRenders(t *testing.T) {
 	}
 }
 
-// TestModel_toolEntryCollapsedThenExpandable asserts a tool result collapses to
-// a summary by default (never dumping the raw output into the scroll) and
-// expands on demand to the full inline result — the lossless-recovery path
-// .
 func TestModel_toolEntryCollapsedThenExpandable(t *testing.T) {
 	t.Parallel()
 	feed := NewToolFeed()
@@ -77,9 +65,6 @@ func TestModel_toolEntryCollapsedThenExpandable(t *testing.T) {
 	m = typeText(t, m, "run it")
 	m = submitAndWait(t, m)
 
-	// A compressed result: 4 lines kept + the "+3 more" tail marker, with 3
-	// dropped. Collapsed, the view must show the entry and the marker count but
-	// not the raw body.
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Result: &ToolResult{
 		Name: "bash", Result: "a.go\nb.go\nc.go\n+3 more\n", Lines: 4, Dropped: 3, Compressed: true,
@@ -92,25 +77,18 @@ func TestModel_toolEntryCollapsedThenExpandable(t *testing.T) {
 	if !strings.Contains(content, "+3 more") {
 		t.Errorf("expected the compression tail marker in the collapsed summary, got: %q", content)
 	}
-	// Raw body lines must not be dumped into the scroll when collapsed.
 	if strings.Contains(content, "c.go\n+3 more\n") && !m.tx.expandAll {
-		// c.go may legitimately appear if expanded; here it's collapsed.
 		t.Errorf("collapsed entry must not dump the raw result body, got: %q", content)
 	}
 
-	// Expand on demand reveals the full result inline.
 	expanded, _ := m.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
 	m = asModel(t, expanded)
 	ex := view(m)
-	// The native viewport pads each row to the pane width, so the trailing
-	// newline may be followed by padding; match on the result lines themselves.
 	if !strings.Contains(ex, "a.go") || !strings.Contains(ex, "+3 more") {
 		t.Errorf("expanded entry should show the full result, got: %q", ex)
 	}
 }
 
-// TestModel_toolFeedDrainsLiveUpdates asserts feeding a start then a result
-// into the feed channel pairs into a single complete entry .
 func TestModel_toolFeedDrainsLiveUpdates(t *testing.T) {
 	t.Parallel()
 	feed := NewToolFeed()
@@ -136,11 +114,6 @@ func TestModel_toolFeedDrainsLiveUpdates(t *testing.T) {
 	}
 }
 
-// TestModel_stylingToolHeadSplitsLabelAndArgs asserts the tool entry head
-// splits into a category-colored per-tool-glyph `tool` label and a dimmed (faint) command
-// detail — color marks the tool kind while the args recede, so a busy session
-// reads calmly (benchmark §4.1 tool-cards: label + dimmed path). The ✓
-// outcome marker keeps its own hue.
 func TestModel_stylingToolHeadSplitsLabelAndArgs(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
@@ -159,16 +132,11 @@ func TestModel_stylingToolHeadSplitsLabelAndArgs(t *testing.T) {
 	if line == "" {
 		t.Fatalf("tool head row missing, got: %q", view(m))
 	}
-	// The label carries the shell category hue and the args the faint style.
 	if !strings.Contains(line, "\x1b[38;2;224;175;104m🔧 bash\x1b[m\x1b[2m  go test ./...") {
 		t.Errorf("tool head must color the label and dim the args, got line: %q", line)
 	}
 }
 
-// TestModel_stylingExpandedResultFramed asserts an expanded tool result renders
-// as a card: a left border in the entry's category hue framing the plain
-// content (benchmark §4.1 tool-cards), so expansion reads as one designed
-// block instead of a raw text dump.
 func TestModel_stylingExpandedResultFramed(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
@@ -188,16 +156,11 @@ func TestModel_stylingExpandedResultFramed(t *testing.T) {
 	if line == "" {
 		t.Fatalf("expanded result missing, got: %q", view(m))
 	}
-	// The result row carries the frame's left border in the shell category hue
-	// (the border char + category color, content plain).
 	if !strings.Contains(line, "\x1b[38;2;224;175;104m│\x1b[m") && !strings.Contains(line, "\x1b[38;2;224;175;104m│") {
 		t.Errorf("expanded result must carry the category-colored left border, got line: %q", line)
 	}
 }
 
-// TestModel_toolArgsTruncateToWidth asserts a long tool detail (URL/command)
-// truncates to the pane width with an ellipsis instead of cutting abruptly at
-// the edge — while the full arguments remain in the clipboard copy path.
 func TestModel_toolArgsTruncateToWidth(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
@@ -222,15 +185,11 @@ func TestModel_toolArgsTruncateToWidth(t *testing.T) {
 	if width := lipgloss.Width(ansiStrip(line)); width > 78 {
 		t.Errorf("tool row %d cols overflows the 80-col pane, want <= 78", width)
 	}
-	// The copy path keeps the full URL.
 	if !strings.Contains(m.transcriptText(), "Retry-After") {
 		t.Errorf("copy must keep the full args, got: %q", m.transcriptText())
 	}
 }
 
-// TestModel_ctrlETogglesExpandedViewMode asserts Ctrl+E toggles the persistent
-// expanded-view mode on the Model's owned Transcript: the key
-// flips the single expandAll flag on→off→on, each press sticky until the next.
 func TestModel_ctrlETogglesExpandedViewMode(t *testing.T) {
 	t.Parallel()
 	feed := NewToolFeed()
@@ -246,32 +205,23 @@ func TestModel_ctrlETogglesExpandedViewMode(t *testing.T) {
 	m = toolStart(t, m, "bash", `{"command":"ls"}`)
 	m = toolResult(t, m, ToolResult{Name: "bash", Result: "a.go\nb.go", Lines: 2})
 
-	// Default off.
 	if m.tx.expandAll {
 		t.Fatal("expanded view must start off")
 	}
-	// on
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
 	if !m.tx.expandAll {
 		t.Error("Ctrl+E must turn the expanded view on")
 	}
-	// off
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
 	if m.tx.expandAll {
 		t.Error("second Ctrl+E must turn the expanded view off")
 	}
-	// on again
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
 	if !m.tx.expandAll {
 		t.Error("third Ctrl+E must turn the expanded view on again")
 	}
 }
 
-// TestModel_expandedViewModeAppliesToNewlyDeliveredEntries asserts the Ctrl+E
-// expanded-view mode applies to entries delivered AFTER the mode is enabled
-//: a tool result that
-// lands while the mode is ON renders its full result, past
-// entries too, because render reads the live flag over the whole log.
 func TestModel_expandedViewModeAppliesToNewlyDeliveredEntries(t *testing.T) {
 	t.Parallel()
 	feed := NewToolFeed()
@@ -285,7 +235,6 @@ func TestModel_expandedViewModeAppliesToNewlyDeliveredEntries(t *testing.T) {
 	m = typeText(t, m, "run it")
 	m = submitAndWait(t, m)
 
-	// Turn the mode on, then deliver a fresh entry.
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
 	m = toolStart(t, m, "bash", `{"command":"ls"}`)
 	m = toolResult(t, m, ToolResult{Name: "bash", Result: "a.go\nb.go", Lines: 2})

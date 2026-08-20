@@ -6,12 +6,7 @@ import (
 	"strings"
 )
 
-// GitBranch returns the workspace's checked-out git branch name, or "" when
-// the workspace is not inside a git worktree or HEAD is detached/unreadable.
-// It walks up from the workspace to find the repo root (.git/HEAD) and is a
-// pure file read — no git subprocess — so the TUI never spawns tools just to
-// show branch context in the statusline (benchmark §4.1 statusline telemetry:
-// git branch).
+// GitBranch returns the workspace's checked-out git branch name, or "" when the workspace is not inside a git worktree or HEAD is detached/unreadable.
 func GitBranch(workspace string) string {
 	if workspace == "" {
 		return ""

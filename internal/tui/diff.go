@@ -7,13 +7,7 @@ import (
 	"github.com/glemsom/eitri/internal/diff"
 )
 
-// reviewEntry is a file-mutating tool entry's before/after projection: the
-// host path, the before/after full content the engine captured across the
-// edit/write call (pure telemetry, never affecting the run), and the [+N,-M]
-// line delta.
-//
-// This record backs the Ctrl+E expanded card's inline diff, the no-diff
-// fallback framing, and the tool log's Review projection.
+// reviewEntry is a file-mutating tool entry's before/after projection: the host path, the before/after full content the engine captured across the edit/write call (pure telemetry, never affecting the run), and the [+N,-M] line delta.
 type reviewEntry struct {
 	path    string
 	before  string
@@ -23,10 +17,7 @@ type reviewEntry struct {
 	hunks   []diff.Hunk
 }
 
-// reviewEntryFromTool derives a review entry from a completed file-mutating
-// tool entry's captured before/after/path content. It is shared by
-// toolLog.Review() for its per-entry projection and by the expanded tool card's
-// diff renderer, so the projection lives in one place.
+// reviewEntryFromTool derives a review entry from a completed file-mutating tool entry's captured before/after/path content.
 func reviewEntryFromTool(te toolEntry) reviewEntry {
 	return reviewEntry{
 		path: te.path, before: te.before, after: te.after,
@@ -34,14 +25,7 @@ func reviewEntryFromTool(te toolEntry) reviewEntry {
 	}
 }
 
-// renderDiff renders a changed file's inline hunks as a terminal diff with the
-// git-style @@ header plus +/-/context lines, styled distinctly from the
-// transcript through the theme's diff tokens (ok/error hue on a dimmed
-// same-hue fill). A file with no content-diff (e.g. a pure flag change the
-// engine couldn't snapshot) falls back to the count summary.
-//
-// It is the card path's diff body: renderToolCardDiff calls it inside the
-// expanded tool card's category-colored frame.
+// renderDiff renders a changed file's inline hunks as a terminal diff with the git-style @@ header plus +/-/context lines, styled distinctly from the transcript through the theme's diff tokens (ok/error hue on a dimmed same-hue fill).
 func renderDiff(f reviewEntry, th Theme) string {
 	if len(f.hunks) == 0 {
 		return renderCountSummary(f, th)
@@ -55,10 +39,6 @@ func renderDiff(f reviewEntry, th Theme) string {
 			case '+':
 				sb.WriteString(th.diffAddStyle.Render("+" + l.Text))
 			case '-':
-				// A removed line followed by an added line is the paired half of a
-				// modification: render both on their own rows with word-level
-				// emphasis (bold on the changed words). Standalone additions and
-				// removals render whole-line.
 				if i+1 < len(h.Lines) && h.Lines[i+1].Type == '+' {
 					oldToks, newToks := wordDiff(l.Text, h.Lines[i+1].Text)
 					sb.WriteString(renderWordDiff(oldToks, th.diffDelStyle, "-"))
@@ -77,10 +57,7 @@ func renderDiff(f reviewEntry, th Theme) string {
 	return sb.String()
 }
 
-// renderCountSummary renders a changed file's [+N, −M] count-summary line —
-// the no-diff fallback body for a path with no diffable content. It is shared
-// by the expanded tool card's renderToolCardDiff and the diff engine wiring on
-// the card path, so the no-diff fallback framing lives in one place.
+// renderCountSummary renders a changed file's [+N, −M] count-summary line — the no-diff fallback body for a path with no diffable content.
 func renderCountSummary(f reviewEntry, th Theme) string {
 	return th.statusStyle.Render("  "+f.path+" "+deltaTag(f.added, f.removed)) + "\n"
 }

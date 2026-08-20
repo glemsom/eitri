@@ -7,13 +7,6 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// TestRunAgentPrependsSkillInjectToMessages verifies the regression fix:
-// a slash-activated skill's payload must reach the model's context for the
-// follow-up args turn. RunAgent rebuilds the provider request fresh each call
-// from [system, {user: prompt}], so without explicit threading the skill body
-// never entered the message list and the model acted on bare args. This test
-// drives the real engine seam (not the tui.Turn stub) and asserts the provider
-// request carries the injected <skill_content> payload ahead of the user args.
 func TestRunAgentPrependsSkillInjectToMessages(t *testing.T) {
 	t.Parallel()
 	var capturer capturedRequests
@@ -38,7 +31,6 @@ func TestRunAgentPrependsSkillInjectToMessages(t *testing.T) {
 		t.Fatal("provider received no requests")
 	}
 	msgs := capturer.reqs[0].Messages
-	// Head order: system prompt, then the injected skill payload, then the user args.
 	if len(msgs) != 3 {
 		t.Fatalf("Messages = %v, want 3 (system + skill inject + user args)", msgs)
 	}
@@ -56,9 +48,6 @@ func TestRunAgentPrependsSkillInjectToMessages(t *testing.T) {
 	}
 }
 
-// TestRunAgentWithoutSkillInjectKeepsExistingShape guards the no-injection path:
-// when no skill was slash-activated, RunAgent must keep the historical two-message
-// head (system + user) so ordinary turns are byte-identical (prompt-cache invariant).
 func TestRunAgentWithoutSkillInjectKeepsExistingShape(t *testing.T) {
 	t.Parallel()
 	var capturer capturedRequests

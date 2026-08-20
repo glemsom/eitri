@@ -26,63 +26,33 @@ const (
 
 // settingVals are the option lists for cycle-style setters.
 var (
-	// providerFams are the documented provider families (T11).
 	providerFams = []string{"opencode-go", "github-copilot", "custom-openai"}
-	// effortTiers are the meaningful reasoning-effort tiers in cycle order
-	// low→medium→high→max. Both low and medium are exposed
-	// as first-class options.
-	effortTiers = []string{"low", "medium", "high", "max"}
+	effortTiers  = []string{"low", "medium", "high", "max"}
 )
 
-// discoverState is the on-demand model-discovery lifecycle of the Settings
-// surface. It lets the panel show where discovery stands instead of failing
-// silently when a provider has no cached model list.
+// discoverState is the on-demand model-discovery lifecycle of the Settings surface.
 type discoverState int
 
 const (
-	// discoverIdle means no on-demand discovery is running: a model list is
-	// already known (pre-seeded) or discovery is unwired.
 	discoverIdle discoverState = iota
-	// discoverLoading means provider model discovery is in flight.
 	discoverLoading
-	// discoverError means discovery finished but failed; discoverErr carries it.
 	discoverError
 )
 
-// settingsForm is the pure state behind the TUI Settings surface. It
-// edits a draft copy of config.Config and yields a saved config; navigation
-// and value stepping are deterministic so the panel is unit-testable without a
-// terminal. It is deliberately config-only: the model list is surfaced from
-// provider discovery but owned by the caller, and the live telemetry readout
-// is borrowed from the status strip.
+// settingsForm is the pure state behind the TUI Settings surface.
 type settingsForm struct {
-	// theme is the styling surface for the Settings chrome; the model seeds it
-	// from its own theme when the panel opens.
-	theme  Theme
-	cfg    config.Config
-	models []string
-	field  int
-	// pathBuf holds the free-form extra_writable_paths draft while focused.
-	pathBuf string
-	// telemetry, when non-nil, backs the live cache hit-ratio readout rendered
-	// in the panel (the cost readout was removed in issue #374). It is the same
-	// read-only surface the status strip
-	// uses and is never mutated from the panel.
-	telemetry *Telemetry
-	// discoverState tracks on-demand provider model discovery.
-	discoverState discoverState
-	// discoverErr is the surfaced failure when discoverState == discoverError.
-	discoverErr string
-	// thinkingSuppression reports whether the run's provider can actually
-	// suppress reasoning on the wire when thinking is off. Nil assumes support
-	// (the pre-seam default), so a provider without a declared capability never
-	// spurs the warning. The seam is provider-owned and the TUI stays decoupled
-	// from internal/provider.
+	theme               Theme
+	cfg                 config.Config
+	models              []string
+	field               int
+	pathBuf             string
+	telemetry           *Telemetry
+	discoverState       discoverState
+	discoverErr         string
 	thinkingSuppression func() bool
 }
 
-// newSettingsForm seeds the form with the loaded config and the discovered
-// model list.
+// newSettingsForm seeds the form with the loaded config and the discovered model list.
 func newSettingsForm(cfg config.Config, models []string) settingsForm {
 	f := settingsForm{cfg: cfg, models: models, field: 0, theme: defaultTheme}
 	if len(models) == 0 {
@@ -92,8 +62,7 @@ func newSettingsForm(cfg config.Config, models []string) settingsForm {
 	return f
 }
 
-// Model returns the currently selected model (a discovered id, or the
-// configured model when none is discovered).
+// Model returns the currently selected model (a discovered id, or the configured model when none is discovered).
 func (f settingsForm) Model() string {
 	if len(f.models) == 0 {
 		return f.cfg.Model
@@ -113,8 +82,7 @@ func (f *settingsForm) step(d int) {
 // next advances to the next field (wrap).
 func (f *settingsForm) next() { f.step(1) }
 
-// adjust steps the focused value. d is ±1 for cycle setters, ±step for
-// numeric steppers, or a direct edit for the free-form path field.
+// adjust steps the focused value. d is ±1 for cycle setters, ±step for numeric steppers, or a direct edit for the free-form path field.
 func (f *settingsForm) adjust(d int) {
 	switch f.field {
 	case fieldProvider:
@@ -124,7 +92,6 @@ func (f *settingsForm) adjust(d int) {
 			f.cfg.Model = cycle(f.cfg.Model, f.models, d)
 		}
 	case fieldThinking:
-		// Reasoning mode is a boolean on/off switch; either arrow flips it.
 		if d != 0 {
 			f.cfg.ThinkingEnabled = !f.cfg.ThinkingEnabled
 		}
@@ -135,23 +102,15 @@ func (f *settingsForm) adjust(d int) {
 	case fieldFraction:
 		f.cfg.CompactionFraction = stepFrac(f.cfg.CompactionFraction, d)
 	case fieldTheme:
-		// Unknown themes cycle to the first valid one on the first press, same
-		// as a hand-edited bad model value.
 		f.cfg.Theme = cycle(f.cfg.Theme, supportedThemes, d)
-		// The chrome palette follows the selection live: the panel's own chrome
-		// re-skins as the arrow cycle moves through themes, proving the mechanism
-		// end-to-end before Save.
 		f.theme = themeFor(f.cfg.Theme)
 	case fieldPaths:
-		// Free-form edit is handled by the caller via SetPathBuf; adjust nudges
-		// the focused field forward so enter still lands on Save.
 		f.next()
 	case fieldSave:
 	}
 }
 
-// SetPathBuf replaces the extra_writable_paths draft and parses it back into
-// the config's slice (comma-separated, trimmed, empties dropped).
+// SetPathBuf replaces the extra_writable_paths draft and parses it back into the config's slice (comma-separated, trimmed, empties dropped).
 func (f *settingsForm) SetPathBuf(s string) {
 	f.pathBuf = s
 	f.cfg.ExtraWritablePaths = splitPaths(s)
@@ -167,8 +126,7 @@ func (f *settingsForm) draft() config.Config {
 // onSave reports whether the focused field is the Save button.
 func (f settingsForm) onSave() bool { return f.field == fieldSave }
 
-// thinkingModeLabel renders the reasoning mode value (on/off) for the Settings
-// panel, reflecting the thinking_enabled config.
+// thinkingModeLabel renders the reasoning mode value (on/off) for the Settings panel, reflecting the thinking_enabled config.
 func thinkingModeLabel(on bool) string {
 	if on {
 		return "on"
@@ -231,9 +189,7 @@ func stepFrac(v float64, d int) float64 {
 	return nv
 }
 
-// settingsView renders the Settings surface: a focused row per settable knob,
-// the focused row highlighted, a Save/Cancel footer. It is deterministic for
-// render-testing.
+// settingsView renders the Settings surface: a focused row per settable knob, the focused row highlighted, a Save/Cancel footer.
 func settingsView(f settingsForm) string {
 	th := f.theme
 	var b strings.Builder
@@ -280,27 +236,17 @@ func settingsView(f settingsForm) string {
 		fmt.Fprintf(&b, "%-2s%-10s %s\n", "", name, r.val)
 	}
 
-	// Thinking-suppression warning: when thinking is off and the run's provider
-	// cannot actually silence reasoning on the wire, the panel says so instead
-	// of silently letting the toggle no-op. The capability seam defaults to
-	// supported when unset (nil), so view-only panels and providers without the
-	// declaration never warn. Deterministic for render-testing.
 	if !f.cfg.ThinkingEnabled && f.thinkingSuppression != nil && !f.thinkingSuppression() {
 		b.WriteString(th.statusStyle.Render("   " + g("⚠", "!") + " reasoning cannot be disabled on this provider"))
 		b.WriteString("\n")
 	}
 
-	// Palette swatch: the selected theme's hues as full-block chips, so the
-	// theme picker previews the palette live as the arrows cycle (benchmark
-	// §4.4 live-preview pattern; esc discards, so the preview always reverts).
 	b.WriteString(th.statusStyle.Render("   palette"))
 	for _, c := range []color.Color{th.accent, th.ok, th.error, th.shell, th.file, th.web, th.skill} {
 		b.WriteString(" " + lipgloss.NewStyle().Foreground(c).Render(g("██", "##")))
 	}
 	b.WriteString("\n")
 
-	// Provider model-discovery status: loading/error/summary reflects what the
-	// list behind the Model row shows. Deterministic for render-testing.
 	switch f.discoverState {
 	case discoverLoading:
 		b.WriteString(th.statusStyle.Render("   discovering models" + g("…", "...")))
@@ -309,12 +255,8 @@ func settingsView(f settingsForm) string {
 		b.WriteString(th.statusStyle.Render("   model discovery failed: " + f.discoverErr))
 		b.WriteString("\n")
 	default:
-		// Idle: already-loaded or unwired, so no status line is needed.
 	}
 
-	// Live telemetry readout: the cache hit-ratio the run tracks, borrowed
-	// read-only so switching provider/model and watching the hit ratio happen
-	// in one pane.
 	if f.telemetry != nil {
 		b.WriteString(th.statusStyle.Render(fmt.Sprintf(
 			"   cache:%.0f%%", f.telemetry.hitPercent(),

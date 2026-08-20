@@ -7,9 +7,6 @@ import (
 	"testing"
 )
 
-// TestParseEventAccumulatesToolCall verifies fragmented streamed tool_call
-// deltas (function.name then function.arguments over several chunks) are
-// concatenated into one complete ToolCall on the terminal chunk.
 func TestParseEventAccumulatesToolCall(t *testing.T) {
 	t.Parallel()
 	var last Chunk
@@ -53,9 +50,6 @@ func TestParseEventAccumulatesToolCall(t *testing.T) {
 	}
 }
 
-// TestToolCallParsingIsWrapped verifies an actual JSON-marshaled Message with a
-// ToolCall round-trips through encoding/json (the request body the client
-// sends must carry tool_call_id on role:tool messages).
 func TestToolMessageMarshalsWithToolCallID(t *testing.T) {
 	t.Parallel()
 	m := Message{Role: RoleTool, ToolCallID: "call_9", Content: "ok"}
@@ -69,13 +63,8 @@ func TestToolMessageMarshalsWithToolCallID(t *testing.T) {
 	}
 }
 
-// TestToolCallMarshalsNestedFunction verifies the resubmitted assistant
-// tool_calls carries the Chat Completions nested function shape. OpenCode Go
-// rejects a flat {type,id,name,arguments} entry ("missing field `function`")
-// with a 400/401, so the wire must nest name+arguments under function.
 func TestToolCallMarshalsNestedFunction(t *testing.T) {
 	t.Parallel()
-	// wireShape mirrors the Chat Completions assistant tool_calls element.
 	type wireShape struct {
 		ID   string `json:"id"`
 		Type string `json:"type"`
@@ -101,7 +90,6 @@ func TestToolCallMarshalsNestedFunction(t *testing.T) {
 	}
 }
 
-// toolFixtureStream replays hand-written data lines through the accumulator.
 type toolFixtureStream struct {
 	data []string
 	idx  int

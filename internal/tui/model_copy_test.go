@@ -13,11 +13,6 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// TestModel_ctrlOCopiesTranscript drives a one-turn conversation, presses
-// Ctrl+O, and asserts the full plain-text transcript reaches the clipboard seam
-// and the band reports the copy: the user prompt, the
-// assistant answer, and the per-turn reasoning block are all copied, with no
-// ANSI styling leaking into the pasted text.
 func TestModel_ctrlOCopiesTranscript(t *testing.T) {
 	t.Parallel()
 	var copied string
@@ -26,8 +21,7 @@ func TestModel_ctrlOCopiesTranscript(t *testing.T) {
 			return TurnResult{Answer: "plain answer", Reasoning: "I reason first."}, nil
 		},
 		Clipboard: func(s string) error { copied = s; return nil },
-		// The turn requested thinking, so its reasoning block is copied.
-		Config: config.Config{ThinkingEnabled: true},
+		Config:    config.Config{ThinkingEnabled: true},
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "hello")
@@ -52,10 +46,6 @@ func TestModel_ctrlOCopiesTranscript(t *testing.T) {
 	}
 }
 
-// TestModel_ctrlOHidesReasoningWhenThinkingOff drives a thinking-off turn whose
-// backend still returns reasoning, presses Ctrl+O, and asserts the reasoning
-// block is NOT copied: the display-layer gate hides chain-of-thought
-// for a turn that didn't request thinking, regardless of what the backend sent.
 func TestModel_ctrlOHidesReasoningWhenThinkingOff(t *testing.T) {
 	t.Parallel()
 	var copied string
@@ -64,8 +54,7 @@ func TestModel_ctrlOHidesReasoningWhenThinkingOff(t *testing.T) {
 			return TurnResult{Answer: "plain answer", Reasoning: "sneaked chain-of-thought"}, nil
 		},
 		Clipboard: func(s string) error { copied = s; return nil },
-		// Thinking is OFF; the turn never requested chain-of-thought.
-		Config: config.Config{ThinkingEnabled: false},
+		Config:    config.Config{ThinkingEnabled: false},
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "hello")
@@ -81,9 +70,6 @@ func TestModel_ctrlOHidesReasoningWhenThinkingOff(t *testing.T) {
 	}
 }
 
-// TestModel_copySlashCopiesTranscript drives `/copy` through the slash-command
-// surface: the transcript is copied and the command never reaches the engine
-// seam as a prompt .
 func TestModel_copySlashCopiesTranscript(t *testing.T) {
 	t.Parallel()
 	var copied string
@@ -115,8 +101,6 @@ func TestModel_copySlashCopiesTranscript(t *testing.T) {
 	}
 }
 
-// TestModel_copyFailureReportsNote asserts a clipboard failure surfaces as a
-// visible status note instead of failing silently .
 func TestModel_copyFailureReportsNote(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
@@ -136,11 +120,6 @@ func TestModel_copyFailureReportsNote(t *testing.T) {
 	}
 }
 
-// TestModel_copyFallsBackToOSC52 drives Ctrl+O with a failing injected
-// clipboard and a captured fallback output: the copy succeeds through the OSC
-// 52 terminal-clipboard sequence, the transcript text lands in the captured
-// writer, and the band reports "copied" . The injected
-// OSC52Out stands in for os.Stdout so no real terminal is needed.
 func TestModel_copyFallsBackToOSC52(t *testing.T) {
 	t.Parallel()
 	var out bytes.Buffer
@@ -164,8 +143,6 @@ func TestModel_copyFallsBackToOSC52(t *testing.T) {
 	if !strings.HasSuffix(seq, "\x07") {
 		t.Errorf("fallback output must end with the BEL terminator, got: %q", seq)
 	}
-	// The payload is base64-encoded UTF-8 ; decode it to assert the
-	// full transcript text reached the fallback writer.
 	payload := strings.TrimSuffix(strings.TrimPrefix(seq, "\x1b]52;c;"), "\x07")
 	decoded, err := base64.StdEncoding.DecodeString(payload)
 	if err != nil {
@@ -179,9 +156,6 @@ func TestModel_copyFallsBackToOSC52(t *testing.T) {
 	}
 }
 
-// TestModel_copyDoesNotMutateConversation asserts copying never touches the
-// transcript or the agent loop: no message is added/removed/altered and the
-// model stays out of the busy state .
 func TestModel_copyDoesNotMutateConversation(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
@@ -210,9 +184,6 @@ func TestModel_copyDoesNotMutateConversation(t *testing.T) {
 	}
 }
 
-// TestModel_copySlashShowsInCompletion asserts a bare `/` lists the built-in
-// /copy command alongside /settings, and tab cycles to it (:
-// the copy command is discoverable from the command surface).
 func TestModel_copySlashShowsInCompletion(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
@@ -226,7 +197,6 @@ func TestModel_copySlashShowsInCompletion(t *testing.T) {
 		t.Errorf("bare `/` completion should list /copy, got: %q", view(m))
 	}
 
-	// Tab cycles /settings then /copy.
 	m = keypress(t, m, "tab")
 	if got := m.composer.Value(); got != "/settings" {
 		t.Fatalf("first tab completion = %q, want /settings", got)
@@ -237,7 +207,6 @@ func TestModel_copySlashShowsInCompletion(t *testing.T) {
 	}
 }
 
-// keypressCtrlO sends Ctrl+O to the model and returns the updated model.
 func keypressCtrlO(t *testing.T, m Model) Model {
 	t.Helper()
 	nm, _ := m.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})

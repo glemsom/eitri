@@ -8,10 +8,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// TestModel_enterSubmitsAndClearsComposer asserts the plain Enter key submits
-// the current prompt and clears the composer back to its resting height of two
-// empty rows — never inserting a newline into the draft . The submit path
-// (turn command + busy flag) is the existing behaviour and must be preserved.
 func TestModel_enterSubmitsAndClearsComposer(t *testing.T) {
 	t.Parallel()
 	var got []string
@@ -35,11 +31,6 @@ func TestModel_enterSubmitsAndClearsComposer(t *testing.T) {
 	}
 }
 
-// TestModel_shiftEnterInsertsNewlineWithoutSubmitting asserts Shift+Enter
-// (surfaced by Bubble Tea as the line-feed key, KeyCtrlJ) inserts a line
-// break into the draft instead of submitting it: after the
-// key the turn seam has seen nothing and the composer holds the two-line
-// draft.
 func TestModel_shiftEnterInsertsNewlineWithoutSubmitting(t *testing.T) {
 	t.Parallel()
 	var got []string
@@ -63,13 +54,6 @@ func TestModel_shiftEnterInsertsNewlineWithoutSubmitting(t *testing.T) {
 	}
 }
 
-// TestModel_shiftEnterCsiUInsertsNewline asserts Shift+Enter delivered through
-// the enhanced (CSI u / kitty) keyboard protocol — decoded by Bubble Tea v2 as
-// Code KeyEnter with ModShift, String() "shift+enter" — inserts a line break
-// instead of submitting . Terminals with keyboard
-// enhancements enabled (kitty, WezTerm, ghostty, Windows Terminal) send CSI u
-// for Shift+Enter rather than the legacy line-feed byte, so the plain "ctrl+j"
-// case never sees it and the key currently falls through as a no-op.
 func TestModel_shiftEnterCsiUInsertsNewline(t *testing.T) {
 	t.Parallel()
 	var got []string
@@ -93,19 +77,12 @@ func TestModel_shiftEnterCsiUInsertsNewline(t *testing.T) {
 	}
 }
 
-// newlineShiftEnterCsiU drives the Shift+Enter newline key as delivered by the
-// enhanced keyboard protocol: KeyEnter with the shift modifier held.
 func newlineShiftEnterCsiU(t *testing.T, m Model) Model {
 	t.Helper()
 	nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift})
 	return asModel(t, nm)
 }
 
-// TestModel_composerMultiLineInsertAndSubmit asserts the full multi-line
-// composer cycle: Shift+Enter builds a two-line
-// draft, plain Enter submits it verbatim to the engine seam, and the composer
-// clears back to its resting height of two rows. The newlines the user typed
-// must reach the turn seam, not be flattened or dropped.
 func TestModel_composerMultiLineInsertAndSubmit(t *testing.T) {
 	t.Parallel()
 	var got []string
@@ -131,19 +108,12 @@ func TestModel_composerMultiLineInsertAndSubmit(t *testing.T) {
 	}
 }
 
-// newlineShiftEnter drives the Shift+Enter newline key (surfaced as KeyCtrlJ)
-// through the model's Update seam.
 func newlineShiftEnter(t *testing.T, m Model) Model {
 	t.Helper()
 	nm, _ := m.Update(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
 	return asModel(t, nm)
 }
 
-// TestModel_composerGrowsWithDraftLines asserts the composer grows within the
-// bottom band as the draft gains lines, one row per hard newline, up to the
-// maxComposerRows bound: a short draft stays compact instead
-// of the fixed-height composer of the pre-pivot TUI, and an over-long draft
-// caps at the bound rather than growing without limit.
 func TestModel_composerGrowsWithDraftLines(t *testing.T) {
 	t.Parallel()
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -170,7 +140,6 @@ func TestModel_composerGrowsWithDraftLines(t *testing.T) {
 		t.Errorf("three-line draft should grow the composer past the resting height to 3 rows, got %d", h)
 	}
 
-	// Push the draft far past the bound: the composer must cap, never exceed.
 	for i := 0; i < maxComposerRows+4; i++ {
 		m = typeText(t, m, "draft")
 		m = newlineShiftEnter(t, m)
@@ -180,10 +149,6 @@ func TestModel_composerGrowsWithDraftLines(t *testing.T) {
 	}
 }
 
-// TestModel_composerGrowsForSoftWrappedLines asserts the composer also grows
-// for soft-wrapped rows: a single hard line wider than the composer wraps
-// across several terminal rows, and the composer tracks them so the draft is
-// visible without clipping .
 func TestModel_composerGrowsForSoftWrappedLines(t *testing.T) {
 	t.Parallel()
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -191,19 +156,12 @@ func TestModel_composerGrowsForSoftWrappedLines(t *testing.T) {
 	})
 	m = resize(t, m) // 80 cols -> composer width 78
 
-	// 200 ASCII chars -> ceil(200/78) = 3 wrapped rows.
 	m = typeText(t, m, strings.Repeat("word ", 40))
 	if h := m.composer.Height(); h != 3 {
 		t.Errorf("200-char draft at 78 cols should grow the composer to 3 rows, got %d (width %d)", h, m.composer.Width())
 	}
 }
 
-// TestModel_composerLongDraftBandPinned asserts an over-bound draft never
-// pushes the transcript or band off-screen: the composer
-// caps at maxComposerRows and scrolls internally (its rendered rows never
-// exceed the cap), the band stays the bottom-pinned last region, and the total
-// view never exceeds the terminal height — the history viewport yields rows
-// instead.
 func TestModel_composerLongDraftBandPinned(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
@@ -214,13 +172,11 @@ func TestModel_composerLongDraftBandPinned(t *testing.T) {
 	})
 	m = resizeTo(t, m, 80, 12)
 
-	// Grow the draft far beyond the bound (band = status strip + composer).
 	for i := 0; i < maxComposerRows+10; i++ {
 		m = typeText(t, m, "draft line")
 		m = newlineShiftEnter(t, m)
 	}
 
-	// The composer renders at most the bound: taller drafts scroll internally.
 	comp := m.composer.View()
 	compLines := strings.Split(strings.TrimRight(comp, "\n"), "\n")
 	if len(compLines) != maxComposerRows {
@@ -229,22 +185,14 @@ func TestModel_composerLongDraftBandPinned(t *testing.T) {
 
 	content := view(m)
 	trimmed := strings.TrimRight(content, "\n")
-	// The band (status strip + composer) is the last region: after it there is
-	// only whitespace.
 	if !strings.HasSuffix(trimmed, strings.TrimRight(comp, "\n")) {
 		t.Errorf("band must stay pinned at the bottom with an over-bound draft, got:\n%q", content)
 	}
-	// The whole content never exceeds the terminal: nothing is pushed off-screen.
 	if n := len(strings.Split(trimmed, "\n")); n > 12 {
 		t.Errorf("view (%d lines) exceeds terminal height 12 with an over-bound draft, got:\n%q", n, trimmed)
 	}
 }
 
-// TestModel_composerShortTerminalClamp asserts the short-terminal clamp of the
-// resting height still holds: the composer never pushes the band off-screen
-// even though its resting height is now two rows. On a terminal too short to
-// hold the whole band, the composer shrinks below its resting height so the
-// band fits the terminal.
 func TestModel_composerShortTerminalClamp(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
@@ -252,9 +200,6 @@ func TestModel_composerShortTerminalClamp(t *testing.T) {
 			return TurnResult{Answer: "ok"}, nil
 		},
 	})
-	// At height 2 there is no room for the resting-height band (separator row +
-	// 2-row composer = 3 rows), so the clamp must shrink the composer down and
-	// never push the band off-screen.
 	m = resizeTo(t, m, 80, 2)
 
 	content := view(m)
@@ -263,16 +208,8 @@ func TestModel_composerShortTerminalClamp(t *testing.T) {
 	}
 }
 
-// TestModel_statusAndSlashPinnedAboveComposer asserts the status strip and the
-// slash-completion list stay pinned above the composer regardless of composer
-// height: with a telemetry strip, a `/...` partial, and a
-// soft-wrapped grown composer all present, the content order is status strip,
-// slash completion, then the composer as the final region.
 func TestModel_statusAndSlashPinnedAboveComposer(t *testing.T) {
 	t.Parallel()
-	// A skill name long enough that its `/`-partial soft-wraps the composer to
-	// two rows while still completing: the slash list must stay above the
-	// grown composer.
 	skillName := strings.Repeat("x", 100)
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -283,8 +220,6 @@ func TestModel_statusAndSlashPinnedAboveComposer(t *testing.T) {
 			{Name: skillName},
 		}},
 	})
-	// Width 100: wide enough for the full status strip (collapseWidth), narrow
-	// enough that the 101-char `/`-partial soft-wraps (composer width 98).
 	m = resizeTo(t, m, 100, 24)
 	m = typeText(t, m, "/"+skillName)
 
@@ -296,16 +231,11 @@ func TestModel_statusAndSlashPinnedAboveComposer(t *testing.T) {
 		t.Fatalf("precondition: grown composer should span >= 2 rows, got %d", len(compLines))
 	}
 
-	// The composer is the final region.
 	compStart := len(lines) - len(compLines)
 	if !strings.HasSuffix(strings.TrimRight(content, "\n"), strings.TrimRight(comp, "\n")) {
 		t.Fatalf("composer must be the bottom region, got:\n%q", content)
 	}
 
-	// Find the status strip row (the keybinding hints — the bottom band's
-	// status line is hints-only now, ) and the slash
-	// completion row (the ▸ marker of the candidate list); both above the
-	// composer block.
 	statusIdx, slashIdx := -1, -1
 	for i, ln := range lines {
 		if strings.Contains(ln, "ctrl+s settings") && statusIdx == -1 {

@@ -8,8 +8,6 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// TestModel_slashHelpAppendsMessage verifies `/help` appends a message to
-// tx.messages containing the help content and never reaches the engine.
 func TestModel_slashHelpAppendsMessage(t *testing.T) {
 	var prompted string
 	m := NewModelCfg(Dependencies{
@@ -38,8 +36,6 @@ func TestModel_slashHelpAppendsMessage(t *testing.T) {
 	}
 }
 
-// TestModel_questionMarkIdleAppendsHelp verifies pressing `?` when idle and the
-// composer is empty appends the help message to the transcript.
 func TestModel_questionMarkIdleAppendsHelp(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
@@ -62,8 +58,6 @@ func TestModel_questionMarkIdleAppendsHelp(t *testing.T) {
 	}
 }
 
-// TestModel_questionMarkBusyDoesNothing verifies pressing `?` while a turn is
-// running does nothing — no help message, no key insertion.
 func TestModel_questionMarkBusyDoesNothing(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
@@ -84,8 +78,6 @@ func TestModel_questionMarkBusyDoesNothing(t *testing.T) {
 	}
 }
 
-// TestModel_questionMarkWithTextInsertsLiteral verifies pressing `?` when the
-// composer has text inserts a literal `?` character instead of showing help.
 func TestModel_questionMarkWithTextInsertsLiteral(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
@@ -107,8 +99,6 @@ func TestModel_questionMarkWithTextInsertsLiteral(t *testing.T) {
 	}
 }
 
-// TestModel_slashHelpInTabCompletion verifies `/help` appears in the
-// tab-completion list alongside the other built-in commands.
 func TestModel_slashHelpInTabCompletion(t *testing.T) {
 	cands := slashCandidates("/", nil)
 	found := false
@@ -123,7 +113,6 @@ func TestModel_slashHelpInTabCompletion(t *testing.T) {
 	}
 }
 
-// TestModel_slashHelpPartialCompletion verifies `/he` completes to `/help`.
 func TestModel_slashHelpPartialCompletion(t *testing.T) {
 	cands := slashCandidates("/he", nil)
 	if len(cands) != 1 || cands[0] != "/help" {
@@ -131,14 +120,7 @@ func TestModel_slashHelpPartialCompletion(t *testing.T) {
 	}
 }
 
-// TestModel_helpAppendMarksLayoutDirty verifies both help paths — `/help` and
-// the `?` keybinding — mark the transcript's persistent layout cache dirty when
-// they append, so the freshly-added help block re-wraps at the current
-// transcript width on the next frame instead of rendering at a stale width.
-// Previously both paths appended the message directly and skipped the layout
-// invalidation (issue #389).
 func TestModel_helpAppendMarksLayoutDirty(t *testing.T) {
-	// `/help` command path.
 	mslash := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -153,7 +135,6 @@ func TestModel_helpAppendMarksLayoutDirty(t *testing.T) {
 		t.Error("`/help` must mark the transcript layout dirty so the help block re-wraps")
 	}
 
-	// `?` keybinding path (idle, empty composer).
 	mq := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -168,11 +149,6 @@ func TestModel_helpAppendMarksLayoutDirty(t *testing.T) {
 	}
 }
 
-// TestModel_helpPathsRenderIdenticallyAtWidth verifies the two help paths yield
-// the identical help entry — the same stored content and the same rendered
-// surface at a given terminal width — and that none of the rendered help lines
-// overflow the terminal. Both paths route through the same append seam, so the
-// freshly appended block is re-wrapped and rendered at the correct width.
 func TestModel_helpPathsRenderIdenticallyAtWidth(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	const width, height = 80, 24
@@ -220,10 +196,6 @@ func TestModel_helpPathsRenderIdenticallyAtWidth(t *testing.T) {
 	}
 }
 
-// TestModel_helpCopyIsEscapeFree verifies the clipboard path (Ctrl+O / /copy,
-// both via transcriptText) carries the help block as clean plain text with no
-// ANSI escape sequences (issue #378). Previously the ANSI-embedded help content
-// leaked raw escape sequences into the copied transcript.
 func TestModel_helpCopyIsEscapeFree(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {

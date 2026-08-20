@@ -5,10 +5,6 @@ import (
 	"testing"
 )
 
-// TestTurnDispatch_handleTurnDone_errorClearsLiveStream asserts that an error
-// ending a still-streaming turn un-marks the partial message so a live
-// reasoning panel (issue #364) is not left auto-expanded once the flawed turn
-// has ended: the partial reply keeps its content but stops streaming.
 func TestTurnDispatch_handleTurnDone_errorClearsLiveStream(t *testing.T) {
 	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", nil))

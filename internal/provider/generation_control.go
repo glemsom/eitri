@@ -5,67 +5,30 @@ import (
 	"fmt"
 )
 
-// This file defines the generation-control capability negotiation seam (issue
-// #58): how a special turn declares which provider-side
-// generation controls it wants, and how higher layers learn which of those a
-// provider can actually honor — before any wire call. The five controls are the
-// constrained-output levers Eitri may request on internal (non-tool) turns:
-// schema-constrained JSON, an output-token budget, a sampling policy,
-// provider-side tool-schema enforcement, and thinking suppression. Each is
-// wire-emitted by the specific special-turn tickets; this seam is
-// the negotiation contract they share.
-
-// GenerationControl identifies one provider-side generation control a special
-// turn may request on the wire.
+// GenerationControl identifies one provider-side generation control a special turn may request on the wire.
 type GenerationControl string
 
-// The five generation controls a provider can declare support for and a
-// special turn can request.
+// The five generation controls a provider can declare support for and a special turn can request.
 const (
-	// GenerationControlJSONObjectMode requests schema-constrained JSON Object
-	// Mode for the final answer.
-	GenerationControlJSONObjectMode GenerationControl = "json_object_mode"
-	// GenerationControlGenerationBudget requests a hard per-turn output token
-	// cap for an internal generation.
-	GenerationControlGenerationBudget GenerationControl = "generation_budget"
-	// GenerationControlSamplingPolicy requests temperature- or nucleus-based
-	// sampling.
-	GenerationControlSamplingPolicy GenerationControl = "sampling_policy"
-	// GenerationControlToolSchemaEnforcement requests provider-side tool-schema
-	// enforcement in the tool manifest.
+	GenerationControlJSONObjectMode        GenerationControl = "json_object_mode"
+	GenerationControlGenerationBudget      GenerationControl = "generation_budget"
+	GenerationControlSamplingPolicy        GenerationControl = "sampling_policy"
 	GenerationControlToolSchemaEnforcement GenerationControl = "tool_schema_enforcement"
-	// GenerationControlThinkingSuppression requests that a thinking-off run
-	// actually suppress chain-of-thought on the wire: omission of the thinking
-	// toggle on the openai-compatible path and an explicit
-	// thinking:{type:disabled} on the copilot path. A provider that does not
-	// declare it cannot silence reasoning server-side, so higher layers
-	// surface a warning instead of silently no-op'ing.
-	GenerationControlThinkingSuppression GenerationControl = "thinking_suppression"
+	GenerationControlThinkingSuppression   GenerationControl = "thinking_suppression"
 )
 
 // ControlRequirement pairs a generation control with how it must be honored.
-// A special turn marks each control it wants as either required or optional.
 type ControlRequirement struct {
-	Control GenerationControl
-	// Required is true when the turn cannot proceed without the control: an
-	// unsupported required control fails negotiation before any wire call.
-	// Required is false when the turn can degrade: an unsupported optional
-	// control is dropped and the turn proceeds without it.
+	Control  GenerationControl
 	Required bool
 }
 
-// GenerationControlProvider is an optional capability a Provider may expose:
-// declaring which generation controls it can honor on the wire. Higher layers
-// consult it through NegotiateGenerationControls instead of inspecting model ids
-// or endpoint strings. A Provider that does not implement this surface honors no
-// generation controls.
+// GenerationControlProvider is an optional capability a Provider may expose: declaring which generation controls it can honor on the wire.
 type GenerationControlProvider interface {
 	SupportedGenerationControls(ctx context.Context) ([]GenerationControl, error)
 }
 
-// UnsupportedRequiredControlError reports that a special turn declared a
-// generation control as required but the provider cannot honor it. It is
-// returned before any network call so a turn fails fast instead of degrading.
+// UnsupportedRequiredControlError reports that a special turn declared a generation control as required but the provider cannot honor it.
 type UnsupportedRequiredControlError struct {
 	Control GenerationControl
 }
@@ -75,18 +38,7 @@ func (e *UnsupportedRequiredControlError) Error() string {
 	return fmt.Sprintf("provider does not support required generation control %q", string(e.Control))
 }
 
-// NegotiateGenerationControls pre-flights a set of control requirements against
-// a provider's declared capability, returning the controls that will be honored.
-// It is the single seam a generation-control-aware turn consults before calling
-// Stream:
-//
-//   - A required control the provider cannot honor returns an
-//     *UnsupportedRequiredControlError immediately — before any wire call.
-//   - An optional control the provider cannot honor is dropped; its absence from
-//     the returned set is the observable degradation, so callers can see that the
-//     turn ran without it.
-//   - A provider without the GenerationControlProvider capability honors nothing:
-//     any required control is an error, and optional controls are all dropped.
+// NegotiateGenerationControls pre-flights a set of control requirements against a provider's declared capability, returning the controls that will be honored.
 func NegotiateGenerationControls(ctx context.Context, p Provider, reqs []ControlRequirement) ([]GenerationControl, error) {
 	supported := setOf(nil)
 	if gp, ok := p.(GenerationControlProvider); ok {
@@ -97,8 +49,6 @@ func NegotiateGenerationControls(ctx context.Context, p Provider, reqs []Control
 		supported = setOf(declared)
 	}
 
-	// Adopt the union of requirements, honoring each requested control once.
-	// If the same control is listed both optional and required, required wins.
 	honoredByControl := map[GenerationControl]ControlRequirement{}
 	order := []GenerationControl{}
 	for _, r := range reqs {

@@ -10,17 +10,13 @@ import (
 	"path/filepath"
 )
 
-// Output is the result of a sandboxed command: separated stdout/stderr so
-// callers can decide how to combine them (the bash tool returns combined
-// output for token efficiency).
+// Output is the result of a sandboxed command: separated stdout/stderr so callers can decide how to combine them (the bash tool returns combined output for token efficiency).
 type Output struct {
 	Stdout string
 	Stderr string
 }
 
-// Runner is the system-boundary seam that actually executes a command (bwrap
-// in production). It is injectable so sandbox construction is testable without
-// spawning processes; the real implementation is defaultRunner.
+// Runner is the system-boundary seam that actually executes a command (bwrap in production).
 type Runner interface {
 	Run(ctx context.Context, name string, args []string) (*Output, error)
 }
@@ -40,20 +36,7 @@ func (defaultRunner) Run(ctx context.Context, name string, args []string) (*Outp
 	return &Output{Stdout: stdout.String(), Stderr: stderr.String()}, err
 }
 
-// Sandbox runs shell commands inside the bubblewrap cage. It is a
-// defense-in-depth boundary: root mounted read-only, the workspace mounted
-// read-write at its host path, the session temp mounted as sandbox /tmp, a
-// separate PID namespace, and host network (--share-net). A fresh procfs is
-// mounted on /proc (scoped to the pid namespace), a devtmpfs on /dev, and a
-// private tmpfs on /dev/shm, so the sandbox sees its own process table and
-// device tree instead of the host's. It never falls back to unsandboxed
-// execution.
-// sshConfigDirName is the name of the sub-directory of the session temp that is
-// bound read-only over the in-cage mount destination /etc/ssh/ssh_config.d
-// It maps 1:1 onto the system config path so the sanitized,
-// user-owned copy shadows the host-root originals, keeping OpenSSH's strict
-// ownership check on the include files from failing inside the user-namespace
-// cage.
+// Sandbox runs shell commands inside the bubblewrap cage.
 const sshConfigDirName = "etc-ssh-config.d"
 
 type Sandbox struct {
@@ -62,18 +45,13 @@ type Sandbox struct {
 	run       Runner
 }
 
-// NewSandbox builds a sandbox for workspace (host path, RW) with the session
-// temp at tempHost (host /tmp/eitri-<GUID>). run is the command runner seam.
+// NewSandbox builds a sandbox for workspace (host path, RW) with the session temp at tempHost (host /tmp/eitri-<GUID>). run is the command runner seam.
 func NewSandbox(workspace, tempHost string, run Runner) *Sandbox {
 	return &Sandbox{workspace: workspace, tempHost: tempHost, run: run}
 }
 
-// Run executes the shell command cmd inside the bwrap cage and returns its
-// output. cmd is a shell string executed by /bin/bash -c.
+// Run executes the shell command cmd inside the bwrap cage and returns its output. cmd is a shell string executed by /bin/bash -c.
 func (s *Sandbox) Run(ctx context.Context, cmd string) (*Output, error) {
-	// The session temp host root must exist: bwrap refuses to bind a missing
-	// source. Create it idempotently so the sandbox /tmp
-	// depends on a real, writable host dir.
 	if err := os.MkdirAll(s.tempHost, 0o700); err != nil {
 		return nil, err
 	}
@@ -85,10 +63,6 @@ func (s *Sandbox) Run(ctx context.Context, cmd string) (*Output, error) {
 		"--share-net", // host network
 		"--unshare-pid",
 		"--ro-bind", "/", "/",
-		// Host-root /etc/ssh/* presents as nobody (uid 65534) inside
-		// the unprivileged user-namespace cage, so OpenSSH's ownership check on
-		// the include files fails. Shadow the system config with a sanitized,
-		// user-owned copy mounted read-only AFTER the root bind.
 		"--ro-bind", filepath.Join(s.tempHost, sshConfigDirName), "/etc/ssh/ssh_config.d",
 		"--proc", "/proc", // fresh procfs scoped to the pid namespace
 		"--dev", "/dev", // devtmpfs replaces the ro-bind host /dev
@@ -101,12 +75,7 @@ func (s *Sandbox) Run(ctx context.Context, cmd string) (*Output, error) {
 	return s.run.Run(ctx, "bwrap", args)
 }
 
-// prepareSshConfig materializes a user-owned copy of /etc/ssh/ssh_config.d into
-// the session temp (idempotently), dereferencing symlinks so referenced include
-// files (e.g. /usr/lib/systemd/ssh_config.d/20-systemd-ssh-proxy.conf) become
-// real files owned by the caller instead of host-root targets that read as
-// nobody inside the user namespace. This keeps `ssh -G` and git-over-ssh
-// working while never running the sandbox setuid.
+// prepareSshConfig materializes a user-owned copy of /etc/ssh/ssh_config.d into the session temp (idempotently), dereferencing symlinks so referenced include files (e.g. /usr/lib/systemd/ssh_config.d/20-systemd-ssh-proxy.conf) become real files owned by the caller instead of host-root targets that read as nobody inside the user namespace.
 func (s *Sandbox) prepareSshConfig() error {
 	src := "/etc/ssh/ssh_config.d"
 	dst := filepath.Join(s.tempHost, sshConfigDirName)
@@ -140,14 +109,7 @@ func (s *Sandbox) prepareSshConfig() error {
 	return nil
 }
 
-// resolveRegularFile resolves src to the path of the regular file to copy,
-// dereferencing symlinks so a symlink target rooted in /usr/lib/systemd is
-// copied as a real, caller-owned file rather than a pointer to a host-root,
-// nobody-in-cage target. ok is false when src does not map to a regular file,
-// in which case the caller should skip the entry. A genuine I/O error is
-// returned as err: a vanished entry (os.ErrNotExist) counts as skip, not
-// error, while any other failure (permission, etc.) propagates so the caller
-// surfaces it instead of silently failing open.
+// resolveRegularFile resolves src to the path of the regular file to copy, dereferencing symlinks so a symlink target rooted in /usr/lib/systemd is copied as a real, caller-owned file rather than a pointer to a host-root, nobody-in-cage target. ok is false when src does not map to a regular file, in which case the caller should skip the entry.
 func resolveRegularFile(src string) (path string, ok bool, err error) {
 	info, err := os.Lstat(src)
 	if err != nil {

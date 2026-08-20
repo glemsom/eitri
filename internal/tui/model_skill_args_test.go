@@ -7,15 +7,6 @@ import (
 	"testing"
 )
 
-// The args follow-up turn is dispatched through the shared composer submit
-// path (startTurn), so submitAndWait — whose runSubmitted helper now threads the
-// command returned by Update — drives the whole chain: submit the /skillname
-// line, run the activation, then run the follow-up args turn.
-
-// TestModel_slashSkillWithArgs threads `/skillname <args>` through activation:
-// the activation seam runs with the bare skill name, the payload renders as an
-// assistant note, then the args are dispatched as a normal user turn (the
-// injected Turn seam) verbatim, and the args message renders after the note.
 func TestModel_slashSkillWithArgs(t *testing.T) {
 	t.Parallel()
 	var activated string
@@ -37,16 +28,13 @@ func TestModel_slashSkillWithArgs(t *testing.T) {
 	m = typeText(t, m, "/my-skill improve this")
 	m = submitAndWait(t, m)
 
-	// (a) activation seam sees the bare name, NOT "/my-skill improve this".
 	if activated != "my-skill" {
 		t.Errorf("activation seam called with %q, want \"my-skill\"", activated)
 	}
-	// (b) args dispatched as a user turn, verbatim.
 	if len(turnPrompts) != 1 || turnPrompts[0] != "improve this" {
 		t.Errorf("args turn seam called with %v, want [\"improve this\"]", turnPrompts)
 	}
 	content := ansiStrip(view(m))
-	// (c)/(d) skill note appears before the args, and args message renders.
 	n := strings.Index(content, "skill-note-payload")
 	a := strings.Index(content, "improve this")
 	if n < 0 {
@@ -60,8 +48,6 @@ func TestModel_slashSkillWithArgs(t *testing.T) {
 	}
 }
 
-// TestModel_slashSkillWithMultiWordArgs asserts multi-word args are delivered
-// to the Turn seam verbatim, trimmed of surrounding whitespace.
 func TestModel_slashSkillWithMultiWordArgs(t *testing.T) {
 	t.Parallel()
 	want := "Let us improve this codebase"
@@ -87,8 +73,6 @@ func TestModel_slashSkillWithMultiWordArgs(t *testing.T) {
 	}
 }
 
-// TestModel_slashSkillNoArgs asserts bare `/skillname` activates the skill but
-// does NOT dispatch any follow-up turn.
 func TestModel_slashSkillNoArgs(t *testing.T) {
 	t.Parallel()
 	var activated string
@@ -121,8 +105,6 @@ func TestModel_slashSkillNoArgs(t *testing.T) {
 	}
 }
 
-// TestModel_slashSkillActivationError asserts an activation failure surfaces
-// the existing failure message and dispatches NO follow-up turn.
 func TestModel_slashSkillActivationError(t *testing.T) {
 	t.Parallel()
 	var turnPrompts []string
@@ -146,8 +128,6 @@ func TestModel_slashSkillActivationError(t *testing.T) {
 		t.Errorf("error path must not dispatch a turn, got %v", turnPrompts)
 	}
 	content := view(m)
-	// Words can be split across wrapped lines with SGR runs between them, so
-	// assert on words that stay intact rather than one multi-word phrase.
 	if !strings.Contains(content, "boom") || !strings.Contains(content, "failed") {
 		t.Errorf("activation failure should render, got: %q", content)
 	}

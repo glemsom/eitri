@@ -9,22 +9,14 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// jsonScripted wraps a Scripted handler so it also declares, via the
-// generation-control capability surface, that it honors JSON Object Mode — the
-// wire-emitting control a supporting provider advertises. The engine opts
-// a JSON-Object-Mode finalization turn into that
-// control, so the finalization request must carry the JSON object request flag.
 type jsonScripted struct {
 	provider.Scripted
 }
 
-// SupportedGenerationControls implements provider.GenerationControlProvider.
 func (j *jsonScripted) SupportedGenerationControls(context.Context) ([]provider.GenerationControl, error) {
 	return []provider.GenerationControl{provider.GenerationControlJSONObjectMode}, nil
 }
 
-// jsonHandler records every request it serves and returns a fixed JSON object
-// as the finalized answer so a test can assert the path end to end.
 type jsonHandler struct {
 	requests []provider.Request
 }
@@ -37,12 +29,6 @@ func (j *jsonHandler) stream(_ context.Context, req provider.Request) (provider.
 	), nil
 }
 
-// TestRunJSONObjectModeFinalizesOnSupportingProvider verifies the JSON
-// Object Mode finalization special turn: on a
-// provider that honors the control, the engine issues a non-tool turn flagged
-// for JSON Object Mode — so the wire carries response_format:{type:json_object}
-// — and returns the finalized JSON object as the final answer. The session key
-// and prompt thread through unchanged.
 func TestRunJSONObjectModeFinalizesOnSupportingProvider(t *testing.T) {
 	t.Parallel()
 	h := &jsonHandler{}
@@ -76,15 +62,8 @@ func TestRunJSONObjectModeFinalizesOnSupportingProvider(t *testing.T) {
 	}
 }
 
-// TestRunJSONObjectModeFailsFastWhenUnsupported verifies the generation-control
-// contract: a provider without the JSON Object
-// Mode capability honors no controls, so a required json_object_mode
-// finalization fails negotiation fast — before any wire call — and ordinary
-// agent runs remain on the untouched non-tool path.
 func TestRunJSONObjectModeFailsFastWhenUnsupported(t *testing.T) {
 	t.Parallel()
-	// NewScripted has no generation-control capability surface: it honors no
-	// controls, so a required JSON Object Mode fails the contract.
 	h := &jsonHandler{}
 	e := New(provider.NewScripted(h.stream), &mockTranscript{})
 
@@ -104,12 +83,6 @@ func TestRunJSONObjectModeFailsFastWhenUnsupported(t *testing.T) {
 	}
 }
 
-// TestRunJSONObjectModeAppendsJsonHintWhenPromptLacksIt pins the provider
-// contract that tripped the REAL opencode-go/DeepSeek endpoint:
-// reproduced HTTP 400): response_format:{type:json_object} hard-requires the
-// prompt to contain the word "json", else the gateway rejects the request with
-// 400 "Prompt must contain the word 'json' in some form". The engine must append
-// a JSON hint so the finalization turn always satisfies that contract.
 func TestRunJSONObjectModeAppendsJsonHintWhenPromptLacksIt(t *testing.T) {
 	t.Parallel()
 	h := &jsonHandler{}
@@ -133,9 +106,6 @@ func TestRunJSONObjectModeAppendsJsonHintWhenPromptLacksIt(t *testing.T) {
 	}
 }
 
-// TestJSONObjectPromptPreservesPromptThatRequestsJSON verifies jsonObjectPrompt
-// leaves a prompt already mentioning JSON byte-identical, so an explicit caller
-// request is never mutated.
 func TestJSONObjectPromptPreservesPromptThatRequestsJSON(t *testing.T) {
 	t.Parallel()
 	in := `Return JSON like {"ok":true}`
@@ -144,8 +114,6 @@ func TestJSONObjectPromptPreservesPromptThatRequestsJSON(t *testing.T) {
 	}
 }
 
-// TestJSONObjectPromptAppendsSuffix verifies jsonObjectPrompt appends the fixed
-// JSON hint to a prompt that does not already mention JSON (case-insensitive).
 func TestJSONObjectPromptAppendsSuffix(t *testing.T) {
 	t.Parallel()
 	for _, in := range []string{"Finalize the answer", "Do not use JSON here", ""} {

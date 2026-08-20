@@ -2,8 +2,6 @@ package tools
 
 import "testing"
 
-// TestValidatorAllowsWorkspace enumerates in-workspace targets (the primary
-// writable root), resolving them to their unchanged host form.
 func TestValidatorAllowsWorkspace(t *testing.T) {
 	t.Parallel()
 	v := NewValidator("/home/u/proj", nil, NewPathTranslator(GUID("g1")))
@@ -22,8 +20,6 @@ func TestValidatorAllowsWorkspace(t *testing.T) {
 	}
 }
 
-// TestValidatorAllowsExtraWritablePaths verifies targets under configured
-// extra_writable_paths are accepted.
 func TestValidatorAllowsExtraWritablePaths(t *testing.T) {
 	t.Parallel()
 	v := NewValidator("/home/u/proj", []string{"/srv/data", "/home/u/scratch"}, NewPathTranslator(GUID("g2")))
@@ -38,8 +34,6 @@ func TestValidatorAllowsExtraWritablePaths(t *testing.T) {
 	}
 }
 
-// TestValidatorAllowsSessionTemp verifies a sandbox /tmp target translates to
-// the session temp host root and is accepted as a writable root.
 func TestValidatorAllowsSessionTemp(t *testing.T) {
 	t.Parallel()
 	v := NewValidator("/home/u/proj", nil, NewPathTranslator(GUID("abc")))
@@ -52,8 +46,6 @@ func TestValidatorAllowsSessionTemp(t *testing.T) {
 	}
 }
 
-// TestValidatorRejectsOutsideRoots verifies targets outside every writable
-// root are hard errors.
 func TestValidatorRejectsOutsideRoots(t *testing.T) {
 	t.Parallel()
 	v := NewValidator("/home/u/proj", []string{"/srv/data"}, NewPathTranslator(GUID("g3")))
@@ -68,9 +60,6 @@ func TestValidatorRejectsOutsideRoots(t *testing.T) {
 	}
 }
 
-// TestValidatorIsFilePathRootWise confirms a prefix like /home/user/proj is
-// an exact element-boundary root: the workspace root and its children are
-// writable, but a sibling with a shared prefix is not.
 func TestValidatorRejectsSiblingPrefixAbuse(t *testing.T) {
 	t.Parallel()
 	v := NewValidator("/home/u/proj", nil, NewPathTranslator(GUID("g4")))

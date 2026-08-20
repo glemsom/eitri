@@ -9,9 +9,6 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// railKeyModel builds a Model with a rail and a Save seam that captures the
-// persisted config so tests can assert both the in-memory width change and the
-// config round-trip.
 func railKeyModel(t *testing.T, railWidth int) (Model, *configCapture) {
 	t.Helper()
 	cc := &configCapture{}
@@ -19,7 +16,7 @@ func railKeyModel(t *testing.T, railWidth int) (Model, *configCapture) {
 		Turn: func(ctx context.Context, p string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
-		Rail: NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1"),
+		Rail:   NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1"),
 		Config: testConfig(railWidth),
 		Save: func(cfg config.Config) error {
 			cc.cfg = cfg
@@ -38,15 +35,12 @@ type configCapture struct {
 	cfg config.Config
 }
 
-// testConfig returns a config seeded with the given rail width.
 func testConfig(railWidth int) config.Config {
 	cfg := config.Default()
 	cfg.RailWidth = railWidth
 	return cfg
 }
 
-// TestRailKey_Shrink asserts Ctrl+Shift+[ shrinks the rail by 2 columns and
-// persists the new width to config.
 func TestRailKey_Shrink(t *testing.T) {
 	t.Parallel()
 	m, cc := railKeyModel(t, 40)
@@ -62,8 +56,6 @@ func TestRailKey_Shrink(t *testing.T) {
 	}
 }
 
-// TestRailKey_Grow asserts Ctrl+Shift+] grows the rail by 2 columns and
-// persists the new width to config.
 func TestRailKey_Grow(t *testing.T) {
 	t.Parallel()
 	m, cc := railKeyModel(t, 40)
@@ -79,8 +71,6 @@ func TestRailKey_Grow(t *testing.T) {
 	}
 }
 
-// TestRailKey_Reset asserts Alt+0 resets the rail to the default width and
-// persists the reset to config.
 func TestRailKey_Reset(t *testing.T) {
 	t.Parallel()
 	m, cc := railKeyModel(t, 50)
@@ -96,8 +86,6 @@ func TestRailKey_Reset(t *testing.T) {
 	}
 }
 
-// TestRailKey_ShrinkFloor asserts shrinking below the minimum rail width is
-// clamped and does not go below minWidthRail.
 func TestRailKey_ShrinkFloor(t *testing.T) {
 	t.Parallel()
 	m, _ := railKeyModel(t, minWidthRail)
@@ -110,8 +98,6 @@ func TestRailKey_ShrinkFloor(t *testing.T) {
 	}
 }
 
-// TestRailKey_Visible asserts rail resize keybinds work while the rail is
-// visible and produce a valid render (no panic, no empty output).
 func TestRailKey_Visible(t *testing.T) {
 	t.Parallel()
 	m, _ := railKeyModel(t, 30)

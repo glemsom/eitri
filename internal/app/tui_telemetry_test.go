@@ -9,15 +9,10 @@ import (
 	"github.com/glemsom/eitri/internal/tui"
 )
 
-// mockTranscript discards transcript writes for engine tests that don't assert
-// the on-disk sink.
 type mockTranscript struct{}
 
 func (mockTranscript) WriteTranscript([]byte) error { return nil }
 
-// TestFeedTelemetryBridgesUsageEvent asserts the engine's per-turn UsageEvent
-// is forwarded through the telemetry bridge into the TUI status-strip channel,
-// read-only against the run.
 func TestFeedTelemetryBridgesUsageEvent(t *testing.T) {
 	e := engine.New(provider.NewScripted(func(_ context.Context, _ provider.Request) (provider.Stream, error) {
 		return provider.StreamFunc(
@@ -35,7 +30,6 @@ func TestFeedTelemetryBridgesUsageEvent(t *testing.T) {
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	// The turn boundary precedes usage in stream order.
 	if u, ok := <-te.Updates(); !ok {
 		t.Fatal("telemetry channel closed")
 	} else if u.Kind != tui.TelemetryTurn {
@@ -51,8 +45,6 @@ func TestFeedTelemetryBridgesUsageEvent(t *testing.T) {
 	}
 }
 
-// TestFeedTelemetryBridgesTurnEvent asserts a turn Start boundary is forwarded
-// as a TelemetryTurn update, so the strip's turns/max stays fresh turn over turn.
 func TestFeedTelemetryBridgesTurnEvent(t *testing.T) {
 	e := engine.New(provider.NewScripted(func(_ context.Context, _ provider.Request) (provider.Stream, error) {
 		return provider.StreamFunc(
@@ -64,7 +56,6 @@ func TestFeedTelemetryBridgesTurnEvent(t *testing.T) {
 	te := tui.NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	feedEngineEvents(e, te, tui.NewStreamer(), tui.NewToolFeed(), tui.NewDeltaObserver(nil))
 
-	// Two runs -> one turn-boundary update each, ahead of the usage update.
 	for i := 0; i < 2; i++ {
 		if _, err := e.Run(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}); err != nil {
 			t.Fatalf("Run() error = %v", err)
@@ -79,11 +70,6 @@ func TestFeedTelemetryBridgesTurnEvent(t *testing.T) {
 	}
 }
 
-// TestFeedEngineEventsBridgesAnswerDelta asserts the engine's streamed
-// AnswerStream deltas are forwarded through the single engine listener into the
-// TUI streaming pane's channel as answer-kind updates, in stream order, while
-// ReasoningStream deltas are forwarded as reasoning-kind updates — reasoning is
-// never leaked into a stream update tagged as answer.
 func TestFeedEngineEventsBridgesAnswerDelta(t *testing.T) {
 	e := engine.New(provider.NewScripted(func(_ context.Context, _ provider.Request) (provider.Stream, error) {
 		return provider.StreamFunc(
@@ -102,8 +88,6 @@ func TestFeedEngineEventsBridgesAnswerDelta(t *testing.T) {
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	// Drain the stream: collect the deltas delivered into the streaming pane,
-	// tagging reasoning vs answer so the two channels never cross.
 	var answers, reasonings []string
 loop:
 	for {
@@ -131,15 +115,11 @@ loop:
 			t.Errorf("answer delta %d = %q, want %q", i, answers[i], wantAnswers[i])
 		}
 	}
-	// The reasoning delta is delivered as its own reasoning-kind update, not
-	// squeezed into the answer channel.
 	if len(reasonings) != 1 || reasonings[0] != "(thinking not for the answer pane)" {
 		t.Errorf("reasoning deltas = %v, want the single thinking chunk", reasonings)
 	}
 }
 
-// scriptedToolEditTurn answers with a single edit tool call, then confirms, so
-// the app's engine listener can forward the tool events into the TUI tool feed.
 func scriptedToolEditTurn() *provider.Scripted {
 	return provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
 		for _, m := range req.Messages {
@@ -157,11 +137,6 @@ func scriptedToolEditTurn() *provider.Scripted {
 	})
 }
 
-// TestFeedEngineEventsBridgesToolEvents asserts the engine's ToolCallEvent and
-// ToolResultEvent are forwarded through the single engine listener into the TUI
-// tool feed's channel as a paired Start+Result carrying the full result and the
-// file line-delta metadata computed by the TUI-side delta observer, read-only
-// against the run.
 func TestFeedEngineEventsBridgesToolEvents(t *testing.T) {
 	e := engine.New(scriptedToolEditTurn(), mockTranscript{})
 	feed := tui.NewToolFeed()

@@ -10,9 +10,6 @@ import (
 
 var updateGolden = flag.Bool("update", false, "update golden files")
 
-// TestHelpView_snapshot asserts helpView renders correctly for every supported
-// theme. Each theme's output is compared against a golden file under
-// testdata/help/. Run with -update to regenerate golden files.
 func TestHelpView_snapshot(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 
@@ -45,8 +42,6 @@ func TestHelpView_snapshot(t *testing.T) {
 	}
 }
 
-// TestHelpView_sections asserts the three canonical sections exist with
-// their exact header names.
 func TestHelpView_sections(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()
@@ -58,9 +53,6 @@ func TestHelpView_sections(t *testing.T) {
 	}
 }
 
-// TestHelpView_markdownHeaders asserts the section titles are Markdown `#`
-// headers (issue #387) so the transcript's Markdown→ANSI pass renders them in
-// the theme's accent color — not the old emoji-prefixed uppercase label rows.
 func TestHelpView_markdownHeaders(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()
@@ -70,8 +62,6 @@ func TestHelpView_markdownHeaders(t *testing.T) {
 			t.Errorf("helpView() missing Markdown header %q", want)
 		}
 	}
-	// The old section emoji prefixes are gone: a header is a `#` line, not a
-	// glyph-prefixed run (issue #387).
 	for _, gone := range []string{"$ COMMANDS", "k KEYBINDINGS", "< CONCEPTS"} {
 		if strings.Contains(got, gone) {
 			t.Errorf("helpView() must drop legacy section prefix %q", gone)
@@ -79,9 +69,6 @@ func TestHelpView_markdownHeaders(t *testing.T) {
 	}
 }
 
-// TestHelpView_codeSpans asserts command and keybinding names are wrapped in
-// backtick code spans (issue #387) so the Markdown pass renders them in code
-// style, distinct from their descriptions.
 func TestHelpView_codeSpans(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()
@@ -98,9 +85,6 @@ func TestHelpView_codeSpans(t *testing.T) {
 	}
 }
 
-// TestHelpView_renderedHeaders asserts the stored Markdown headers actually
-// survive the transcript's Markdown→ANSI pass, so the section titles render on
-// screen instead of being dropped or left literal (issue #387).
 func TestHelpView_renderedHeaders(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	out, err := RenderMarkdown(helpView(), 80, "dark")
@@ -115,7 +99,6 @@ func TestHelpView_renderedHeaders(t *testing.T) {
 	}
 }
 
-// TestHelpView_commands lists the four built-in slash commands.
 func TestHelpView_commands(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()
@@ -127,23 +110,15 @@ func TestHelpView_commands(t *testing.T) {
 	}
 }
 
-// TestHelpView_noSkills asserts no skill names leak into the help output.
 func TestHelpView_noSkills(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()
 
-	// The help surface must never list skills — it only documents built-in
-	// commands, keybindings, and concepts.
 	if strings.Contains(got, "skill") {
 		t.Errorf("helpView() must not mention skills, got:\n%s", got)
 	}
 }
 
-// TestHelpView_alignedColumns asserts each section's descriptions share one
-// vertical ruler (issue #385): within a section the key/label cell is padded to
-// the widest so every description starts at the same column. Within KEYBINDINGS
-// each labeled category has its own shared ruler (issue #386), so alignment is
-// checked per category.
 func TestHelpView_alignedColumns(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()
@@ -183,7 +158,6 @@ func TestHelpView_alignedColumns(t *testing.T) {
 	}
 }
 
-// assertAligned asserts every desc appears in lines at the same starting column.
 func assertAligned(t *testing.T, label string, lines, descs []string) {
 	t.Helper()
 	col := -1
@@ -207,9 +181,6 @@ func assertAligned(t *testing.T, label string, lines, descs []string) {
 	}
 }
 
-// TestHelpView_keybindingCategories asserts the KEYBINDINGS section groups its
-// rows under at least three labeled category sub-headers (issue #386), each
-// with an ASCII-fallback emoji prefix.
 func TestHelpView_keybindingCategories(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()
@@ -223,8 +194,6 @@ func TestHelpView_keybindingCategories(t *testing.T) {
 	}
 }
 
-// TestHelpView_keybindingsComplete asserts every keybinding appears exactly once
-// in the KEYBINDINGS section: none dropped, none duplicated (issue #386).
 func TestHelpView_keybindingsComplete(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()
@@ -241,10 +210,6 @@ func TestHelpView_keybindingsComplete(t *testing.T) {
 	}
 }
 
-// keybindingsSection returns the KEYBINDINGS block (from its header to the
-// trailing blank line) so uniqueness/count checks are scoped to the section.
-// It skips the blank line that separates the Markdown `#` header from its body
-// (issue #387) before collecting rows.
 func keybindingsSection(t *testing.T, got string) string {
 	t.Helper()
 	lines := strings.Split(got, "\n")
@@ -269,13 +234,9 @@ func keybindingsSection(t *testing.T, got string) string {
 	return strings.Join(out, "\n")
 }
 
-// categoryLines returns the keybinding rows between a labeled category header
-// and the next category/section boundary, trimming the two-space row indent.
 func categoryLines(t *testing.T, got, name string) []string {
 	t.Helper()
 	lineOf := func(ln string) bool {
-		// A category header is `  <glyph> NAME`; the row lines that follow carry
-		// the `  key  description` shape and never contain the bare name trailer.
 		return strings.HasSuffix(strings.TrimSpace(ln), " "+name)
 	}
 	lines := strings.Split(got, "\n")
@@ -289,8 +250,6 @@ func categoryLines(t *testing.T, got, name string) []string {
 		if !started {
 			continue
 		}
-		// Terminate at a blank line, the KEYBINDINGS header, or the next category
-		// header — whichever closes the current category block.
 		if ln == "" || lineOf(ln) || strings.Contains(ln, "KEYBINDINGS") ||
 			strings.HasPrefix(strings.TrimSpace(ln), "-") {
 			return out
@@ -300,10 +259,6 @@ func categoryLines(t *testing.T, got, name string) []string {
 	return out
 }
 
-// sectionLines returns the row lines of a /help section (content between the
-// section header and the following blank separator), trimming the two-space
-// indent used by every row. It skips the blank line that follows a Markdown
-// `#` header (issue #387) before collecting rows.
 func sectionLines(t *testing.T, got, header string) []string {
 	t.Helper()
 	lines := strings.Split(got, "\n")
@@ -317,7 +272,6 @@ func sectionLines(t *testing.T, got, header string) []string {
 		if !started {
 			continue
 		}
-		// Skip the blank line right after the Markdown `#` header.
 		if ln == "" && len(out) == 0 {
 			continue
 		}
@@ -332,10 +286,6 @@ func sectionLines(t *testing.T, got, header string) []string {
 	return out
 }
 
-// TestHelpView_noAnsiEscape asserts the help content is stored as escape-free
-// plain text (issue #378): no ANSI sequences at all. Storing raw ANSI in the
-// message is what got re-escaped as literal garbage by the Markdown pass and
-// leaked into the clipboard copy, so its absence is the fix's contract.
 func TestHelpView_noAnsiEscape(t *testing.T) {
 	got := helpView()
 	if strings.Contains(got, "\x1b[") {
@@ -343,9 +293,6 @@ func TestHelpView_noAnsiEscape(t *testing.T) {
 	}
 }
 
-// TestHelpView_rendersClean verifies the stored help text survives the
-// transcript's Markdown→ANSI pass without producing visible escape garbage:
-// the raw `1;38;...` parameter runs that the old ANSI-embedded help exposed.
 func TestHelpView_rendersClean(t *testing.T) {
 	out, err := RenderMarkdown(helpView(), 80, "dark")
 	if err != nil {

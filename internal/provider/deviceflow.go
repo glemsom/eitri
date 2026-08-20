@@ -14,26 +14,22 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// errAuthorizationPending is the device-flow interim "user hasn't approved yet"
-// signal; Poll returns it wrapped so callers retry on interval.
+// errAuthorizationPending is the device-flow interim "user hasn't approved yet" signal; Poll returns it wrapped so callers retry on interval.
 var errAuthorizationPending = errors.New("device flow: authorization pending")
 
-// IsAuthorizationPending reports whether err is the "wait, keep polling" state
-// of a device code not yet approved.
+// IsAuthorizationPending reports whether err is the "wait, keep polling" state of a device code not yet approved.
 func IsAuthorizationPending(err error) bool {
 	return errors.Is(err, errAuthorizationPending)
 }
 
-// Defaulted GitHub device-flow endpoints. Test doubles override these via
-// DeviceFlow{...}.endpoints.
+// Defaulted GitHub device-flow endpoints.
 const (
 	githubDeviceCodeURL  = "https://github.com/login/device/code"
 	githubAccessTokenURL = "https://github.com/login/oauth/access_token"
 	githubOAuthClientID  = "Iv1.b507a08c87ecfe98"
 )
 
-// DeviceCode is the intermediate device-flow handshake state: the user is shown
-// the code + verification URI and asked to approve; Poll then exchanges it.
+// DeviceCode is the intermediate device-flow handshake state: the user is shown the code + verification URI and asked to approve; Poll then exchanges it.
 type DeviceCode struct {
 	DeviceCode      string `json:"device_code"`
 	UserCode        string `json:"user_code"`
@@ -42,17 +38,14 @@ type DeviceCode struct {
 	Interval        int    `json:"interval"`
 }
 
-// DeviceFlow is the GitHub device-flow OAuth client behind the TUI-only
-// Copilot approval screen. Batch never runs this — it consumes stored/refreshed
-// credentials instead; the interactive handshake is the TUI's job.
+// DeviceFlow is the GitHub device-flow OAuth client behind the TUI-only Copilot approval screen.
 type DeviceFlow struct {
 	http      *http.Client
 	endpoints map[string]string
 	mu        sync.Mutex
 }
 
-// NewDeviceFlow returns a device-flow client. overrides, when non-nil, lets
-// tests stub the code/token endpoints keyed by "code" and "token".
+// NewDeviceFlow returns a device-flow client. overrides, when non-nil, lets tests stub the code/token endpoints keyed by "code" and "token".
 func NewDeviceFlow(httpc *http.Client, overrides map[string]string) *DeviceFlow {
 	ep := map[string]string{
 		"code":  githubDeviceCodeURL,
@@ -62,8 +55,7 @@ func NewDeviceFlow(httpc *http.Client, overrides map[string]string) *DeviceFlow 
 	return &DeviceFlow{http: httpc, endpoints: ep}
 }
 
-// Start begins a device-flow handshake, returning the code to display for
-// in-UI approval. It is the first half of the TUI re-auth path.
+// Start begins a device-flow handshake, returning the code to display for in-UI approval.
 func (d *DeviceFlow) Start(ctx context.Context) (DeviceCode, error) {
 	form := url.Values{}
 	form.Set("client_id", githubOAuthClientID)
@@ -83,9 +75,7 @@ func (d *DeviceFlow) Start(ctx context.Context) (DeviceCode, error) {
 	return cd, nil
 }
 
-// Poll exchanges an approved device code for a fresh credential. It returns
-// a pending signal (IsAuthorizationPending) until the user approves, then the
-// token set the TUI persists to config. Re-entrant safe.
+// Poll exchanges an approved device code for a fresh credential.
 func (d *DeviceFlow) Poll(ctx context.Context, deviceCode string) (config.CopilotConfig, error) {
 	form := url.Values{}
 	form.Set("grant_type", "urn:ietf:params:oauth:grant-type:device_code")

@@ -19,7 +19,6 @@ func TestNewCreatesGUIDTranscriptDir(t *testing.T) {
 	if s.GUID() == "" {
 		t.Fatal("New() GUID is empty")
 	}
-	// Dir is under the data dir's sessions/<GUID> tree.
 	rel, err := filepath.Rel(dir, s.Dir())
 	if err != nil {
 		t.Fatalf("session dir %s not under data dir %s: %v", s.Dir(), dir, err)

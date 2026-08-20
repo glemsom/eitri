@@ -9,12 +9,8 @@ import (
 	"testing"
 )
 
-// newTestRegistry builds a registry against a temp workspace with an injectable
-// runner for bash, mirroring the per-session wiring the app performs at boot.
 func newTestRegistry(t *testing.T, rr Runner) (*Registry, string) {
 	t.Helper()
-	// Workspace must not live under /tmp or the sandbox/temp /tmp remap would
-	// translate it; use a home-relative path like a real project dir.
 	home, err := os.UserHomeDir()
 	if err != nil {
 		t.Fatalf("home dir: %v", err)
@@ -37,14 +33,8 @@ func newTestRegistry(t *testing.T, rr Runner) (*Registry, string) {
 	return r, ws
 }
 
-// TestReadSchemaPlainOptionalTypes locks that the optional start_line/end_line
-// are plain {"type":"integer"} properties rather than nullable-union arrays:
-// wire tolerance for omitted optionals (issue #396) makes the union form
-// unnecessary, and the plain form is standard JSON-Schema a provider
-// validator accepts.
 func TestReadSchemaPlainOptionalTypes(t *testing.T) {
 	t.Parallel()
-	// Schema() needs no validator, so the type can be exercised directly.
 	schema := (&readTool{}).Schema()
 	props, ok := schema["properties"].(map[string]any)
 	if !ok {
@@ -62,11 +52,6 @@ func TestReadSchemaPlainOptionalTypes(t *testing.T) {
 	}
 }
 
-// TestReadSchemaRequiredSubset locks the read schema's required-subset shape:
-// only path is required (whole-file reads need no start_line/end_line
-// placeholders) and additionalProperties is false. The line-range optionals
-// are declared as ordinary integer properties that a caller may omit.
-// (The plain-type form itself is guarded by TestReadSchemaPlainOptionalTypes.)
 func TestReadSchemaRequiredSubset(t *testing.T) {
 	t.Parallel()
 	schema := (&readTool{}).Schema()
@@ -91,8 +76,6 @@ func TestReadSchemaRequiredSubset(t *testing.T) {
 	}
 }
 
-// TestReadWholeFileRequiresOnlyPath verifies a whole-file read needs no
-// start_line/end_line placeholders: read with just path dumps every line.
 func TestReadWholeFileRequiresOnlyPath(t *testing.T) {
 	t.Parallel()
 	r, ws := newTestRegistry(t, nil)
@@ -101,7 +84,6 @@ func TestReadWholeFileRequiresOnlyPath(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("write fixture: %v", err)
 	}
-	// Omitted optionals — no null placeholders. The map has only path.
 	args := map[string]any{"path": path}
 	res, err := r.Run(context.Background(), "read", args)
 	if err != nil {
@@ -114,8 +96,6 @@ func TestReadWholeFileRequiresOnlyPath(t *testing.T) {
 	}
 }
 
-// TestReadToleratesNullOptionals verifies a model that still sends null for the
-// line-range optionals is not broken: null falls to the whole-file default.
 func TestReadToleratesNullOptionals(t *testing.T) {
 	t.Parallel()
 	r, ws := newTestRegistry(t, nil)
@@ -141,7 +121,6 @@ func argMap(kv ...string) map[string]any {
 	return m
 }
 
-// TestRegistryExposesTools locks the six-tool surface.
 func TestRegistryExposesTools(t *testing.T) {
 	t.Parallel()
 	r, _ := newTestRegistry(t, nil)
@@ -156,8 +135,6 @@ func TestRegistryExposesTools(t *testing.T) {
 	}
 }
 
-// TestBashRunsInSandbox verifies the bash tool invokes the sandbox runner with
-// the command and returns its combined output.
 func TestBashRunsInSandbox(t *testing.T) {
 	t.Parallel()
 	rr := &recordingRunner{out: &Output{Stdout: "$HOME\n"}}
@@ -173,10 +150,6 @@ func TestBashRunsInSandbox(t *testing.T) {
 	}
 }
 
-// TestBashCompressesNoisyOutputAtBoundary verifies a noisy, high-volume bash
-// read is compressed at the tool-result boundary: the output
-// returned into the conversation is truncated with the explicit "+ more" marker
-// and is strictly shorter, but the raw command can be re-run for recovery.
 func TestBashCompressesNoisyOutputAtBoundary(t *testing.T) {
 	t.Parallel()
 	var raw strings.Builder
@@ -198,7 +171,6 @@ func TestBashCompressesNoisyOutputAtBoundary(t *testing.T) {
 	if len(got) >= len(raw.String()) {
 		t.Fatalf("compressed output not shorter: raw=%d bytes, got=%d bytes", len(raw.String()), len(got))
 	}
-	// Deterministic: re-running the same command returns the same compressed form.
 	againRes, err := r.Run(context.Background(), "bash", argMap("command", "ls -R ."))
 	again := againRes.Text
 	if err != nil {
@@ -209,8 +181,6 @@ func TestBashCompressesNoisyOutputAtBoundary(t *testing.T) {
 	}
 }
 
-// TestReadLineRange verifies line-range reads: lines before start omitted,
-// range bounded, and the requested slice returned with content.
 func TestReadLineRange(t *testing.T) {
 	t.Parallel()
 	r, ws := newTestRegistry(t, nil)
@@ -232,10 +202,6 @@ func TestReadLineRange(t *testing.T) {
 	}
 }
 
-// TestReadResolvesRelativeWorkspacePath verifies read accepts a path relative
-// to the workspace (bash's cwd), not only host-absolute paths. The model
-// commonly emits "AGENTS.md" after a `ls`; it must resolve against the
-// workspace root via the translator.
 func TestReadResolvesRelativeWorkspacePath(t *testing.T) {
 	t.Parallel()
 	r, ws := newTestRegistry(t, nil)
@@ -252,8 +218,6 @@ func TestReadResolvesRelativeWorkspacePath(t *testing.T) {
 	}
 }
 
-// TestReadUsesSessionTempNamespace verifies a sandbox /tmp path is translated
-// and read host-side from the session temp root.
 func TestReadUsesSessionTempNamespace(t *testing.T) {
 	t.Parallel()
 	r := NewRegistry(Deps{
@@ -262,7 +226,6 @@ func TestReadUsesSessionTempNamespace(t *testing.T) {
 		GUID:      GUID("g"),
 		Runner:    &recordingRunner{},
 	})
-	// Place a file at the host temp root as the sandbox /tmp/x would materialize.
 	if err := os.MkdirAll("/tmp/eitri-g", 0o700); err != nil {
 		t.Fatalf("mkdir temp host: %v", err)
 	}
@@ -280,16 +243,9 @@ func TestReadUsesSessionTempNamespace(t *testing.T) {
 	}
 }
 
-// TestReadOutsideWritableRoots verifies read is not gated by the writable
-// roots: a host file outside the workspace, extra writable paths, and session
-// temp reads fine (the sandbox already exposes it via bash), and a missing
-// file fails only on the genuine I/O error.
 func TestReadOutsideWritableRoots(t *testing.T) {
 	t.Parallel()
 	r, ws := newTestRegistry(t, nil)
-	// Fixture lives outside the workspace and outside session temp: a sibling
-	// dir of the workspace root under the test top dir, so it is outside every
-	// writable root yet still host-readable.
 	top := filepath.Dir(ws)
 	outside := filepath.Join(top, "outside.txt")
 	if err := os.WriteFile(outside, []byte("outside-root-content\n"), 0o600); err != nil {
@@ -307,7 +263,6 @@ func TestReadOutsideWritableRoots(t *testing.T) {
 	}
 }
 
-// TestWriteCreatesFile verifies write targets validate and create the file.
 func TestWriteCreatesFile(t *testing.T) {
 	t.Parallel()
 	r, ws := newTestRegistry(t, nil)
@@ -325,7 +280,6 @@ func TestWriteCreatesFile(t *testing.T) {
 	}
 }
 
-// TestEditReplacesText verifies edit replaces the first unique occurrence.
 func TestEditReplacesText(t *testing.T) {
 	t.Parallel()
 	r, ws := newTestRegistry(t, nil)
@@ -343,8 +297,6 @@ func TestEditReplacesText(t *testing.T) {
 	}
 }
 
-// TestWriteRejectsOutsideRoots verifies write fails hard on paths outside the
-// writable roots.
 func TestWriteRejectsOutsideRoots(t *testing.T) {
 	t.Parallel()
 	r, _ := newTestRegistry(t, nil)
@@ -353,9 +305,6 @@ func TestWriteRejectsOutsideRoots(t *testing.T) {
 	}
 }
 
-// TestEditRejectsOutsideRoots verifies edit keeps the writable-root guard:
-// a host path outside every writable root is a hard error, never a genuine
-// read/write attempt.
 func TestEditRejectsOutsideRoots(t *testing.T) {
 	t.Parallel()
 	r, _ := newTestRegistry(t, nil)

@@ -10,10 +10,6 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// compactCfg returns a compaction config with a small context window and a
-// tiny tail token budget so tests cross the 80% threshold and evict the oldest
-// body with minimal fixtures (the soft 8k budget would otherwise swallow a
-// toy-sized conversation).
 func compactCfg() *CompactionConfig {
 	return &CompactionConfig{
 		Fraction:         constants.DefaultCompactionFraction,
@@ -24,9 +20,6 @@ func compactCfg() *CompactionConfig {
 	}
 }
 
-// TestEvictPruneRingFenceProtectsSkillContent verifies the optional prune
-// ring-fence: a message belonging to a skill activation
-// is kept, not evicted, even when the soft budget would drop it.
 func TestEvictPruneRingFenceProtectsSkillContent(t *testing.T) {
 	t.Parallel()
 	msgs := []provider.Message{
@@ -45,7 +38,6 @@ func TestEvictPruneRingFenceProtectsSkillContent(t *testing.T) {
 	if len(body) == 0 {
 		t.Fatal("untrimmed prune config produced no evicted body")
 	}
-	// The skill leg and its tool result must survive in the tail.
 	var sawSkill, sawTool bool
 	for _, m := range tail {
 		if isSkillMessage(m) {
@@ -60,13 +52,6 @@ func TestEvictPruneRingFenceProtectsSkillContent(t *testing.T) {
 	}
 }
 
-// compactHandler drives a scripted provider through a compaction crossing:
-// turn 1 makes a tool call (history grows), turn 2 makes a tool call and
-// reports usage crossing the 80% threshold, the engine issues a non-tool
-// summary call, then turn 3 is the final answer. It records every request and
-// the assistant reasoning the engine re-emits, so the test can assert the head
-// is swapped for the summary and the verbatim tail (reasoning included)
-// survives.
 type compactHandler struct {
 	requests   []provider.Request
 	transcript []string
@@ -75,9 +60,7 @@ type compactHandler struct {
 func (c *compactHandler) stream(ctx context.Context, req provider.Request) (provider.Stream, error) {
 	c.requests = append(c.requests, req)
 
-	// A summary-generation call: non-tool, no tool_calls, no tool choice.
 	if len(req.Tools) == 0 {
-		// Capture a marker for reuse as the re-injected summary head.
 		for _, m := range req.Messages {
 			if m.Role == provider.RoleUser {
 				c.transcript = append(c.transcript, "SUMMARY:"+m.Content)
@@ -98,7 +81,6 @@ func (c *compactHandler) stream(ctx context.Context, req provider.Request) (prov
 	}
 	switch {
 	case toolResults == 0:
-		// Turn 1: call a tool so the message history grows.
 		c.transcript = append(c.transcript, "T1")
 		return provider.StreamFunc(
 			provider.Chunk{ReasoningContent: "turn-one reasoning"},
@@ -107,7 +89,6 @@ func (c *compactHandler) stream(ctx context.Context, req provider.Request) (prov
 			}, Done: true},
 		), nil
 	case toolResults == 1:
-		// Turn 2: another tool call, usage now crosses the 80% threshold.
 		c.transcript = append(c.transcript, "T2")
 		return provider.StreamFunc(
 			provider.Chunk{ReasoningContent: "turn-two reasoning"},
@@ -119,7 +100,6 @@ func (c *compactHandler) stream(ctx context.Context, req provider.Request) (prov
 			}},
 		), nil
 	default:
-		// Final non-tool turn after compaction.
 		c.transcript = append(c.transcript, "FINAL")
 		return provider.StreamFunc(
 			provider.Chunk{Content: "done", FinishReason: "stop", Done: true,
@@ -128,25 +108,14 @@ func (c *compactHandler) stream(ctx context.Context, req provider.Request) (prov
 	}
 }
 
-// budgetScripted wraps a Scripted handler so it also declares (via the
-// generation-control capability surface) that it honors the Generation Budget
-// control — the wire-emitting budget a supporting provider advertises. The
-// engine opts the compaction summary turn into that budget, so the summary
-// request must carry max_completion_tokens.
 type budgetScripted struct {
 	provider.Scripted
 }
 
-// SupportedGenerationControls implements provider.GenerationControlProvider.
 func (b *budgetScripted) SupportedGenerationControls(context.Context) ([]provider.GenerationControl, error) {
 	return []provider.GenerationControl{provider.GenerationControlGenerationBudget}, nil
 }
 
-// TestCompactionSummaryHonorsGenerationBudget verifies the compaction summary
-// special turn — an internal, non-tool generation — opts into a hard Generation
-// Budget on a supporting provider: the summary request carries
-// max_completion_tokens capped at SummaryMaxTokens, while ordinary agent/tool
-// turns in the same run carry no budget.
 func TestCompactionSummaryHonorsGenerationBudget(t *testing.T) {
 	t.Parallel()
 	h := &compactHandler{}
@@ -178,7 +147,6 @@ func TestCompactionSummaryHonorsGenerationBudget(t *testing.T) {
 	if summary.MaxOutputTokens != constants.DefaultSummaryMaxTokens {
 		t.Fatalf("summary MaxOutputTokens = %d, want %d (SummaryMaxTokens)", summary.MaxOutputTokens, constants.DefaultSummaryMaxTokens)
 	}
-	// Ordinary agent/tool turns must not carry a generation budget.
 	for i, r := range h.requests {
 		if i == 2 {
 			continue
@@ -189,16 +157,8 @@ func TestCompactionSummaryHonorsGenerationBudget(t *testing.T) {
 	}
 }
 
-// TestCompactionSkipsSummaryWhenBudgetUnsupported verifies the generation-control
-// contract: a special turn that requires the
-// Generation Budget on a provider that cannot honor it fails negotiation, and the
-// summary is skipped via the fail-safe path rather than silently running without
-// the hard cap. Compaction still happens (eviction frees context) and the run
-// completes.
 func TestCompactionSkipsSummaryWhenBudgetUnsupported(t *testing.T) {
 	t.Parallel()
-	// NewScripted has no generation-control capability surface: it honors no
-	// controls, so a required Generation Budget fails the contract.
 	h := &compactHandler{}
 	e := New(provider.NewScripted(h.stream), &mockTranscript{})
 
@@ -217,11 +177,9 @@ func TestCompactionSkipsSummaryWhenBudgetUnsupported(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunAgent error = %v, want nil (compaction still completes on fail-safe skip)", err)
 	}
-	// T1 (tool) -> T2 (tool + threshold) -> no summary -> FINAL, straight through.
 	if len(h.requests) != 3 {
 		t.Fatalf("provider requests = %d, want 3 (t1, t2, final) — summary skipped for unsupported required budget", len(h.requests))
 	}
-	// No request may carry a budget the provider cannot honor.
 	for i, r := range h.requests {
 		if r.MaxOutputTokens != 0 {
 			t.Errorf("request %d carried MaxOutputTokens=%d on an unsupported provider", i, r.MaxOutputTokens)
@@ -229,11 +187,6 @@ func TestCompactionSkipsSummaryWhenBudgetUnsupported(t *testing.T) {
 	}
 }
 
-// TestRunAgentCompactsAtThreshold exercises the proactive 80%-threshold trigger
-// through the engine seam: after a turn reports
-// usage crossing the threshold, the engine evicts the oldest body, re-injects
-// an anchored summary at the head of the next request, and preserves the
-// verbatim tail (including reasoning_content).
 func TestRunAgentCompactsAtThreshold(t *testing.T) {
 	t.Parallel()
 	h := &compactHandler{}
@@ -260,7 +213,6 @@ func TestRunAgentCompactsAtThreshold(t *testing.T) {
 		t.Fatal("expected OnCompacted to fire when the session crossed the 80% threshold")
 	}
 
-	// Turn sequence: T1 (tool) -> T2 (tool + high usage) -> summary call -> FINAL.
 	if len(h.requests) != 4 {
 		t.Fatalf("provider requests = %d, want 4 (t1, t2, summary, final)", len(h.requests))
 	}
@@ -269,10 +221,6 @@ func TestRunAgentCompactsAtThreshold(t *testing.T) {
 		t.Fatalf("summary generation request carried tools, want a non-tool call")
 	}
 
-	// The final request must carry the byte-stable base system prompt at [0]
-	// the anchored summary immediately after it,
-	// and the verbatim tail (the last two tool legs,
-	// reasoning included) below.
 	final := h.requests[3]
 	if len(final.Messages) < 4 {
 		t.Fatalf("final request has %d messages, want >= 4 (base + summary head + tail floor)", len(final.Messages))
@@ -281,14 +229,11 @@ func TestRunAgentCompactsAtThreshold(t *testing.T) {
 	if base.Role != provider.RoleSystem || base.Content != SystemPromptContent() {
 		t.Errorf("final request base = role %q, want the embedded system prompt at [0]", base.Role)
 	}
-	// The summary is re-anchored BELOW the immutable base prompt, never before it.
 	summary := final.Messages[1]
 	if summary.Role != provider.RoleSystem || !strings.Contains(summary.Content, "Objective") {
 		t.Errorf("final request summary = role %q content %q, want a system summary anchored on Objective immediately after the base prompt", summary.Role, summary.Content)
 	}
 
-	// The verbatim tail must survive byte-for-byte, including reasoning on the
-	// assistant turn. Compare against the last two tool legs emitted pre-compaction.
 	tailAssistants := 0
 	for _, m := range final.Messages {
 		if m.Role == provider.RoleAssistant {
@@ -302,19 +247,12 @@ func TestRunAgentCompactsAtThreshold(t *testing.T) {
 		t.Errorf("final request kept %d assistant legs, want the tail floor of >= 2 with reasoning", tailAssistants)
 	}
 
-	// The compacted head must remain a valid byte-stable cache prefix:
-	// the base system prompt at [0] and the
-	// tool manifest are byte-identical to the pre-compaction requests, so the
-	// post-compaction request head (base + tools + verbatim tail) is a valid
-	// prompt-cache prefix. Only the freshly-anchored summary and the appended
-	// live tail may change.
 	for i, r := range h.requests {
 		if len(r.Tools) > 0 && !reflect.DeepEqual(r.Tools, strictToolDefs()) {
 			t.Errorf("request %d tools drifted from the canonical manifest (cache-prefix break): %v", i, r.Tools)
 		}
 	}
 
-	// Compaction keeps the session cache key (hard cache break, same key).
 	for _, r := range h.requests {
 		if !r.SetCacheKey || r.SessionKey != "sess-compact" {
 			t.Errorf("request lost session cache key: SetCacheKey=%v SessionKey=%q", r.SetCacheKey, r.SessionKey)
@@ -322,10 +260,6 @@ func TestRunAgentCompactsAtThreshold(t *testing.T) {
 	}
 }
 
-// overflowHandler fires the emergency trigger: a tool turn grows history, the
-// next request reports a context-overflow 400 below the threshold, the engine
-// compact-must rebuild the summary head and retry, and the retried turn
-// succeeds.
 type overflowHandler struct {
 	requests int
 }
@@ -333,8 +267,6 @@ type overflowHandler struct {
 func (h *overflowHandler) stream(ctx context.Context, req provider.Request) (provider.Stream, error) {
 	switch h.requests {
 	case 0:
-		// First turn: make a tool call so the message history grows and the
-		// loop has something to compact.
 		h.requests++
 		return provider.StreamFunc(
 			provider.Chunk{ReasoningContent: "overflow turn one reasoning"},
@@ -343,7 +275,6 @@ func (h *overflowHandler) stream(ctx context.Context, req provider.Request) (pro
 			}, Done: true, Usage: &provider.Usage{PromptTokens: 100, CompletionTokens: 1}},
 		), nil
 	case 1:
-		// Second tool turn: enough history now that eviction has a body.
 		h.requests++
 		return provider.StreamFunc(
 			provider.Chunk{ReasoningContent: "overflow turn two reasoning"},
@@ -352,19 +283,15 @@ func (h *overflowHandler) stream(ctx context.Context, req provider.Request) (pro
 			}, Done: true, Usage: &provider.Usage{PromptTokens: 100, CompletionTokens: 1}},
 		), nil
 	case 2:
-		// The next request overflows the context window below the proactive
-		// threshold.
 		h.requests++
 		return nil, provider.ErrContextOverflow
 	case 3:
-		// The compaction summary call (non-tool): provide the anchored summary.
 		h.requests++
 		return provider.StreamFunc(
 			provider.Chunk{Content: "## Objective\nRecovered.\n## Next Move\nRetry."},
 			provider.Chunk{FinishReason: "stop", Done: true},
 		), nil
 	default:
-		// The overflowed turn retried after compaction: succeeds.
 		h.requests++
 		return provider.StreamFunc(
 			provider.Chunk{Content: "recovered answer", FinishReason: "stop", Done: true},
@@ -372,10 +299,6 @@ func (h *overflowHandler) stream(ctx context.Context, req provider.Request) (pro
 	}
 }
 
-// TestRunAgentOverflowTrigger fires the emergency 400/context-overflow trigger
-// below the threshold: the engine compacts and retries
-// through the same unified path rather than failing the run with the overflow
-// error.
 func TestRunAgentOverflowTrigger(t *testing.T) {
 	t.Parallel()
 	h := &overflowHandler{}

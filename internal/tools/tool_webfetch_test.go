@@ -9,8 +9,6 @@ import (
 	"testing"
 )
 
-// stubFetcher is a recording Fetcher seam returning a canned HTML body. It also
-// records the URL asked for so tests can assert web_fetch hits the right target.
 type stubFetcher struct {
 	body string
 	urls []string
@@ -21,8 +19,6 @@ func (s *stubFetcher) Fetch(_ context.Context, url string) (io.ReadCloser, error
 	return io.NopCloser(strings.NewReader(s.body)), nil
 }
 
-// newWebFetchRegistry builds a registry whose web_fetch uses the given Fetcher
-// seam, bypassing the network, and whose open_in_browser records launches.
 func newWebFetchRegistry(t *testing.T, f Fetcher) (*Registry, string) {
 	t.Helper()
 	home, err := os.UserHomeDir()
@@ -46,9 +42,6 @@ func newWebFetchRegistry(t *testing.T, f Fetcher) (*Registry, string) {
 	return r, ws
 }
 
-// TestWebFetchConvertsHTMLToMarkdown verifies web_fetch fetches the requested
-// URL through the seam and returns the HTML rendered as Markdown on the
-// tool-result channel (never a bash invocation, never a system message).
 func TestWebFetchConvertsHTMLToMarkdown(t *testing.T) {
 	t.Parallel()
 	f := &stubFetcher{body: `<html><body><h1>Title</h1><p>Hello <strong>bold</strong> world.</p><ul><li>one</li><li>two</li></ul></body></html>`}
@@ -72,8 +65,6 @@ func TestWebFetchConvertsHTMLToMarkdown(t *testing.T) {
 	}
 }
 
-// TestWebFetchIsOwnPathNotBash verifies web_fetch never goes through the bash
-// runner: the recording runner gets no commands while the fetch completes.
 func TestWebFetchIsOwnPathNotBash(t *testing.T) {
 	t.Parallel()
 	f := &stubFetcher{body: `<html><body><p>plain</p></body></html>`}

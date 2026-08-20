@@ -8,18 +8,10 @@ import (
 	"slices"
 )
 
-// errInvalidJSON marks tool-call arguments that are not parseable JSON. The
-// dispatch loop routes these to a wrapped {"INVALID_JSON": "<raw>"} tool
-// result so the model self-corrects — never a crash, never a
-// silent skip.
+// errInvalidJSON marks tool-call arguments that are not parseable JSON.
 var errInvalidJSON = errors.New("tool arguments are not valid JSON")
 
-// validateToolCallArgs parses rawJSON and validates it against the tool's
-// strict-shaped JSON-Schema (Parameters). It returns a decoded args map on
-// success. On failure it returns an error: errInvalidJSON when rawJSON is not
-// parseable, or a descriptive schema error for a missing/unexpected/
-// mistyped field. Tools whose schema is absent are dispatched without
-// validation (best-effort), preserving the pre-T5 non-strict path.
+// validateToolCallArgs parses rawJSON and validates it against the tool's strict-shaped JSON-Schema (Parameters).
 func validateToolCallArgs(schema map[string]any, rawJSON string, parsed *map[string]any) error {
 	var out map[string]any
 	if err := json.Unmarshal([]byte(rawJSON), &out); err != nil {
@@ -34,34 +26,23 @@ func validateToolCallArgs(schema map[string]any, rawJSON string, parsed *map[str
 	return validateSchema(schema, out)
 }
 
-// validateSchema enforces the strict-shaped subset of JSON-Schema:
-// additionalProperties must be false, every required field present, every
-// present field type-checked (nullable unions ["<type>","null"] allowed), and
-// object/array values recursed. An optional (non-required) field sent
-// explicitly as null is treated as absent so it falls to the tool's runtime
-// default — standard JSON-Schema requires no null type for an omitted optional.
-// It is the tolerance point for the canonical schema re-expressed per dialect.
+// validateSchema enforces the strict-shaped subset of JSON-Schema: additionalProperties must be false, every required field present, every present field type-checked (nullable unions ["<type>","null"] allowed), and object/array values recursed.
 func validateSchema(schema, args map[string]any) error {
 	props, _ := schema["properties"].(map[string]any)
 	required := requiredList(schema["required"])
 
-	// additionalProperties:false — reject any arg key not declared.
 	for k := range args {
 		if _, ok := props[k]; !ok {
 			return fmt.Errorf("unexpected field %q (additionalProperties is false)", k)
 		}
 	}
 
-	// Every required field must be present.
 	for _, k := range required {
 		if _, ok := args[k]; !ok {
 			return fmt.Errorf("missing required field %q", k)
 		}
 	}
 
-	// Type-check present fields, recursing into nested values. An optional
-	// field explicitly set to null is treated as absent (the runtime defaults
-	// it), so only required fields must carry a well-typed value.
 	for k, prop := range props {
 		v, present := args[k]
 		if !present {
@@ -77,8 +58,7 @@ func validateSchema(schema, args map[string]any) error {
 	return nil
 }
 
-// requiredList normalizes the JSON-Schema "required" entry, which is []string
-// when authored in Go and []any when decoded from JSON.
+// requiredList normalizes the JSON-Schema "required" entry, which is []string when authored in Go and []any when decoded from JSON.
 func requiredList(required any) []string {
 	switch r := required.(type) {
 	case []string:
@@ -94,17 +74,13 @@ func requiredList(required any) []string {
 	}
 }
 
-// checkValue verifies v against a single property schema. It supports the
-// strict-shaped subset: a plain {"type": "..."} object, a nullable union
-// ["<type>", "null"], and nested object/array recursion.
+// checkValue verifies v against a single property schema.
 func checkValue(prop, v any) error {
 	switch p := prop.(type) {
 	case []any: // nullable union, e.g. ["integer", "null"]
 		if v == nil {
 			return nil
 		}
-		// Reject only if v is non-null but every declared type mismatches.
-		// Reject only if v is non-null but every declared type mismatches.
 		matched := false
 		for _, member := range p {
 			if s, ok := member.(string); ok {
@@ -126,7 +102,6 @@ func checkValue(prop, v any) error {
 			}
 			return fmt.Errorf("expected type %q, got %T", sub, v)
 		}
-		// No type keyword (e.g. nested object shape): recurse by object key.
 		if objSchema, ok := obj["properties"].(map[string]any); ok {
 			nested, ok := v.(map[string]any)
 			if !ok {
@@ -135,13 +110,10 @@ func checkValue(prop, v any) error {
 			return validateSchema(map[string]any{"properties": objSchema, "required": obj["required"], "additionalProperties": obj["additionalProperties"]}, nested)
 		}
 	}
-	// Unknown schema shape: accept (lenient) rather than mis-reject.
 	return nil
 }
 
-// typeMatches reports whether a Go-typed value satisfies a JSON-Schema type
-// keyword. number accepts both integer and float64 (JSON numbers decode as
-// float64 unless integral).
+// typeMatches reports whether a Go-typed value satisfies a JSON-Schema type keyword. number accepts both integer and float64 (JSON numbers decode as float64 unless integral).
 func typeMatches(t string, v any) bool {
 	switch t {
 	case "string":

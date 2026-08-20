@@ -9,11 +9,7 @@ import (
 	"golang.org/x/net/html"
 )
 
-// htmlToMarkdown converts an HTML document to a compact Markdown form via the
-// html tokenizer. It renders the representative blocks web content needs
-// (headings, paragraphs, emphasis, links, code, lists) and drops chrome
-// (script/style/head/nav) so the model gets the readable substance. Used by
-// web_fetch's own execution path, never a bash invocation.
+// htmlToMarkdown converts an HTML document to a compact Markdown form via the html tokenizer.
 func htmlToMarkdown(body io.Reader) (string, error) {
 	z := html.NewTokenizer(body)
 	st := &mdState{}
@@ -106,15 +102,13 @@ func htmlToMarkdown(body io.Reader) (string, error) {
 	}
 }
 
-// mdState carries per-document converter state (code-fence and in-flight link
-// href), keeping htmlToMarkdown free of global mutable state.
+// mdState carries per-document converter state (code-fence and in-flight link href), keeping htmlToMarkdown free of global mutable state.
 type mdState struct {
 	inPre       bool
 	pendingLink string
 }
 
-// attrValue reads the value of the first attribute named want on the current
-// start tag, which must be read right after z.TagName when it reported hasAttr.
+// attrValue reads the value of the first attribute named want on the current start tag, which must be read right after z.TagName when it reported hasAttr.
 func attrValue(z *html.Tokenizer, want string) (string, bool) {
 	for {
 		k, v, more := z.TagAttr()
@@ -142,8 +136,7 @@ func tidyText(s string) string {
 	return strings.Join(strings.FieldsFunc(s, unicode.IsSpace), " ")
 }
 
-// drop consumes the current tag's descendants (and its close tag), so chrome
-// like <style>/<script>/<nav> bodies never reach the output.
+// drop consumes the current tag's descendants (and its close tag), so chrome like <style>/<script>/<nav> bodies never reach the output.
 func (st *mdState) drop(z *html.Tokenizer, name string) {
 	depth := 1
 	for depth > 0 {

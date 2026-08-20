@@ -7,9 +7,7 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// Provider family identifiers, matching the documented families surfaced in
-// the Settings surface. The saved config.Provider value
-// selects which transport/credential a run uses, honored across TUI and batch.
+// Provider family identifiers, matching the documented families surfaced in the Settings surface.
 const (
 	ProviderOpenCodeGo   = "opencode-go"
 	ProviderCopilot      = "github-copilot"
@@ -18,14 +16,11 @@ const (
 
 // Default endpoints for the non-default provider families.
 const (
-	// DefaultCopilotURL is the GitHub Copilot Chat-Completions endpoint.
-	DefaultCopilotURL = "https://api.githubcopilot.com/chat/completions"
-	// DefaultOpenCodeURL is the primary OpenCode Go Chat-Completions endpoint.
+	DefaultCopilotURL  = "https://api.githubcopilot.com/chat/completions"
 	DefaultOpenCodeURL = "https://opencode.ai/zen/go/v1/chat/completions"
 )
 
-// apiKeyOrDefault returns key, or a sentinel so the client is still wired and a
-// clean HTTP 401 surfaces rather than a misleading empty-credential request.
+// apiKeyOrDefault returns key, or a sentinel so the client is still wired and a clean HTTP 401 surfaces rather than a misleading empty-credential request.
 func apiKeyOrDefault(key string) string {
 	if key != "" {
 		return key
@@ -33,29 +28,17 @@ func apiKeyOrDefault(key string) string {
 	return "not-configured"
 }
 
-// ProviderEnv carries the environment-derived credential and the seams the
-// provider factory needs so routing is testable without real network. OpenCode
-// Go's key is delivered by env; Copilot's refresh/persist are wired by the app.
+// ProviderEnv carries the environment-derived credential and the seams the provider factory needs so routing is testable without real network.
 type ProviderEnv struct {
-	// OpenCodeKey is the OPENCODE_API_KEY for the primary provider.
 	OpenCodeKey string
-	// OpenCodeURL overrides the primary endpoint (empty → DefaultOpenCodeURL).
 	OpenCodeURL string
-	// HTTP backs the Copilot provider's HTTP client (nil → http.DefaultClient).
-	HTTP *http.Client
+	HTTP        *http.Client
 
-	// CopilotRefresh renews a Copilot credential non-interactively (nil → no
-	// refresh path; an expired token errors with ErrReauthRequired).
 	CopilotRefresh RefreshFunc
-	// CopilotPersist saves a renewed Copilot token set back to config (nil skips).
 	CopilotPersist func(config.CopilotConfig) error
 }
 
-// FromConfig builds the Provider the saved config selects — opencode-go,
-// github-copilot, or custom-openai — routing through the shared
-// Chat-Completions dialect seam (one canonical per-dialect serializer, no
-// per-provider copies). An unknown provider or a custom-openai selection without
-// a configured endpoint is an explicit error.
+// FromConfig builds the Provider the saved config selects — opencode-go, github-copilot, or custom-openai — routing through the shared Chat-Completions dialect seam (one canonical per-dialect serializer, no per-provider copies).
 func FromConfig(cfg config.Config, env ProviderEnv) (Provider, error) {
 	switch cfg.Provider {
 	case ProviderOpenCodeGo:

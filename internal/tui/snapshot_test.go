@@ -1,12 +1,5 @@
 package tui
 
-// Snapshot frame renderer for the autoresearch aesthetic loop. Gated by
-// EITRI_SNAPSHOT=1 (never runs in CI): renders scripted model states to ANSI
-// frame files so .auto/measure.sh can rasterize and score the surface.
-//
-//	EITRI_SNAPSHOT=1 EITRI_SNAPSHOT_DIR=.auto/frames COLORTERM=truecolor \
-//	  go test ./internal/tui/ -run TestSnapshot_frames -count=1
-
 import (
 	"context"
 	"os"
@@ -19,16 +12,12 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// newSnapshotRail builds the harness rail with a seeded branch so the frames
-// show the CONTEXT branch line.
 func newSnapshotRail() *Rail {
 	r := NewRail("deepseek", "deepseek-v4-flash", "high", true, "eitri-9f3a", "/tmp/eitri-9f3a")
 	r.SetBranch("main")
 	return r
 }
 
-// snapshotDeps builds the common dependency set for the scripted session:
-// telemetry, stream, tool feed, rail, skills, workspace, models.
 func snapshotDeps(cfg config.Config) (Dependencies, *Telemetry, *Streamer, *ToolFeed) {
 	te := NewTelemetry("deepseek-v4-flash", "high", true, 10)
 	stream := NewStreamer()
@@ -46,18 +35,12 @@ func snapshotDeps(cfg config.Config) (Dependencies, *Telemetry, *Streamer, *Tool
 	}, te, stream, tools
 }
 
-// upd delivers one message through the model's Update seam and returns the next
-// model, discarding any re-issued wait commands (the harness drives the state
-// manually; waiters would block on their channels).
 func upd(t *testing.T, m Model, msg tea.Msg) Model {
 	t.Helper()
 	nm, _ := m.Update(msg)
 	return asModel(t, nm)
 }
 
-// toolStart / toolResult feed tool-call observations like the engine seam
-// would through the feed channel path, but applied directly via the message
-// seam for deterministic ordering.
 func toolStart(t *testing.T, m Model, name, args string) Model {
 	t.Helper()
 	return upd(t, m, toolUpdateMsg{update: ToolUpdate{Start: &ToolStart{Name: name, Args: args}}})
@@ -68,16 +51,11 @@ func toolResult(t *testing.T, m Model, r ToolResult) Model {
 	return upd(t, m, toolUpdateMsg{update: ToolUpdate{Result: &r}})
 }
 
-// backdateTool rewinds the given tool entry's start so the elapsed timer shows
-// a realistic runtime in the snapshot (real Start/Result land microseconds
-// apart). Works for completed entries (frozen span) and pending ones (live
-// span while busy).
 func backdateTool(m Model, idx int, d time.Duration) Model {
 	m.tx.log.SetStart(idx, time.Now().Add(-d))
 	return m
 }
 
-// writeFrame renders the current view to an .ans file under the output dir.
 func writeFrame(t *testing.T, out, name string, m Model) {
 	t.Helper()
 	if err := os.MkdirAll(out, 0o755); err != nil {
@@ -89,9 +67,6 @@ func writeFrame(t *testing.T, out, name string, m Model) {
 	t.Logf("wrote %s", name)
 }
 
-// loginBefore/loginAfter back the snapshot's edit tool result and the
-// expanded card's inline diff: the mock-clock freeze the agent applies to the
-// flaky login test.
 const (
 	loginBefore = `package auth
 
@@ -121,8 +96,6 @@ func TestLogin(t *testing.T) {
 `
 )
 
-// TestSnapshot_frames renders the scripted session states to .ans frames for
-// the aesthetic measure pipeline. Every frame must render without panicking.
 func TestSnapshot_frames(t *testing.T) {
 	t.Parallel()
 	if os.Getenv("EITRI_SNAPSHOT") != "1" {
@@ -133,7 +106,6 @@ func TestSnapshot_frames(t *testing.T) {
 		out = ".auto/frames"
 	}
 
-	// ---- default dark theme session ----
 	cfg := config.Config{
 		Theme:           "dark",
 		Provider:        "deepseek",
@@ -145,11 +117,9 @@ func TestSnapshot_frames(t *testing.T) {
 	m = resizeTo(t, m, 120, 40)
 	writeFrame(t, out, "01_idle", m)
 
-	// Seed the status strip + rail STATS with a lived-in session picture.
 	m = upd(t, m, telemetryUpdateMsg{update: TelemetryUpdate{Kind: TelemetryTurn}})
 	m = upd(t, m, telemetryUpdateMsg{update: TelemetryUpdate{Kind: TelemetryUsage, Hit: 12400, Miss: 3600, Output: 2100}})
 
-	// ---- turn 1: reasoning + bash + edit, streamed, then finalized ----
 	m = typeText(t, m, "Fix the flaky login test")
 	m, _ = submitBusy(t, m)
 	m = toolStart(t, m, "bash", `{"command":"go test ./internal/auth/ -run TestLogin -count=1"}`)
@@ -175,7 +145,6 @@ func TestSnapshot_frames(t *testing.T) {
 		answer: "The flake came from a racy mock clock. I froze time before minting the token so the `issued-at` claim is deterministic.\n\n```go\nmock.Freeze()\ndefer mock.Unfreeze()\n```\n\nThe suite passes consistently now, with the clock frozen only around the token mint.",
 	})
 
-	// ---- turn 2: reasoning + read + web_fetch failure, richer answer ----
 	m = typeText(t, m, "Add retry with exponential backoff to the HTTP client")
 	m, _ = submitBusy(t, m)
 	m = toolStart(t, m, "read", `{"path":"internal/http/client.go","start_line":40,"end_line":90}`)
@@ -197,28 +166,23 @@ func TestSnapshot_frames(t *testing.T) {
 	m = upd(t, m, telemetryUpdateMsg{update: TelemetryUpdate{Kind: TelemetryUsage, Hit: 8900, Miss: 1200, Output: 3400}})
 	writeFrame(t, out, "04_chat", m)
 
-	// ---- Ctrl+E expanded view: the edit card's inline diff in-flow ----
 	m = keypress(t, m, "ctrl+e")
 	writeFrame(t, out, "05_expanded_diff", m)
 	m = keypress(t, m, "ctrl+e")
 
-	// ---- settings surface ----
 	m = keypress(t, m, "ctrl+s")
 	writeFrame(t, out, "07_settings", m)
 	m = keypress(t, m, "esc")
 
-	// ---- wide window: right rail auto-shows ----
 	m = resizeTo(t, m, 150, 42)
 	writeFrame(t, out, "08_wide_rail", m)
 
-	// ---- light theme session (second model instance) ----
 	lm := scriptedChat(t, config.Config{
 		Theme: "light", Provider: "deepseek", Model: "deepseek-v4-flash", ReasoningEffort: "low",
 	}, 130, 40)
 	lm = typeText(t, lm, "hello")
 	writeFrame(t, out, "09_light_rail", lm)
 
-	// ---- alt-theme sessions: chrome palette + markdown tint coherence ----
 	for _, theme := range []string{"nord", "dracula", "solarized", "dark-daltonized"} {
 		tm := scriptedChat(t, config.Config{
 			Theme: theme, Provider: "deepseek", Model: "deepseek-v4-flash", ReasoningEffort: "high",
@@ -226,14 +190,12 @@ func TestSnapshot_frames(t *testing.T) {
 		writeFrame(t, out, "10_"+theme, tm)
 	}
 
-	// ---- slash-command completion list ----
 	sm := scriptedChat(t, config.Config{
 		Theme: "dark", Provider: "deepseek", Model: "deepseek-v4-flash", ReasoningEffort: "high",
 	}, 120, 40)
 	sm = typeText(t, sm, "/ref")
 	writeFrame(t, out, "11_slash", sm)
 
-	// ---- max-turns continuation prompt ----
 	cm := scriptedChat(t, config.Config{
 		Theme: "dark", Provider: "deepseek", Model: "deepseek-v4-flash", ReasoningEffort: "high",
 	}, 120, 40)
@@ -241,7 +203,6 @@ func TestSnapshot_frames(t *testing.T) {
 	cm = keypress(t, cm, "x") // any key drains the request and flips to prompting
 	writeFrame(t, out, "12_continue", cm)
 
-	// ---- expanded tool result card (Ctrl+E expanded view) ----
 	ex := scriptedChat(t, config.Config{
 		Theme: "dark", Provider: "deepseek", Model: "deepseek-v4-flash", ReasoningEffort: "high",
 	}, 120, 40)
@@ -251,9 +212,6 @@ func TestSnapshot_frames(t *testing.T) {
 	_ = context.Background // keep the import honest
 }
 
-// scriptedChat builds a lived-in two-turn session (reasoning + tool calls +
-// answers, seeded telemetry) at the given size, ready for frame capture. It is
-// the shared transcript used by every theme frame so themes compare fairly.
 func scriptedChat(t *testing.T, cfg config.Config, w, h int) Model {
 	t.Helper()
 	deps, _, _, _ := snapshotDeps(cfg)
@@ -263,7 +221,6 @@ func scriptedChat(t *testing.T, cfg config.Config, w, h int) Model {
 	m = upd(t, m, telemetryUpdateMsg{update: TelemetryUpdate{Kind: TelemetryTurn}})
 	m = upd(t, m, telemetryUpdateMsg{update: TelemetryUpdate{Kind: TelemetryUsage, Hit: 12400, Miss: 3600, Output: 2100}})
 
-	// turn 1: reasoning + bash + edit, finalized.
 	m = typeText(t, m, "Fix the flaky login test")
 	m, _ = submitBusy(t, m)
 	m = toolStart(t, m, "bash", `{"command":"go test ./internal/auth/ -run TestLogin -count=1"}`)
@@ -286,7 +243,6 @@ func scriptedChat(t *testing.T, cfg config.Config, w, h int) Model {
 		answer: "The flake came from a racy mock clock. I froze time before minting the token so the `issued-at` claim is deterministic.\n\n```go\nmock.Freeze()\ndefer mock.Unfreeze()\n```\n\nThe suite passes consistently now, with the clock frozen only around the token mint.",
 	})
 
-	// turn 2: reasoning + read + web_fetch failure.
 	m = typeText(t, m, "Add retry with exponential backoff to the HTTP client")
 	m, _ = submitBusy(t, m)
 	m = toolStart(t, m, "read", `{"path":"internal/http/client.go","start_line":40,"end_line":90}`)
@@ -309,8 +265,6 @@ func scriptedChat(t *testing.T, cfg config.Config, w, h int) Model {
 	return m
 }
 
-// TestSnapshot_narrow audits the narrow-terminal surface (80x24, no rail —
-// auto-hidden below 120): strip collapse, bubble wrapping, band fit.
 func TestSnapshot_narrow(t *testing.T) {
 	t.Parallel()
 	if os.Getenv("EITRI_SNAPSHOT") != "1" {

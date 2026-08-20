@@ -5,9 +5,6 @@ import (
 	"testing"
 )
 
-// TestHTMLToMarkdownRendersBlocks locks the representative block coverage the
-// converter is expected to render: headings, paragraphs, bold/italic, links,
-// code fences, and lists — the shapes web content needs.
 func TestHTMLToMarkdownRendersBlocks(t *testing.T) {
 	t.Parallel()
 	html := `<html><body>` +
@@ -35,8 +32,6 @@ func TestHTMLToMarkdownRendersBlocks(t *testing.T) {
 	}
 }
 
-// TestHTMLToMarkdownDropsChrome verifies script/style/nav bodies never reach the
-// output — untrusted web chrome stays out.
 func TestHTMLToMarkdownDropsChrome(t *testing.T) {
 	t.Parallel()
 	html := `<html><head><style>.x{}</style></head><body><nav><a>hidden</a></nav><script>evil()</script><p>keep</p></body></html>`

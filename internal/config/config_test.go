@@ -44,7 +44,6 @@ func TestLoadCreatesConfigWithDefaultsWhenAbsent(t *testing.T) {
 	if got := cfg.MaxTurns; got != 250 {
 		t.Fatalf("loaded absent config MaxTurns = %d, want default 250", got)
 	}
-	// The file must now exist on disk with the defaults persisted.
 	if fi, err := os.Stat(path); err != nil {
 		t.Fatalf("config file not created at %s: %v", path, err)
 	} else if fi.Size() == 0 {
@@ -52,11 +51,6 @@ func TestLoadCreatesConfigWithDefaultsWhenAbsent(t *testing.T) {
 	}
 }
 
-// TestCopilotAndCustomOpenAITokensPersist verifies provider credentials for
-// the non-default provider families round-trip through save/load: the Copilot
-// device-flow tokens and the custom OpenAI endpoint+key are stored in config.
-// Copilot credentials must persist so a later batch run reuses the
-// TUI-established session; custom OpenAI needs no device flow, key/setup only.
 func TestCopilotAndCustomOpenAITokensPersist(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -77,7 +71,6 @@ func TestCopilotAndCustomOpenAITokensPersist(t *testing.T) {
 		t.Fatalf("Load() Copilot = %+v, want persisted tokens", got.Copilot)
 	}
 
-	// Lower the Provider to custom-openai and verify the endpoint+key persist.
 	dir2 := t.TempDir()
 	path2 := filepath.Join(dir2, "config.json")
 	cfg2 := Default()
@@ -95,13 +88,8 @@ func TestCopilotAndCustomOpenAITokensPersist(t *testing.T) {
 	}
 }
 
-// TestReasoningEffortDefaultAndPersist verifies the acceptance criteria for
-// the reasoning-effort default change: a config written before the
-// change that stored "high" still loads "high", while an absent
-// reasoning_effort field loads the new "low" default.
 func TestReasoningEffortDefaultAndPersist(t *testing.T) {
 	t.Parallel()
-	// A present stored value is authoritative and survives the round-trip.
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 	if err := Save(Config{ReasoningEffort: "high"}, path); err != nil {
@@ -116,8 +104,6 @@ func TestReasoningEffortDefaultAndPersist(t *testing.T) {
 	}
 }
 
-// A config file that never saved a reasoning_effort (older file) must load
-// with the new "low" default rather than the zero value.
 func TestReasoningEffortAbsentDefaultsToLow(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -134,9 +120,6 @@ func TestReasoningEffortAbsentDefaultsToLow(t *testing.T) {
 	}
 }
 
-// TestThemeAbsentDefaultsToDark verifies the theme acceptance criteria: a config
-// file written before the theme feature (no `theme` key) loads
-// with the "dark" default rather than the empty zero value.
 func TestThemeAbsentDefaultsToDark(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -153,8 +136,6 @@ func TestThemeAbsentDefaultsToDark(t *testing.T) {
 	}
 }
 
-// TestThemePersists verifies a chosen theme round-trips through save/load so a
-// user's render-theme pick survives a reload.
 func TestThemePersists(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -195,9 +176,6 @@ func TestLoadReadsPersistedConfig(t *testing.T) {
 	}
 }
 
-// TestThinkingEnabledPersists verifies the thinking_enabled mode round-trips
-// through save/load: an off value survives the round-trip so a session that
-// disables reasoning is restored as non-thinking on reload.
 func TestThinkingEnabledPersists(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -217,9 +195,6 @@ func TestThinkingEnabledPersists(t *testing.T) {
 	}
 }
 
-// TestRailWidthPersists verifies the rail_width round-trips through save/load:
-// a non-zero width survives reload, while zero (absent in old configs) stays at
-// zero so the TUI can fall back to the compiled default.
 func TestRailWidthPersists(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -239,8 +214,6 @@ func TestRailWidthPersists(t *testing.T) {
 	}
 }
 
-// TestRailWidthZeroRoundTrips verifies that an explicitly stored zero value
-// round-trips faithfully (omitempty would omit it, but JSON zero is valid).
 func TestRailWidthZeroRoundTrips(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -258,9 +231,6 @@ func TestRailWidthZeroRoundTrips(t *testing.T) {
 	}
 }
 
-// TestRailWidthAbsentFromOldConfig verifies a config file written before the
-// rail_width field loads without error and leaves RailWidth at zero, letting
-// the TUI fall back to DefaultRailWidth.
 func TestRailWidthAbsentFromOldConfig(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

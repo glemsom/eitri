@@ -7,9 +7,6 @@ import (
 	"testing"
 )
 
-// TestFakeProviderStreamsFixture drives the fake Chat-Completions provider over
-// a committed source-of-truth fixture, asserting the full chunk stream: answer
-// content, reasoning_content surface, terminal usage, Done, then io.EOF.
 func TestFakeProviderStreamsFixture(t *testing.T) {
 	t.Parallel()
 	fp := NewFake("testdata/hello.sse")
@@ -56,8 +53,6 @@ func TestFakeProviderStreamsFixture(t *testing.T) {
 	}
 }
 
-// TestFakeProviderCompletesWithUsageOnlyChunk verifies a stream that carries
-// usage in its terminal chunk still terminates with Done + EOF.
 func TestFakeProviderCompletesWithUsageOnlyChunk(t *testing.T) {
 	t.Parallel()
 	fp := NewFake("testdata/usage-final.sse")
@@ -65,8 +60,6 @@ func TestFakeProviderCompletesWithUsageOnlyChunk(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Fake.Stream() error = %v, want nil", err)
 	}
-	// Consume to completion; the stream must terminate with a Done chunk and
-	// then io.EOF, carrying usage on the terminal content chunk.
 	var sawDone bool
 	var usage *Usage
 	for {

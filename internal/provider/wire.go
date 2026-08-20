@@ -6,8 +6,6 @@ import (
 )
 
 // wireChunk is the OpenAI Chat-Completions `chat.completion.chunk` SSE payload.
-// Only the fields Eitri consumes are modeled; everything else is ignored so an
-// unknown wire piece still parses.
 type wireChunk struct {
 	Choices []struct {
 		Index *int `json:"index"`
@@ -21,9 +19,7 @@ type wireChunk struct {
 	Usage *Usage `json:"usage"`
 }
 
-// wireToolCallDelta is one fragmented tool-call delta in a streamed chunk.
-// function.name/arguments arrive split across chunks; the accumulator joins
-// them by index.
+// wireToolCallDelta is one fragmented tool-call delta in a streamed chunk. function.name/arguments arrive split across chunks; the accumulator joins them by index.
 type wireToolCallDelta struct {
 	Index    *int   `json:"index"`
 	ID       string `json:"id"`
@@ -34,9 +30,7 @@ type wireToolCallDelta struct {
 	} `json:"function"`
 }
 
-// toolAccumulator reassembles streamed tool_call fragments into complete
-// ToolCalls, keyed by delta index and concatenating each fragment's argument
-// text.
+// toolAccumulator reassembles streamed tool_call fragments into complete ToolCalls, keyed by delta index and concatenating each fragment's argument text.
 type toolAccumulator struct {
 	calls map[int]*ToolCall
 	order []int
@@ -70,8 +64,7 @@ func (a *toolAccumulator) add(d wireToolCallDelta) {
 	call.Arguments += d.Function.Arguments
 }
 
-// finish returns the completed ToolCalls, retaining insertion order and only
-// including calls that were actually started (calls that named a function).
+// finish returns the completed ToolCalls, retaining insertion order and only including calls that were actually started (calls that named a function).
 func (a *toolAccumulator) finish() []ToolCall {
 	var out []ToolCall
 	for _, idx := range a.order {
@@ -84,10 +77,7 @@ func (a *toolAccumulator) finish() []ToolCall {
 	return out
 }
 
-// parseEvent turns one SSE data payload into a Chunk, folding streamed
-// tool_call fragments into acc. The terminal "[DONE]" marker yields a Done
-// chunk carrying the finished ToolCalls; any other payload must be a valid
-// chunk object, else ErrMalformed is returned (never a panic).
+// parseEvent turns one SSE data payload into a Chunk, folding streamed tool_call fragments into acc.
 func parseEvent(data string, acc *toolAccumulator) (Chunk, error) {
 	if data == "[DONE]" {
 		if acc != nil {
@@ -115,16 +105,12 @@ func parseEvent(data string, acc *toolAccumulator) (Chunk, error) {
 	}
 	chunk.Usage = wc.Usage
 	if chunk.Usage != nil {
-		// Apply the absent-key safe-parse fallback so an OpenCode proxy that
-		// omits prompt_cache_* still produces honest hit/miss telemetry: never a fake
-		// hit, never a mispriced bill.
 		chunk.Usage.finalize()
 	}
 	return chunk, nil
 }
 
-// accTouls returns the accumulator's current finished ToolCalls (reflects the
-// running reassembly on each non-terminal chunk).
+// accTouls returns the accumulator's current finished ToolCalls (reflects the running reassembly on each non-terminal chunk).
 func accTouls(acc *toolAccumulator) []ToolCall {
 	if acc == nil {
 		return nil

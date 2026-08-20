@@ -7,17 +7,10 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// headRecorder captures every provider request and, for the multi-turn loop,
-// the exact byte sequence of each request's head (system + tools + verbatim
-// prior turns) so a test can assert the cache-prefix invariant.
 type headRecorder struct {
 	reqs []provider.Request
 }
 
-// TestRunOpensWithSystemPrompt asserts the non-tool run path opens its message
-// list with the embedded system prompt at [0]: the
-// provider must see RoleSystem first, whose content is byte-identical to the
-// embedded source.
 func TestRunOpensWithSystemPrompt(t *testing.T) {
 	t.Parallel()
 	cap := &headRecorder{}
@@ -35,8 +28,6 @@ func TestRunOpensWithSystemPrompt(t *testing.T) {
 	assertSystemPromptHead(t, cap.reqs[0].Messages)
 }
 
-// assertSystemPromptHead fails when msgs does not open with the embedded system
-// prompt at [0] followed by the caller's user turn.
 func assertSystemPromptHead(t *testing.T, msgs []provider.Message) {
 	t.Helper()
 	if len(msgs) < 2 {
@@ -51,9 +42,6 @@ func assertSystemPromptHead(t *testing.T, msgs []provider.Message) {
 	}
 }
 
-// TestRunJSONObjectModeOpensWithSystemPrompt asserts the JSON Object Mode
-// special turn opens with the embedded system prompt at [0], so
-// every run path shares the same byte-stable request head.
 func TestRunJSONObjectModeOpensWithSystemPrompt(t *testing.T) {
 	t.Parallel()
 	cap := &headRecorder{}
@@ -75,8 +63,6 @@ func TestRunJSONObjectModeOpensWithSystemPrompt(t *testing.T) {
 	assertSystemPromptHead(t, cap.reqs[0].Messages)
 }
 
-// TestRunSamplingPolicyOpensWithSystemPrompt asserts the Sampling Policy
-// special turn opens with the embedded system prompt at [0].
 func TestRunSamplingPolicyOpensWithSystemPrompt(t *testing.T) {
 	t.Parallel()
 	cap := &headRecorder{}
@@ -98,8 +84,6 @@ func TestRunSamplingPolicyOpensWithSystemPrompt(t *testing.T) {
 	assertSystemPromptHead(t, cap.reqs[0].Messages)
 }
 
-// TestRunAgentOpensWithSystemPrompt asserts the tool-capable agent loop opens
-// each request with the embedded system prompt at [0].
 func TestRunAgentOpensWithSystemPrompt(t *testing.T) {
 	t.Parallel()
 	cap := &headRecorder{}
@@ -122,23 +106,15 @@ func TestRunAgentOpensWithSystemPrompt(t *testing.T) {
 	assertSystemPromptHead(t, cap.reqs[0].Messages)
 }
 
-// TestRunAgentKeepsStableHeadAcrossTurns drives a multi-turn tool-call loop
-// and asserts the request head (system + tools + verbatim prior turns) is
-// byte-identical across turns — the prompt-cache invariant the economics hinge
-// on. The prior-turn payload appends after the stable
-// head, so only the messages [2:] may change; the head itself must not.
 func TestRunAgentKeepsStableHeadAcrossTurns(t *testing.T) {
 	t.Parallel()
 	turn := 0
 	var heads [][]provider.Message
 	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
-		// The stable request head opens with the system prompt at [0]; snapshot
-		// it verbatim so the cache-prefix invariant is asserted across turns.
 		head := []provider.Message{req.Messages[0]}
 		turn++
 		heads = append(heads, head)
 		if turn == 1 {
-			// First turn calls a tool so the loop spans multiple requests.
 			return provider.StreamFunc(
 				provider.Chunk{ReasoningContent: "r"},
 				provider.Chunk{FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{
@@ -163,13 +139,11 @@ func TestRunAgentKeepsStableHeadAcrossTurns(t *testing.T) {
 	if len(heads) < 2 {
 		t.Fatalf("agent turns = %d, want at least 2 multi-turn heads", len(heads))
 	}
-	// Each turn's head must open with the same embedded system prompt.
 	for _, h := range heads {
 		if h[0].Role != provider.RoleSystem || h[0].Content != SystemPromptContent() {
 			t.Fatalf("turn head = %+v, want RoleSystem + embedded content at [0]", h[0])
 		}
 	}
-	// The head across turns must be byte-identical (cache-prefix invariant).
 	ref := heads[0][0].Content
 	for i, h := range heads[1:] {
 		if h[0].Content != ref {

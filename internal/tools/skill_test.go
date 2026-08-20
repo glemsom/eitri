@@ -8,9 +8,6 @@ import (
 	"testing"
 )
 
-// writeSkill writes a skill pack dir under root: <root>/<name>/SKILL.md with the
-// given frontmatter name/description and body. Bundled files can be added via
-// files (a map of relative path -> content).
 func writeSkill(t *testing.T, root, name, description, body string, files map[string]string) {
 	t.Helper()
 	dir := filepath.Join(root, name)
@@ -32,8 +29,6 @@ func writeSkill(t *testing.T, root, name, description, body string, files map[st
 	}
 }
 
-// TestSkillDiscoverScopes discovers skills from both user-global and project
-// roots and verifies the union comes back with per-skill name/description.
 func TestSkillDiscoverScopes(t *testing.T) {
 	t.Parallel()
 	user := t.TempDir()
@@ -62,12 +57,9 @@ func TestSkillDiscoverScopes(t *testing.T) {
 		t.Fatalf("unexpected warnings = %d (%v), want 0", cb.count, cb.warns)
 	}
 
-	// Install scopes stay queryable per-name; the Items accessor that fed the
-	// TUI's rail skills panel is gone with the panel.
 	if catalog.Scope("user-skill") != "user" || catalog.Scope("proj-skill") != "project" {
 		t.Fatalf("install scopes unexpected: user-skill=%q proj-skill=%q", catalog.Scope("user-skill"), catalog.Scope("proj-skill"))
 	}
-	// A fresh catalog has nothing active, and activation dedupe still tracks.
 	if catalog.IsActive("user-skill") {
 		t.Fatal("fresh catalog reports user-skill active, want inactive")
 	}
@@ -77,8 +69,6 @@ func TestSkillDiscoverScopes(t *testing.T) {
 	}
 }
 
-// TestSkillProjectShadowsUser verifies the exact-name collision rule: a project
-// skill shadows the user-global skill of the same name.
 func TestSkillProjectShadowsUser(t *testing.T) {
 	t.Parallel()
 	user := t.TempDir()
@@ -99,9 +89,6 @@ func TestSkillProjectShadowsUser(t *testing.T) {
 	}
 }
 
-// TestSkillUnparseableOmittedFailClosed discovers a skill whose SKILL.md lacks
-// a parseable name/description frontmatter and verifies it is omitted (with a
-// warning) rather than surfaced to the model.
 func TestSkillUnparseableOmittedFailClosed(t *testing.T) {
 	t.Parallel()
 	user := t.TempDir()
@@ -109,7 +96,6 @@ func TestSkillUnparseableOmittedFailClosed(t *testing.T) {
 	if err := os.MkdirAll(bad, 0o700); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	// No frontmatter block, no name/description.
 	if err := os.WriteFile(filepath.Join(bad, "SKILL.md"), []byte("# No frontmatter here\n"), 0o600); err != nil {
 		t.Fatalf("write: %v", err)
 	}
@@ -126,8 +112,6 @@ func TestSkillUnparseableOmittedFailClosed(t *testing.T) {
 	}
 }
 
-// TestSkillStripsFrontmatterOnActivation verifies the SKILL.md frontmatter is
-// stripped from the returned body and bundled resources are advertised.
 func TestSkillStripsFrontmatterOnActivation(t *testing.T) {
 	t.Parallel()
 	user := t.TempDir()
@@ -159,8 +143,6 @@ func TestSkillStripsFrontmatterOnActivation(t *testing.T) {
 	}
 }
 
-// TestSkillZeroOmitsTool verifies the skill tool is entirely omitted when no
-// skills are discovered.
 func TestSkillZeroOmitsTool(t *testing.T) {
 	t.Parallel()
 	catalog, err := Discover(t.TempDir(), t.TempDir(), &warningSink{})
@@ -175,8 +157,6 @@ func TestSkillZeroOmitsTool(t *testing.T) {
 	}
 }
 
-// TestSkillDedupesReactivation verifies re-activating an already-in-context
-// skill skips re-injection of the body (returns a short dedupe notice).
 func TestSkillDedupesReactivation(t *testing.T) {
 	t.Parallel()
 	user := t.TempDir()
@@ -208,15 +188,11 @@ func TestSkillDedupesReactivation(t *testing.T) {
 	}
 }
 
-// TestSkillSchemaEnumConstrained verifies the skill tool schema binds `name` to
-// an enum of exactly the discovered, filtered skill names with the strict shape
-// (additionalProperties:false + all-required).
 func TestSkillSchemaEnumConstrained(t *testing.T) {
 	t.Parallel()
 	user := t.TempDir()
 	writeSkill(t, user, "alpha", "a", "body a", nil)
 	writeSkill(t, user, "beta", "b", "body b", nil)
-	// An unparseable skill must not leak into the enum.
 	bad := filepath.Join(user, "nope")
 	if err := os.MkdirAll(bad, 0o700); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -261,16 +237,10 @@ func TestSkillSchemaEnumConstrained(t *testing.T) {
 	}
 }
 
-// TestSkillDisableModelInvocationHidden verifies hide-not-block: a valid pack
-// declaring disable-model-invocation: true stays discoverable for the human
-// slash `/` surface (it lists and activates it), but is excluded from the
-// model-facing enum. It is filtered from what the model may invoke, not
-// blocked at call time.
 func TestSkillDisableModelInvocationHidden(t *testing.T) {
 	t.Parallel()
 	user := t.TempDir()
 	writeSkill(t, user, "normal", "invocable", "body n", nil)
-	// A pack with disable-model-invocation: true in its frontmatter.
 	dir := filepath.Join(user, "manual")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -285,8 +255,6 @@ func TestSkillDisableModelInvocationHidden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Discover error = %v, want nil", err)
 	}
-	// The hidden pack stays in the slash-visible name list with its body
-	// activatable, so the `/` surface can suggest and run it.
 	names := catalog.Names()
 	if !contains(names, "normal") || !contains(names, "manual") {
 		t.Fatalf("names = %v, want both normal and the hidden manual (slash surface must list it)", names)
@@ -294,7 +262,6 @@ func TestSkillDisableModelInvocationHidden(t *testing.T) {
 	if s := catalog.Skill("manual"); s == nil || !strings.Contains(s.Body, "manual body") {
 		t.Fatalf("hidden skill not activatable via Skill(): %+v", s)
 	}
-	// But it is excluded from the model-facing enum (the skill tool schema).
 	for _, e := range catalog.Enum() {
 		if e == "manual" {
 			t.Fatalf("enum = %v, must exclude hidden manual from model invocation", catalog.Enum())
@@ -303,7 +270,6 @@ func TestSkillDisableModelInvocationHidden(t *testing.T) {
 	if !containsEnum(t, catalog.Enum(), "normal") {
 		t.Fatalf("enum = %v, must still include the invocable normal skill", catalog.Enum())
 	}
-	// Hiding is not an error, so it must not warn.
 	if cb.count != 0 {
 		t.Fatalf("unexpected warnings = %d, want 0 (hidden != unparseable)", cb.count)
 	}
@@ -319,8 +285,6 @@ func containsEnum(t *testing.T, enum []any, want string) bool {
 	return false
 }
 
-// testDeps builds registry deps for a skill test with an injected catalog and a
-// throwaway workspace (no bash runner needed).
 func testDeps(t *testing.T, workspace string, catalog *Catalog) Deps {
 	t.Helper()
 	if workspace == "" {
@@ -334,7 +298,6 @@ func testDeps(t *testing.T, workspace string, catalog *Catalog) Deps {
 	}
 }
 
-// warningSink captures discovery warnings.
 type warningSink struct {
 	warns []string
 	count int

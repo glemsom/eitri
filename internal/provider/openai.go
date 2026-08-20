@@ -11,28 +11,19 @@ import (
 	"strings"
 )
 
-// OpenAICompatible is a Chat-Completions HTTP client targeting any OpenAI-
-// compatible endpoint (OpenCode Go, the primary provider). It serializes the
-// request with model + messages and streams the SSE response through the
-// provider seam.
+// OpenAICompatible is a Chat-Completions HTTP client targeting any OpenAI-compatible endpoint (OpenCode Go, the primary provider).
 type OpenAICompatible struct {
 	apiKey string
 	url    string
 	http   *http.Client
 }
 
-// NewOpenAICompatible returns a client for the given Bearer key and base URL
-// (the full /v1/chat/completions endpoint or a prefix to which it appends).
+// NewOpenAICompatible returns a client for the given Bearer key and base URL (the full /v1/chat/completions endpoint or a prefix to which it appends).
 func NewOpenAICompatible(apiKey, url string) *OpenAICompatible {
 	return &OpenAICompatible{apiKey: apiKey, url: url}
 }
 
-// Models implements ModelLister: it GETs the provider's /models endpoint and
-// returns the discovered model catalog. The models URL is derived from the
-// Chat-Completions endpoint by stripping the /chat/completions suffix; the
-// response shape is the OpenAI-standard {"data":[{"id":...}]}. OpenAI-
-// compatible providers stream only Chat-Completions here, so every discovered
-// model defaults to that endpoint kind unless richer metadata says otherwise.
+// Models implements ModelLister: it GETs the provider's /models endpoint and returns the discovered model catalog.
 func (o *OpenAICompatible) Models(ctx context.Context) ([]ModelInfo, error) {
 	base := strings.TrimSuffix(o.url, "/chat/completions")
 	modelsURL := strings.TrimSuffix(base, "/") + "/models"
@@ -65,8 +56,7 @@ func (o *OpenAICompatible) Models(ctx context.Context) ([]ModelInfo, error) {
 	return models, nil
 }
 
-// modelList is the OpenAI-standard model-discovery response shape plus optional
-// endpoint metadata some providers may surface.
+// modelList is the OpenAI-standard model-discovery response shape plus optional endpoint metadata some providers may surface.
 type modelList struct {
 	Data []modelListEntry `json:"data"`
 }
@@ -78,10 +68,7 @@ type modelListEntry struct {
 	Capabilities       modelCapabilities `json:"capabilities,omitempty"`
 }
 
-// modelCapabilities keeps discovery tolerant of providers that mix booleans
-// with descriptive strings inside the capabilities bag. Endpoint inference only
-// consumes boolean flags today; non-boolean values are ignored instead of
-// aborting the whole model-list decode.
+// modelCapabilities keeps discovery tolerant of providers that mix booleans with descriptive strings inside the capabilities bag.
 type modelCapabilities map[string]json.RawMessage
 
 func inferEndpointKind(m modelListEntry) EndpointKind {
@@ -183,35 +170,18 @@ type chatCompletionBody struct {
 	PromptCacheKey  string           `json:"prompt_cache_key,omitempty"`
 	Thinking        *thinkingEnabler `json:"thinking,omitempty"`
 	ReasoningEffort string           `json:"reasoning_effort,omitempty"`
-	// MaxOutputTokens is the wire-backed Generation Budget: a hard
-	// per-turn output cap emitted as max_completion_tokens for special turns.
-	// Zero (the ordinary-turn default) omits the field so the byte-identical
-	// request head is never perturbed.
-	MaxOutputTokens int `json:"max_completion_tokens,omitempty"`
-	// ResponseFormat is the wire-backed JSON Object Mode: non-nil
-	// on a JSON-Object-Mode finalization turn, emitted as
-	// response_format:{type:json_object}; nil on ordinary turns so the field is
-	// omitted and the request head stays byte-stable.
-	ResponseFormat *jsonObjectMode `json:"response_format,omitempty"`
-	// Temperature is the wire-backed temperature Sampling Policy:
-	// non-nil on a special turn that requests temperature-based sampling. It is
-	// mutually exclusive with TopP — the sampling seam emits exactly one of the
-	// two, never both, per the sampling contract.
-	Temperature *float64 `json:"temperature,omitempty"`
-	// TopP is the wire-backed nucleus (top-p) Sampling Policy: non-nil
-	// on a special turn that requests nucleus-based sampling, emitted as top_p.
-	// Mutually exclusive with Temperature.
-	TopP *float64 `json:"top_p,omitempty"`
+	MaxOutputTokens int              `json:"max_completion_tokens,omitempty"`
+	ResponseFormat  *jsonObjectMode  `json:"response_format,omitempty"`
+	Temperature     *float64         `json:"temperature,omitempty"`
+	TopP            *float64         `json:"top_p,omitempty"`
 }
 
-// thinkingEnabler is DeepSeek's thinking-mode toggle; the enabled form keeps
-// thinking default-on for agent loops.
+// thinkingEnabler is DeepSeek's thinking-mode toggle; the enabled form keeps thinking default-on for agent loops.
 type thinkingEnabler struct {
 	Type string `json:"type"`
 }
 
-// thinkingControl returns the enabled thinking toggle when req opts in, else
-// nil so the field is omitted.
+// thinkingControl returns the enabled thinking toggle when req opts in, else nil so the field is omitted.
 func thinkingControl(req Request) *thinkingEnabler {
 	if !req.ThinkingEnabled {
 		return nil
@@ -219,11 +189,7 @@ func thinkingControl(req Request) *thinkingEnabler {
 	return &thinkingEnabler{Type: "enabled"}
 }
 
-// reasoningEffortControl returns the normalized reasoning_effort for a
-// thinking-enabled run, else empty so the field is omitted. Effort is only
-// meaningful when thinking is on: a non-thinking run must carry neither a
-// thinking toggle nor a reasoning_effort, even
-// if a caller retains a non-empty effort while disabled.
+// reasoningEffortControl returns the normalized reasoning_effort for a thinking-enabled run, else empty so the field is omitted.
 func reasoningEffortControl(req Request) string {
 	if !req.ThinkingEnabled {
 		return ""
@@ -231,27 +197,17 @@ func reasoningEffortControl(req Request) string {
 	return NormalizeReasoningEffort(req.ReasoningEffort)
 }
 
-// jsonObjectMode is OpenAI's constrained-output response_format; its enabled
-// form asks the provider to return a valid JSON object.
+// jsonObjectMode is OpenAI's constrained-output response_format; its enabled form asks the provider to return a valid JSON object.
 type jsonObjectMode struct {
 	Type string `json:"type"`
 }
 
-// SupportedGenerationControls declares that this Chat-Completions client can
-// honor the Generation Budget, JSON Object Mode, Sampling Policy, Tool Schema
-// Enforcement, and Thinking Suppression controls (it wire-emits
-// max_completion_tokens, response_format, temperature/top_p, strict tool
-// manifests, and the thinking-off omission on the relevant special turns).
-// Higher layers consult this
-// via NegotiateGenerationControls.
+// SupportedGenerationControls declares that this Chat-Completions client can honor the Generation Budget, JSON Object Mode, Sampling Policy, Tool Schema Enforcement, and Thinking Suppression controls (it wire-emits max_completion_tokens, response_format, temperature/top_p, strict tool manifests, and the thinking-off omission on the relevant special turns).
 func (o *OpenAICompatible) SupportedGenerationControls(context.Context) ([]GenerationControl, error) {
 	return []GenerationControl{GenerationControlGenerationBudget, GenerationControlJSONObjectMode, GenerationControlSamplingPolicy, GenerationControlToolSchemaEnforcement, GenerationControlThinkingSuppression}, nil
 }
 
-// maxOutputTokens returns the Generation Budget for req as an int usable as a
-// wire max_completion_tokens: it is 0 when no budget was requested so the field
-// is omitted. A negative value (invalid) is clamped to 0 rather than emitted, so
-// an internal caller can never accidentally send a nonsensical cap.
+// maxOutputTokens returns the Generation Budget for req as an int usable as a wire max_completion_tokens: it is 0 when no budget was requested so the field is omitted.
 func maxOutputTokens(req Request) int {
 	if req.MaxOutputTokens <= 0 {
 		return 0
@@ -259,9 +215,7 @@ func maxOutputTokens(req Request) int {
 	return req.MaxOutputTokens
 }
 
-// jsonObjectModeControl returns the JSON Object Mode response_format for req
-// when the caller opted into it, else nil so the field is omitted. Only a JSON
-// Object Mode finalization special turn sets it.
+// jsonObjectModeControl returns the JSON Object Mode response_format for req when the caller opted into it, else nil so the field is omitted.
 func jsonObjectModeControl(req Request) *jsonObjectMode {
 	if !req.JSONObjectMode {
 		return nil
@@ -269,11 +223,7 @@ func jsonObjectModeControl(req Request) *jsonObjectMode {
 	return &jsonObjectMode{Type: "json_object"}
 }
 
-// samplingTemperatureControl returns the pointer to emit as the wire
-// `temperature` when req requests temperature-based sampling, else
-// nil so the field is omitted. A request never requests both sampling modes
-// (SamplingPolicy holds exactly one mode), so temperature and top_p are
-// mutually exclusive on the wire.
+// samplingTemperatureControl returns the pointer to emit as the wire `temperature` when req requests temperature-based sampling, else nil so the field is omitted.
 func samplingTemperatureControl(req Request) *float64 {
 	if req.Sampling == nil || req.Sampling.Mode != SamplingTemperature {
 		return nil
@@ -282,9 +232,7 @@ func samplingTemperatureControl(req Request) *float64 {
 	return &v
 }
 
-// samplingTopPControl returns the pointer to emit as the wire `top_p` when req
-// requests nucleus (top-p) sampling, else nil so the field is
-// omitted. Mutually exclusive with samplingTemperatureControl.
+// samplingTopPControl returns the pointer to emit as the wire `top_p` when req requests nucleus (top-p) sampling, else nil so the field is omitted.
 func samplingTopPControl(req Request) *float64 {
 	if req.Sampling == nil || req.Sampling.Mode != SamplingNucleus {
 		return nil
@@ -293,14 +241,7 @@ func samplingTopPControl(req Request) *float64 {
 	return &v
 }
 
-// toolsForWire returns the tool manifest to serialize for req. On an ordinary
-// turn with ToolSchemaEnforcement off it returns req.Tools unchanged, so the
-// request head stays byte-identical. When the generation-control seam opts the
-// turn into provider-side Tool Schema Enforcement, it returns a
-// shallow-copied manifest with strict:true set on every function wrapper so a
-// supporting provider enforces the schema at generation time — the wire feature
-// unsupported providers simply omit. The underlying Parameters maps are shared
-// (never re-authored), preserving the canonical schema surface.
+// toolsForWire returns the tool manifest to serialize for req.
 func toolsForWire(req Request) []Tool {
 	if !req.ToolSchemaEnforcement || len(req.Tools) == 0 {
 		return req.Tools
@@ -314,11 +255,7 @@ func toolsForWire(req Request) []Tool {
 	return out
 }
 
-// promptCacheKey returns the session-scoped prompt cache key for req when the
-// caller opted into deepseek's session cache, else empty so
-// the field is omitted from the body. When unset the gateway may still cache by
-// request prefix, but Eitri explicitly opts in so the cache namespace is the
-// session id.
+// promptCacheKey returns the session-scoped prompt cache key for req when the caller opted into deepseek's session cache, else empty so the field is omitted from the body.
 func promptCacheKey(req Request) string {
 	if req.SetCacheKey {
 		return req.SessionKey
@@ -336,10 +273,7 @@ type HTTPError struct {
 	Body string
 }
 
-// Error describes the failed provider response. When the provider returned a
-// non-2xx body it is included, so the underlying rejection reason (e.g. the
-// DeepSeek/OpenCode "must contain the word json" or a context-limit message)
-// is not swallowed into an opaque status code.
+// Error describes the failed provider response.
 func (e *HTTPError) Error() string {
 	if e.Body == "" {
 		return fmt.Sprintf("provider returned HTTP %d", e.Code)
@@ -347,8 +281,7 @@ func (e *HTTPError) Error() string {
 	return fmt.Sprintf("provider returned HTTP %d: %s", e.Code, e.Body)
 }
 
-// openAIStream adapts parsed SSE events into the Stream seam, mapping [DONE]
-// to a Done chunk and io.EOF to io.EOF, accumulating tool_call fragments.
+// openAIStream adapts parsed SSE events into the Stream seam, mapping [DONE] to a Done chunk and io.EOF to io.EOF, accumulating tool_call fragments.
 type openAIStream struct {
 	ev  *sse
 	acc *toolAccumulator

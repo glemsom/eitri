@@ -6,11 +6,6 @@ import (
 	"testing"
 )
 
-// TestModel_readRangeShownInEntryHead asserts a `read` call invoked with
-// explicit start_line/end_line limits renders the invoked range in the one-line
-// entry head alongside the path hint — `📖 read path:start-end` (
-// AC1) — so a range-limited read is distinguishable at a glance from a
-// whole-file dump.
 func TestModel_readRangeShownInEntryHead(t *testing.T) {
 	t.Parallel()
 	feed := NewToolFeed()
@@ -38,8 +33,6 @@ func TestModel_readRangeShownInEntryHead(t *testing.T) {
 	}
 }
 
-// TestModel_readWholeFileHasNoRange asserts a `read` call with omitted or null
-// limits renders today's path-only head with no range tag .
 func TestModel_readWholeFileHasNoRange(t *testing.T) {
 	t.Parallel()
 	feed := NewToolFeed()
@@ -75,10 +68,6 @@ func TestModel_readWholeFileHasNoRange(t *testing.T) {
 	}
 }
 
-// TestModel_readMalformedArgsFallBackToPath asserts malformed or unexpected
-// argument shapes fall back to the current path-only rendering without a crash
-//: a single explicit limit, string-typed limits, and invalid
-// JSON all render the plain path hint.
 func TestModel_readMalformedArgsFallBackToPath(t *testing.T) {
 	t.Parallel()
 	feed := NewToolFeed()
@@ -111,9 +100,6 @@ func TestModel_readMalformedArgsFallBackToPath(t *testing.T) {
 	}
 }
 
-// TestModel_clipboardCopyIncludesReadRange asserts the clipboard copy of the
-// transcript carries the same range tag as the on-screen entry head (
-// AC4).
 func TestModel_clipboardCopyIncludesReadRange(t *testing.T) {
 	t.Parallel()
 	var copied string

@@ -8,9 +8,6 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// toolForever emits a bash tool call for the first wantRetries turns, then a
-// final answer. toolResults is derived from the current message history, so it
-// counts how many tool-call turns have already happened.
 func toolForever(wantRetries int) *provider.Scripted {
 	return provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
 		var toolResults int
@@ -32,10 +29,6 @@ func toolForever(wantRetries int) *provider.Scripted {
 	})
 }
 
-// TestRunAgentMaxTurnsAutoDeniesWithoutHook verifies the cap is honored at the
-// engine seam: with MaxTurns reached and no continuation hook (the batch
-// default), RunAgent returns ErrMaxTurns instead of looping forever. This is
-// the batch "auto-deny changes" path.
 func TestRunAgentMaxTurnsAutoDeniesWithoutHook(t *testing.T) {
 	t.Parallel()
 	e := New(toolForever(100), &mockTranscript{})
@@ -51,13 +44,8 @@ func TestRunAgentMaxTurnsAutoDeniesWithoutHook(t *testing.T) {
 	}
 }
 
-// TestRunAgentMaxTurnsContinuesWhenHookGrants verifies the interactive path:
-// when CanContinue grants another budget at the cap, the run proceeds past the
-// cap instead of erroring ("prompt to continue").
 func TestRunAgentMaxTurnsContinuesWhenHookGrants(t *testing.T) {
 	t.Parallel()
-	// toolForever(5): five tool turns then a final answer. MaxTurns=2 plus an
-	// always-granting hook lets the run cross the cap and finish.
 	var granted int
 	e := New(toolForever(5), &mockTranscript{})
 	res, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "loop"},
@@ -81,9 +69,6 @@ func TestRunAgentMaxTurnsContinuesWhenHookGrants(t *testing.T) {
 	}
 }
 
-// TestRunAgentMaxTurnsRefusesAfterGrantedBudgets verifies the interactive path
-// also ends: once the hook stops granting (user declined), the run terminates
-// with ErrMaxTurns rather than continuing.
 func TestRunAgentMaxTurnsRefusesAfterGrantedBudgets(t *testing.T) {
 	t.Parallel()
 	var granted int

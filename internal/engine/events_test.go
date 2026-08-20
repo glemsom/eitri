@@ -7,16 +7,12 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// eventCollector records every event a live run emits, in order, so a test can
-// assert the exact event stream (the observer surface of this ticket).
 type eventCollector struct {
 	events []Event
 }
 
 func (c *eventCollector) on(e Event) { c.events = append(c.events, e) }
 
-// eventTypes returns the concrete Go type names seen, in order, for a compact
-// ordering assertion.
 func (c *eventCollector) eventTypes() []string {
 	out := make([]string, 0, len(c.events))
 	for _, e := range c.events {
@@ -44,11 +40,6 @@ func typeName(e Event) string {
 	}
 }
 
-// TestRunEmitsStreamAndUsageAndTurnEvents verifies a plain non-tool turn pushes
-// streamed thinking/answer deltas, per-turn usage, and turn boundaries onto the
-// subscriber in order — the (a), (b), (d), (e) event surface for the
-// shared drain path (the reasoning delta is never merged into
-// the answer).
 func TestRunEmitsStreamAndUsageAndTurnEvents(t *testing.T) {
 	t.Parallel()
 	col := &eventCollector{}
@@ -72,7 +63,6 @@ func TestRunEmitsStreamAndUsageAndTurnEvents(t *testing.T) {
 		t.Fatalf("Result answer=%q reasoning=%q", res.Answer, res.Reasoning)
 	}
 
-	// Turn start then stream deltas, turn end, usage.
 	var streamedText, streamedReasoning string
 	sawStart, sawEnd := false, false
 	var usage *UsageEvent
@@ -111,10 +101,6 @@ func TestRunEmitsStreamAndUsageAndTurnEvents(t *testing.T) {
 	}
 }
 
-// compressExpr returns a ToolExecutor whose tool result is a compressed,
-// truncated listing carrying the explicit "+3 more" tail marker
-// — the shape the real bash tool emits — so the compression-metadata event
-// can be asserted against a known-good marker.
 func compressExec() ToolExecutor {
 	return ExecutorFunc(func(_ context.Context, name, _ string) (ToolExecResult, error) {
 		if name == "bash" {
@@ -124,10 +110,6 @@ func compressExec() ToolExecutor {
 	})
 }
 
-// TestRunAgentEmitsToolEventsInOrder drives a tool-call loop and asserts the
-// ordered stream of events the TUI consumes streaming: a turn start, answer and
-// reasoning deltas, a tool-call start, a tool-result with compression metadata,
-// per-turn usage, and the turn transition to the final answer.
 func TestRunAgentEmitsToolEventsInOrder(t *testing.T) {
 	t.Parallel()
 	col := &eventCollector{}
@@ -200,9 +182,6 @@ func TestRunAgentEmitsToolEventsInOrder(t *testing.T) {
 	}
 }
 
-// an engine never subscribed to the event surface pushes nothing, so plain runs
-// behave byte-identically. This is the "no event surface
-// required, no regressions" acceptance criterion.
 func TestRunWithoutSubscriberEmitsNoEvents(t *testing.T) {
 	t.Parallel()
 	col := &eventCollector{}
@@ -223,9 +202,6 @@ func TestRunWithoutSubscriberEmitsNoEvents(t *testing.T) {
 	}
 }
 
-// TestSetListenerNilStopsDelivery verifies unsubscribing with a nil listener
-// halts event delivery mid-engine (set once, detached before the run), so a
-// detached TUI never receives stale events.
 func TestSetListenerNilStopsDelivery(t *testing.T) {
 	t.Parallel()
 	col := &eventCollector{}
@@ -243,9 +219,6 @@ func TestSetListenerNilStopsDelivery(t *testing.T) {
 	}
 }
 
-// TestRunAgentEmitsCompactionEvent verifies the compaction marker
-// is surfaced as a CompactedEvent on the subscriber when the proactive 80%
-// threshold is crossed — the (f) event surface for the compaction marker.
 func TestRunAgentEmitsCompactionEvent(t *testing.T) {
 	t.Parallel()
 	col := &eventCollector{}
@@ -277,11 +250,6 @@ func TestRunAgentEmitsCompactionEvent(t *testing.T) {
 	}
 }
 
-// TestRunAgentOverflowKeepsTurnEventsBalanced drives the emergency
-// context-overflow→compact→retry path and asserts every TurnEvent Start is
-// paired with a matching End. An overflowed-and-retried turn streams nothing,
-// so it must not emit an orphaned Start (the event stream a TUI consumes must
-// never pair a Start without a corresponding End).
 func TestRunAgentOverflowKeepsTurnEventsBalanced(t *testing.T) {
 	t.Parallel()
 	col := &eventCollector{}
@@ -301,7 +269,6 @@ func TestRunAgentOverflowKeepsTurnEventsBalanced(t *testing.T) {
 		t.Fatalf("RunAgent() error = %v, want nil (overflow should compact and retry)", err)
 	}
 
-	// Every Start must have a Matching End; no Start may dangle.
 	open := map[int]int{}
 	var sawCompacted bool
 	for _, e := range col.events {

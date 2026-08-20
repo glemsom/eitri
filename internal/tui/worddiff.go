@@ -7,28 +7,13 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// Word-level diff highlighting for the inline card diff (benchmark §4.2: diff
-// lines carry word-level emphasis — the diffAddedWord/diffDeletedWord pattern).
-// A modified line renders as a whole-line fill plus bold on the words that
-// actually changed, so a long edited line reads its delta at a glance instead
-// of requiring a character-by-character comparison.
-//
-// The pairing contract: the diff renderer pairs an adjacent "-" line with
-// the "+" line that follows it in the same hunk (the diff engine emits a
-// delete followed by an insert for a modified line) and runs wordDiff on the
-// pair.
-
-// wordToken is one token of a word-diffed line: its text and whether it
-// changed between the old and new lines.
+// wordToken is one token of a word-diffed line: its text and whether it changed between the old and new lines.
 type wordToken struct {
 	text    string
 	changed bool
 }
 
-// wordTokRe splits a line into maximal runs of identifier characters
-// ([A-Za-z0-9_]) and everything else (punctuation, whitespace), so "  foo(x)"
-// becomes ["  ", "foo", "(", "x", ")"] and a single renamed identifier
-// highlights without touching its surrounding punctuation.
+// wordTokRe splits a line into maximal runs of identifier characters ([A-Za-z0-9_]) and everything else (punctuation, whitespace), so " foo(x)" becomes [" ", "foo", "(", "x", ")"] and a single renamed identifier highlights without touching its surrounding punctuation.
 var wordTokRe = regexp.MustCompile(`[A-Za-z0-9_]+|[^A-Za-z0-9_]+`)
 
 func tokenize(s string) []string {
@@ -38,9 +23,7 @@ func tokenize(s string) []string {
 	return wordTokRe.FindAllString(s, -1)
 }
 
-// wordDiff marks the changed tokens between two lines using a token-level LCS:
-// tokens on the LCS path are unchanged in both lines; every other token is
-// flagged changed. The two token lists are the aligned old/new renderings.
+// wordDiff marks the changed tokens between two lines using a token-level LCS: tokens on the LCS path are unchanged in both lines; every other token is flagged changed.
 func wordDiff(a, b string) (aToks, bToks []wordToken) {
 	at := tokenize(a)
 	bt := tokenize(b)
@@ -87,10 +70,7 @@ func wordDiff(a, b string) (aToks, bToks []wordToken) {
 	return aToks, bToks
 }
 
-// renderWordDiff renders a paired old/new line with word-level emphasis: the
-// line style (fill + hue) for unchanged tokens, bold for the changed ones. The
-// +/- prefix folds into the first styled token so it shares the line's
-// fill/hue and the rendered text stays contiguous.
+// renderWordDiff renders a paired old/new line with word-level emphasis: the line style (fill + hue) for unchanged tokens, bold for the changed ones.
 func renderWordDiff(toks []wordToken, base lipgloss.Style, prefix string) string {
 	var sb strings.Builder
 	for i, t := range toks {

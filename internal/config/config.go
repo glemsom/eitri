@@ -1,7 +1,4 @@
-// Package config handles Eitri's persistent local configuration: the JSON
-// config file under the data directory (~/.eitri/config.json by default,
-// path overridden by EITRI_CONFIG). It is created with defaults when absent,
-// loaded on startup, and saved whenever settings change.
+// Package config handles Eitri's persistent local configuration: the JSON config file under the data directory (~/.eitri/config.json by default, path overridden by EITRI_CONFIG).
 package config
 
 import (
@@ -16,44 +13,28 @@ import (
 
 // Defaults for session and provider behavior.
 const (
-	// DefaultMaxTurns is the cap on loop iterations per run.
-	DefaultMaxTurns = 250
-	// DefaultReasoningEffort is the per-session reasoning setting.
+	DefaultMaxTurns        = 250
 	DefaultReasoningEffort = "low"
-	// DefaultTheme is the Markdown render theme when unset or unknown; "ascii" is
-	// deliberately excluded from the supported set.
-	DefaultTheme = "dark"
-	// DefaultThinkingEnabled is whether chain-of-thought reasoning is on by
-	// default; off yields requests with no thinking toggle/effort.
+	DefaultTheme           = "dark"
 	DefaultThinkingEnabled = true
-	// DefaultProvider and DefaultModel are the primary provider defaults.
-	DefaultProvider = "opencode-go"
-	DefaultModel    = "deepseek-v4-flash"
+	DefaultProvider        = "opencode-go"
+	DefaultModel           = "deepseek-v4-flash"
 )
 
-// CopilotConfig holds the GitHub Copilot device-flow credential state, persisted
-// so a later batch run can reuse the TUI-established session without re-auth.
-// Batch may transparently renew an expired access token
-// via RefreshToken, but the interactive device-flow handshake is TUI-only.
+// CopilotConfig holds the GitHub Copilot device-flow credential state, persisted so a later batch run can reuse the TUI-established session without re-auth.
 type CopilotConfig struct {
 	AccessToken  string `json:"access_token,omitempty"`
 	RefreshToken string `json:"refresh_token,omitempty"`
-	// ExpiresAt is the unix-seconds expiry of AccessToken; 0 when unknown. Batch
-	// refreshes when the access token is absent or past this time.
-	ExpiresAt int64 `json:"expires_at,omitempty"`
+	ExpiresAt    int64  `json:"expires_at,omitempty"`
 }
 
-// OpenAIConfig holds a user-supplied OpenAI-compatible endpoint and API key
-// (custom OpenAI provider). No device flow: key/setup only.
+// OpenAIConfig holds a user-supplied OpenAI-compatible endpoint and API key (custom OpenAI provider).
 type OpenAIConfig struct {
 	BaseURL string `json:"base_url,omitempty"`
 	Key     string `json:"key,omitempty"`
 }
 
-// Config is the persisted Eitri configuration. The primary provider's key
-// (OpenCode Go) is delivered via the OPENCODE_API_KEY environment variable; the
-// Copilot device-flow tokens and the custom-OpenAI endpoint/key are stored here
-// because they are user-configured and reused across runs.
+// Config is the persisted Eitri configuration.
 type Config struct {
 	Provider           string        `json:"provider"`
 	Model              string        `json:"model"`
@@ -99,13 +80,9 @@ func Load(path string) (Config, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("parse config %s: %w", path, err)
 	}
-	// A file that never saved a theme field keeps the shipped default: an absent
-	// or empty theme means "dark", never an error.
 	if cfg.Theme == "" {
 		cfg.Theme = DefaultTheme
 	}
-	// A file that never saved a reasoning_effort field keeps the shipped
-	// default rather than the empty zero value.
 	if cfg.ReasoningEffort == "" {
 		cfg.ReasoningEffort = DefaultReasoningEffort
 	}

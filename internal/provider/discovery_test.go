@@ -8,10 +8,6 @@ import (
 	"testing"
 )
 
-// TestOpenAIDiscoversModels verifies the OpenAI-compatible client can list the
-// available models from the provider's /models endpoint. The base URL is
-// derived from the Chat-Completions endpoint by stripping the
-// /chat/completions suffix.
 func TestOpenAIDiscoversModels(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -39,8 +35,6 @@ func TestOpenAIDiscoversModels(t *testing.T) {
 	}
 }
 
-// TestOpenAIDiscoverModelsCarriesAuth verifies model discovery uses the same
-// Bearer credential as streaming.
 func TestOpenAIDiscoverModelsCarriesAuth(t *testing.T) {
 	t.Parallel()
 	var sawAuth string
@@ -81,9 +75,6 @@ func TestOpenAIDiscoverModelsIgnoresStringCapabilityValues(t *testing.T) {
 	}
 }
 
-// TestFakeDiscoversModels verifies the fake provider stands in for model
-// discovery at the engine/app seam: it surfaces a committed model list so
-// discovery is exercisable without a network.
 func TestFakeDiscoversModels(t *testing.T) {
 	t.Parallel()
 	models, err := NewFake("../provider/testdata/hello.sse").Models(context.Background())
@@ -103,9 +94,6 @@ func TestFakeDiscoversModels(t *testing.T) {
 	}
 }
 
-// TestScriptedDoesNotListModels asserts Scripted (and other minimal providers)
-// simply don't expose the optional ModelLister capability; callers type-assert
-// and treat absence as "no discovery" rather than erroring.
 func TestScriptedDoesNotListModels(t *testing.T) {
 	t.Parallel()
 	sp := NewScripted(func(_ context.Context, _ Request) (Stream, error) {
