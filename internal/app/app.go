@@ -180,7 +180,7 @@ func Run(opts Options) error {
 		return runTUI(e, cfg, reg, key, liveProvider, cfgPath, skills, workspace, tempHost)
 	}
 
-	res, err := runAgent(e, cfg, reg, key, opts.Prompt, nil, nil)
+	res, err := runAgent(context.Background(), e, cfg, reg, key, opts.Prompt, nil, nil)
 	if err != nil {
 		return err
 	}
@@ -222,14 +222,14 @@ func (stderrWarner) Warnf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "eitri: "+format+"\n", args...)
 }
 
-// runAgent drives one agent turn (user prompt → assistant answer) over the shared run engine, session transcript, and tool registry that both the TUI and batch use.
-func runAgent(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey, prompt string, skillInject *string, canContinue func() bool) (engine.Result, error) {
+// runAgent drives one agent turn (user prompt → assistant answer) over the shared run engine, session transcript, and tool registry that both the TUI and batch use. ctx is threaded through to the engine so the TUI's per-turn cancellation (Ctrl+C/Esc) reaches an in-flight run; batch passes context.Background() (no stop binding).
+func runAgent(ctx context.Context, e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey, prompt string, skillInject *string, canContinue func() bool) (engine.Result, error) {
 	compaction := &engine.CompactionConfig{Fraction: cfg.CompactionFraction}
 	effort := cfg.ReasoningEffort
 	if !cfg.ThinkingEnabled {
 		effort = ""
 	}
-	return e.RunAgent(context.Background(), engine.RunRequest{
+	return e.RunAgent(ctx, engine.RunRequest{
 		Model:           cfg.Model,
 		Prompt:          prompt,
 		SkillInject:     skillInject,
