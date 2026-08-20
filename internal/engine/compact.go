@@ -61,10 +61,20 @@ func (e *Engine) maybeCompact(ctx context.Context, req RunRequest, opts AgentOpt
 	}
 
 	stableHead := []provider.Message(nil)
+	start := 0
 	if len(messages) > 0 && messages[0].Role == provider.RoleSystem && messages[0].Content == SystemPromptContent() {
-		stableHead = messages[:1]
-		messages = messages[1:]
+		stableHead = append(stableHead, messages[0])
+		start = 1
 	}
+	// A slash-activated skill is injected as a second system message right after
+	// the Eitri system prompt. It must survive compaction or the model forgets it
+	// is following the skill; keep any such skill payload system messages in the
+	// head alongside the system prompt instead of letting them enter the evictable pool.
+	for start < len(messages) && messages[start].Role == provider.RoleSystem && isSkillMessage(messages[start]) {
+		stableHead = append(stableHead, messages[start])
+		start++
+	}
+	messages = messages[start:]
 
 	body, tail := evict(cfg, messages)
 	if len(tail) == 0 || len(tail) == len(messages) {
@@ -186,8 +196,11 @@ func (e *Engine) generateSummary(ctx context.Context, req RunRequest, cfg *Compa
 	return text
 }
 
-// isSkillMessage reports whether a message belongs to a skill activation and so is ring-fenced from eviction when Prune is enabled.
+// isSkillMessage reports whether a message belongs to a skill activation and so is ring-fenced from eviction when Prune is enabled: a slash-injected <skill_content> system message, a model-invoked skill tool call, or a SKILL-carrying tool result.
 func isSkillMessage(m provider.Message) bool {
+	if m.Role == provider.RoleSystem && strings.Contains(m.Content, "<skill_content") {
+		return true
+	}
 	if m.Role == provider.RoleAssistant {
 		for _, tc := range m.ToolCalls {
 			if tc.Name == "skill" {
