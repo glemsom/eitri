@@ -74,6 +74,40 @@ func TestRenderFlow_committedRendersReasoningOnceAtFirstToolBoundary(t *testing.
 	}
 }
 
+// TestRenderFlow_committedReasoningSnapshotOnceAtTailWhenNoToolFollows locks the
+// #451 contract for a committed turn that streams no tool: its reasoning is one
+// authoritative snapshot (never split or re-rendered) and, with no tool boundary
+// to anchor it, renders exactly once at the tail, directly before the answer.
+func TestRenderFlow_committedReasoningSnapshotOnceAtTailWhenNoToolFollows(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	in := renderFlowInput(
+		[]TimelineEvent{
+			{Kind: EventReasoning, Delta: "think first"},
+			{Kind: EventReasoning, Delta: " think second"},
+			{Kind: EventAnswer, Delta: "Done."},
+		},
+		message{reasoning: "think first think second", content: "Done.", thinkingRequested: true, thinkingExpanded: true},
+		nil,
+	)
+
+	out, _ := RenderFlow(in)
+	plain := ansiStrip(out)
+
+	ri := strings.Index(plain, "think first")
+	ai := strings.Index(plain, "Done.")
+	if ri < 0 || ai < 0 {
+		t.Fatalf("no-tool committed flow missing reasoning/answer (r=%d a=%d):\n%s", ri, ai, plain)
+	}
+	// With no tool boundary, the reasoning snapshot renders at the tail, sitting
+	// directly before the final answer and never after it.
+	if !(ri < ai) {
+		t.Errorf("no-tool committed reasoning must sit at the tail before the answer, got r=%d a=%d:\n%s", ri, ai, plain)
+	}
+	if n := strings.Count(plain, "think first"); n != 1 {
+		t.Errorf("no-tool committed reasoning rendered %d times, want exactly once at the tail:\n%s", n, plain)
+	}
+}
+
 func TestRenderFlow_liveInterleavesReasoningFragmentsInEmissionOrder(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	in := renderFlowInput(
