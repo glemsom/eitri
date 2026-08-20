@@ -24,7 +24,7 @@ func runEngineTurn(e *engine.Engine, cfg func() config.Config, reg *tools.Regist
 		if payload != "" {
 			skillInject = &payload
 		}
-		res, err := runAgent(e, cur, reg, sessionKey, prompt, skillInject, canContinue)
+		res, err := runAgent(ctx, e, cur, reg, sessionKey, prompt, skillInject, canContinue)
 		if err != nil {
 			if errors.Is(err, engine.ErrStopped) {
 				return tui.TurnResult{Answer: res.Answer, Reasoning: res.Reasoning, Stopped: true}, nil
