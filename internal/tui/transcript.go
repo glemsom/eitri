@@ -359,6 +359,9 @@ func (t Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg mess
 	ti := 0
 	var reasoning, answer strings.Builder
 	reasoningEmitted := false
+	anyStreamedAnswer := false
+	emittedAnswerBeforeTail := false
+	snapshotAnswerEmitted := false
 
 	flushReasoning := func() {
 		if reasoningEmitted {
@@ -395,38 +398,18 @@ func (t Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg mess
 		}
 	}
 
-	for _, ev := range events {
-		switch ev.Kind {
-		case EventReasoning:
-			reasoning.WriteString(ev.Delta)
-		case EventToolStart:
-			flushReasoning()
-			te := toolEntry{name: ev.Start.Name, args: ev.Start.Args, startedAt: time.Now()}
-			idx := -1
-			if ti < len(anchored) {
-				idx = anchored[ti] // the log entry for this start, in arrival order
-				te = t.log.entries[idx]
-			}
-			ti++
-			emitTool(te, idx)
-		case EventToolResult:
-			flushReasoning() // the entry sent its head when it started; results surface through it
-		case EventAnswer:
-			answer.WriteString(ev.Delta)
+	// emitAnswer renders one answer block with the pane chosen from the message's
+	// flags (streaming dimmed, stopped pane, error, full accent). final marks the
+	// last block of the flow so a stopped turn's marker renders exactly once.
+	emitAnswer := func(txt string, final bool) {
+		if txt == "" {
+			return
 		}
-	}
-	flushReasoning()
-
-	answerText := msg.content
-	if answerText == "" {
-		answerText = answer.String() // completed messages carry the authoritative text; the live log is the fallback
-	}
-	if answerText != "" {
-		md, _ := RenderMarkdown(answerText, w-2, t.configTheme)
+		md, _ := RenderMarkdown(txt, w-2, t.configTheme)
 		pane := t.theme.agentPaneStyle
 		if msg.stopped {
 			pane = t.theme.stoppedPaneStyle
-		} else if strings.HasPrefix(answerText, failurePrefix()) {
+		} else if strings.HasPrefix(txt, failurePrefix()) {
 			if msg.streaming {
 				pane = t.theme.streamingErrorPaneStyle
 			} else {
@@ -437,10 +420,67 @@ func (t Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg mess
 		}
 		pane = pane.Border(lipgloss.Border{Left: g("│", "|")})
 		emit(fmt.Sprintf("%s\n", pane.Render(strings.TrimRight(md, "\n"))))
-		if msg.stopped {
+		if final && msg.stopped {
 			emit(t.theme.statusStyle.Render(stoppedMarker()) + "\n")
 		}
 	}
+
+	// flushAnswer emits the answer text accumulated since the last boundary at
+	// this boundary, then resets, so each tool call sees exactly the answer
+	// fragments the provider emitted before it, in arrival order. A turn whose
+	// answer never streamed as deltas (only the authoritative final snapshot
+	// survives, e.g. a non-streaming provider) falls back to that snapshot once;
+	// a turn that did stream never also shows the snapshot, so the already-
+	// interleaved fragments are not duplicated.
+	flushAnswer := func(final bool) {
+		txt := answer.String()
+		answer.Reset()
+		switch {
+		case txt != "":
+			// an interleaved answer fragment sits before this boundary. A turn
+			// that finalized with no answer yet split across a tool boundary
+			// (nothing rendered mid-flow) prefers the authoritative snapshot,
+			// which may be fuller than the last un-emitted stream prefix.
+			if final && !emittedAnswerBeforeTail && msg.content != "" {
+				txt = msg.content
+			}
+		case final && !anyStreamedAnswer && !snapshotAnswerEmitted && !msg.streaming && msg.content != "":
+			snapshotAnswerEmitted = true
+			txt = msg.content
+		default:
+			return // nothing to show at this boundary
+		}
+		emitAnswer(txt, final)
+		if !final && !emittedAnswerBeforeTail {
+			emittedAnswerBeforeTail = true
+		}
+	}
+
+	for _, ev := range events {
+		switch ev.Kind {
+		case EventReasoning:
+			reasoning.WriteString(ev.Delta)
+		case EventToolStart:
+			flushReasoning()
+			flushAnswer(false)
+			te := toolEntry{name: ev.Start.Name, args: ev.Start.Args, startedAt: time.Now()}
+			idx := -1
+			if ti < len(anchored) {
+				idx = anchored[ti] // the log entry for this start, in arrival order
+				te = t.log.entries[idx]
+			}
+			ti++
+			emitTool(te, idx)
+		case EventToolResult:
+			flushReasoning() // the entry sent its head when it started; results surface through it
+			flushAnswer(false)
+		case EventAnswer:
+			anyStreamedAnswer = true
+			answer.WriteString(ev.Delta)
+		}
+	}
+	flushReasoning()
+	flushAnswer(true)
 
 	return b.String(), rows
 }

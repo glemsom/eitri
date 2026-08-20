@@ -207,3 +207,78 @@ func lineBorderColor(rendered, body string) string {
 	}
 	return ""
 }
+
+// answerInterleaveTranscript builds a completed turn whose answer text streams
+// in fragments around two tool calls — partial answers before and between the
+// tools, and a final fragment at the tail — the arrival order the flat flow
+// must reproduce exactly as the provider emitted it.
+func answerInterleaveTranscript() *Transcript {
+	th := themeFor(config.DefaultTheme)
+	var log toolLog
+	log.SetAnchor(0)
+	log.Apply(ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}})
+	log.Apply(ToolUpdate{Result: &ToolResult{Name: "read", Result: "alpha", Lines: 1}})
+	log.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
+	log.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "x", Lines: 1}})
+	return &Transcript{
+		theme:           th,
+		configTheme:     config.DefaultTheme,
+		reasoningEffort: "medium",
+		width:           100,
+		height:          30,
+		histFollow:      true,
+		histViewport:    newHistoryViewport(),
+		log:             log,
+		messages: []message{
+			{role: "you", content: "p"},
+			{role: "eitri", content: "alpha, and ls gave gives-x-final", thinkingRequested: true},
+		},
+		timeline: []TimelineEvent{
+			{Kind: EventAnswer, Seq: 0, Delta: "alpha, "},
+			{Kind: EventToolStart, Seq: 1, Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}},
+			{Kind: EventToolResult, Seq: 2, Result: &ToolResult{Name: "read", Result: "alpha", Lines: 1}},
+			{Kind: EventAnswer, Seq: 3, Delta: "and ls gave "},
+			{Kind: EventToolStart, Seq: 4, Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}},
+			{Kind: EventToolResult, Seq: 5, Result: &ToolResult{Name: "bash", Result: "x", Lines: 1}},
+			{Kind: EventAnswer, Seq: 6, Delta: "gives-x-final"},
+		},
+	}
+}
+
+func TestTranscript_partialAnswersInterleaveWithToolsInArrivalOrder(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	tx := answerInterleaveTranscript()
+	tx.messages[1].events = tx.timeline
+
+	var hist strings.Builder
+	tx.renderHistory(&hist, nil, nil)
+	plain := ansiStrip(hist.String())
+
+	partial := strings.Index(plain, "alpha,")
+	tool1 := strings.Index(plain, "read  a.txt")
+	mid := strings.Index(plain, "and ls gave")
+	tool2 := strings.Index(plain, "bash  ls")
+	lastX := strings.LastIndex(plain, "gives-x-final")
+	if partial < 0 || tool1 < 0 || mid < 0 || tool2 < 0 || lastX < 0 {
+		t.Fatalf("missing segments partial=%d t1=%d mid=%d t2=%d lastX=%d:\n%s", partial, tool1, mid, tool2, lastX, plain)
+	}
+	// Partial answer fragments land where they streamed: before the first tool,
+	// between the two tools, and after the last — never collapsed into a single
+	// block hoisted above the tools.
+	if !(partial < tool1) {
+		t.Errorf("partial answer %q must render before tool1, got partial=%d tool1=%d:\n%s", "alpha,", partial, tool1, plain)
+	}
+	if !(mid > tool1 && mid < tool2) {
+		t.Errorf("mid answer fragment must sit between tool1 and tool2, got t1=%d mid=%d t2=%d:\n%s", tool1, mid, tool2, plain)
+	}
+	if !(tool2 < lastX) {
+		t.Errorf("final answer fragment must render after tool2, got t2=%d lastX=%d:\n%s", tool2, lastX, plain)
+	}
+	// Each answer text appears exactly once: interleaving reorders, never
+	// duplicates, the streamed answer.
+	for _, marker := range []string{"alpha,", "and ls gave", "gives-x-final"} {
+		if n := strings.Count(plain, marker); n != 1 {
+			t.Errorf("answer marker %q rendered %d times, want exactly once:\n%s", marker, n, plain)
+		}
+	}
+}
