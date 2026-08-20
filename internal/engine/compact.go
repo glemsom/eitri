@@ -198,7 +198,7 @@ func (e *Engine) generateSummary(ctx context.Context, req RunRequest, cfg *Compa
 
 // isSkillMessage reports whether a message belongs to a skill activation and so is ring-fenced from eviction when Prune is enabled: a slash-injected <skill_content> directive in the user layer, a model-invoked skill tool call, or a SKILL-carrying tool result.
 func isSkillMessage(m provider.Message) bool {
-	if strings.Contains(m.Content, "<skill_content") && (m.Role == provider.RoleUser || m.Role == provider.RoleSystem) {
+	if m.Role == provider.RoleUser && strings.Contains(m.Content, "<skill_content") {
 		return true
 	}
 	if m.Role == provider.RoleAssistant {
