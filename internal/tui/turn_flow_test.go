@@ -245,6 +245,141 @@ func answerInterleaveTranscript() *Transcript {
 	}
 }
 
+// liveReasoningInterleaveTranscript builds a Transcript mid-live-turn whose
+// in-progress timeline interleaves chain-of-thought around two tool calls: a
+// reasoning fragment before the first tool and a second fragment after the
+// first tool's result, before the second tool — the emission order the live
+// flow must reproduce without dropping the resumed reasoning.
+func liveReasoningInterleaveTranscript() *Transcript {
+	th := themeFor(config.DefaultTheme)
+	var log toolLog
+	log.SetAnchor(0)
+	log.Apply(ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}})
+	log.Apply(ToolUpdate{Result: &ToolResult{Name: "read", Result: "alpha", Lines: 1}})
+	log.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
+	log.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "x", Lines: 1}})
+	return &Transcript{
+		theme:           th,
+		configTheme:     config.DefaultTheme,
+		reasoningEffort: "medium",
+		width:           100,
+		height:          30,
+		histFollow:      true,
+		histViewport:    newHistoryViewport(),
+		log:             log,
+		busy:            true,
+		messages: []message{
+			{role: "you", content: "p"},
+			{role: "eitri", reasoning: "reasoning one reasoning two", streaming: true, thinkingRequested: true},
+		},
+		timeline: []TimelineEvent{
+			{Kind: EventReasoning, Seq: 0, Delta: "reasoning one"},
+			{Kind: EventToolStart, Seq: 1, Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}},
+			{Kind: EventToolResult, Seq: 2, Result: &ToolResult{Name: "read", Result: "alpha", Lines: 1}},
+			{Kind: EventReasoning, Seq: 3, Delta: "reasoning two"},
+			{Kind: EventToolStart, Seq: 4, Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}},
+			{Kind: EventToolResult, Seq: 5, Result: &ToolResult{Name: "bash", Result: "x", Lines: 1}},
+			{Kind: EventAnswer, Seq: 6, Delta: "final answer text"},
+		},
+	}
+}
+
+func TestTranscript_liveReasoningInterleavesWithToolsInEmissionOrder(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	tx := liveReasoningInterleaveTranscript()
+
+	var hist strings.Builder
+	tx.renderHistory(&hist, nil, nil)
+	plain := ansiStrip(hist.String())
+
+	r1 := strings.Index(plain, "reasoning one")
+	tool1 := strings.Index(plain, "read  a.txt")
+	r2 := strings.Index(plain, "reasoning two")
+	tool2 := strings.Index(plain, "bash  ls")
+	finalA := strings.Index(plain, "final answer text")
+	if r1 < 0 || tool1 < 0 || r2 < 0 || tool2 < 0 || finalA < 0 {
+		t.Fatalf("live interleave render is missing segments r1=%d t1=%d r2=%d t2=%d a=%d:\n%s", r1, tool1, r2, tool2, finalA, plain)
+	}
+	// The resumed reasoning fragment lands between the two tool entries, in
+	// emission order, rather than being dropped or hoisted above the first tool.
+	if !(r1 < tool1) {
+		t.Errorf("first reasoning must precede tool1, got r1=%d t1=%d:\n%s", r1, tool1, plain)
+	}
+	if !(tool1 < r2 && r2 < tool2) {
+		t.Errorf("resumed reasoning must sit between the tool entries, got t1=%d r2=%d t2=%d:\n%s", tool1, r2, tool2, plain)
+	}
+	if !(tool2 < finalA) {
+		t.Errorf("answer must follow tool2, got t2=%d a=%d:\n%s", tool2, finalA, plain)
+	}
+	// Each reasoning fragment renders exactly once: interleaving never
+	// duplicates a fragment, and never merges the two into one block.
+	for _, marker := range []string{"reasoning one", "reasoning two"} {
+		if n := strings.Count(plain, marker); n != 1 {
+			t.Errorf("reasoning marker %q rendered %d times, want exactly once:\n%s", marker, n, plain)
+		}
+	}
+}
+
+func TestRenderHistory_liveInterleavedReasoningRespectsThinkingGate(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	tx := liveReasoningInterleaveTranscript()
+	tx.messages[1].thinkingRequested = false
+
+	var hist strings.Builder
+	tx.renderHistory(&hist, nil, nil)
+	plain := ansiStrip(hist.String())
+	if strings.Contains(plain, "reasoning one") || strings.Contains(plain, "reasoning two") {
+		t.Errorf("thinking-off live turn must hide interleaved reasoning, got:\n%s", plain)
+	}
+	// The tools and answer still render on a thinking-off turn.
+	if !strings.Contains(plain, "read  a.txt") || !strings.Contains(plain, "final answer text") {
+		t.Errorf("thinking-off live turn must still render tools and answer, got:\n%s", plain)
+	}
+}
+
+func TestTranscript_committedReasoningSnapshotRendersOnce(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	th := themeFor(config.DefaultTheme)
+	var log toolLog
+	log.SetAnchor(0)
+	log.Apply(ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}})
+	log.Apply(ToolUpdate{Result: &ToolResult{Name: "read", Result: "alpha", Lines: 1}})
+	tx := &Transcript{
+		theme:           th,
+		configTheme:     config.DefaultTheme,
+		reasoningEffort: "medium",
+		width:           100,
+		height:          30,
+		histFollow:      true,
+		histViewport:    newHistoryViewport(),
+		log:             log,
+		messages: []message{
+			{role: "you", content: "p"},
+			{role: "eitri", content: "done", reasoning: "snapshot reasoning", thinkingRequested: true, thinkingExpanded: true,
+				events: []TimelineEvent{
+					{Kind: EventReasoning, Seq: 0, Delta: "snapshot reasoning"},
+					{Kind: EventToolStart, Seq: 1, Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}},
+					{Kind: EventToolResult, Seq: 2, Result: &ToolResult{Name: "read", Result: "alpha", Lines: 1}},
+					{Kind: EventReasoning, Seq: 3, Delta: "after-tool reasoning"},
+					{Kind: EventAnswer, Seq: 4, Delta: "done"},
+				}},
+		},
+	}
+
+	var hist strings.Builder
+	tx.renderHistory(&hist, nil, nil)
+	plain := ansiStrip(hist.String())
+
+	if n := strings.Count(plain, "snapshot reasoning"); n != 1 {
+		t.Errorf("committed reasoning snapshot rendered %d times, want exactly once (issue #434/#451):\n%s", n, plain)
+	}
+	// A committed turn's reasoning is one authoritative snapshot; a reasoning
+	// event that resumes after a tool is not re-rendered as a second block.
+	if strings.Contains(plain, "after-tool reasoning") {
+		t.Errorf("committed turn must not re-render a resumed reasoning fragment, got:\n%s", plain)
+	}
+}
+
 func TestTranscript_partialAnswersInterleaveWithToolsInArrivalOrder(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := answerInterleaveTranscript()
