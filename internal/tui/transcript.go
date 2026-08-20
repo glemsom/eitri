@@ -584,27 +584,25 @@ func (t *Transcript) setCollapseAll(v bool) {
 }
 
 // clearCollapseForces drops every per-block force-collapse flag so the
-// expand-all mode can show all blocks.
+// expand-all mode can show all blocks: the message-side (reasoning) forces and
+// the tool entries' collapse-direction forces on the ExpansionState seam.
 func (t *Transcript) clearCollapseForces() {
 	for i := range t.messages {
 		t.messages[i].thinkingCollapsed = false
 		t.messages[i].fragmentForces = nil
 	}
-	for i := range t.log.entries {
-		t.log.entries[i].collapsedOverride = false
-	}
+	t.log.expansion.clearForcesOf(false)
 }
 
 // clearExpandForces drops every per-block force-expand flag so the
-// collapse-all mode can hide all block bodies.
+// collapse-all mode can hide all block bodies: the message-side (reasoning)
+// forces and the tool entries' expand-direction forces on the seam.
 func (t *Transcript) clearExpandForces() {
 	for i := range t.messages {
 		t.messages[i].thinkingExpanded = false
 		t.messages[i].fragmentForces = nil
 	}
-	for i := range t.log.entries {
-		t.log.entries[i].expanded = false
-	}
+	t.log.expansion.clearForcesOf(true)
 }
 
 // blockKind discriminates a collapsible block: a turn's reasoning header or a

@@ -58,6 +58,29 @@ func (e *ExpansionState) toggle(kind blockKind, id int) {
 	e.set(kind, id, !e.expanded(kind, id))
 }
 
+// forceFor reports the per-block force pinned on the block, if any: the value
+// and whether a force exists at all. It lets a caller distinguish a pinned
+// force from the mode/default fallback, e.g. the Ctrl+E collapse-pin toggle
+// that flips a block between force-collapsed and unpinned.
+func (e ExpansionState) forceFor(kind blockKind, id int) (force, ok bool) {
+	f, ok := e.forces[expansionKey{kind, id}]
+	return f, ok
+}
+
+// clearForcesOf drops every per-block force whose value matches forceValue: the
+// collapse-direction forces (value false) or the expand-direction forces (value
+// true). It is the per-direction half of setMode's clear-all, used by the
+// transcript's expand-all / collapse-all toggles, which clear only the opposing
+// direction so a manually pinned force in the other direction survives the mode
+// round-trip.
+func (e *ExpansionState) clearForcesOf(forceValue bool) {
+	for k, v := range e.forces {
+		if v == forceValue {
+			delete(e.forces, k)
+		}
+	}
+}
+
 // set pins a single block's expansion decision with an explicit force.
 func (e *ExpansionState) set(kind blockKind, id int, expanded bool) {
 	if e.forces == nil {

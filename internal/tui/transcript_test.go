@@ -360,11 +360,11 @@ func TestTranscript_toggleToolEntryFlipsExpansion(t *testing.T) {
 	tx := transcriptWithTool(t)
 
 	tx.toggleToolEntry(0)
-	if !tx.log.Entry(0).expanded {
+	if !tx.toolExpandedFor(0) {
 		t.Errorf("toggleToolEntry(0) must expand entry 0")
 	}
 	tx.toggleToolEntry(0)
-	if tx.log.Entry(0).expanded {
+	if tx.toolExpandedFor(0) {
 		t.Errorf("second toggleToolEntry(0) must collapse entry 0")
 	}
 }
@@ -474,7 +474,7 @@ func TestTranscript_expandAllOffDoesNotWipePerEntry(t *testing.T) {
 
 	tx.toggleExpandAll()
 	tx.toggleExpandAll()
-	if !tx.log.Entry(0).expanded {
+	if !tx.toolExpandedFor(0) {
 		t.Fatalf("toggling expandAll must not wipe per-entry expansion state")
 	}
 	var back strings.Builder
