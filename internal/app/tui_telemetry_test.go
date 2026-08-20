@@ -24,7 +24,7 @@ func TestFeedTelemetryBridgesUsageEvent(t *testing.T) {
 	}), mockTranscript{})
 
 	te := tui.NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	feedEngineEvents(e, te, tui.NewStreamer(), tui.NewToolFeed(), tui.NewDeltaObserver(nil))
+	feedEngineEvents(e, te, tui.NewStreamer(), tui.NewToolFeed(), tui.NewDeltaObserver(nil), nil)
 
 	if _, err := e.Run(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}); err != nil {
 		t.Fatalf("Run() error = %v", err)
@@ -54,7 +54,7 @@ func TestFeedTelemetryBridgesTurnEvent(t *testing.T) {
 	}), mockTranscript{})
 
 	te := tui.NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	feedEngineEvents(e, te, tui.NewStreamer(), tui.NewToolFeed(), tui.NewDeltaObserver(nil))
+	feedEngineEvents(e, te, tui.NewStreamer(), tui.NewToolFeed(), tui.NewDeltaObserver(nil), nil)
 
 	for i := 0; i < 2; i++ {
 		if _, err := e.Run(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}); err != nil {
@@ -82,7 +82,7 @@ func TestFeedEngineEventsBridgesAnswerDelta(t *testing.T) {
 
 	te := tui.NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	stream := tui.NewStreamer()
-	feedEngineEvents(e, te, stream, tui.NewToolFeed(), tui.NewDeltaObserver(nil))
+	feedEngineEvents(e, te, stream, tui.NewToolFeed(), tui.NewDeltaObserver(nil), nil)
 
 	if _, err := e.Run(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}); err != nil {
 		t.Fatalf("Run() error = %v", err)
@@ -140,7 +140,7 @@ func scriptedToolEditTurn() *provider.Scripted {
 func TestFeedEngineEventsBridgesToolEvents(t *testing.T) {
 	e := engine.New(scriptedToolEditTurn(), mockTranscript{})
 	feed := tui.NewToolFeed()
-	feedEngineEvents(e, tui.NewTelemetry("deepseek-v4-flash", "low", true, 250), tui.NewStreamer(), feed, tui.NewDeltaObserver(nil))
+	feedEngineEvents(e, tui.NewTelemetry("deepseek-v4-flash", "low", true, 250), tui.NewStreamer(), feed, tui.NewDeltaObserver(nil), nil)
 
 	if _, err := e.RunAgent(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "edit"},
 		engine.AgentOptions{

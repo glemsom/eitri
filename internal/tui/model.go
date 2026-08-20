@@ -71,10 +71,11 @@ type TurnResult struct {
 
 // message is one committed line of the conversation log.
 type message struct {
-	role              string // "you" or "eitri"
-	content           string
-	reasoning         string // assistant chain-of-thought, rendered as a collapsible block
-	streaming         bool   // true while this assistant reply is still growing from the answer stream
+	role              string          // "you" or "eitri"
+	content           string          // derived snapshot of the turn's answer text
+	reasoning         string          // derived snapshot of the turn's chain-of-thought
+	events            []TimelineEvent // arrival-ordered event log the turn's snapshots derive from
+	streaming         bool            // true while this assistant reply is still growing from the answer stream
 	thinkingRequested bool
 	thinkingExpanded  bool
 	thinkingCollapsed bool
@@ -150,6 +151,7 @@ type Dependencies struct {
 	Telemetry           *Telemetry
 	Stream              *Streamer
 	Tools               *ToolFeed
+	Events              *EventFeed
 	Rail                *Rail
 	ThinkingSuppression func() bool
 	Clipboard           func(text string) error
@@ -181,6 +183,8 @@ type Model struct {
 	stream *Streamer
 
 	toolFeed *ToolFeed
+
+	events *EventFeed
 
 	clipboard func(text string) error
 }
@@ -242,6 +246,7 @@ func NewModelCfg(d Dependencies) Model {
 		telemetry:    d.Telemetry,
 		stream:       d.Stream,
 		toolFeed:     d.Tools,
+		events:       d.Events,
 		clipboard:    newClipboard(d),
 	}
 	m.td.SetThinkingEnabled(d.Config.ThinkingEnabled)
@@ -308,6 +313,9 @@ func (m Model) Init() tea.Cmd {
 	if m.toolFeed != nil {
 		cmds = append(cmds, toolWait(m.toolFeed))
 	}
+	if m.events != nil {
+		cmds = append(cmds, eventWait(m.events))
+	}
 	cmds = append(cmds, clockTick())
 	return tea.Batch(cmds...)
 }
@@ -336,19 +344,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.toolFeed == nil {
 			return m, nil
 		}
-		m.tx.apply(msgi.update) // tool updates route through the Transcript
-		if msgi.update.Start != nil && !m.td.thinkingEnabled && motionEnabled() {
-			m.tx.busyPulse = 3
-		}
+		m.applyToolUpdate(msgi.update)
 		return m, toolWait(m.toolFeed)
 
 	case streamDeltaMsg:
-		if m.stream == nil || !m.tx.busy {
+		if m.stream == nil {
 			return m, nil
 		}
-		m.appendStreamDelta(msgi.kind, msgi.delta)
-		m.tx.layout.dirty = true // the in-progress message grew
+		m.applyStreamDelta(StreamUpdate{Kind: msgi.kind, Delta: msgi.delta})
 		return m, streamWait(m.stream)
+
+	case eventMsg:
+		if m.events == nil {
+			return m, nil
+		}
+		if msgi.update.Stream != nil {
+			m.applyStreamDelta(*msgi.update.Stream)
+		}
+		if msgi.update.Tool != nil {
+			m.applyToolUpdate(*msgi.update.Tool)
+		}
+		return m, eventWait(m.events)
 
 	case tea.WindowSizeMsg:
 		m.tx.width = msgi.Width
@@ -668,12 +684,15 @@ func (s *settingsForm) save(m *Model) {
 	m.settings = nil
 }
 
-// startTurn delegates to the TurnDispatch, which installs the per-turn cancel handle, appends a user message, marks busy, resets the stream cursor, and anchors the tool log.
+// startTurn delegates to the TurnDispatch, which installs the per-turn cancel handle, appends a user message, marks busy, resets the stream cursor, and anchors the tool log. The live event feed (or the legacy stream channel) is re-armed here, and the spinner tick starts so the busy indicator animates.
 func (m *Model) startTurn(prompt string, payload string) tea.Cmd {
 	m.td.startTurn(m.tx, prompt, payload)
 	m.syncComposerRail()
 	if m.stream != nil {
 		return tea.Batch(m.td.turnCmd(prompt, payload), streamWait(m.stream), spinnerTick())
+	}
+	if m.events != nil {
+		return tea.Batch(m.td.turnCmd(prompt, payload), eventWait(m.events), spinnerTick())
 	}
 	return m.td.turnCmd(prompt, payload)
 }
@@ -684,6 +703,27 @@ func (m *Model) stopTurn() { m.td.stopTurn() }
 // appendStreamDelta delegates to the TurnDispatch, which grows the in-progress assistant message by one streamed delta.
 func (m *Model) appendStreamDelta(kind StreamKind, delta string) {
 	m.td.appendStreamDelta(m.tx, kind, delta)
+}
+
+// applyStreamDelta folds one streamed delta (from either the legacy stream
+// channel or the merged event feed) into the live turn; deltas arriving while
+// no turn runs are dropped, matching the pre-timeline stream behavior.
+func (m *Model) applyStreamDelta(u StreamUpdate) {
+	if !m.tx.busy {
+		return
+	}
+	m.appendStreamDelta(u.Kind, u.Delta)
+	m.tx.layout.dirty = true // the in-progress message grew
+}
+
+// applyToolUpdate folds one tool observation (from either the legacy tool
+// channel or the merged event feed) into the transcript, arming the tool-start
+// pulse for thinking-off turns along the way.
+func (m *Model) applyToolUpdate(u ToolUpdate) {
+	m.tx.apply(u) // tool updates route through the Transcript
+	if u.Start != nil && !m.td.thinkingEnabled && motionEnabled() {
+		m.tx.busyPulse = 3
+	}
 }
 
 // skillSnapshot captures the detected skills at construction so the slash completion has a stable list even if the Dependencies snapshot is nil or empty.

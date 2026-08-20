@@ -22,6 +22,8 @@ type Transcript struct {
 	workspacePath   string
 	log             toolLog
 	expandAll       bool
+	timeline        []TimelineEvent // live arrival-ordered event log of the in-progress turn
+	turnSeq         int             // arrival sequence counter feeding the live timeline
 	layout          transcriptLayout
 	telemetry       *Telemetry
 	dragSel         dragSelect
@@ -393,10 +395,42 @@ func (t *Transcript) appendMsg(content string) {
 	t.layout.dirty = true
 }
 
-// apply folds one tool-call observation into the transcript's log ( AC1/AC2): tool updates now route through the Transcript so they land in the same log renderPane reads.
+// apply folds one tool-call observation into the transcript's log: tool updates route through the Transcript so they land in the same log renderPane reads. The matching event is also recorded on the per-turn timeline so the log captures tool starts/results in arrival order alongside the stream deltas.
 func (t *Transcript) apply(u ToolUpdate) {
 	t.log.Apply(u)
+	if kind, ok := toolEventKind(u); ok {
+		t.recordTurnEvent(TimelineEvent{Kind: kind, Start: u.Start, Result: u.Result})
+	}
 	t.layout.dirty = true // an entry changed the tool log's rendered rows
+}
+
+// recordLive appends one event to the live per-turn log in arrival order,
+// stamping it with the turn's next sequence number.
+func (t *Transcript) recordLive(ev TimelineEvent) {
+	ev.Seq = t.turnSeq
+	t.turnSeq++
+	t.timeline = append(t.timeline, ev)
+}
+
+// recordTurnEvent logs one event on the per-turn event timeline: while a turn runs it lands on the live log the TurnDispatch commits at turn completion; after the turn it attaches to the most recent assistant message so trailing tool results still appear in that turn's log. Seq continues wherever the last log left off, so post-turn appends stay arrival-ordered with the turn's own events.
+func (t *Transcript) recordTurnEvent(ev TimelineEvent) {
+	if t.busy {
+		t.recordLive(ev)
+		return
+	}
+	for i := len(t.messages) - 1; i >= 0; i-- {
+		if t.messages[i].role == "eitri" {
+			ev.Seq = len(t.messages[i].events)
+			t.messages[i].events = append(t.messages[i].events, ev)
+			return
+		}
+	}
+}
+
+// syncStreamSnapshots re-derives the streaming message's content/reasoning text from the turn's event log: the log is the single arrival-ordered source of text, and the snapshots keep copy-to-clipboard, telemetry, and the gateway export reading identical content without touching their seams.
+func (t *Transcript) syncStreamSnapshots(i int) {
+	m := &t.messages[i]
+	m.content, m.reasoning = deriveSnapshots(t.timeline)
 }
 
 // toggleExpandAll flips the persistent Ctrl+E expanded-view mode: Ctrl+E on the Model routes here, and it marks the shared layout dirty because showing or hiding all tool results re-wraps the log.
