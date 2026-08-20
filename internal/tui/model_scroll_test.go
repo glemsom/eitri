@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -184,5 +185,22 @@ func TestScroll_navigationDoesNotStealComposerFocus(t *testing.T) {
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyLeft})
 	if after := m.composer.LineInfo().ColumnOffset; after >= before {
 		t.Errorf("left arrow should move the composer cursor left, got col %d -> %d", before, after)
+	}
+}
+
+// TestScroll_viewDeclaresMouseCellMotion locks the terminal-facing seam that
+// actually delivers wheel scroll and drag-select: the model's View must declare
+// cell-motion mode so bubbletea v2 turns on SGR mouse reporting and routes wheel
+// events into navigateMouse. Dropping it (as the rail-drag removal did, issue
+// #334) disables mouse input entirely even though the wheel handlers still exist
+// — unit tests constructing MouseWheelMsg directly bypass the terminal and pass
+// either way, so this regression needs a View-level assertion.
+func TestScroll_viewDeclaresMouseCellMotion(t *testing.T) {
+	t.Parallel()
+	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+		return TurnResult{}, nil
+	})
+	if got := m.View().MouseMode; got != tea.MouseModeCellMotion {
+		t.Fatalf("View().MouseMode = %v, want %v (mouse reporting must be enabled for wheel scroll)", got, tea.MouseModeCellMotion)
 	}
 }
