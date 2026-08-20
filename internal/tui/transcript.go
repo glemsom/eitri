@@ -395,7 +395,7 @@ func (t *Transcript) appendMsg(content string) {
 	t.layout.dirty = true
 }
 
-// apply folds one tool-call observation into the transcript's log ( AC1/AC2): tool updates now route through the Transcript so they land in the same log renderPane reads. The matching event is also recorded on the per-turn timeline so the log captures tool starts/results in arrival order alongside the stream deltas.
+// apply folds one tool-call observation into the transcript's log: tool updates route through the Transcript so they land in the same log renderPane reads. The matching event is also recorded on the per-turn timeline so the log captures tool starts/results in arrival order alongside the stream deltas.
 func (t *Transcript) apply(u ToolUpdate) {
 	t.log.Apply(u)
 	if kind, ok := toolEventKind(u); ok {

@@ -42,13 +42,11 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 		effort = ""
 	}
 	te := tui.NewTelemetry(cfg.Model, effort, cfg.ThinkingEnabled, cfg.MaxTurns)
-	stream := tui.NewStreamer()
 	rail := tui.NewRail(cfg.Provider, cfg.Model, effort, cfg.ThinkingEnabled, sessionKey, sessionTemp)
 	rail.SetBranch(tui.GitBranch(workspace))
-	tools := tui.NewToolFeed()
 	events := tui.NewEventFeed()
 	observer := tui.NewDeltaObserver(fileDeltaResolver(reg))
-	feedEngineEvents(e, te, stream, tools, observer, events)
+	feedEngineEvents(e, te, nil, nil, observer, events)
 	currentCfg := cfg
 	m := tui.NewModelCfg(tui.Dependencies{
 		DiscoverModels: discoveredModels(cfgPath),
@@ -85,11 +83,17 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 	return runProgram(m)
 }
 
-// feedEngineEvents wires the engine's live event stream into the TUI's status strip, streaming answer pane, and tool feed. When merged is non-nil, every stream delta and tool observation is also pushed onto that single FIFO feed in the exact order the engine emitted them, so the TUI records the model's true arrival order instead of the delivery order of the separate stream/tool channels.
+// feedEngineEvents wires the engine's live event stream into the TUI's status strip and, when a merged feed is provided, onto that single FIFO feed in the exact order the engine emitted the events. The legacy stream/tool channels are optional: feedEngineEvents bridges to whichever of them is non-nil, and the merged feed carries every stream delta and tool observation so the live TUI records the model's true arrival order instead of the delivery order of the separate channels (tea.Batch makes no ordering guarantee).
 func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, stream *tui.Streamer, toolFeed *tui.ToolFeed, obs *tui.DeltaObserver, merged *tui.EventFeed) {
 	teCh := te.UpdateChan()
-	sCh := stream.UpdateChan()
-	tCh := toolFeed.UpdateChan()
+	var sCh chan<- tui.StreamUpdate
+	if stream != nil {
+		sCh = stream.UpdateChan()
+	}
+	var tCh chan<- tui.ToolUpdate
+	if toolFeed != nil {
+		tCh = toolFeed.UpdateChan()
+	}
 	var mCh chan<- tui.Event
 	if merged != nil {
 		mCh = merged.UpdateChan()
