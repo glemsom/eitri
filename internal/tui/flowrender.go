@@ -234,53 +234,74 @@ func (r flowRenderer) render(items []flowItem, msg message, msgIdx int, isFocuse
 	return b.String(), rows
 }
 
-// reasoningBlock renders one reasoning fragment: its header (with the focus
-// marker when the fragment is focused), then the body only when expanded —
-// collapsed, the hint is the whole block.
+// reasoningBlock renders one reasoning fragment through the single shared
+// emitter: its header (with the focus marker when the fragment is focused),
+// then the body only when expanded — collapsed, the hint is the whole block.
 func (r flowRenderer) reasoningBlock(msg message, msgIdx int, it flowItem, isFocused func(blockKind, int, int, int) bool) string {
+	focused := isFocused != nil && isFocused(blockReasoning, msgIdx, 0, it.fragIdx)
+	return renderReasoningBlock(r.theme, r.config, r.width, r.effort, msg, msgIdx, it.fragIdx, it.text, it.expanded, focused)
+}
+
+// renderReasoningBlock renders one whole reasoning fragment as its header line
+// (prefixed with the focus marker when focused) and, when expanded, the
+// markdown-rendered body in the pane chosen from the message's stream state.
+// Both the FlowRenderer and the legacy non-flow path in renderHistory route
+// through this one emitter, so the reasoning block's header/pane rendering
+// cannot drift between them.
+func renderReasoningBlock(theme Theme, config string, width int, effort string, msg message, msgIdx, fragIdx int, text string, expanded, focused bool) string {
 	var b strings.Builder
-	h := thinkingHeader(r.theme, it.text, r.effort)
-	if isFocused != nil && isFocused(blockReasoning, msgIdx, 0, it.fragIdx) {
-		h = r.theme.focusStyle.Render(focusMarker()+" ") + h
+	h := thinkingHeader(theme, text, effort)
+	if focused {
+		h = theme.focusStyle.Render(focusMarker()+" ") + h
 	}
 	b.WriteString(h)
-	if !it.expanded {
+	if !expanded {
 		return b.String() // collapsed: the hint is the block
 	}
-	md, _ := RenderMarkdown(it.text, r.width-2, r.config)
-	pane := r.theme.thinkingPaneStyle
+	md, _ := RenderMarkdown(text, width-2, config)
+	pane := theme.thinkingPaneStyle
 	if msg.streaming {
-		pane = r.theme.streamingThinkingPaneStyle
+		pane = theme.streamingThinkingPaneStyle
 	}
 	pane = pane.Border(lipgloss.Border{Left: g("│", "|")})
 	b.WriteString(fmt.Sprintf("%s\n", pane.Render(strings.TrimRight(md, "\n"))))
 	return b.String()
 }
 
-// answerBlock renders one answer fragment with the pane chosen from the message's
-// flags, and the stopped marker when it is the turn's final block.
+// answerBlock renders one answer fragment through the single shared emitter:
+// the pane chosen from the message's flags, and the stopped marker when it is
+// the turn's final block.
 func (r flowRenderer) answerBlock(msg message, it flowItem) string {
-	txt := it.text
-	if txt == "" {
+	return renderAnswerBlock(r.theme, r.config, r.width, msg, it.text, it.final)
+}
+
+// renderAnswerBlock renders one answer fragment with the pane chosen from the
+// message's flags (accent when done, stopped pane when stopped, error panes
+// when the text reads a failure, streaming pane mid-stream) and the stopped
+// marker when final. Both the FlowRenderer and the legacy non-flow path in
+// renderHistory route through this one emitter, so the answer pane/stopped
+// rendering cannot drift between them.
+func renderAnswerBlock(theme Theme, config string, width int, msg message, text string, final bool) string {
+	if text == "" {
 		return ""
 	}
-	md, _ := RenderMarkdown(txt, r.width-2, r.config)
-	pane := r.theme.agentPaneStyle
+	md, _ := RenderMarkdown(text, width-2, config)
+	pane := theme.agentPaneStyle
 	if msg.stopped {
-		pane = r.theme.stoppedPaneStyle
-	} else if strings.HasPrefix(txt, failurePrefix()) {
+		pane = theme.stoppedPaneStyle
+	} else if strings.HasPrefix(text, failurePrefix()) {
 		if msg.streaming {
-			pane = r.theme.streamingErrorPaneStyle
+			pane = theme.streamingErrorPaneStyle
 		} else {
-			pane = r.theme.errorPaneStyle
+			pane = theme.errorPaneStyle
 		}
 	} else if msg.streaming {
-		pane = r.theme.streamingPaneStyle
+		pane = theme.streamingPaneStyle
 	}
 	pane = pane.Border(lipgloss.Border{Left: g("│", "|")})
 	s := fmt.Sprintf("%s\n", pane.Render(strings.TrimRight(md, "\n")))
-	if it.final && msg.stopped {
-		s += r.theme.statusStyle.Render(stoppedMarker()) + "\n"
+	if final && msg.stopped {
+		s += theme.statusStyle.Render(stoppedMarker()) + "\n"
 	}
 	return s
 }
