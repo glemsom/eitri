@@ -191,7 +191,7 @@ func TestTranscript_flatFlowCollapsesReasoningOnCompletion(t *testing.T) {
 // lineBorderColor returns the left-border SGR color of the rendered line that
 // contains body, mirroring borderColorCode but scoped to one line.
 func lineBorderColor(rendered, body string) string {
-	for line := range strings.SplitSeq(rendered, "\n") {
+	for _, line := range strings.Split(rendered, "\n") {
 		if !strings.Contains(ansiStrip(line), body) {
 			continue
 		}
