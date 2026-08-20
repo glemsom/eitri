@@ -240,8 +240,10 @@ func TestModel_railRendersNoSkillsSection(t *testing.T) {
 func TestModel_slashCommandActivatesSkill(t *testing.T) {
 	t.Parallel()
 	var activated string
+	var turnPrompts []string
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			turnPrompts = append(turnPrompts, prompt)
 			return TurnResult{Answer: "ok"}, nil
 		},
 		Skills: &SkillsSurface{
@@ -259,9 +261,11 @@ func TestModel_slashCommandActivatesSkill(t *testing.T) {
 	if activated != "my-skill" {
 		t.Errorf("activation seam called with %q, want \"my-skill\"", activated)
 	}
-	content := view(m)
-	if !strings.Contains(content, "payload") {
-		t.Errorf("skill payload should render in content, got: %q", content)
+	if len(turnPrompts) != 1 || turnPrompts[0] != "apply the my-skill skill" {
+		t.Errorf("bare slash activation turn seam = %v, want [\"apply the my-skill skill\"]", turnPrompts)
+	}
+	if strings.Contains(view(m), "payload") {
+		t.Errorf("skill payload must not be echoed as a note (single delivery via injection), got: %q", view(m))
 	}
 }
 

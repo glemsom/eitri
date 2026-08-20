@@ -35,16 +35,11 @@ func TestModel_slashSkillWithArgs(t *testing.T) {
 		t.Errorf("args turn seam called with %v, want [\"improve this\"]", turnPrompts)
 	}
 	content := ansiStrip(view(m))
-	n := strings.Index(content, "skill-note-payload")
-	a := strings.Index(content, "improve this")
-	if n < 0 {
-		t.Fatalf("skill note should render, got: %q", content)
+	if !strings.Contains(content, "improve this") {
+		t.Errorf("args message should render, got: %q", content)
 	}
-	if a < 0 {
-		t.Fatalf("args message should render, got: %q", content)
-	}
-	if n > a {
-		t.Errorf("skill note index %d must precede args index %d (note renders before args turn)", n, a)
+	if strings.Contains(content, "skill-note-payload") {
+		t.Errorf("skill payload must be delivered once via injection, not echoed as an assistant note, got: %q", content)
 	}
 }
 
@@ -97,11 +92,11 @@ func TestModel_slashSkillNoArgs(t *testing.T) {
 	if activated != "my-skill" {
 		t.Errorf("activation seam called with %q, want \"my-skill\"", activated)
 	}
-	if len(turnPrompts) != 0 {
-		t.Errorf("no-args skill must not dispatch a turn, got %v", turnPrompts)
+	if len(turnPrompts) != 1 || turnPrompts[0] != "apply the my-skill skill" {
+		t.Errorf("bare skill turn seam = %v, want [\"apply the my-skill skill\"]", turnPrompts)
 	}
-	if !strings.Contains(view(m), "payload-note") {
-		t.Errorf("skill payload should render, got: %q", view(m))
+	if strings.Contains(view(m), "payload-note") {
+		t.Errorf("skill payload must be delivered once via injection, not echoed as an assistant note, got: %q", view(m))
 	}
 }
 

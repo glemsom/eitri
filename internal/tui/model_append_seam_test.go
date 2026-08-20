@@ -11,25 +11,6 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-func TestModel_skillResultAppendsThroughSeam(t *testing.T) {
-	t.Parallel()
-	m := NewModelCfg(Dependencies{
-		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
-			return TurnResult{Answer: "ok"}, nil
-		},
-	})
-	m = resize(t, m)
-	m.tx.layout.dirty = false // isolate the append: only the seam may re-mark it
-	nm, _ := m.Update(skillDoneMsg{payload: "<skill_content>my-note</skill_content>"})
-	m = asModel(t, nm)
-	if got := lastEitri(t, m); !strings.Contains(got, "my-note") {
-		t.Errorf("skill result note missing, got: %q", got)
-	}
-	if !m.tx.layout.dirty {
-		t.Error("skill result append must mark the transcript layout dirty")
-	}
-}
-
 func TestModel_loginCodeAppendsThroughSeam(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
