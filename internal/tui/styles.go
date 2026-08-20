@@ -20,27 +20,29 @@ type Theme struct {
 
 	railHues [3]color.Color
 
-	headerStyle             lipgloss.Style // bold section header (settings title, prompts)
-	statusStyle             lipgloss.Style // faint secondary text (strips, hints, tool lines)
-	agentPaneStyle          lipgloss.Style // left-bordered pane framing assistant answers
-	errorPaneStyle          lipgloss.Style // the same pane with the error-colored border
-	stoppedPaneStyle        lipgloss.Style // the same pane with the stopped (accent-dimmed) border
-	streamingPaneStyle      lipgloss.Style // left-bordered pane for messages still being streamed (dimmed accent)
-	streamingErrorPaneStyle lipgloss.Style // left-bordered pane for streaming error-prefix messages (dimmed error)
-	userBubbleStyle         lipgloss.Style // the carded background fill for user prompts
-	thinkingStyle           lipgloss.Style // the 🤔 collapsed reasoning hint
-	toolStyle               lipgloss.Style // the ⊕ tool-entry line (uncategorized fallback)
-	toolShellStyle          lipgloss.Style // the ⊕ tool-entry line, shell category
-	toolFileStyle           lipgloss.Style // the ⊕ tool-entry line, file category
-	toolWebStyle            lipgloss.Style // the ⊕ tool-entry line, web category
-	toolSkillStyle          lipgloss.Style // the ⊕ tool-entry line, skill category
-	outcomeOKStyle          lipgloss.Style // the ✓ tool-outcome tag
-	outcomeErrStyle         lipgloss.Style // the ✗ tool-outcome tag
-	diffAddStyle            lipgloss.Style
-	diffDelStyle            lipgloss.Style
-	slashSelectStyle        lipgloss.Style // the selected slash-completion candidate
-	bandSeparatorStyle      lipgloss.Style // the separator row framing the bottom band
-	bandStatusStyle         lipgloss.Style
+	headerStyle                lipgloss.Style // bold section header (settings title, prompts)
+	statusStyle                lipgloss.Style // faint secondary text (strips, hints, tool lines)
+	agentPaneStyle             lipgloss.Style // left-bordered pane framing assistant answers
+	thinkingPaneStyle          lipgloss.Style // left-bordered pane framing reasoning (dimmed accent, italic)
+	streamingThinkingPaneStyle lipgloss.Style // thinking pane variant for reasoning still being streamed
+	errorPaneStyle             lipgloss.Style // the same pane with the error-colored border
+	stoppedPaneStyle           lipgloss.Style // the same pane with the stopped (accent-dimmed) border
+	streamingPaneStyle         lipgloss.Style // left-bordered pane for messages still being streamed (dimmed accent)
+	streamingErrorPaneStyle    lipgloss.Style // left-bordered pane for streaming error-prefix messages (dimmed error)
+	userBubbleStyle            lipgloss.Style // the carded background fill for user prompts
+	thinkingStyle              lipgloss.Style // the 🤔 collapsed reasoning hint
+	toolStyle                  lipgloss.Style // the ⊕ tool-entry line (uncategorized fallback)
+	toolShellStyle             lipgloss.Style // the ⊕ tool-entry line, shell category
+	toolFileStyle              lipgloss.Style // the ⊕ tool-entry line, file category
+	toolWebStyle               lipgloss.Style // the ⊕ tool-entry line, web category
+	toolSkillStyle             lipgloss.Style // the ⊕ tool-entry line, skill category
+	outcomeOKStyle             lipgloss.Style // the ✓ tool-outcome tag
+	outcomeErrStyle            lipgloss.Style // the ✗ tool-outcome tag
+	diffAddStyle               lipgloss.Style
+	diffDelStyle               lipgloss.Style
+	slashSelectStyle           lipgloss.Style // the selected slash-completion candidate
+	bandSeparatorStyle         lipgloss.Style // the separator row framing the bottom band
+	bandStatusStyle            lipgloss.Style
 
 	railHeaderStyles [3]lipgloss.Style
 	railBodyStyles   [3]lipgloss.Style
@@ -285,19 +287,21 @@ func newTheme(accent, err, ok, shell, file, web, skill, bubble color.Color, rail
 		userBubbleStyle: lipgloss.NewStyle().
 			Background(bubble).
 			PaddingLeft(2).PaddingRight(2).PaddingTop(1).PaddingBottom(1),
-		agentPaneStyle:          borderedPane(accent),
-		errorPaneStyle:          borderedPane(err),
-		stoppedPaneStyle:        borderedPane(dimmed(accent, 0.6)),
-		streamingPaneStyle:      borderedPane(dimmed(accent, 0.45)),
-		streamingErrorPaneStyle: borderedPane(dimmed(err, 0.45)),
-		thinkingStyle:           lipgloss.NewStyle().Faint(true).Italic(true).Foreground(accent),
-		toolStyle:               lipgloss.NewStyle().Faint(true),
-		toolShellStyle:          lipgloss.NewStyle().Foreground(shell),
-		toolFileStyle:           lipgloss.NewStyle().Foreground(file),
-		toolWebStyle:            lipgloss.NewStyle().Foreground(web),
-		toolSkillStyle:          lipgloss.NewStyle().Foreground(skill),
-		outcomeOKStyle:          lipgloss.NewStyle().Foreground(ok),
-		outcomeErrStyle:         lipgloss.NewStyle().Foreground(err),
+		agentPaneStyle:             borderedPane(accent),
+		thinkingPaneStyle:          borderedPane(dimmed(accent, 0.6)).Italic(true),
+		streamingThinkingPaneStyle: borderedPane(dimmed(accent, 0.45)).Italic(true),
+		errorPaneStyle:             borderedPane(err),
+		stoppedPaneStyle:           borderedPane(dimmed(accent, 0.6)),
+		streamingPaneStyle:         borderedPane(dimmed(accent, 0.45)),
+		streamingErrorPaneStyle:    borderedPane(dimmed(err, 0.45)),
+		thinkingStyle:              lipgloss.NewStyle().Faint(true).Italic(true).Foreground(accent),
+		toolStyle:                  lipgloss.NewStyle().Faint(true),
+		toolShellStyle:             lipgloss.NewStyle().Foreground(shell),
+		toolFileStyle:              lipgloss.NewStyle().Foreground(file),
+		toolWebStyle:               lipgloss.NewStyle().Foreground(web),
+		toolSkillStyle:             lipgloss.NewStyle().Foreground(skill),
+		outcomeOKStyle:             lipgloss.NewStyle().Foreground(ok),
+		outcomeErrStyle:            lipgloss.NewStyle().Foreground(err),
 		diffAddStyle: lipgloss.NewStyle().
 			Foreground(ok).
 			Background(dimmed(ok, 0.14)),

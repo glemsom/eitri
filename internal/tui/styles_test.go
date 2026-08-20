@@ -274,6 +274,61 @@ func TestTheme_streamingPaneDistinctAcrossThemes(t *testing.T) {
 	}
 }
 
+func TestTheme_thinkingPaneDistinctFromAgent(t *testing.T) {
+	t.Parallel()
+	th := defaultTheme
+
+	agentBorder := th.agentPaneStyle.GetBorderLeftForeground()
+	thinkBorder := th.thinkingPaneStyle.GetBorderLeftForeground()
+	if thinkBorder == nil {
+		t.Fatal("thinking pane style border foreground is nil")
+	}
+	if thinkBorder == agentBorder {
+		t.Errorf("thinking pane border foreground must differ from agent pane, got same %v", thinkBorder)
+	}
+	if !th.thinkingPaneStyle.GetItalic() {
+		t.Errorf("thinking pane should be italic (internal monologue), got %v", th.thinkingPaneStyle.GetItalic())
+	}
+
+	streamBorder := th.streamingThinkingPaneStyle.GetBorderLeftForeground()
+	if streamBorder == nil {
+		t.Fatal("streaming thinking pane style border foreground is nil")
+	}
+	if streamBorder == agentBorder {
+		t.Errorf("streaming thinking pane border foreground must differ from agent pane, got same %v", streamBorder)
+	}
+	if !th.streamingThinkingPaneStyle.GetItalic() {
+		t.Errorf("streaming thinking pane should be italic, got %v", th.streamingThinkingPaneStyle.GetItalic())
+	}
+}
+
+func TestTheme_thinkingPanePresentAcrossPalettes(t *testing.T) {
+	t.Parallel()
+	themes := map[string]Theme{
+		"default":          defaultTheme,
+		"dracula":          newDraculaTheme(),
+		"tokyo-night":      newTokyoNightTheme(),
+		"pink":             newPinkTheme(),
+		"light":            newLightTheme(),
+		"nord":             newNordTheme(),
+		"gruvbox":          newGruvboxTheme(),
+		"solarized":        newSolarizedTheme(),
+		"dark-daltonized":  newDarkDaltonizedTheme(),
+		"light-daltonized": newLightDaltonizedTheme(),
+	}
+	for name, th := range themes {
+		agentBorder := th.agentPaneStyle.GetBorderLeftForeground()
+		if thinkBorder := th.thinkingPaneStyle.GetBorderLeftForeground(); thinkBorder == nil {
+			t.Errorf("%s: thinking pane border foreground is nil", name)
+		} else if thinkBorder == agentBorder {
+			t.Errorf("%s: thinking pane border must differ from agent pane", name)
+		}
+		if got := th.streamingThinkingPaneStyle.GetBorderLeftForeground(); got == nil {
+			t.Errorf("%s: streaming thinking pane border foreground is nil", name)
+		}
+	}
+}
+
 func TestModel_themeSeam(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
