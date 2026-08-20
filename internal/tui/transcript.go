@@ -198,6 +198,14 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 		now = time.Now()
 	}
 	anchor := -1 // the user-prompt index owning the current turn's tool entries
+	recordToolRows := func(rows []toolRowRange, base int) {
+		if toolRows == nil {
+			return
+		}
+		for _, r := range rows {
+			*toolRows = append(*toolRows, toolRowRange{start: base + r.start, end: base + r.end, idx: r.idx})
+		}
+	}
 	for i, msg := range t.messages {
 		msgStart := nl // content row where this message's block begins
 		w := t.transcriptWidth()
@@ -213,47 +221,31 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 				// assistant message, the live flow right here when the run is
 				// still in the tool-heavy gap with no assistant message yet).
 				if t.busy && i == len(t.messages)-1 {
-					start := nl
+					base := nl
 					block, rows := t.renderEventFlow(flow, anchor, message{}, now)
 					emit(block)
-					if toolRows != nil {
-						for _, r := range rows {
-							*toolRows = append(*toolRows, toolRowRange{start: start + r.start, end: start + r.end, idx: r.idx})
-						}
-					}
+					recordToolRows(rows, base)
 				}
 			} else {
 				// Legacy note turn (no event log): tool entries anchored to the
 				// prompt render directly beneath it, as before the flat flow.
-				blockStart := nl
+				base := nl
 				toolBlock, blockRows := t.log.Render(t.theme, t.expandAll, now, w, i, t.busyPulse > 0)
 				emit(toolBlock)
-				if toolRows != nil {
-					for _, r := range blockRows {
-						*toolRows = append(*toolRows, toolRowRange{start: blockStart + r.start, end: blockStart + r.end, idx: r.idx})
-					}
-				}
+				recordToolRows(blockRows, base)
 			}
 		} else if len(msg.events) > 0 {
 			// Committed turn: walk its typed event log as one continuous flow.
-			start := nl
+			base := nl
 			block, rows := t.renderEventFlow(msg.events, anchor, msg, now)
 			emit(block)
-			if toolRows != nil {
-				for _, r := range rows {
-					*toolRows = append(*toolRows, toolRowRange{start: start + r.start, end: start + r.end, idx: r.idx})
-				}
-			}
+			recordToolRows(rows, base)
 		} else if t.busy && msg.streaming && len(t.timeline) > 0 {
 			// Live turn: walk the in-progress timeline as one continuous flow.
-			start := nl
+			base := nl
 			block, rows := t.renderEventFlow(t.timeline, anchor, msg, now)
 			emit(block)
-			if toolRows != nil {
-				for _, r := range rows {
-					*toolRows = append(*toolRows, toolRowRange{start: start + r.start, end: start + r.end, idx: r.idx})
-				}
-			}
+			recordToolRows(rows, base)
 		} else {
 			// Legacy assistant block: a message that carries no event log
 			// (system notes, help/skill/login cards, error notes).
@@ -287,14 +279,10 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 			if msg.stopped {
 				emit(t.theme.statusStyle.Render(stoppedMarker()) + "\n")
 			}
-			blockStart := nl
+			base := nl
 			toolBlock, blockRows := t.log.Render(t.theme, t.expandAll, now, w, i, t.busyPulse > 0)
 			emit(toolBlock)
-			if toolRows != nil {
-				for _, r := range blockRows {
-					*toolRows = append(*toolRows, toolRowRange{start: blockStart + r.start, end: blockStart + r.end, idx: r.idx})
-				}
-			}
+			recordToolRows(blockRows, base)
 		}
 
 		if msgRows != nil {
@@ -338,13 +326,13 @@ func (t Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg mess
 	var reasoning, answer strings.Builder
 
 	flushReasoning := func() {
-		if reasoning.Len() == 0 {
-			return
+		txt := msg.reasoning
+		if txt == "" {
+			txt = reasoning.String() // the live log is the fallback when the message carries no snapshot
 		}
-		txt := reasoning.String()
 		reasoning.Reset()
-		if !msg.thinkingRequested {
-			return // thinking gate: a turn that never asked for reasoning shows none
+		if txt == "" || !msg.thinkingRequested {
+			return // nothing to show, or the thinking gate hides a turn that never asked for reasoning
 		}
 		emit(thinkingHeader(t.theme, txt, t.reasoningEffort))
 		if !t.thinkingExpandedFor(msg) {
