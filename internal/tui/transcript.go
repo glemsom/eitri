@@ -141,6 +141,39 @@ func (t *Transcript) renderPane(band string) string {
 }
 
 // renderHistory renders the scroll region: the agent history that the user reads and scrolls.
+// turnFlowEvents returns the event sequence that renders as the flat flow of
+// the turn owned by user message i, and whether that turn renders as a flow.
+// A turn becomes a flow the moment its event log has content: the live
+// timeline while it is the running turn, the committed log on its assistant
+// message once it completes.
+func (t Transcript) turnFlowEvents(i int) ([]TimelineEvent, bool) {
+	if i < 0 || i >= len(t.messages) || t.messages[i].role != "you" {
+		return nil, false
+	}
+	// The running turn's events live on the live timeline behind its trailing
+	// message (the user prompt before any stream delta, the streaming reply
+	// after).
+	if t.busy && len(t.timeline) > 0 && i == len(t.messages)-1 {
+		return t.timeline, true
+	}
+	// A finished turn's events live on the first assistant message that
+	// follows its prompt.
+	for j := i + 1; j < len(t.messages); j++ {
+		m := t.messages[j]
+		if m.role == "you" {
+			return nil, false // the next turn began; this one left no log
+		}
+		if len(m.events) > 0 {
+			return m.events, true
+		}
+		if t.busy && m.streaming && len(t.timeline) > 0 {
+			return t.timeline, true
+		}
+		return nil, false
+	}
+	return nil, false
+}
+
 func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, msgRows *[]msgRowRange) {
 	if toolRows != nil {
 		*toolRows = (*toolRows)[:0]
@@ -160,26 +193,82 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 	if len(t.messages) == 0 && !t.busy {
 		emit(idleWelcome(t.theme))
 	}
+	now := time.Time{}
+	if t.busy {
+		now = time.Now()
+	}
+	anchor := -1 // the user-prompt index owning the current turn's tool entries
 	for i, msg := range t.messages {
 		msgStart := nl // content row where this message's block begins
 		w := t.transcriptWidth()
-		if msg.role != "you" && msg.thinkingRequested && msg.reasoning != "" {
-			emit(thinkingHeader(t.theme, msg.reasoning, t.reasoningEffort))
-			if t.thinkingExpandedFor(msg) {
-				md, _ := RenderMarkdown(msg.reasoning, w-2, t.configTheme)
-				pane := t.theme.thinkingPaneStyle
-				if msg.streaming {
-					pane = t.theme.streamingThinkingPaneStyle
-				}
-				pane = pane.Border(lipgloss.Border{Left: g("│", "|")})
-				emit(fmt.Sprintf("%s\n", pane.Render(strings.TrimRight(md, "\n"))))
-			}
-		}
+
 		if msg.role == "you" {
+			anchor = i
 			md, _ := RenderMarkdown(msg.content, w-4, t.configTheme)
 			bubble := renderUserPromptCard(t.theme, md, w)
 			emit(bubble + "\n")
+			if flow, ok := t.turnFlowEvents(i); ok {
+				// The turn renders as a flat flow: its tools land at their
+				// arrival positions inside the flow (the committed flow at the
+				// assistant message, the live flow right here when the run is
+				// still in the tool-heavy gap with no assistant message yet).
+				if t.busy && i == len(t.messages)-1 {
+					start := nl
+					block, rows := t.renderEventFlow(flow, anchor, message{}, now)
+					emit(block)
+					if toolRows != nil {
+						for _, r := range rows {
+							*toolRows = append(*toolRows, toolRowRange{start: start + r.start, end: start + r.end, idx: r.idx})
+						}
+					}
+				}
+			} else {
+				// Legacy note turn (no event log): tool entries anchored to the
+				// prompt render directly beneath it, as before the flat flow.
+				blockStart := nl
+				toolBlock, blockRows := t.log.Render(t.theme, t.expandAll, now, w, i, t.busyPulse > 0)
+				emit(toolBlock)
+				if toolRows != nil {
+					for _, r := range blockRows {
+						*toolRows = append(*toolRows, toolRowRange{start: blockStart + r.start, end: blockStart + r.end, idx: r.idx})
+					}
+				}
+			}
+		} else if len(msg.events) > 0 {
+			// Committed turn: walk its typed event log as one continuous flow.
+			start := nl
+			block, rows := t.renderEventFlow(msg.events, anchor, msg, now)
+			emit(block)
+			if toolRows != nil {
+				for _, r := range rows {
+					*toolRows = append(*toolRows, toolRowRange{start: start + r.start, end: start + r.end, idx: r.idx})
+				}
+			}
+		} else if t.busy && msg.streaming && len(t.timeline) > 0 {
+			// Live turn: walk the in-progress timeline as one continuous flow.
+			start := nl
+			block, rows := t.renderEventFlow(t.timeline, anchor, msg, now)
+			emit(block)
+			if toolRows != nil {
+				for _, r := range rows {
+					*toolRows = append(*toolRows, toolRowRange{start: start + r.start, end: start + r.end, idx: r.idx})
+				}
+			}
 		} else {
+			// Legacy assistant block: a message that carries no event log
+			// (system notes, help/skill/login cards, error notes).
+			if msg.thinkingRequested && msg.reasoning != "" {
+				emit(thinkingHeader(t.theme, msg.reasoning, t.reasoningEffort))
+				if t.thinkingExpandedFor(msg) {
+					md, _ := RenderMarkdown(msg.reasoning, w-2, t.configTheme)
+					pane := t.theme.thinkingPaneStyle
+					if msg.streaming {
+						pane = t.theme.streamingThinkingPaneStyle
+					}
+					pane = pane.Border(lipgloss.Border{Left: g("│", "|")})
+					emit(fmt.Sprintf("%s\n", pane.Render(strings.TrimRight(md, "\n"))))
+				}
+			}
 			md, _ := RenderMarkdown(msg.content, w-2, t.configTheme)
 			pane := t.theme.agentPaneStyle
 			if msg.stopped {
@@ -198,23 +287,21 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 			if msg.stopped {
 				emit(t.theme.statusStyle.Render(stoppedMarker()) + "\n")
 			}
-		}
-		now := time.Time{}
-		if t.busy {
-			now = time.Now()
-		}
-		blockStart := nl
-		toolBlock, blockRows := t.log.Render(t.theme, t.expandAll, now, w, i, t.busyPulse > 0)
-		emit(toolBlock)
-		if toolRows != nil {
-			for _, r := range blockRows {
-				*toolRows = append(*toolRows, toolRowRange{start: blockStart + r.start, end: blockStart + r.end, idx: r.idx})
+			blockStart := nl
+			toolBlock, blockRows := t.log.Render(t.theme, t.expandAll, now, w, i, t.busyPulse > 0)
+			emit(toolBlock)
+			if toolRows != nil {
+				for _, r := range blockRows {
+					*toolRows = append(*toolRows, toolRowRange{start: blockStart + r.start, end: blockStart + r.end, idx: r.idx})
+				}
 			}
 		}
+
 		if msgRows != nil {
 			*msgRows = append(*msgRows, msgRowRange{start: msgStart, end: nl - 1, idx: i})
 		}
 	}
+
 	if t.busy && t.telemetry == nil {
 		if t.busyPulse > 0 {
 			emit(t.theme.bandStatusStyle.Render(busyLine(t.spinner, t.phase())))
@@ -223,6 +310,112 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 		}
 		emit("\n")
 	}
+}
+
+// renderEventFlow renders one turn's event sequence as one continuous flow:
+// reasoning reads as an internal monologue (left-ruled, dimmed), tool calls
+// and results render inline at their arrival positions, and the answer lands
+// at the tail. It returns the rendered text and the tool-entry row ranges in
+// the same shape as toolLog.Render, so the shared row->entry hit-test keeps
+// working on the merged stream.
+func (t Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg message, now time.Time) (string, []toolRowRange) {
+	var b strings.Builder
+	var rows []toolRowRange
+	nl := 0
+	emit := func(s string) {
+		b.WriteString(s)
+		nl += strings.Count(s, "\n")
+	}
+	w := t.transcriptWidth()
+	pulse := t.busyPulse > 0
+
+	// The turn's tool entries anchored to its prompt appear in the same order
+	// as the tool-start events in the log, so each start consumes the next
+	// anchored entry; a start whose entry is missing is synthesized from the
+	// event so nothing in the stream silently drops.
+	anchored := t.log.anchoredIndices(anchor)
+	ti := 0
+	var reasoning, answer strings.Builder
+
+	flushReasoning := func() {
+		if reasoning.Len() == 0 {
+			return
+		}
+		txt := reasoning.String()
+		reasoning.Reset()
+		if !msg.thinkingRequested {
+			return // thinking gate: a turn that never asked for reasoning shows none
+		}
+		emit(thinkingHeader(t.theme, txt, t.reasoningEffort))
+		if !t.thinkingExpandedFor(msg) {
+			return // collapsed: the hint is the block
+		}
+		md, _ := RenderMarkdown(txt, w-2, t.configTheme)
+		pane := t.theme.thinkingPaneStyle
+		if msg.streaming {
+			pane = t.theme.streamingThinkingPaneStyle
+		}
+		pane = pane.Border(lipgloss.Border{Left: g("│", "|")})
+		emit(fmt.Sprintf("%s\n", pane.Render(strings.TrimRight(md, "\n"))))
+	}
+
+	emitTool := func(te toolEntry, idx int) {
+		start := nl
+		s := renderToolEntry(t.theme, te, t.log.expandedFor(idx, t.expandAll), now, w, pulse)
+		emit(s)
+		if n := strings.Count(s, "\n"); n > 0 {
+			rows = append(rows, toolRowRange{start: start, end: start + n - 1, idx: idx})
+		}
+	}
+
+	for _, ev := range events {
+		switch ev.Kind {
+		case EventReasoning:
+			reasoning.WriteString(ev.Delta)
+		case EventToolStart:
+			flushReasoning()
+			te := toolEntry{name: ev.Start.Name, args: ev.Start.Args, startedAt: time.Now()}
+			idx := -1
+			if ti < len(anchored) {
+				idx = anchored[ti] // the log entry for this start, in arrival order
+				te = t.log.entries[idx]
+			}
+			ti++
+			emitTool(te, idx)
+		case EventToolResult:
+			flushReasoning() // the entry sent its head when it started; results surface through it
+		case EventAnswer:
+			answer.WriteString(ev.Delta)
+		}
+	}
+	flushReasoning()
+
+	answerText := msg.content
+	if answerText == "" {
+		answerText = answer.String() // completed messages carry the authoritative text; the live log is the fallback
+	}
+	if answerText != "" {
+		md, _ := RenderMarkdown(answerText, w-2, t.configTheme)
+		pane := t.theme.agentPaneStyle
+		if msg.stopped {
+			pane = t.theme.stoppedPaneStyle
+		} else if strings.HasPrefix(answerText, failurePrefix()) {
+			if msg.streaming {
+				pane = t.theme.streamingErrorPaneStyle
+			} else {
+				pane = t.theme.errorPaneStyle
+			}
+		} else if msg.streaming {
+			pane = t.theme.streamingPaneStyle
+		}
+		pane = pane.Border(lipgloss.Border{Left: g("│", "|")})
+		emit(fmt.Sprintf("%s\n", pane.Render(strings.TrimRight(md, "\n"))))
+		if msg.stopped {
+			emit(t.theme.statusStyle.Render(stoppedMarker()) + "\n")
+		}
+	}
+
+	return b.String(), rows
 }
 
 // renderHistoryViewport returns the Height-clamped scroll region: the rendered history content limited to the rows the fixed bottom band (the only non-reserved region) does not occupy.
