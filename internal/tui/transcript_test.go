@@ -85,7 +85,7 @@ func TestTranscript_thinkingGateScopesReasoningBlock(t *testing.T) {
 				content:           "final answer",
 				reasoning:         "sneaked chain-of-thought",
 				thinkingRequested: thinkingRequested,
-				thinkingExpanded:  true,
+				expansion:         expansionWithReasoningForces(true, false),
 			}},
 			histFollow:   true,
 			histViewport: newHistoryViewport(),
@@ -110,7 +110,7 @@ func TestTranscript_expandAllOverridesThinkingExpansion(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 
-	render := func(expandAll bool, thinkingExpanded bool, thinkingCollapsed bool) string {
+	render := func(expandAll bool, forceExpand bool, forceCollapse bool) string {
 		var hist strings.Builder
 		tx := Transcript{
 			theme:           th,
@@ -122,8 +122,7 @@ func TestTranscript_expandAllOverridesThinkingExpansion(t *testing.T) {
 				content:           "final answer",
 				reasoning:         "the reasoning body",
 				thinkingRequested: true,
-				thinkingExpanded:  thinkingExpanded,
-				thinkingCollapsed: thinkingCollapsed,
+				expansion:         expansionWithReasoningForces(forceExpand, forceCollapse),
 			}},
 			histFollow:   true,
 			histViewport: newHistoryViewport(),
@@ -637,7 +636,7 @@ func TestRenderHistory_liveReasoningBlockUsesStreamingPane(t *testing.T) {
 			tx = liveReasoningFlowTranscript("the live reasoning body")
 		} else {
 			tx = committedReasoningFlowTranscript("the live reasoning body", "final answer")
-			tx.messages[1].thinkingExpanded = true
+			tx.messages[1].expansion.set(blockReasoning, reasoningWholeID, true)
 		}
 		tx.renderHistory(&hist, nil, nil)
 		return hist.String()
@@ -667,7 +666,7 @@ func TestRenderHistory_liveReasoningBlockUsesStreamingPane(t *testing.T) {
 func TestRenderHistory_liveReasoningRespectsTabCollapse(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := liveReasoningFlowTranscript("hidden reasoning")
-	tx.messages[1].thinkingCollapsed = true
+	tx.messages[1].expansion.set(blockReasoning, reasoningWholeID, false)
 
 	var hist strings.Builder
 	tx.renderHistory(&hist, nil, nil)

@@ -584,23 +584,23 @@ func (t *Transcript) setCollapseAll(v bool) {
 }
 
 // clearCollapseForces drops every per-block force-collapse flag so the
-// expand-all mode can show all blocks: the message-side (reasoning) forces and
-// the tool entries' collapse-direction forces on the ExpansionState seam.
+// expand-all mode can show all blocks: the reasoning blocks' collapse-direction
+// forces and the tool entries' collapse-direction forces, both on the
+// ExpansionState seam.
 func (t *Transcript) clearCollapseForces() {
 	for i := range t.messages {
-		t.messages[i].thinkingCollapsed = false
-		t.messages[i].fragmentForces = nil
+		t.messages[i].expansion.clearForcesOf(false)
 	}
 	t.log.expansion.clearForcesOf(false)
 }
 
 // clearExpandForces drops every per-block force-expand flag so the
-// collapse-all mode can hide all block bodies: the message-side (reasoning)
-// forces and the tool entries' expand-direction forces on the seam.
+// collapse-all mode can hide all block bodies: the reasoning blocks'
+// expand-direction forces and the tool entries' expand-direction forces, both
+// on the seam.
 func (t *Transcript) clearExpandForces() {
 	for i := range t.messages {
-		t.messages[i].thinkingExpanded = false
-		t.messages[i].fragmentForces = nil
+		t.messages[i].expansion.clearForcesOf(true)
 	}
 	t.log.expansion.clearForcesOf(true)
 }
@@ -762,55 +762,56 @@ func (t Transcript) focusedToolIdx() int {
 	return blk.toolIdx
 }
 
-// thinkingExpandedForBlock is the free-function form of the reasoning-block
-// expansion decision, shared by the Transcript's per-turn/legacy render paths
-// and the FlowRenderer: a per-turn thinkingCollapsed override always wins, a
-// per-turn thinkingExpanded flag beats the global modes, the expand-all mode
-// expands, the collapse-all mode collapses, and otherwise the block follows the
-// CoT-collapsed-by-default flag. A live streamed block stays expanded unless
-// force-collapsed.
+// thinkingExpandedForBlock is the free-function form of the whole-turn
+// reasoning-block expansion decision, shared by the Transcript's legacy render
+// path and the FlowRenderer. It is a thin delegation over the message's
+// ExpansionState seam: it binds the render-time mode and CoT-collapsed-by-default
+// flag to a copy of the seam and asks the seam for the whole-block decision,
+// folding in the live-stream auto-expand (a streaming reasoning block stays open
+// regardless of mode unless pinned force-collapsed on the seam). A pinned
+// whole-block force (the migrated thinkingCollapsed / thinkingExpanded flags now
+// live on the seam keyed on reasoningWholeID) always wins, then the global modes,
+// then the collapsed-by-default flag.
 func thinkingExpandedForBlock(msg message, mode viewMode, cotExpanded bool) bool {
-	if msg.thinkingCollapsed {
-		return false
-	}
+	e := msg.expansion
+	e.mode = mode
+	e.cotExpanded = cotExpanded
 	if msg.streaming && msg.reasoning != "" {
+		// a live streamed block auto-expands unless pinned force-collapsed
+		if f, ok := e.forceFor(blockReasoning, reasoningWholeID); ok && !f {
+			return false
+		}
 		return true
 	}
-	if msg.thinkingExpanded {
-		return true
-	}
-	switch mode {
-	case viewExpandAll:
-		return true
-	case viewCollapseAll:
-		return false
-	}
-	return cotExpanded
+	return e.expanded(blockReasoning, reasoningWholeID)
 }
 
-// thinkingExpandedFor returns whether msg's reasoning block renders expanded.
+// thinkingExpandedFor returns whether msg's reasoning block renders expanded,
+// delegating to the seam.
 func (t Transcript) thinkingExpandedFor(msg message) bool {
 	return thinkingExpandedForBlock(msg, t.viewMode(), t.cotExpanded)
 }
 
 // thinkingExpandedForFrag is the free-function form of the per-fragment
-// expansion decision, shared by the Transcript and the FlowRenderer.
+// expansion decision, shared by the Transcript and the FlowRenderer: a
+// fragment's own pin on the seam wins, else it follows the whole-block decision.
 func thinkingExpandedForFrag(msg message, fragIdx int, mode viewMode, cotExpanded bool) bool {
-	if msg.fragmentForces != nil {
-		if f, ok := msg.fragmentForces[fragIdx]; ok {
-			return f
-		}
+	e := msg.expansion
+	e.mode = mode
+	e.cotExpanded = cotExpanded
+	if f, ok := e.forceFor(blockReasoning, fragIdx); ok {
+		return f
 	}
 	return thinkingExpandedForBlock(msg, mode, cotExpanded)
 }
 
 // thinkingExpandedForFragment returns whether the fragIdx-th reasoning fragment
-// of msg renders expanded: a per-fragment force wins over the per-turn flags and
-// the live auto-expand, and a fragment without a force follows the whole-block
-// logic. A force is a per-block override, so it beats the global modes exactly as
-// the per-turn thinkingCollapsed force does (Enter on a focused block collapses it
-// even in expand-all mode); the modes take over only once the forces are cleared
-// on mode entry.
+// of msg renders expanded: a per-fragment force wins over the whole-block logic
+// and the live auto-expand, and a fragment without a force follows the
+// whole-block decision. A force is a per-block override, so it beats the global
+// modes exactly as before (Enter on a focused block collapses it even in
+// expand-all mode); the modes take over only once the forces are cleared on mode
+// entry.
 func (t Transcript) thinkingExpandedForFragment(msg message, fragIdx int) bool {
 	return thinkingExpandedForFrag(msg, fragIdx, t.viewMode(), t.cotExpanded)
 }
@@ -826,22 +827,27 @@ func (t Transcript) thinkingHeaderFor(msg message, msgIdx, fragIdx int, txt stri
 }
 
 // toggleThinking flips one turn's reasoning-block expansion (Enter on the
-// focused block, previously tab), kept independent of the global modes: it
-// sets the force that opposes how the block currently renders, so a collapsed
-// block expands and an expanded block collapses.
+// focused block), routing the whole-block force through the seam: a live
+// streamed block flips its force-collapse pin, while any other block is set to
+// the force opposing how it currently renders.
 func (t *Transcript) toggleThinking(i int) {
 	if i < 0 || i >= len(t.messages) {
 		return
 	}
 	msg := &t.messages[i]
+	e := &msg.expansion
 	if msg.streaming && msg.reasoning != "" {
-		msg.thinkingCollapsed = !msg.thinkingCollapsed
-	} else if t.thinkingExpandedFor(*msg) {
-		msg.thinkingCollapsed = true // expanded: flip to a forced collapse
-		msg.thinkingExpanded = false
+		// flip the live block's force-collapse pin: pinned-collapsed un-pins to
+		// auto-expand; auto-expanded pins force-collapsed.
+		if f, ok := e.forceFor(blockReasoning, reasoningWholeID); ok && !f {
+			e.set(blockReasoning, reasoningWholeID, true)
+		} else {
+			e.set(blockReasoning, reasoningWholeID, false)
+		}
 	} else {
-		msg.thinkingExpanded = true // collapsed: flip to a forced expand
-		msg.thinkingCollapsed = false
+		e.mode = t.viewMode()
+		e.cotExpanded = t.cotExpanded
+		e.toggle(blockReasoning, reasoningWholeID)
 	}
 	t.layout.dirty = true // a thinking block expanded/collapsed changes rows
 }
@@ -849,17 +855,37 @@ func (t *Transcript) toggleThinking(i int) {
 // toggleThinkingFragment flips the expansion of one reasoning fragment (Enter on
 // a focused interleaved fragment), targeting only that fragment's rendering while
 // the others keep their own state — the independent per-fragment collapse of
-// issue #449 user story 3.
+// issue #449 user story 3. The per-fragment force routes through the seam.
 func (t *Transcript) toggleThinkingFragment(i, fragIdx int) {
 	if i < 0 || i >= len(t.messages) {
 		return
 	}
-	msg := &t.messages[i]
-	if msg.fragmentForces == nil {
-		msg.fragmentForces = map[int]bool{}
-	}
-	msg.fragmentForces[fragIdx] = !t.thinkingExpandedForFragment(*msg, fragIdx)
+	e := &t.messages[i].expansion
+	e.set(blockReasoning, fragIdx, !t.thinkingExpandedForFragment(t.messages[i], fragIdx))
 	t.layout.dirty = true // one fragment expanded/collapsed changes its rendered rows
+}
+
+// clearReasoningFragments drops the per-fragment reasoning forces of message i
+// — the turn-commit cleanup that discards a live turn's fragment pins once its
+// chain-of-thought collapses to a single committed block.
+func (t *Transcript) clearReasoningFragments(i int) {
+	if i < 0 || i >= len(t.messages) {
+		return
+	}
+	t.messages[i].expansion.clearReasoningFragments()
+}
+
+// clearReasoningExpandForce drops message i's whole-block force-expand (the old
+// thinkingExpanded flag) so a completed turn auto-collapses to its hint outside
+// the expand-all mode.
+func (t *Transcript) clearReasoningExpandForce(i int) {
+	if i < 0 || i >= len(t.messages) {
+		return
+	}
+	e := &t.messages[i].expansion
+	if f, ok := e.forceFor(blockReasoning, reasoningWholeID); ok && f {
+		e.clear(blockReasoning, reasoningWholeID)
+	}
 }
 
 // plainLines returns the history scroll content as plain text per rendered row (ANSI stripped) — the coordinate space drag selection maps into.

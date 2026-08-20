@@ -77,16 +77,16 @@ type message struct {
 	events            []TimelineEvent // arrival-ordered event log the turn's snapshots derive from
 	streaming         bool            // true while this assistant reply is still growing from the answer stream
 	thinkingRequested bool
-	thinkingExpanded  bool
-	thinkingCollapsed bool
-	// fragmentForces holds per-reasoning-fragment expansion forces for a turn
-	// whose reasoning renders as multiple interleaved blocks (issue #449): key =
-	// the reasoning fragment's index in emission order, value = force-expand
-	// (true) / force-collapse (false). A fragment without a force follows the
-	// per-turn thinkingExpanded / thinkingCollapsed flags and the global mode,
-	// so single-fragment turns keep the existing whole-block behavior.
-	fragmentForces map[int]bool
-	stopped        bool
+	// expansion owns the reasoning block's expansion forces on the ExpansionState
+	// seam (issue #469): the whole-block force keyed on reasoningWholeID (the
+	// migrated thinkingExpanded / thinkingCollapsed flags) plus a per-fragment
+	// force for each interleaved fragment on a turn whose chain-of-thought
+	// renders as multiple blocks (issue #449), keyed by the fragment's emission
+	// order index. It replaces the scattered thinkingExpanded / thinkingCollapsed
+	// / fragmentForces leaf flags; the open/collapsed decision and every toggle
+	// read and write through the seam instead.
+	expansion ExpansionState
+	stopped   bool
 }
 
 type turnDoneMsg struct {
