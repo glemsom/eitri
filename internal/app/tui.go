@@ -192,7 +192,10 @@ func skillSurface(reg *tools.Registry, c *tools.Catalog) *tui.SkillsSurface {
 	return &tui.SkillsSurface{
 		Items: items,
 		Activate: func(ctx context.Context, name string) (string, error) {
-			res, err := reg.Run(ctx, "skill", map[string]any{"name": name})
+			// Force re-injection: a human /skillname is an explicit re-invoke that
+			// must re-apply the payload, never short-circuit to the model-tool's
+			// within-turn-loop dedupe notice.
+			res, err := reg.ActivateSkill(ctx, name)
 			if err != nil {
 				return "", err
 			}

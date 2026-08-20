@@ -188,6 +188,43 @@ func TestSkillDedupesReactivation(t *testing.T) {
 	}
 }
 
+func TestSkillForceReinjectOnSlash(t *testing.T) {
+	t.Parallel()
+	user := t.TempDir()
+	writeSkill(t, user, "s1", "first", "long body A\n", nil)
+
+	catalog, err := Discover(user, t.TempDir(), &warningSink{})
+	if err != nil {
+		t.Fatalf("Discover error = %v, want nil", err)
+	}
+	rd := NewRegistry(testDeps(t, "", catalog))
+
+	// First human slash activation injects the payload and marks the skill active.
+	res1, err := rd.ActivateSkill(context.Background(), "s1")
+	if err != nil {
+		t.Fatalf("first ActivateSkill error = %v, want nil", err)
+	}
+	if !strings.Contains(res1.Text, "long body A") {
+		t.Fatalf("first activation missing body: %q", res1.Text)
+	}
+	if !catalog.IsActive("s1") {
+		t.Fatal("skill not marked active after first slash activation")
+	}
+
+	// A repeated slash activation must re-apply the full payload, never the
+	// model-tool dedupe notice (a human /skillname is an explicit re-invoke).
+	res2, err := rd.ActivateSkill(context.Background(), "s1")
+	if err != nil {
+		t.Fatalf("second ActivateSkill error = %v, want nil", err)
+	}
+	if !strings.Contains(res2.Text, "long body A") {
+		t.Fatalf("second slash activation must re-inject the skill body, got %q", res2.Text)
+	}
+	if strings.Contains(res2.Text, "already active") {
+		t.Fatalf("second slash activation returned the dedupe notice instead of re-applying: %q", res2.Text)
+	}
+}
+
 func TestSkillSchemaEnumConstrained(t *testing.T) {
 	t.Parallel()
 	user := t.TempDir()

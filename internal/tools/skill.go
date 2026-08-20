@@ -286,7 +286,18 @@ func (s *skillTool) Run(ctx context.Context, args map[string]any) (ToolResult, e
 	if err != nil {
 		return ToolResult{}, err
 	}
-	if s.c.IsActive(name) {
+	return s.activate(ctx, name, false)
+}
+
+// activate renders the named skill's payload, optionally forcing re-injection.
+// force=false (the model's automatic skill tool call) short-circuits with a
+// dedupe notice when the skill is already active this session, so a single
+// agent turn-loop never re-injects; force=true (the TUI's human `/skillname`
+// slash surface) always re-applies the full payload, because the model's prompt
+// messages are rebuilt fresh each turn and a repeated slash is an explicit new
+// command the dedupe is not meant to swallow.
+func (s *skillTool) activate(ctx context.Context, name string, force bool) (ToolResult, error) {
+	if !force && s.c.IsActive(name) {
 		return ToolResult{Text: fmt.Sprintf("skill %q is already active in this context; no re-injection performed.", name)}, nil
 	}
 	sk := s.c.Skill(name)
