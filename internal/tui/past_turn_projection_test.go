@@ -51,8 +51,8 @@ func longSessionTranscript(n int) *Transcript {
 // focusBlock sets the block-focus cursor onto collapsible block idx (0-
 // based), the outcome of Tab being pressed until that block is focused.
 func focusBlock(tx *Transcript, idx int) {
-	tx.focusOn = true
-	tx.focusedBlock = idx
+	tx.focus.on = true
+	tx.focus.cursor = idx
 }
 
 // TestTranscript_20TurnHistoryStaysScannable pins the T05 past-turn collapse
