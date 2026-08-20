@@ -8,6 +8,8 @@ import (
 
 	"image/color"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/glemsom/eitri/internal/config"
 )
 
@@ -18,6 +20,39 @@ func lineContaining(s, want string) string {
 		}
 	}
 	return ""
+}
+
+// reasoningPaneRows returns the consecutive left-bordered rows of an expanded reasoning block in a
+// rendered view: the rows that follow the turn's thinking header and precede the next non-pane row
+// (the pane's own bottom spacer, the busy line, or the next message).
+func reasoningPaneRows(t *testing.T, content string) []string {
+	t.Helper()
+	lines := strings.Split(content, "\n")
+	start := -1
+	for i, ln := range lines {
+		if strings.Contains(ln, "🤔") {
+			start = i + 1
+			break
+		}
+	}
+	if start == -1 {
+		t.Fatalf("no thinking header in content: %q", content)
+	}
+	var rows []string
+	for i := start; i < len(lines); i++ {
+		ln := lines[i]
+		if !strings.HasPrefix(ansiStrip(ln), "│") && !strings.HasPrefix(ansiStrip(ln), "|") {
+			if len(rows) > 0 {
+				break // the pane's bottom spacer ends the body
+			}
+			continue // the pane's top spacer precedes the first content row
+		}
+		rows = append(rows, ln)
+	}
+	if len(rows) == 0 {
+		t.Fatalf("no thinking pane rows after header in content: %q", content)
+	}
+	return rows
 }
 
 func TestModel_stylingNoRoleLabels(t *testing.T) {
@@ -225,6 +260,61 @@ func TestModel_stylingThinkingMarker(t *testing.T) {
 	}
 	if !strings.Contains(hint, "tok") {
 		t.Errorf("thinking hint should carry the token readout, got line: %q", hint)
+	}
+}
+
+func TestModel_stylingThinkingPaneDistinctFromAnswer(t *testing.T) {
+	t.Parallel()
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "plain answer", Reasoning: "hidden reasoning"}, nil
+		},
+		Config: config.Config{ThinkingEnabled: true},
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "hi")
+	m = submitAndWait(t, m)
+
+	toggled, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	m = asModel(t, toggled)
+	content := view(m)
+
+	thinkRows := reasoningPaneRows(t, content)
+	if !strings.Contains(thinkRows[0], "\x1b[38;2;73;97;148m") {
+		t.Errorf("thinking pane border should carry the dimmed accent (73;97;148), got row: %q", thinkRows[0])
+	}
+	if !strings.Contains(strings.Join(thinkRows, "\n"), "\x1b[3m") {
+		t.Errorf("thinking pane body should render italic, got: %q", thinkRows)
+	}
+
+	answerRow := lineContaining(content, "plain")
+	if !strings.Contains(answerRow, "\x1b[38;2;122;162;247m") {
+		t.Errorf("answer pane border should carry the full accent (122;162;247), got row: %q", answerRow)
+	}
+	if strings.Contains(answerRow, "\x1b[3m") {
+		t.Errorf("answer pane body must not render italic, got row: %q", answerRow)
+	}
+}
+
+func TestModel_stylingStreamingThinkingPaneVariant(t *testing.T) {
+	t.Parallel()
+	m := newStreamingModel()
+	m = resize(t, m)
+	m = typeText(t, m, "hi")
+	m, _ = submitBusy(t, m)
+	m = applyReasoningDelta(t, m, "hidden reasoning")
+
+	content := view(m)
+	thinkRows := reasoningPaneRows(t, content)
+	body := strings.Join(thinkRows, "\n")
+	if !strings.Contains(ansiStrip(body), "hidden reasoning") {
+		t.Fatalf("live reasoning body should render expanded while streaming, got: %q", content)
+	}
+	if !strings.Contains(thinkRows[0], "\x1b[38;2;54;72;111m") {
+		t.Errorf("streaming thinking pane border should carry the dimmed-accent streaming variant (54;72;111), got row: %q", thinkRows[0])
+	}
+	if !strings.Contains(body, "\x1b[3m") {
+		t.Errorf("streaming thinking pane body should render italic, got: %q", body)
 	}
 }
 

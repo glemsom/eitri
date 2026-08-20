@@ -160,18 +160,19 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 	}
 	for i, msg := range t.messages {
 		msgStart := nl // content row where this message's block begins
+		w := t.transcriptWidth()
 		if msg.role != "you" && msg.thinkingRequested && msg.reasoning != "" {
 			emit(thinkingHeader(t.theme, msg.reasoning, t.reasoningEffort))
 			if t.thinkingExpandedFor(msg) {
-				pane := t.theme.agentPaneStyle
+				md, _ := RenderMarkdown(msg.reasoning, w-2, t.configTheme)
+				pane := t.theme.thinkingPaneStyle
 				if msg.streaming {
-					pane = t.theme.streamingPaneStyle
+					pane = t.theme.streamingThinkingPaneStyle
 				}
 				pane = pane.Border(lipgloss.Border{Left: g("│", "|")})
-				emit(fmt.Sprintf("%s\n", pane.Render(strings.TrimRight(msg.reasoning, "\n"))))
+				emit(fmt.Sprintf("%s\n", pane.Render(strings.TrimRight(md, "\n"))))
 			}
 		}
-		w := t.transcriptWidth()
 		if msg.role == "you" {
 			md, _ := RenderMarkdown(msg.content, w-4, t.configTheme)
 			bubble := renderUserPromptCard(t.theme, md, w)

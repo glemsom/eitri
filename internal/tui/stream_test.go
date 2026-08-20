@@ -150,20 +150,20 @@ func TestModel_thinkingExpandedStreams(t *testing.T) {
 	m, _ = submitBusy(t, m)
 
 	m = applyReasoningDelta(t, m, "first ")
-	if !strings.Contains(view(m), "first ") {
+	if !strings.Contains(ansiStrip(view(m)), "first ") {
 		t.Fatalf("live reasoning should render expanded before any tab, got: %q", view(m))
 	}
 
 	toggled, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = asModel(t, toggled)
-	if strings.Contains(view(m), "first ") {
+	if strings.Contains(ansiStrip(view(m)), "first ") {
 		t.Fatalf("tab should collapse the live block, got: %q", view(m))
 	}
 	toggled, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = asModel(t, toggled)
 
 	m = applyReasoningDelta(t, m, "reasoning")
-	if !strings.Contains(view(m), "first reasoning") {
+	if !strings.Contains(ansiStrip(view(m)), "first reasoning") {
 		t.Errorf("expanded block should show streamed reasoning, got: %q", view(m))
 	}
 }
@@ -195,13 +195,13 @@ func TestModel_expandAllKeepsThinkingExpandedOnAnswer(t *testing.T) {
 	m, _ = submitBusy(t, m)
 
 	m = applyReasoningDelta(t, m, "hidden reasoning")
-	if !strings.Contains(view(m), "hidden reasoning") {
+	if !strings.Contains(ansiStrip(view(m)), "hidden reasoning") {
 		t.Fatalf("mode ON: streaming reasoning should render expanded, got: %q", view(m))
 	}
 
 	nm, _ := m.Update(turnDoneMsg{prompt: "hi", answer: "final answer", reasoning: "hidden reasoning"})
 	m = asModel(t, nm)
-	if !strings.Contains(view(m), "hidden reasoning") {
+	if !strings.Contains(ansiStrip(view(m)), "hidden reasoning") {
 		t.Errorf("mode ON: thinking block should stay expanded after the answer lands, got: %q", view(m))
 	}
 }
@@ -220,7 +220,7 @@ func TestModel_expandAllNewTurnRendersExpanded(t *testing.T) {
 	m = typeText(t, m, "second")
 	m, _ = submitBusy(t, m)
 	m = applyReasoningDelta(t, m, "second reasoning")
-	if !strings.Contains(view(m), "second reasoning") {
+	if !strings.Contains(ansiStrip(view(m)), "second reasoning") {
 		t.Errorf("mode ON: a newly started turn's thinking should render expanded, got: %q", view(m))
 	}
 }
@@ -234,12 +234,12 @@ func TestModel_expandAllOffCollapsesThinking(t *testing.T) {
 	m, _ = submitBusy(t, m)
 	m = applyReasoningDelta(t, m, "hidden reasoning")
 	m = asModel(t, mustUpdate(t, m, turnDoneMsg{prompt: "hi", answer: "final answer", reasoning: "hidden reasoning"}))
-	if !strings.Contains(view(m), "hidden reasoning") {
+	if !strings.Contains(ansiStrip(view(m)), "hidden reasoning") {
 		t.Fatalf("mode ON: block should be expanded before toggling off, got: %q", view(m))
 	}
 
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
-	if strings.Contains(view(m), "hidden reasoning") {
+	if strings.Contains(ansiStrip(view(m)), "hidden reasoning") {
 		t.Errorf("toggling mode OFF should collapse thinking back to a hint, got: %q", view(m))
 	}
 }
@@ -252,15 +252,15 @@ func TestModel_expandAllTabToggleIndependent(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m, _ = submitBusy(t, m)
 	m = applyReasoningDelta(t, m, "hidden reasoning")
-	if !strings.Contains(view(m), "hidden reasoning") {
+	if !strings.Contains(ansiStrip(view(m)), "hidden reasoning") {
 		t.Fatalf("mode ON: block should render expanded before tab, got: %q", view(m))
 	}
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
-	if strings.Contains(view(m), "hidden reasoning") {
+	if strings.Contains(ansiStrip(view(m)), "hidden reasoning") {
 		t.Errorf("tab should collapse one thinking block even in mode ON, got: %q", view(m))
 	}
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
-	if !strings.Contains(view(m), "hidden reasoning") {
+	if !strings.Contains(ansiStrip(view(m)), "hidden reasoning") {
 		t.Errorf("tab should re-expand a thinking block even in mode ON, got: %q", view(m))
 	}
 
@@ -269,19 +269,19 @@ func TestModel_expandAllTabToggleIndependent(t *testing.T) {
 	m2 = typeText(t, m2, "hi")
 	m2, _ = submitBusy(t, m2)
 	m2 = applyReasoningDelta(t, m2, "hidden reasoning")
-	if !strings.Contains(view(m2), "hidden reasoning") {
+	if !strings.Contains(ansiStrip(view(m2)), "hidden reasoning") {
 		t.Fatalf("mode OFF: streaming reasoning should render expanded, got: %q", view(m2))
 	}
 	m2 = mustUpdate(t, m2, tea.KeyPressMsg{Code: tea.KeyTab})
-	if strings.Contains(view(m2), "hidden reasoning") {
+	if strings.Contains(ansiStrip(view(m2)), "hidden reasoning") {
 		t.Errorf("mode OFF: tab should collapse the live thinking block, got: %q", view(m2))
 	}
 	m2 = mustUpdate(t, m2, tea.KeyPressMsg{Code: tea.KeyTab})
-	if !strings.Contains(view(m2), "hidden reasoning") {
+	if !strings.Contains(ansiStrip(view(m2)), "hidden reasoning") {
 		t.Errorf("mode OFF: tab should re-expand the live thinking block, got: %q", view(m2))
 	}
 	m2 = asModel(t, mustUpdate(t, m2, turnDoneMsg{prompt: "hi", answer: "final answer", reasoning: "hidden reasoning"}))
-	if strings.Contains(view(m2), "hidden reasoning") {
+	if strings.Contains(ansiStrip(view(m2)), "hidden reasoning") {
 		t.Errorf("mode OFF: answer-land should auto-collapse thinking back to a hint, got: %q", view(m2))
 	}
 }
