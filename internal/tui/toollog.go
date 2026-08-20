@@ -49,6 +49,20 @@ func (l toolLog) Entry(i int) toolEntry { return l.entries[i] }
 // SetAnchor records the message index new entries opened by Apply are anchored to (the "you" message of the turn currently running).
 func (l *toolLog) SetAnchor(a int) { l.curAnchor = a }
 
+// anchoredIndices returns the log entry indices anchored to the given message
+// index, in append order — the order tool-start events arrive in a turn's
+// event log, so the flat-flow renderer pairs each start event with its entry
+// without re-deriving the pairing.
+func (l toolLog) anchoredIndices(anchor int) []int {
+	var out []int
+	for i, e := range l.entries {
+		if e.anchor == anchor {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
 // SetStart re-anchors a completed entry's observed execution start time.
 func (l *toolLog) SetStart(i int, t time.Time) {
 	if i < 0 || i >= len(l.entries) {
