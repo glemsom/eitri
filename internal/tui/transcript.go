@@ -358,8 +358,12 @@ func (t Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg mess
 	anchored := t.log.anchoredIndices(anchor)
 	ti := 0
 	var reasoning, answer strings.Builder
+	reasoningEmitted := false
 
 	flushReasoning := func() {
+		if reasoningEmitted {
+			return // a turn's reasoning snapshot renders once per flow, at its first tool boundary
+		}
 		txt := msg.reasoning
 		if txt == "" {
 			txt = reasoning.String() // the live log is the fallback when the message carries no snapshot
@@ -368,6 +372,7 @@ func (t Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg mess
 		if txt == "" || !msg.thinkingRequested {
 			return // nothing to show, or the thinking gate hides a turn that never asked for reasoning
 		}
+		reasoningEmitted = true
 		emit(t.thinkingHeaderFor(msg, msgIdx, txt))
 		if !t.thinkingExpandedFor(msg) {
 			return // collapsed: the hint is the block
