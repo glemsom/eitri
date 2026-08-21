@@ -173,7 +173,8 @@ func retryResponses(err error) bool {
 	if !errors.As(err, &he) || he.Code != http.StatusBadRequest {
 		return false
 	}
-	return strings.Contains(he.Body, "unsupported_api_for_model") && strings.Contains(he.Body, "/chat/completions")
+	return (strings.Contains(he.Body, "unsupported_api_for_model") && strings.Contains(he.Body, "/chat/completions")) ||
+		(strings.Contains(he.Body, "Function tools with reasoning_effort are not supported") && strings.Contains(he.Body, "/chat/completions"))
 }
 
 // Models implements the optional ModelLister capability so the TUI Settings surface can surface the Copilot model lineup.
