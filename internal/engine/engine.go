@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 
 	"github.com/glemsom/eitri/internal/compress"
 	"github.com/glemsom/eitri/internal/provider"
@@ -29,11 +30,14 @@ type Engine struct {
 	provider   provider.Provider
 	transcript TranscriptWriter
 	listener   Listener
+
+	histMu    sync.Mutex
+	histories map[string][]provider.Message
 }
 
 // New returns an Engine that talks to p and appends run records to tr.
 func New(p provider.Provider, tr TranscriptWriter) *Engine {
-	return &Engine{provider: p, transcript: tr}
+	return &Engine{provider: p, transcript: tr, histories: make(map[string][]provider.Message)}
 }
 
 // Listener receives one typed Event per streamed observation from a live run, in order, synchronously from within the turn's drain loop.
@@ -270,6 +274,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		return Result{}, ErrStopped
 	}
 	messages := systemPromptHead()
+	messages = append(messages, e.sessionHistory(req.SessionKey)...)
 	userContent := req.Prompt
 	if req.SkillInject != nil {
 		userContent = bindSkillToPrompt(userContent, *req.SkillInject)
@@ -382,8 +387,10 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		}
 
 		if len(done.ToolCalls) == 0 {
+			messages = append(messages, assistant)
 			final.Answer = content
 			final.Reasoning = reasoning
+			e.storeSessionHistory(req.SessionKey, messages)
 			if e.transcript != nil {
 				_ = e.transcript.WriteTranscript(fmt.Appendf(nil, "=== %s ===\n%s\n", req.Prompt, content))
 			}
@@ -444,6 +451,29 @@ func execToolCall(ctx context.Context, opts AgentOptions, tc provider.ToolCall) 
 		return ToolExecResult{Text: "error executing tool: " + err.Error()}
 	}
 	return result
+}
+
+func (e *Engine) sessionHistory(sessionKey string) []provider.Message {
+	if sessionKey == "" {
+		return nil
+	}
+	e.histMu.Lock()
+	defer e.histMu.Unlock()
+	return append([]provider.Message(nil), e.histories[sessionKey]...)
+}
+
+func (e *Engine) storeSessionHistory(sessionKey string, messages []provider.Message) {
+	if sessionKey == "" {
+		return
+	}
+	start := 0
+	if len(messages) > 0 && messages[0].Role == provider.RoleSystem && messages[0].Content == SystemPromptContent() {
+		start = 1
+	}
+	persisted := append([]provider.Message(nil), messages[start:]...)
+	e.histMu.Lock()
+	defer e.histMu.Unlock()
+	e.histories[sessionKey] = persisted
 }
 
 func closeErr(err error) error {

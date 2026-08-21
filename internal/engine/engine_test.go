@@ -232,3 +232,57 @@ func TestRunAgentWritesStoppedTranscriptBetweenToolCalls(t *testing.T) {
 		t.Errorf("transcript = %q, want partial content", tr.lines[0])
 	}
 }
+
+func TestRunAgentCarriesConversationAcrossTurns(t *testing.T) {
+	t.Parallel()
+	turn := 0
+	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
+		turn++
+		switch turn {
+		case 1:
+			return provider.StreamFunc(
+				provider.Chunk{Content: "Understood, Glenn.", FinishReason: "stop", Done: true},
+			), nil
+		case 2:
+			answer := "I don't know your name yet."
+			if hasMessage(req.Messages, provider.RoleUser, "My name is Glenn") && hasMessage(req.Messages, provider.RoleAssistant, "Understood, Glenn.") {
+				answer = "Your name is Glenn."
+			}
+			return provider.StreamFunc(
+				provider.Chunk{Content: answer, FinishReason: "stop", Done: true},
+			), nil
+		default:
+			return provider.StreamFunc(
+				provider.Chunk{Content: "unexpected extra turn", FinishReason: "stop", Done: true},
+			), nil
+		}
+	}), &mockTranscript{})
+
+	if _, err := e.RunAgent(context.Background(), RunRequest{
+		Model:      "deepseek-v4-flash",
+		Prompt:     "My name is Glenn",
+		SessionKey: "session-1",
+	}, AgentOptions{}); err != nil {
+		t.Fatalf("first RunAgent() error = %v, want nil", err)
+	}
+	res, err := e.RunAgent(context.Background(), RunRequest{
+		Model:      "deepseek-v4-flash",
+		Prompt:     "What is my name ?",
+		SessionKey: "session-1",
+	}, AgentOptions{})
+	if err != nil {
+		t.Fatalf("second RunAgent() error = %v, want nil", err)
+	}
+	if res.Answer != "Your name is Glenn." {
+		t.Fatalf("follow-up answer = %q, want %q (prior turn must stay in conversation)", res.Answer, "Your name is Glenn.")
+	}
+}
+
+func hasMessage(msgs []provider.Message, role provider.Role, content string) bool {
+	for _, m := range msgs {
+		if m.Role == role && m.Content == content {
+			return true
+		}
+	}
+	return false
+}
