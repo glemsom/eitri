@@ -24,11 +24,13 @@ type flowInput struct {
 	Width       int
 	Pulse       bool
 	Effort      string
-	Mode        viewMode
-	COTExpanded bool
-	Now         time.Time
-	Tools       []flowTool
-	IsFocused   func(kind blockKind, msgIdx, toolIdx, fragIdx int) bool
+	// Cfg is the explicit expansion config bundle (mode plus the per-kind
+	// collapsed-by-default flags) every reasoning open/collapsed decision in
+	// this flow reads; the Transcript supplies its own bundle, tests theirs.
+	Cfg       expansionConfig
+	Now       time.Time
+	Tools     []flowTool
+	IsFocused func(kind blockKind, msgIdx, toolIdx, fragIdx int) bool
 }
 
 // flowTool is one tool entry the flow renderer emits: the log entry plus its
@@ -68,15 +70,14 @@ type flowItem struct {
 // passes, so they are threaded through as values rather than captured in each
 // closure.
 type flowRenderer struct {
-	theme       Theme
-	config      string
-	width       int
-	pulse       bool
-	effort      string
-	mode        viewMode
-	cotExpanded bool
-	now         time.Time
-	tools       []flowTool
+	theme  Theme
+	config string
+	width  int
+	pulse  bool
+	effort string
+	cfg    expansionConfig
+	now    time.Time
+	tools  []flowTool
 }
 
 // RenderFlow renders one turn's event log as a single continuous merged flow:
@@ -87,15 +88,14 @@ type flowRenderer struct {
 // the merged stream unchanged.
 func RenderFlow(in flowInput) (string, []toolRowRange) {
 	r := flowRenderer{
-		theme:       in.Theme,
-		config:      in.ConfigTheme,
-		width:       in.Width,
-		pulse:       in.Pulse,
-		effort:      in.Effort,
-		mode:        in.Mode,
-		cotExpanded: in.COTExpanded,
-		now:         in.Now,
-		tools:       in.Tools,
+		theme:  in.Theme,
+		config: in.ConfigTheme,
+		width:  in.Width,
+		pulse:  in.Pulse,
+		effort: in.Effort,
+		cfg:    in.Cfg,
+		now:    in.Now,
+		tools:  in.Tools,
 	}
 	items := r.fold(in.Events, in.Msg)
 	return r.render(items, in.Msg, in.MsgIdx, in.IsFocused)
@@ -142,7 +142,7 @@ func (r flowRenderer) fold(events []TimelineEvent, msg message) []flowItem {
 			kind:     flowBlockReasoning,
 			text:     txt,
 			fragIdx:  fragIdx,
-			expanded: thinkingExpandedForFrag(msg, fragIdx, r.mode, r.cotExpanded),
+			expanded: thinkingExpandedForFrag(msg, fragIdx, r.cfg),
 		})
 	}
 

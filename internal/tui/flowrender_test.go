@@ -8,24 +8,11 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// expansionWithReasoningForces builds an ExpansionState with the whole-block
-// reasoning force pinned from the two directional flags, the test-facing
-// equivalent of the old thinkingExpanded / thinkingCollapsed pair used to seed
-// fixtures. With both false no force is pinned, so the mode/default decide.
-func expansionWithReasoningForces(forceExpand, forceCollapse bool) ExpansionState {
-	e := ExpansionState{}
-	switch {
-	case forceExpand:
-		e.set(blockReasoning, reasoningWholeID, true)
-	case forceCollapse:
-		e.set(blockReasoning, reasoningWholeID, false)
-	}
-	return e
-}
-
 // renderFlowInput builds the smallest flowInput a flow test needs: a theme for
 // the default theme and a generous width, with no Transcript or tool log in
-// sight. The per-turn event log, the message snapshot, and any paired tool
+// sight. The expansion config is supplied up front — default mode with
+// reasoning expanded, so fixtures need no pinned force to show a reasoning
+// body. The per-turn event log, the message snapshot, and any paired tool
 // entries are supplied by each test.
 func renderFlowInput(events []TimelineEvent, msg message, tools []flowTool) flowInput {
 	return flowInput{
@@ -34,7 +21,7 @@ func renderFlowInput(events []TimelineEvent, msg message, tools []flowTool) flow
 		Theme:       themeFor(config.DefaultTheme),
 		ConfigTheme: config.DefaultTheme,
 		Width:       100,
-		Mode:        viewDefault,
+		Cfg:         expansionConfig{mode: viewDefault, cotExpanded: true},
 		Tools:       tools,
 	}
 }
@@ -59,7 +46,7 @@ func TestRenderFlow_committedRendersReasoningOnceAtFirstToolBoundary(t *testing.
 			{Kind: EventReasoning, Delta: "after tool"},
 			{Kind: EventAnswer, Delta: "Done."},
 		},
-		message{reasoning: "think first", content: "Done.", thinkingRequested: true, expansion: expansionWithReasoningForces(true, false)},
+		message{reasoning: "think first", content: "Done.", thinkingRequested: true, expansion: ExpansionState{}},
 		[]flowTool{bashTool()},
 	)
 
@@ -101,7 +88,7 @@ func TestRenderFlow_committedReasoningSnapshotOnceAtTailWhenNoToolFollows(t *tes
 			{Kind: EventReasoning, Delta: " think second"},
 			{Kind: EventAnswer, Delta: "Done."},
 		},
-		message{reasoning: "think first think second", content: "Done.", thinkingRequested: true, expansion: expansionWithReasoningForces(true, false)},
+		message{reasoning: "think first think second", content: "Done.", thinkingRequested: true, expansion: ExpansionState{}},
 		nil,
 	)
 
@@ -170,9 +157,10 @@ func TestRenderFlow_committedCollapsesReasoningToHint(t *testing.T) {
 			{Kind: EventReasoning, Delta: "hidden body"},
 			{Kind: EventAnswer, Delta: "Done."},
 		},
-		message{reasoning: "hidden body", content: "Done.", thinkingRequested: true}, // no whole-block force (collapsed default)
+		message{reasoning: "hidden body", content: "Done.", thinkingRequested: true}, // no whole-block force
 		nil,
 	)
+	in.Cfg = expansionConfig{mode: viewDefault} // collapsed-by-default config, the case under test
 
 	out, _ := RenderFlow(in)
 	plain := ansiStrip(out)

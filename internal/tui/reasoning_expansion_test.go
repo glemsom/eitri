@@ -5,6 +5,21 @@ import (
 	"testing"
 )
 
+// expansionWithReasoningForces builds an ExpansionState with the whole-block
+// reasoning force pinned from the two directional flags: the test-facing way to
+// seed a per-block force when a test exercises force behavior rather than the
+// config default. With both false no force is pinned.
+func expansionWithReasoningForces(forceExpand, forceCollapse bool) ExpansionState {
+	e := ExpansionState{}
+	switch {
+	case forceExpand:
+		e.set(blockReasoning, reasoningWholeID, true)
+	case forceCollapse:
+		e.set(blockReasoning, reasoningWholeID, false)
+	}
+	return e
+}
+
 // TestThinkingExpandedForFrag_OwnsForcesOnSeam locks issue #469's reasoning
 // migration: the whole-block and per-fragment reasoning forces live on the
 // message's ExpansionState seam, and the open/collapsed decision reads through
@@ -16,26 +31,26 @@ func TestThinkingExpandedForFrag_OwnsForcesOnSeam(t *testing.T) {
 	// Whole-block force-expand beats the collapse-all mode and the
 	// collapsed-by-default flag.
 	msg := message{expansion: expansionWithReasoningForces(true, false)}
-	if !thinkingExpandedForFrag(msg, 0, viewCollapseAll, false) {
+	if !thinkingExpandedForFrag(msg, 0, expansionConfig{mode: viewCollapseAll}) {
 		t.Errorf("whole-block force-expand must win over collapse-all, got collapsed")
 	}
 
 	// No force: the mode and collapsed-by-default flag decide.
 	msg = message{}
-	if thinkingExpandedForFrag(msg, 0, viewCollapseAll, true) {
+	if thinkingExpandedForFrag(msg, 0, expansionConfig{mode: viewCollapseAll, cotExpanded: true}) {
 		t.Errorf("collapse-all must collapse a force-less block despite the expanded default")
 	}
-	if !thinkingExpandedForFrag(msg, 0, viewExpandAll, false) {
+	if !thinkingExpandedForFrag(msg, 0, expansionConfig{mode: viewExpandAll}) {
 		t.Errorf("expand-all must expand a force-less block despite the collapsed default")
 	}
 
 	// A per-fragment force beats the whole-block force for its own fragment.
 	msg = message{expansion: expansionWithReasoningForces(false, true)} // whole-block force-collapse
 	msg.expansion.set(blockReasoning, 0, true)                          // fragment 0 pinned force-expand
-	if !thinkingExpandedForFrag(msg, 0, viewDefault, false) {
+	if !thinkingExpandedForFrag(msg, 0, expansionConfig{mode: viewDefault}) {
 		t.Errorf("fragment 0's force-expand must beat the whole-block force-collapse")
 	}
-	if thinkingExpandedForFrag(msg, 1, viewDefault, false) {
+	if thinkingExpandedForFrag(msg, 1, expansionConfig{mode: viewDefault}) {
 		t.Errorf("fragment 1 (no own force) must follow the whole-block force-collapse, got expanded")
 	}
 }

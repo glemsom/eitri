@@ -333,8 +333,7 @@ func (t Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg mess
 		Width:       t.transcriptWidth(),
 		Pulse:       t.busyPulse > 0,
 		Effort:      t.reasoningEffort,
-		Mode:        t.viewMode(),
-		COTExpanded: t.cotExpanded,
+		Cfg:         t.expansionConfig(),
 		Now:         now,
 		Tools:       tools,
 		IsFocused:   t.focusedBlockIs,
@@ -742,8 +741,7 @@ func (t Transcript) focusedToolIdx() int {
 // whole-block force (the migrated thinkingCollapsed / thinkingExpanded flags now
 // live on the seam keyed on reasoningWholeID) always wins, then the global modes,
 // then the collapsed-by-default flag.
-func thinkingExpandedForBlock(msg message, mode viewMode, cotExpanded bool) bool {
-	cfg := expansionConfig{mode: mode, cotExpanded: cotExpanded}
+func thinkingExpandedForBlock(msg message, cfg expansionConfig) bool {
 	if msg.streaming && msg.reasoning != "" {
 		// a live streamed block auto-expands unless pinned force-collapsed
 		if f, ok := msg.expansion.forceFor(blockReasoning, reasoningWholeID); ok && !f {
@@ -757,11 +755,11 @@ func thinkingExpandedForBlock(msg message, mode viewMode, cotExpanded bool) bool
 // thinkingExpandedForFrag is the free-function form of the per-fragment
 // expansion decision, shared by the Transcript and the FlowRenderer: a
 // fragment's own pin on the seam wins, else it follows the whole-block decision.
-func thinkingExpandedForFrag(msg message, fragIdx int, mode viewMode, cotExpanded bool) bool {
+func thinkingExpandedForFrag(msg message, fragIdx int, cfg expansionConfig) bool {
 	if f, ok := msg.expansion.forceFor(blockReasoning, fragIdx); ok {
 		return f
 	}
-	return thinkingExpandedForBlock(msg, mode, cotExpanded)
+	return thinkingExpandedForBlock(msg, cfg)
 }
 
 // thinkingExpandedForFragment returns whether the fragIdx-th reasoning fragment
@@ -772,7 +770,7 @@ func thinkingExpandedForFrag(msg message, fragIdx int, mode viewMode, cotExpande
 // expand-all mode); the modes take over only once the forces are cleared on mode
 // entry.
 func (t Transcript) thinkingExpandedForFragment(msg message, fragIdx int) bool {
-	return thinkingExpandedForFrag(msg, fragIdx, t.viewMode(), t.cotExpanded)
+	return thinkingExpandedForFrag(msg, fragIdx, t.expansionConfig())
 }
 
 // toggleThinkingFragment flips the expansion of one reasoning fragment (Enter on
