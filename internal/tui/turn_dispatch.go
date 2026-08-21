@@ -102,6 +102,9 @@ func (d *TurnDispatch) commitTimeline(tx *Transcript, i int) {
 // resets the live log.
 func (d *TurnDispatch) commitNewAssistant(tx *Transcript) {
 	idx := len(tx.messages) - 1
+	if len(tx.timeline) == 0 {
+		tx.timeline = synthAnswerLog(tx.messages[idx].content)
+	}
 	tx.messages[idx].events = tx.timeline
 	tx.timeline = nil
 	tx.turnSeq = 0
