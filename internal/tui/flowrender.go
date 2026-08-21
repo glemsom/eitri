@@ -182,7 +182,7 @@ func (r flowRenderer) fold(events []TimelineEvent, msg message) []flowItem {
 			te := flowTool{logIdx: -1}
 			if ti < len(r.tools) {
 				te = r.tools[ti]
-			} else {
+			} else if ev.Start != nil {
 				// A start whose log entry is missing is synthesized from the
 				// event so nothing in the stream silently drops.
 				te.entry = toolEntry{name: ev.Start.Name, args: ev.Start.Args, startedAt: time.Now()}
@@ -219,8 +219,8 @@ func (r flowRenderer) render(items []flowItem, msg message, msgIdx int, isFocuse
 			emit(r.reasoningBlock(msg, msgIdx, it, isFocused))
 		case flowBlockTool:
 			// Tool blocks in collapsibleBlocks() always carry msgIdx 0 (their
-			// anchor is implied by arrival order), so the focus match uses 0 just
-			// like the legacy tool renderer's focusedToolIdx.
+			// anchor is implied by arrival order), so the focus match uses 0.
+			// The FlowRenderer is the only tool-entry renderer.
 			start := nl
 			s := renderToolEntry(r.theme, it.tool.entry, it.tool.expanded, r.now, r.width, r.pulse, isFocused != nil && isFocused(blockTool, 0, it.tool.logIdx, 0))
 			emit(s)
@@ -245,9 +245,8 @@ func (r flowRenderer) reasoningBlock(msg message, msgIdx int, it flowItem, isFoc
 // renderReasoningBlock renders one whole reasoning fragment as its header line
 // (prefixed with the focus marker when focused) and, when expanded, the
 // markdown-rendered body in the pane chosen from the message's stream state.
-// Both the FlowRenderer and the legacy non-flow path in renderHistory route
-// through this one emitter, so the reasoning block's header/pane rendering
-// cannot drift between them.
+// The FlowRenderer routes through this one emitter, so the reasoning block's
+// header/pane rendering has exactly one implementation.
 func renderReasoningBlock(theme Theme, config string, width int, effort string, msg message, msgIdx, fragIdx int, text string, expanded, focused bool) string {
 	var b strings.Builder
 	h := thinkingHeader(theme, text, effort)

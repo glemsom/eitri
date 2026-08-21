@@ -177,8 +177,10 @@ func (t Transcript) turnFlowEvents(i int) ([]TimelineEvent, bool) {
 	}
 	// The running turn's events live on the live timeline behind its trailing
 	// message (the user prompt before any stream delta, the streaming reply
-	// after).
-	if t.busy && len(t.timeline) > 0 && i == len(t.messages)-1 {
+	// after). A turn is flow-worthy the moment it starts: an empty timeline in
+	// the pre-stream gap synthesizes a minimal empty event log so the prompt
+	// renders through the FlowRenderer like every other turn.
+	if t.isLiveTurnPrompt(i) {
 		return t.timeline, true
 	}
 	// A finished turn's events live on the first assistant message that
@@ -197,6 +199,12 @@ func (t Transcript) turnFlowEvents(i int) ([]TimelineEvent, bool) {
 		return nil, false
 	}
 	return nil, false
+}
+
+// isLiveTurnPrompt reports whether user message i is the prompt of the turn
+// currently running: busy, and the last message in the transcript.
+func (t Transcript) isLiveTurnPrompt(i int) bool {
+	return t.busy && i == len(t.messages)-1
 }
 
 func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, msgRows *[]msgRowRange) {
@@ -252,21 +260,13 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 			md, _ := RenderMarkdown(msg.content, w-4, t.configTheme)
 			bubble := renderUserPromptCard(t.theme, md, w)
 			emit(bubble + "\n")
-			if flow, ok := t.turnFlowEvents(i); ok {
-				// The turn renders as a flat flow: its tools land at their
-				// arrival positions inside the flow (the committed flow at the
-				// assistant message, the live flow right here when the run is
-				// still in the tool-heavy gap with no assistant message yet).
-				if t.busy && i == len(t.messages)-1 {
-					emitFlow(flow, anchor, i, message{})
-				}
-			} else {
-				// Legacy note turn (no event log): tool entries anchored to the
-				// prompt render directly beneath it, as before the flat flow.
-				base := nl
-				toolBlock, blockRows := t.log.Render(t.theme, t.viewMode(), !t.toolResultsExpanded, now, w, i, t.busyPulse > 0, t.focusedToolIdx())
-				emit(toolBlock)
-				recordToolRows(blockRows, base)
+			if t.isLiveTurnPrompt(i) {
+				// The running turn renders as a flat flow from the moment the
+				// prompt lands: its tools appear at their arrival positions once
+				// events arrive; the pre-stream gap renders the synthesized
+				// minimal (empty) log. There is no fallback render path.
+				flow, _ := t.turnFlowEvents(i)
+				emitFlow(flow, anchor, i, message{})
 			}
 		} else if len(msg.events) > 0 {
 			// Committed turn: walk its typed event log as one continuous flow
@@ -711,20 +711,9 @@ func (t Transcript) focusedBlockIs(kind blockKind, msgIdx, toolIdx, fragIdx int)
 	return ok && blk.kind == kind && blk.msgIdx == msgIdx && blk.toolIdx == toolIdx && blk.fragIdx == fragIdx
 }
 
-// focusedToolIdx returns the log index of the focused block when it is a tool
-// entry, else -1, so the legacy tool renderer marks the same block the flat
-// flow does.
-func (t Transcript) focusedToolIdx() int {
-	blk, ok := t.focused()
-	if !ok || blk.kind != blockTool {
-		return -1
-	}
-	return blk.toolIdx
-}
-
 // thinkingExpandedForBlock is the free-function form of the whole-turn
-// reasoning-block expansion decision, shared by the Transcript's legacy render
-// path and the FlowRenderer. It builds the explicit config bundle from the render-time
+// reasoning-block expansion decision, read through the ExpansionState seam by
+// both the Transcript and the FlowRenderer. It builds the explicit config bundle from the render-time
 // mode and CoT-collapsed-by-default flag and asks the seam for the whole-block
 // decision without mutating any stored state,
 // folding in the live-stream auto-expand (a streaming reasoning block stays open

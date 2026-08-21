@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -210,6 +211,17 @@ func TestSnapshot_frames(t *testing.T) {
 	writeFrame(t, out, "13_expanded", ex)
 
 	_ = context.Background // keep the import honest
+
+	// Issue #493: a prompt whose turn produced no events still renders as a
+	// flow — the empty pre-stream gap while busy, and the instant-error turn.
+	gm := scriptedChat(t, config.Config{
+		Theme: "dark", Provider: "deepseek", Model: "deepseek-v4-flash", ReasoningEffort: "high",
+	}, 120, 40)
+	gm = typeText(t, gm, "Summarize the diff")
+	gm, _ = submitBusy(t, gm)
+	writeFrame(t, out, "14_busy_empty_gap", gm)
+	gm = upd(t, gm, turnDoneMsg{prompt: "Summarize the diff", err: errors.New("no login flow available")})
+	writeFrame(t, out, "15_instant_error", gm)
 }
 
 func scriptedChat(t *testing.T, cfg config.Config, w, h int) Model {
