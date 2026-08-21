@@ -40,6 +40,7 @@ func TestAppendMsg_rendersPixelIdenticalThroughFlow(t *testing.T) {
 	notes := []string{
 		helpView(),
 		"Open https://example.com/device and enter code: ABCD-EFGH",
+		"login saved",
 		failurePrefix() + "no login flow available",
 	}
 

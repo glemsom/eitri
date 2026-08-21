@@ -492,7 +492,7 @@ func layoutBuildsOf(tx Transcript) int {
 func newStreamPaneTestTranscript(th Theme, msgs []message) Transcript {
 	for i, m := range msgs {
 		if m.role == "eitri" && len(m.events) == 0 {
-			msgs[i].events = []TimelineEvent{{Kind: EventAnswer, Delta: m.content}}
+			msgs[i].events = synthAnswerLog(m.content)
 		}
 	}
 	return Transcript{

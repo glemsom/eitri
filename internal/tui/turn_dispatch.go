@@ -103,10 +103,7 @@ func (d *TurnDispatch) commitTimeline(tx *Transcript, i int) {
 func (d *TurnDispatch) commitNewAssistant(tx *Transcript) {
 	idx := len(tx.messages) - 1
 	if len(tx.timeline) == 0 {
-		// A turn that completed without streaming anything still carries its own
-		// one-event answer log, so every assistant message renders through the
-		// FlowRenderer and no legacy render branch survives.
-		tx.timeline = []TimelineEvent{{Kind: EventAnswer, Delta: tx.messages[idx].content}}
+		tx.timeline = synthAnswerLog(tx.messages[idx].content)
 	}
 	tx.messages[idx].events = tx.timeline
 	tx.timeline = nil

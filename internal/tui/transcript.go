@@ -476,11 +476,15 @@ func (t Transcript) expansionConfig() expansionConfig {
 
 // appendMsg appends a finished assistant entry to the transcript and marks the shared message layout dirty in the same step, so the appended block re-wraps at the current transcript width on the next frame instead of rendering at a stale width.
 func (t *Transcript) appendMsg(content string) {
-	// The note carries its own one-event log so the history renderer routes it
-	// through the FlowRenderer exactly like a real turn's flow.
-	events := []TimelineEvent{{Kind: EventAnswer, Delta: content}}
-	t.messages = append(t.messages, message{role: "eitri", content: content, events: events})
+	t.messages = append(t.messages, message{role: "eitri", content: content, events: synthAnswerLog(content)})
 	t.layout.dirty = true
+}
+
+// synthAnswerLog builds the one-event answer log every assistant entry owns,
+// so entries that never streamed (appended notes, non-streaming turns) still
+// render through the FlowRenderer and no legacy render branch survives.
+func synthAnswerLog(content string) []TimelineEvent {
+	return []TimelineEvent{{Kind: EventAnswer, Delta: content}}
 }
 
 // apply folds one tool-call observation into the transcript's log: tool updates route through the Transcript so they land in the same log renderPane reads. The matching event is also recorded on the per-turn timeline so the log captures tool starts/results in arrival order alongside the stream deltas.
