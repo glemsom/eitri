@@ -30,7 +30,7 @@ func TestRunSystemHeadPrefersRipgrep(t *testing.T) {
 	if head.Role != provider.RoleSystem {
 		t.Fatalf("message[0].Role = %q, want %q", head.Role, provider.RoleSystem)
 	}
-	for _, want := range []string{"ripgrep", "rg", "--heading", "--color=never"} {
+	for _, want := range []string{"ripgrep", "rg", "--heading", "--color=never", "non-TTY", "default to"} {
 		if !strings.Contains(head.Content, want) {
 			t.Fatalf("turn system head must instruct preferred ripgrep usage; missing %q:\n%s", want, head.Content)
 		}
