@@ -18,4 +18,4 @@ Single-context: one `CONTEXT.md` plus `docs/adr/` at the repo root. See `docs/ag
 
 ### Comment-value policy
 
-Comments in Go source must add information the code does not already tell; references to ADRs, spec sections, or issues alone are never sufficient. See `docs/agents/comment-value-policy.md`.
+Comments in Go source must add information the code does not already tell; references to ADRs, spec sections, or issues alone are never sufficient.
