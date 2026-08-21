@@ -10,7 +10,7 @@ func busyStreamingModel(t *testing.T) Model {
 	t.Helper()
 	m := NewModelCfg(Dependencies{
 		Turn:   streamingTurn,
-		Stream: NewStreamer(),
+		Events: NewEventFeed(),
 	})
 	m = resizeTo(t, m, 80, 8)
 	m = typeText(t, m, "hi")

@@ -159,7 +159,7 @@ func TestModel_stoppedBeforeAnyDeltaAppendsPartialMessage(t *testing.T) {
 func TestModel_stoppedStreamKeepsStreamedBuffer(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn:   streamingTurn,
-		Stream: NewStreamer(),
+		Events: NewEventFeed(),
 		Config: config.Config{ThinkingEnabled: true},
 	})
 	m = resize(t, m)

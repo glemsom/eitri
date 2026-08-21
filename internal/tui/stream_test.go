@@ -32,14 +32,14 @@ func submitBusy(t *testing.T, m Model) (Model, tea.Cmd) {
 
 func applyDelta(t *testing.T, m Model, delta string) Model {
 	t.Helper()
-	nm, _ := m.Update(streamDeltaMsg{kind: AnswerStream, delta: delta})
+	nm, _ := m.Update(eventMsg{update: Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: delta}}})
 	return asModel(t, nm)
 }
 
 func newStreamingModel() Model {
 	return NewModelCfg(Dependencies{
 		Turn:   streamingTurn,
-		Stream: NewStreamer(),
+		Events: NewEventFeed(),
 		Config: config.Config{ThinkingEnabled: true, CoTCollapsedByDefault: true, ToolResultsCollapsedByDefault: true},
 	})
 }
@@ -108,7 +108,7 @@ func TestModel_streamFallbackWithoutStreamer(t *testing.T) {
 
 func applyReasoningDelta(t *testing.T, m Model, delta string) Model {
 	t.Helper()
-	nm, _ := m.Update(streamDeltaMsg{kind: ReasoningStream, delta: delta})
+	nm, _ := m.Update(eventMsg{update: Event{Stream: &StreamUpdate{Kind: ReasoningStream, Delta: delta}}})
 	return asModel(t, nm)
 }
 
