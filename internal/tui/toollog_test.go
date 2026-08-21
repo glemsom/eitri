@@ -162,7 +162,7 @@ func TestToolLog_PlainTextRendersEntry(t *testing.T) {
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}})
 	l.Apply(ToolUpdate{Result: &ToolResult{Name: "read", Result: "one\ntwo\n", Lines: 2}})
 
-	out := l.PlainText(0)
+	out := clipboardToolText(l, 0)
 	if !strings.Contains(out, "📖 read  a.txt") {
 		t.Errorf("PlainText must include the head, got %q", out)
 	}
@@ -180,7 +180,7 @@ func TestToolLog_PlainTextCollapsedAndExpanded(t *testing.T) {
 	l.Apply(ToolUpdate{Result: &ToolResult{Name: "edit", Result: "change\n", Lines: 1,
 		Before: "a", After: "b", Path: "a.go", Added: 1, Removed: 1}})
 
-	out := l.PlainText(0)
+	out := clipboardToolText(l, 0)
 	if out != "🔧 bash  ls\n✂️ edit  a.go  [+1, −1]\n  change\n" {
 		t.Errorf("PlainText shape mismatch, got %q", out)
 	}

@@ -782,10 +782,24 @@ func (m Model) transcriptText() string {
 		} else {
 			b.WriteString("eitri: " + msg.content + "\n")
 		}
-		b.WriteString(m.tx.log.PlainText(i))
+		b.WriteString(clipboardToolText(m.tx.log, i))
 		b.WriteString("\n")
 	}
 	return strings.TrimSpace(b.String())
+}
+
+// clipboardToolText renders every entry anchored to the given message as plain text for the clipboard transcript: the tool head plus the indented full result when complete. It reads the log through its data accessors; the log itself never renders.
+func clipboardToolText(l toolLog, anchor int) string {
+	var b strings.Builder
+	for _, idx := range l.anchoredIndices(anchor) {
+		te := l.Entry(idx)
+		b.WriteString(toolEntryHead(te))
+		b.WriteString("\n")
+		if te.complete && te.result != "" {
+			b.WriteString("  " + strings.ReplaceAll(strings.TrimRight(te.result, "\n"), "\n", "\n  ") + "\n")
+		}
+	}
+	return b.String()
 }
 
 // slashCommand reports whether prompt is a `/skillname` activation command for a detected skill .
