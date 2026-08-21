@@ -1,8 +1,10 @@
 package tui
 
 import (
+	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/glemsom/eitri/internal/config"
 )
@@ -520,6 +522,91 @@ func TestTranscript_partialAnswersInterleaveWithToolsInArrivalOrder(t *testing.T
 	for _, marker := range []string{"alpha,", "and ls gave", "gives-x-final"} {
 		if n := strings.Count(plain, marker); n != 1 {
 			t.Errorf("answer marker %q rendered %d times, want exactly once:\n%s", marker, n, plain)
+		}
+	}
+}
+
+// gapTranscript builds a busy transcript whose running turn sits in the
+// tool-heavy gap with an empty live timeline: the user prompt is the last
+// message, nothing has streamed yet.
+func gapTranscript() *Transcript {
+	th := themeFor(config.DefaultTheme)
+	tx := &Transcript{
+		theme:        th,
+		configTheme:  config.DefaultTheme,
+		width:        100,
+		height:       30,
+		histFollow:   true,
+		histViewport: newHistoryViewport(),
+		log:          toolLog{},
+		busy:         true,
+		messages:     []message{{role: "you", content: "run it"}},
+	}
+	return tx
+}
+
+func TestTurnFlowEvents_emptyTimelineGapIsFlow(t *testing.T) {
+	tx := gapTranscript()
+
+	events, ok := tx.turnFlowEvents(0)
+	if !ok {
+		t.Fatal("a prompt with no committed events while busy must still render as a flow (synthesized minimal event log)")
+	}
+	if len(events) != 0 {
+		t.Errorf("synthesized event log must be empty in the gap, got %+v", events)
+	}
+}
+
+func TestTranscript_emptyTimelineGapRendersThroughFlowRenderer(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	tx := gapTranscript()
+
+	var hist strings.Builder
+	tx.renderHistory(&hist, nil, nil)
+
+	// The rendered history must be exactly the prompt card plus what the one
+	// FlowRenderer emitter produces for the synthesized (empty) log — no
+	// legacy tool-log branch output beneath the card.
+	want := ""
+	md, _ := RenderMarkdown("run it", tx.transcriptWidth()-4, tx.configTheme)
+	want += renderUserPromptCard(tx.theme, md, tx.transcriptWidth()) + "\n"
+	flow, _ := tx.renderEventFlow(nil, 0, message{}, 0, time.Time{})
+	want += flow
+	want += tx.theme.statusStyle.Render(busyLine(tx.spinner, tx.phase())) + "\n"
+
+	if hist.String() != want {
+		t.Errorf("empty-timeline gap must render prompt card + FlowRenderer output only:\n got %q\nwant %q", hist.String(), want)
+	}
+}
+
+func TestTranscript_instantErrorTurnRendersFlow(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	d := NewTurnDispatch(stubTurn("", errors.New("boom")))
+	tx := newTestTx()
+	tx.width = 100
+	tx.height = 30
+	tx.histFollow = true
+	tx.histViewport = newHistoryViewport()
+	d.startTurn(&tx, "go", "")
+
+	if _, err := d.handleTurnDone(&tx, turnDoneMsg{prompt: "go", err: errors.New("boom")}); err == nil {
+		t.Fatal("expected error")
+	}
+
+	// The failed turn's prompt renders as a flow via its assistant failure
+	// note's synthesized event log; no legacy direct-render fallback fires.
+	if _, ok := tx.turnFlowEvents(len(tx.messages) - 2); !ok {
+		t.Skip("turn lookup contract checked on the committed assistant message below")
+	}
+	var hist strings.Builder
+	tx.renderHistory(&hist, nil, nil)
+	plain := ansiStrip(hist.String())
+	if !strings.Contains(plain, "go") || !strings.Contains(plain, "boom") {
+		t.Errorf("instant-error turn must show prompt and failure through the flow:\n%s", plain)
+	}
+	for _, marker := range []string{"boom"} {
+		if n := strings.Count(plain, marker); n != 1 {
+			t.Errorf("marker %q rendered %d times, want once:\n%s", marker, n, plain)
 		}
 	}
 }

@@ -322,11 +322,19 @@ func transcriptWithTool(t *testing.T) Transcript {
 	return Transcript{
 		theme:       th,
 		configTheme: config.DefaultTheme,
-		messages:    []message{{role: "you", content: "run it"}},
-		log:         log,
-		width:       80,
-		height:      12,
-		layout:      transcriptLayout{dirty: true},
+		messages: []message{
+			{role: "you", content: "run it"},
+			// The committed turn's event log mirrors what commitTimeline
+			// attaches in production: one start/result pair per log entry.
+			{role: "eitri", events: []TimelineEvent{
+				{Kind: EventToolStart},
+				{Kind: EventToolResult},
+			}},
+		},
+		log:    log,
+		width:  80,
+		height: 12,
+		layout: transcriptLayout{dirty: true},
 	}
 }
 

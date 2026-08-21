@@ -138,30 +138,6 @@ func (l toolLog) expandedFor(i int, mode viewMode, defaultCollapsed bool) bool {
 	return l.expansion.expanded(blockTool, i, expansionConfig{mode: mode, toolExpanded: !defaultCollapsed})
 }
 
-// Render renders every entry anchored to the given message into the shared head/text surface and records each rendered entry's content-row range. focusedIdx is the log index of the entry under the block focus, or -1 when none.
-func (l toolLog) Render(th Theme, mode viewMode, defaultCollapsed bool, now time.Time, width, anchor int, pulse bool, focusedIdx int) (string, []toolRowRange) {
-	var b strings.Builder
-	var rows []toolRowRange
-	nl := 0
-	emit := func(s string) {
-		b.WriteString(s)
-		nl += strings.Count(s, "\n")
-	}
-	for ti, te := range l.entries {
-		if te.anchor != anchor {
-			continue
-		}
-		start := nl
-		s := renderToolEntry(th, te, l.expandedFor(ti, mode, defaultCollapsed), now, width, pulse, ti == focusedIdx)
-		rowsInEntry := strings.Count(s, "\n")
-		emit(s)
-		if rowsInEntry > 0 {
-			rows = append(rows, toolRowRange{start: start, end: start + rowsInEntry - 1, idx: ti})
-		}
-	}
-	return b.String(), rows
-}
-
 // PlainText renders every entry anchored to the given message as plain text for the clipboard transcript: the ⊕ tool head plus the indented full result when complete.
 func (l toolLog) PlainText(anchor int) string {
 	var b strings.Builder

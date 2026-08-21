@@ -10,6 +10,24 @@ func toolEntryFor(name, args string) toolEntry {
 	return toolEntry{name: name, args: args}
 }
 
+// renderViaFlow renders the log's anchored entries through the FlowRenderer —
+// the only tool-entry renderer since the legacy tool-log render path was
+// deleted (issue #493). It mirrors the Transcript's flowInput assembly: one
+// start event per anchored entry, expansion read through the ExpansionState
+// seam.
+func renderViaFlow(l toolLog, mode viewMode, defaultCollapsed bool, now time.Time, width, anchor int, pulse bool) (string, []toolRowRange) {
+	tools := make([]flowTool, 0)
+	var events []TimelineEvent
+	for i := range l.entries {
+		if l.entries[i].anchor != anchor {
+			continue
+		}
+		tools = append(tools, flowTool{entry: l.entries[i], logIdx: i, expanded: l.expandedFor(i, mode, defaultCollapsed)})
+		events = append(events, TimelineEvent{Kind: EventToolStart})
+	}
+	return RenderFlow(flowInput{Events: events, Theme: defaultTheme, Width: width, Pulse: pulse, Now: now, Tools: tools})
+}
+
 func TestToolLog_ApplyPairsStartWithResult(t *testing.T) {
 	t.Parallel()
 	var l toolLog
@@ -137,24 +155,6 @@ func TestToolLog_ReviewProjectsChangedFiles(t *testing.T) {
 	}
 }
 
-func TestToolLog_RenderWritesEntryWithRowRanges(t *testing.T) {
-	t.Parallel()
-	var l toolLog
-	l.SetAnchor(0)
-	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
-
-	got, rows := l.Render(defaultTheme, viewDefault, true, time.Time{}, 80, 0, false, -1)
-	if !strings.Contains(got, "🔧 bash") {
-		t.Errorf("Render must emit the tool head, got %q", got)
-	}
-	if len(rows) != 1 {
-		t.Fatalf("expected one row range, got %d", len(rows))
-	}
-	if rows[0].idx != 0 {
-		t.Errorf("row range idx = %d, want 0", rows[0].idx)
-	}
-}
-
 func TestToolLog_PlainTextRendersEntry(t *testing.T) {
 	t.Parallel()
 	var l toolLog
@@ -257,7 +257,7 @@ func TestToolLog_RenderRowAccountCollapsed(t *testing.T) {
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"go test"}`}})
 	l.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "ok\n", Lines: 5}})
 
-	_, rows := l.Render(defaultTheme, viewDefault, true, time.Time{}, 80, 0, false, -1)
+	_, rows := renderViaFlow(l, viewDefault, true, time.Time{}, 80, 0, false)
 	if len(rows) != 1 {
 		t.Fatalf("expected one row range, got %d", len(rows))
 	}
@@ -280,7 +280,7 @@ func TestToolLog_RenderRowAccountExpanded(t *testing.T) {
 	l.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "ok\n", Lines: 1}})
 	l.Expand(0) // flip the entry open
 
-	_, rows := l.Render(defaultTheme, viewExpandAll, true, time.Time{}, 80, 0, false, -1)
+	_, rows := renderViaFlow(l, viewExpandAll, true, time.Time{}, 80, 0, false)
 	if len(rows) != 1 {
 		t.Fatalf("expected one row range, got %d", len(rows))
 	}
@@ -297,7 +297,7 @@ func TestToolLog_RenderRowAccountSkipsOtherAnchors(t *testing.T) {
 	l.SetAnchor(7)
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "read", Args: ""}})
 
-	_, rows := l.Render(defaultTheme, viewDefault, true, time.Time{}, 80, 2, false, -1)
+	_, rows := renderViaFlow(l, viewDefault, true, time.Time{}, 80, 2, false)
 	if len(rows) != 1 {
 		t.Fatalf("expected the anchor-2 entry only, got %d ranges", len(rows))
 	}
@@ -315,7 +315,7 @@ func TestToolLog_RenderOutcomeElapsedAndTruncation(t *testing.T) {
 	start := time.Now().Add(-105 * time.Second)
 	l.SetStart(0, start)
 
-	got, _ := l.Render(defaultTheme, viewDefault, true, time.Now(), 80, 0, false, -1)
+	got, _ := renderViaFlow(l, viewDefault, true, time.Now(), 80, 0, false)
 	if !strings.Contains(got, "🔧 bash") {
 		t.Errorf("head missing, got %q", got)
 	}
@@ -326,7 +326,7 @@ func TestToolLog_RenderOutcomeElapsedAndTruncation(t *testing.T) {
 		t.Errorf("outcome marker missing, got %q", got)
 	}
 
-	narrow, _ := l.Render(defaultTheme, viewDefault, true, time.Time{}, 18, 0, false, -1)
+	narrow, _ := renderViaFlow(l, viewDefault, true, time.Time{}, 18, 0, false)
 	if strings.Contains(narrow, "make build") || !strings.Contains(narrow, "…") {
 		t.Errorf("args should truncate with an ellipsis at width 18, got %q", narrow)
 	}
@@ -344,13 +344,13 @@ func TestToolLog_AtLineConsistentWithRender(t *testing.T) {
 
 	// seam constructed/stored in default mode; render + hit-test in collapse-all.
 	cfg := expansionConfig{mode: viewCollapseAll}
-	_, rows := l.Render(defaultTheme, viewCollapseAll, true, time.Time{}, 80, 0, false, -1)
+	_, rows := renderViaFlow(l, viewCollapseAll, true, time.Time{}, 80, 0, false)
 	if idx, collapsed, ok := l.AtLine(1, rows, cfg); !ok || idx != 0 || !collapsed {
 		t.Errorf("AtLine under collapse-all = %d/%v/%v, want entry 0 collapsed", idx, collapsed, ok)
 	}
 
 	// expand-all config: same row now reports expanded.
-	_, rowsAll := l.Render(defaultTheme, viewExpandAll, true, time.Time{}, 80, 0, false, -1)
+	_, rowsAll := renderViaFlow(l, viewExpandAll, true, time.Time{}, 80, 0, false)
 	if idx, collapsed, ok := l.AtLine(1, rowsAll, expansionConfig{mode: viewExpandAll}); !ok || idx != 0 || collapsed {
 		t.Errorf("AtLine under expand-all = %d/%v/%v, want entry 0 expanded", idx, collapsed, ok)
 	}
@@ -365,7 +365,7 @@ func TestToolLog_AtLineMapping(t *testing.T) {
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "read", Args: ""}})
 	l.Apply(ToolUpdate{Result: &ToolResult{Name: "read", Result: "c\n", Lines: 1}}) // rows 2..3
 
-	_, rows := l.Render(defaultTheme, viewDefault, true, time.Time{}, 80, 0, false, -1)
+	_, rows := renderViaFlow(l, viewDefault, true, time.Time{}, 80, 0, false)
 	if len(rows) != 2 {
 		t.Fatalf("expected two row ranges, got %d", len(rows))
 	}
@@ -379,7 +379,7 @@ func TestToolLog_AtLineMapping(t *testing.T) {
 	}
 
 	l.Expand(1)
-	_, rows2 := l.Render(defaultTheme, viewDefault, true, time.Time{}, 80, 0, false, -1)
+	_, rows2 := renderViaFlow(l, viewDefault, true, time.Time{}, 80, 0, false)
 	if idx, collapsed, ok := l.AtLine(2, rows2, cfg); !ok || idx != 1 || collapsed {
 		t.Errorf("AtLine(2) = %d/%v/%v, want entry 1 expanded (collapsed=false)", idx, collapsed, ok)
 	}
@@ -399,7 +399,7 @@ func TestToolLog_RenderFailureOutcome(t *testing.T) {
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: ""}})
 	l.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "error executing tool: boom", Lines: 0}})
 
-	got, _ := l.Render(defaultTheme, viewDefault, true, time.Time{}, 80, 0, false, -1)
+	got, _ := renderViaFlow(l, viewDefault, true, time.Time{}, 80, 0, false)
 	if !strings.Contains(got, "✗") {
 		t.Errorf("failure entry must render ✗, got %q", got)
 	}
@@ -413,7 +413,7 @@ func TestToolLog_RenderBytesTruncatedHint(t *testing.T) {
 	l.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "a\nb\nc\n+3 more\n",
 		Lines: 4, Dropped: 3, Compressed: true, BytesDropped: 2048}})
 
-	got, _ := l.Render(defaultTheme, viewDefault, true, time.Time{}, 80, 0, false, -1)
+	got, _ := renderViaFlow(l, viewDefault, true, time.Time{}, 80, 0, false)
 	if !strings.Contains(got, "4 lines (+3 more, +2048 bytes truncated)") {
 		t.Errorf("collapsed summary missing merged truncated hint, got %q", got)
 	}
@@ -423,7 +423,7 @@ func TestToolLog_RenderBytesTruncatedHint(t *testing.T) {
 	l2.Apply(ToolUpdate{Start: &ToolStart{Name: "read", Args: ""}})
 	l2.Apply(ToolUpdate{Result: &ToolResult{Name: "read", Result: strings.Repeat("x", 70000),
 		Lines: 1, BytesDropped: 4444}})
-	got2, _ := l2.Render(defaultTheme, viewDefault, true, time.Time{}, 80, 0, false, -1)
+	got2, _ := renderViaFlow(l2, viewDefault, true, time.Time{}, 80, 0, false)
 	if !strings.Contains(got2, "1 line (+4444 bytes truncated)") {
 		t.Errorf("collapsed summary missing bytes-only hint, got %q", got2)
 	}
@@ -440,7 +440,7 @@ func TestToolLog_RenderBothHintsWithoutCompressedFlag(t *testing.T) {
 	l.Apply(ToolUpdate{Result: &ToolResult{Name: "read", Result: strings.Repeat("x", 70000),
 		Lines: 4, Dropped: 3, Compressed: false, BytesDropped: 2048}})
 
-	got, _ := l.Render(defaultTheme, viewDefault, true, time.Time{}, 80, 0, false, -1)
+	got, _ := renderViaFlow(l, viewDefault, true, time.Time{}, 80, 0, false)
 	if !strings.Contains(got, "4 lines (+3 more, +2048 bytes truncated)") {
 		t.Errorf("collapsed summary must show both hints regardless of Compressed, got %q", got)
 	}
@@ -455,7 +455,7 @@ func TestToolLog_ExpandedRendersFullRawResult(t *testing.T) {
 		Lines: 1, BytesDropped: 9000}})
 	l.Expand(0)
 
-	got, _ := l.Render(defaultTheme, viewDefault, true, time.Time{}, 80, 0, false, -1)
+	got, _ := renderViaFlow(l, viewDefault, true, time.Time{}, 80, 0, false)
 	if !strings.Contains(got, "RAW FULL RESULT") {
 		t.Errorf("expanded view must render the full raw result, got %q", got)
 	}
