@@ -41,7 +41,7 @@ The per-block open/closed state of chain-of-thought and tool-result entries in a
 _Avoid_: toggle
 
 **Transcript event log**:
-The arrival-ordered record of what an assistant turn emitted: reasoning deltas, tool starts, tool results, and answer deltas, in the exact order produced. `content` and `reasoning` are derived snapshots of this log.
+The arrival-ordered record of what an assistant turn emitted: reasoning deltas, tool starts, tool results, and answer deltas, in the exact order produced. `content` and `reasoning` are derived snapshots of this log. Every assistant transcript entry owns one — entries appended outside a turn (help cards, login messages, error and skill notes) carry a synthesized single-answer-event log so they render through the same flow path as real turns.
 _Avoid_: timeline, history
 
 **Merged transcript flow**:

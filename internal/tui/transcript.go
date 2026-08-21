@@ -276,22 +276,6 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 			// Live turn: walk the in-progress timeline as one continuous flow
 			// through the shared FlowRenderer emitter.
 			emitFlow(t.timeline, anchor, i, msg)
-		} else {
-			// Legacy assistant block: a message that carries no event log
-			// (system notes, help/skill/login cards, error notes). Its reasoning
-			// block renders through the same single emitter the FlowRenderer
-			// uses, so the header/pane rendering stays identical across paths.
-			if msg.thinkingRequested && msg.reasoning != "" {
-				emit(renderReasoningBlock(t.theme, t.configTheme, w, t.reasoningEffort, msg, i, 0, msg.reasoning, t.thinkingExpandedForFragment(msg, 0), t.focusedBlockIs(blockReasoning, i, 0, 0)))
-			}
-			// The legacy answer block renders through the same single emitter the
-			// FlowRenderer uses, so the answer pane/stopped rendering stays
-			// identical across paths.
-			emit(renderAnswerBlock(t.theme, t.configTheme, w, msg, msg.content, true))
-			base := nl
-			toolBlock, blockRows := t.log.Render(t.theme, t.viewMode(), !t.toolResultsExpanded, now, w, i, t.busyPulse > 0, t.focusedToolIdx())
-			emit(toolBlock)
-			recordToolRows(blockRows, base)
 		}
 
 		if msgRows != nil {
@@ -492,7 +476,10 @@ func (t Transcript) expansionConfig() expansionConfig {
 
 // appendMsg appends a finished assistant entry to the transcript and marks the shared message layout dirty in the same step, so the appended block re-wraps at the current transcript width on the next frame instead of rendering at a stale width.
 func (t *Transcript) appendMsg(content string) {
-	t.messages = append(t.messages, message{role: "eitri", content: content})
+	// The note carries its own one-event log so the history renderer routes it
+	// through the FlowRenderer exactly like a real turn's flow.
+	events := []TimelineEvent{{Kind: EventAnswer, Delta: content}}
+	t.messages = append(t.messages, message{role: "eitri", content: content, events: events})
 	t.layout.dirty = true
 }
 

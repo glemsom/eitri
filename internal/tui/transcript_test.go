@@ -86,6 +86,7 @@ func TestTranscript_thinkingGateScopesReasoningBlock(t *testing.T) {
 				reasoning:         "sneaked chain-of-thought",
 				thinkingRequested: thinkingRequested,
 				expansion:         expansionWithReasoningForces(true, false),
+				events:            []TimelineEvent{{Kind: EventAnswer, Delta: "final answer"}},
 			}},
 			histFollow:   true,
 			histViewport: newHistoryViewport(),
@@ -123,6 +124,7 @@ func TestTranscript_expandAllOverridesThinkingExpansion(t *testing.T) {
 				reasoning:         "the reasoning body",
 				thinkingRequested: true,
 				expansion:         expansionWithReasoningForces(forceExpand, forceCollapse),
+				events:            []TimelineEvent{{Kind: EventAnswer, Delta: "final answer"}},
 			}},
 			histFollow:   true,
 			histViewport: newHistoryViewport(),
@@ -488,6 +490,11 @@ func layoutBuildsOf(tx Transcript) int {
 }
 
 func newStreamPaneTestTranscript(th Theme, msgs []message) Transcript {
+	for i, m := range msgs {
+		if m.role == "eitri" && len(m.events) == 0 {
+			msgs[i].events = []TimelineEvent{{Kind: EventAnswer, Delta: m.content}}
+		}
+	}
 	return Transcript{
 		theme:           th,
 		configTheme:     config.DefaultTheme,
