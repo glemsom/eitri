@@ -595,8 +595,10 @@ func TestTranscript_instantErrorTurnRendersFlow(t *testing.T) {
 
 	// The failed turn's prompt renders as a flow via its assistant failure
 	// note's synthesized event log; no legacy direct-render fallback fires.
+	// The turn-flow lookup must resolve the failed prompt to its committed
+	// event log — no fallback for renderable turns.
 	if _, ok := tx.turnFlowEvents(len(tx.messages) - 2); !ok {
-		t.Skip("turn lookup contract checked on the committed assistant message below")
+		t.Fatal("the instant-error prompt's turn-flow lookup must find its committed log")
 	}
 	var hist strings.Builder
 	tx.renderHistory(&hist, nil, nil)
@@ -604,9 +606,7 @@ func TestTranscript_instantErrorTurnRendersFlow(t *testing.T) {
 	if !strings.Contains(plain, "go") || !strings.Contains(plain, "boom") {
 		t.Errorf("instant-error turn must show prompt and failure through the flow:\n%s", plain)
 	}
-	for _, marker := range []string{"boom"} {
-		if n := strings.Count(plain, marker); n != 1 {
-			t.Errorf("marker %q rendered %d times, want once:\n%s", marker, n, plain)
-		}
+	if n := strings.Count(plain, "boom"); n != 1 {
+		t.Errorf("failure text rendered %d times, want once:\n%s", n, plain)
 	}
 }

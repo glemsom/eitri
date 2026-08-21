@@ -180,7 +180,7 @@ func (t Transcript) turnFlowEvents(i int) ([]TimelineEvent, bool) {
 	// after). A turn is flow-worthy the moment it starts: an empty timeline in
 	// the pre-stream gap synthesizes a minimal empty event log so the prompt
 	// renders through the FlowRenderer like every other turn.
-	if t.busy && i == len(t.messages)-1 {
+	if t.isLiveTurnPrompt(i) {
 		return t.timeline, true
 	}
 	// A finished turn's events live on the first assistant message that
@@ -199,6 +199,12 @@ func (t Transcript) turnFlowEvents(i int) ([]TimelineEvent, bool) {
 		return nil, false
 	}
 	return nil, false
+}
+
+// isLiveTurnPrompt reports whether user message i is the prompt of the turn
+// currently running: busy, and the last message in the transcript.
+func (t Transcript) isLiveTurnPrompt(i int) bool {
+	return t.busy && i == len(t.messages)-1
 }
 
 func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, msgRows *[]msgRowRange) {
@@ -254,7 +260,7 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 			md, _ := RenderMarkdown(msg.content, w-4, t.configTheme)
 			bubble := renderUserPromptCard(t.theme, md, w)
 			emit(bubble + "\n")
-			if t.busy && i == len(t.messages)-1 {
+			if t.isLiveTurnPrompt(i) {
 				// The running turn renders as a flat flow from the moment the
 				// prompt lands: its tools appear at their arrival positions once
 				// events arrive; the pre-stream gap renders the synthesized
