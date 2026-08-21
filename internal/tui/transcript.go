@@ -459,7 +459,7 @@ func (t *Transcript) recordLayout() {
 // toolEntryAtLine returns the tool entry whose rendered rows include the given content line, and whether that entry currently renders collapsed (a click on a collapsed head toggles it open; on an open entry it toggles closed).
 func (t *Transcript) toolEntryAtLine(line int) (idx int, collapsed bool, ok bool) {
 	t.ensureLayout()
-	toolIdx, _, ok := t.log.AtLine(line, t.layout.rows)
+	toolIdx, _, ok := t.log.AtLine(line, t.layout.rows, t.expansionConfig())
 	if !ok {
 		return 0, false, false
 	}
@@ -482,6 +482,13 @@ func (t *Transcript) toggleToolEntry(idx int) {
 // current mode and collapsed-by-default flag.
 func (t Transcript) toolExpandedFor(idx int) bool {
 	return t.log.expandedFor(idx, t.viewMode(), !t.toolResultsExpanded)
+}
+
+// expansionConfig builds the transcript-owned config bundle every expansion
+// decision takes: the current global mode plus each kind's collapsed-by-default
+// default. One builder keeps every call site on the same values the renderer used.
+func (t Transcript) expansionConfig() expansionConfig {
+	return expansionConfig{mode: t.viewMode(), cotExpanded: t.cotExpanded, toolExpanded: t.toolResultsExpanded}
 }
 
 // appendMsg appends a finished assistant entry to the transcript and marks the shared message layout dirty in the same step, so the appended block re-wraps at the current transcript width on the next frame instead of rendering at a stale width.
@@ -727,26 +734,24 @@ func (t Transcript) focusedToolIdx() int {
 
 // thinkingExpandedForBlock is the free-function form of the whole-turn
 // reasoning-block expansion decision, shared by the Transcript's legacy render
-// path and the FlowRenderer. It is a thin delegation over the message's
-// ExpansionState seam: it binds the render-time mode and CoT-collapsed-by-default
-// flag to a copy of the seam and asks the seam for the whole-block decision,
+// path and the FlowRenderer. It builds the explicit config bundle from the render-time
+// mode and CoT-collapsed-by-default flag and asks the seam for the whole-block
+// decision without mutating any stored state,
 // folding in the live-stream auto-expand (a streaming reasoning block stays open
 // regardless of mode unless pinned force-collapsed on the seam). A pinned
 // whole-block force (the migrated thinkingCollapsed / thinkingExpanded flags now
 // live on the seam keyed on reasoningWholeID) always wins, then the global modes,
 // then the collapsed-by-default flag.
 func thinkingExpandedForBlock(msg message, mode viewMode, cotExpanded bool) bool {
-	e := msg.expansion
-	e.mode = mode
-	e.cotExpanded = cotExpanded
+	cfg := expansionConfig{mode: mode, cotExpanded: cotExpanded}
 	if msg.streaming && msg.reasoning != "" {
 		// a live streamed block auto-expands unless pinned force-collapsed
-		if f, ok := e.forceFor(blockReasoning, reasoningWholeID); ok && !f {
+		if f, ok := msg.expansion.forceFor(blockReasoning, reasoningWholeID); ok && !f {
 			return false
 		}
 		return true
 	}
-	return e.expanded(blockReasoning, reasoningWholeID)
+	return msg.expansion.expanded(blockReasoning, reasoningWholeID, cfg)
 }
 
 // thinkingExpandedForFrag is the free-function form of the per-fragment

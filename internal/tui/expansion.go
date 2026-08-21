@@ -9,6 +9,17 @@ type expansionKey struct {
 	id   int
 }
 
+// expansionConfig is the explicit config bundle every expansion decision
+// takes: the caller's current global view mode plus each block kind's
+// collapsed-by-default default. The decision reads only this bundle and the
+// per-block force table — no stored mode or defaults — so a hit-test can never
+// disagree with how the block rendered.
+type expansionConfig struct {
+	mode         viewMode
+	cotExpanded  bool // reasoning blocks render expanded by default
+	toolExpanded bool // tool-result entries render expanded by default
+}
+
 // reasoningWholeID is the ExpansionState id a turn's whole-block reasoning
 // force is keyed on (the migrated thinkingExpanded / thinkingCollapsed flags),
 // distinct from the per-fragment reasoning ids (0..n) so a whole-turn toggle
@@ -23,9 +34,9 @@ const reasoningWholeID = -1
 // policy source, so one owner (and one test surface) replaces the scattered
 // leaf flags the callers used before migrating onto the seam.
 type ExpansionState struct {
-	mode         viewMode
-	cotExpanded  bool // reasoning blocks render expanded by default
-	toolExpanded bool // tool-result entries render expanded by default
+	mode         viewMode // dead once every caller passes an explicit config; kept for the migration
+	cotExpanded  bool     // dead once every caller passes an explicit config; kept for the migration
+	toolExpanded bool     // dead once every caller passes an explicit config; kept for the migration
 	forces       map[expansionKey]bool
 }
 
@@ -35,15 +46,16 @@ func NewExpansionState(mode viewMode, cotExpanded, toolExpanded bool) ExpansionS
 	return ExpansionState{mode: mode, cotExpanded: cotExpanded, toolExpanded: toolExpanded}
 }
 
-// expanded reports whether the block identified by kind and id renders open: a
-// per-block force wins over the global mode, the expand-all/collapse-all modes
-// decide for a block with no force, and otherwise the block follows its kind's
-// collapsed-by-default flag.
-func (e ExpansionState) expanded(kind blockKind, id int) bool {
+// expanded reports whether the block identified by kind and id renders open:
+// a per-block force wins over the config's global mode, the expand-all/collapse-all
+// modes decide for a block with no force, and otherwise the block follows its kind's
+// collapsed-by-default flag from cfg. The decision is pure: it reads only cfg
+// and the force table, never any stored mode or defaults.
+func (e ExpansionState) expanded(kind blockKind, id int, cfg expansionConfig) bool {
 	if f, ok := e.forces[expansionKey{kind, id}]; ok {
 		return f
 	}
-	switch e.mode {
+	switch cfg.mode {
 	case viewExpandAll:
 		return true
 	case viewCollapseAll:
@@ -51,18 +63,18 @@ func (e ExpansionState) expanded(kind blockKind, id int) bool {
 	}
 	switch kind {
 	case blockReasoning:
-		return e.cotExpanded
+		return cfg.cotExpanded
 	case blockTool:
-		return e.toolExpanded
+		return cfg.toolExpanded
 	}
 	return false
 }
 
-// toggle forces the block to the opposite of how it currently renders, the
-// Enter-on-focused-block interaction: an open block collapses and a collapsed
-// block expands, without disturbing any other block.
-func (e *ExpansionState) toggle(kind blockKind, id int) {
-	e.set(kind, id, !e.expanded(kind, id))
+// toggle forces the block to the opposite of how it currently renders under
+// cfg, the Enter-on-focused-block interaction: an open block collapses and a
+// collapsed block expands, without disturbing any other block.
+func (e *ExpansionState) toggle(kind blockKind, id int, cfg expansionConfig) {
+	e.set(kind, id, !e.expanded(kind, id, cfg))
 }
 
 // forceFor reports the per-block force pinned on the block, if any: the value
@@ -101,8 +113,10 @@ func (e *ExpansionState) clear(kind blockKind, id int) {
 	delete(e.forces, expansionKey{kind, id})
 }
 
-// setMode changes the global expansion mode, dropping every per-block force
-// when the mode becomes expand-all or collapse-all so the mode rules uniformly.
+// setMode changes the global expansion mode stored on the module. The decision
+// query now takes the mode explicitly via expansionConfig, so this stored copy
+// exists only until every writer of it is migrated; entering a global mode
+// still drops every per-block force so the mode rules uniformly.
 func (e *ExpansionState) setMode(mode viewMode) {
 	e.mode = mode
 	if mode == viewExpandAll || mode == viewCollapseAll {
