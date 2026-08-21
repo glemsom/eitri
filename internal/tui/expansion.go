@@ -79,8 +79,7 @@ func (e ExpansionState) forceFor(kind blockKind, id int) (force, ok bool) {
 
 // clearForcesOf drops every per-block force whose value matches forceValue: the
 // collapse-direction forces (value false) or the expand-direction forces (value
-// true). It is the per-direction half of a global-mode entry's clear-all, used by the
-// transcript's expand-all / collapse-all toggles, which clear only the opposing
+// true). The transcript's expand-all / collapse-all toggles call it per
 // direction so a manually pinned force in the other direction survives the mode
 // round-trip.
 func (e *ExpansionState) clearForcesOf(forceValue bool) {
