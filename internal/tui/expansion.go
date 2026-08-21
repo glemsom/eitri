@@ -27,30 +27,21 @@ type expansionConfig struct {
 // safe because fragment indices are always non-negative.
 const reasoningWholeID = -1
 
-// ExpansionState owns Eitri's block-expansion policy: the global view mode plus
-// a per-block expansion force for both reasoning fragments and tool-result
-// entries. Every block's open/collapsed decision flows through one query,
-// expanded(kind, id); the toggle/set/clear/setMode operations mutate that single
-// policy source, so one owner (and one test surface) replaces the scattered
-// leaf flags the callers used before migrating onto the seam.
+// ExpansionState owns Eitri's block-expansion policy: a per-block expansion
+// force for both reasoning fragments and tool-result entries. Every block's
+// open/collapsed decision flows through one pure query, expanded(kind, id, cfg),
+// which reads the explicit config bundle and this force table — nothing is
+// stored besides the forces, so a hit-test can never disagree with how a block
+// rendered.
 type ExpansionState struct {
-	mode         viewMode // dead once every caller passes an explicit config; kept for the migration
-	cotExpanded  bool     // dead once every caller passes an explicit config; kept for the migration
-	toolExpanded bool     // dead once every caller passes an explicit config; kept for the migration
-	forces       map[expansionKey]bool
-}
-
-// NewExpansionState returns an ExpansionState with the given global mode and
-// per-kind collapsed-by-default flags and no per-block forces.
-func NewExpansionState(mode viewMode, cotExpanded, toolExpanded bool) ExpansionState {
-	return ExpansionState{mode: mode, cotExpanded: cotExpanded, toolExpanded: toolExpanded}
+	forces map[expansionKey]bool
 }
 
 // expanded reports whether the block identified by kind and id renders open:
 // a per-block force wins over the config's global mode, the expand-all/collapse-all
 // modes decide for a block with no force, and otherwise the block follows its kind's
 // collapsed-by-default flag from cfg. The decision is pure: it reads only cfg
-// and the force table, never any stored mode or defaults.
+// and the force table.
 func (e ExpansionState) expanded(kind blockKind, id int, cfg expansionConfig) bool {
 	if f, ok := e.forces[expansionKey{kind, id}]; ok {
 		return f
@@ -88,8 +79,7 @@ func (e ExpansionState) forceFor(kind blockKind, id int) (force, ok bool) {
 
 // clearForcesOf drops every per-block force whose value matches forceValue: the
 // collapse-direction forces (value false) or the expand-direction forces (value
-// true). It is the per-direction half of setMode's clear-all, used by the
-// transcript's expand-all / collapse-all toggles, which clear only the opposing
+// true). The transcript's expand-all / collapse-all toggles call it per
 // direction so a manually pinned force in the other direction survives the mode
 // round-trip.
 func (e *ExpansionState) clearForcesOf(forceValue bool) {
@@ -111,23 +101,6 @@ func (e *ExpansionState) set(kind blockKind, id int, expanded bool) {
 // clear drops one block's force so it returns to the mode/default decision.
 func (e *ExpansionState) clear(kind blockKind, id int) {
 	delete(e.forces, expansionKey{kind, id})
-}
-
-// setMode changes the global expansion mode stored on the module. The decision
-// query now takes the mode explicitly via expansionConfig, so this stored copy
-// exists only until every writer of it is migrated; entering a global mode
-// still drops every per-block force so the mode rules uniformly.
-func (e *ExpansionState) setMode(mode viewMode) {
-	e.mode = mode
-	if mode == viewExpandAll || mode == viewCollapseAll {
-		e.clearForces()
-	}
-}
-
-// clearForces drops every per-block force, returning all blocks to the mode and
-// collapsed-by-default decision.
-func (e *ExpansionState) clearForces() {
-	e.forces = nil
 }
 
 // clearReasoningFragments drops every per-fragment reasoning force (ids >= 0),

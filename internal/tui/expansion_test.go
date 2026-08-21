@@ -10,10 +10,10 @@ type expansionForce struct {
 	value bool
 }
 
-// stateFrom builds an ExpansionState from compact table inputs, applying any
-// per-block forces on top of the mode and collapsed-by-default flags.
-func stateFrom(mode viewMode, cotExpanded, toolExpanded bool, forces ...expansionForce) ExpansionState {
-	s := NewExpansionState(mode, cotExpanded, toolExpanded)
+// stateFrom builds an ExpansionState from compact table inputs: just the
+// per-block forces, since the module stores nothing else.
+func stateFrom(forces ...expansionForce) ExpansionState {
+	var s ExpansionState
 	for _, f := range forces {
 		s.set(f.kind, f.id, f.value)
 	}
@@ -21,8 +21,8 @@ func stateFrom(mode viewMode, cotExpanded, toolExpanded bool, forces ...expansio
 }
 
 // TestExpansionState_expandedDecisions locks the module's state machine with a
-// table of (mode × defaults × per-block forces) → open/collapsed, the single
-// test surface issue #468 establishes before any caller migrates onto the seam.
+// table of (mode × defaults × per-block forces) → open/collapsed, driven
+// entirely through the explicit config bundle.
 func TestExpansionState_expandedDecisions(t *testing.T) {
 	const reasoningID = 1
 	const toolID = 2
@@ -55,7 +55,7 @@ func TestExpansionState_expandedDecisions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := stateFrom(tt.mode, tt.cotExpanded, tt.toolExpanded, tt.forces...)
+			s := stateFrom(tt.forces...)
 			cfg := expansionConfig{mode: tt.mode, cotExpanded: tt.cotExpanded, toolExpanded: tt.toolExpanded}
 			if got := s.expanded(blockReasoning, reasoningID, cfg); got != tt.wantReasoning {
 				t.Errorf("expanded(reasoning, %d) = %v, want %v", reasoningID, got, tt.wantReasoning)
@@ -67,32 +67,25 @@ func TestExpansionState_expandedDecisions(t *testing.T) {
 	}
 }
 
-// TestExpansionState_expandedUsesExplicitConfig locks the seam's pure-function
-// contract: the open/collapsed decision comes from the config bundle passed to
-// expanded, not from any mode or defaults stored on the module — a caller can
-// never disagree with itself by mutating a copy.
-func TestExpansionState_expandedUsesExplicitConfig(t *testing.T) {
-	// stored expand-all + expanded defaults; the config says collapse everything.
-	s := NewExpansionState(viewExpandAll, true, true)
-	cfg := expansionConfig{mode: viewCollapseAll, cotExpanded: false, toolExpanded: false}
+// TestExpansionState_forceBeatsConfig locks the precedence rule of the pure
+// decision query: a per-block force wins over whatever config bundle is passed,
+// while unforced blocks follow the bundle alone.
+func TestExpansionState_forceBeatsConfig(t *testing.T) {
+	s := stateFrom(expansionForce{blockReasoning, 1, true})
+	collapseCfg := expansionConfig{mode: viewCollapseAll}
+	if !s.expanded(blockReasoning, 1, collapseCfg) {
+		t.Errorf("a pinned force must beat collapse-all, got collapsed")
+	}
+
+	cfg := expansionConfig{mode: viewExpandAll}
+	s.toggle(blockReasoning, 1, cfg)
 	if s.expanded(blockReasoning, 1, cfg) {
-		t.Errorf("expanded must follow the explicit config (collapse-all), got expanded")
-	}
-	if s.expanded(blockTool, 1, cfg) {
-		t.Errorf("expanded must follow the explicit config default, got expanded")
+		t.Errorf("toggle against expand-all config must flip the force to collapsed")
 	}
 
-	// the reverse: stored collapsed-by-default, config expands everything.
-	s2 := NewExpansionState(viewDefault, false, false)
-	cfg2 := expansionConfig{mode: viewExpandAll}
-	if !s2.expanded(blockReasoning, 1, cfg2) || !s2.expanded(blockTool, 1, cfg2) {
-		t.Errorf("expanded must follow the explicit config (expand-all), got collapsed")
-	}
-
-	// toggle flips against the explicit config's rendering, not stored state.
-	s2.toggle(blockTool, 1, cfg2)
-	if s2.expanded(blockTool, 1, cfg2) {
-		t.Errorf("toggle against expand-all config must force-collapse, got expanded")
+	// an unforced block under the same expand-all bundle expands.
+	if !s.expanded(blockTool, 1, cfg) {
+		t.Errorf("unforced blocks must follow the config bundle (expand-all), got collapsed")
 	}
 }
 
@@ -100,7 +93,7 @@ func TestExpansionState_expandedUsesExplicitConfig(t *testing.T) {
 // Enter on a focused block forces it to the opposite of how it currently
 // renders, and never touches a sibling block's decision.
 func TestExpansionState_toggleFlipsOneBlock(t *testing.T) {
-	s := NewExpansionState(viewDefault, false, false) // both collapsed by default
+	var s ExpansionState
 
 	cfg := expansionConfig{mode: viewDefault}
 	s.toggle(blockTool, 2, cfg) // collapsed → force-expand entry 2
@@ -120,7 +113,7 @@ func TestExpansionState_toggleFlipsOneBlock(t *testing.T) {
 // TestExpansionState_setAndClear pins the explicit-force operations: set pins a
 // block's decision and clear returns it to the module-level default.
 func TestExpansionState_setAndClear(t *testing.T) {
-	s := NewExpansionState(viewDefault, false, false)
+	var s ExpansionState
 
 	s.set(blockReasoning, 1, true)
 	cfg := expansionConfig{mode: viewDefault}
@@ -131,22 +124,5 @@ func TestExpansionState_setAndClear(t *testing.T) {
 	s.clear(blockReasoning, 1)
 	if s.expanded(blockReasoning, 1, cfg) {
 		t.Errorf("clear must drop the force and return to the collapsed default")
-	}
-}
-
-// TestExpansionState_globalModeEntryClearsForces locks that entering a global
-// mode drops every per-block force so the mode rules uniformly, then a fresh
-// toggle can re-pin a single block again.
-func TestExpansionState_globalModeEntryClearsForces(t *testing.T) {
-	s := NewExpansionState(viewExpandAll, false, false)
-	s.set(blockReasoning, 1, false) // a stray force-collapse while in expand-all
-	cfg := expansionConfig{mode: viewExpandAll}
-	if s.expanded(blockReasoning, 1, cfg) {
-		t.Fatalf("force-collapse must beat expand-all before the re-entry, got expanded")
-	}
-
-	s.setMode(viewExpandAll) // re-entering the global mode clears the force
-	if !s.expanded(blockReasoning, 1, cfg) {
-		t.Errorf("re-entering expand-all must drop the force so the block expands, got collapsed")
 	}
 }

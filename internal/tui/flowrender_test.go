@@ -13,7 +13,7 @@ import (
 // equivalent of the old thinkingExpanded / thinkingCollapsed pair used to seed
 // fixtures. With both false no force is pinned, so the mode/default decide.
 func expansionWithReasoningForces(forceExpand, forceCollapse bool) ExpansionState {
-	e := NewExpansionState(viewDefault, false, false)
+	e := ExpansionState{}
 	switch {
 	case forceExpand:
 		e.set(blockReasoning, reasoningWholeID, true)
