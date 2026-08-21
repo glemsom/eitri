@@ -37,9 +37,9 @@ func TestSystemPromptNamesAgent(t *testing.T) {
 func TestSystemPromptPrefersRipgrep(t *testing.T) {
 	t.Parallel()
 	p := SystemPromptContent()
-	for _, want := range []string{"ripgrep", "rg", "grep", "over grep"} {
+	for _, want := range []string{"ripgrep", "rg", "grep", "over grep", "--heading", "--color=never"} {
 		if !strings.Contains(p, want) {
-			t.Fatalf("system prompt must instruct preferring ripgrep over grep; missing %q:\n%s", want, p)
+			t.Fatalf("system prompt must instruct preferred ripgrep usage; missing %q:\n%s", want, p)
 		}
 	}
 }
