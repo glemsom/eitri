@@ -734,18 +734,7 @@ func (t Transcript) focusedToolIdx() int {
 
 // thinkingExpandedForBlock is the free-function form of the whole-turn
 // reasoning-block expansion decision, shared by the Transcript's legacy render
-// path and the FlowRenderer. It is a thin delegation over the message's
-// ExpansionState seam: it binds the render-time mode and CoT-collapsed-by-default
-// flag to a copy of the seam and asks the seam for the whole-block decision,
-// folding in the live-stream auto-expand (a streaming reasoning block stays open
-// regardless of mode unless pinned force-collapsed on the seam). A pinned
-// whole-block force (the migrated thinkingCollapsed / thinkingExpanded flags now
-// live on the seam keyed on reasoningWholeID) always wins, then the global modes,
-// then the collapsed-by-default flag.
-// thinkingExpandedForBlock is the free-function form of the whole-turn
-// reasoning-block expansion decision, shared by the Transcript's legacy render
-// path and the FlowRenderer. It is a thin delegation over the message's
-// ExpansionState seam: it builds the explicit config bundle from the render-time
+// path and the FlowRenderer. It builds the explicit config bundle from the render-time
 // mode and CoT-collapsed-by-default flag and asks the seam for the whole-block
 // decision without mutating any stored state,
 // folding in the live-stream auto-expand (a streaming reasoning block stays open
