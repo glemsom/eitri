@@ -305,7 +305,7 @@ func (t Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg mess
 		tools = append(tools, flowTool{
 			entry:    t.log.entries[idx],
 			logIdx:   idx,
-			expanded: t.log.expandedFor(idx, t.viewMode(), !t.toolResultsExpanded),
+			expanded: t.log.expandedFor(idx, t.expansionConfig()),
 		})
 	}
 	return RenderFlow(flowInput{
@@ -464,7 +464,7 @@ func (t *Transcript) toggleToolEntry(idx int) {
 // toolExpandedFor reports whether tool entry idx renders expanded under the
 // current mode and collapsed-by-default flag.
 func (t Transcript) toolExpandedFor(idx int) bool {
-	return t.log.expandedFor(idx, t.viewMode(), !t.toolResultsExpanded)
+	return t.log.expandedFor(idx, t.expansionConfig())
 }
 
 // expansionConfig builds the transcript-owned config bundle every expansion
