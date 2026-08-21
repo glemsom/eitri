@@ -22,7 +22,7 @@ func renderFlowInput(events []TimelineEvent, msg message, tools []flowTool) flow
 		ConfigTheme: config.DefaultTheme,
 		Width:       100,
 		Cfg:         expansionConfig{mode: viewDefault, cotExpanded: true},
-		Tools:       tools,
+		Tools: tools,
 	}
 }
 

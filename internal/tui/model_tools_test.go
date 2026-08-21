@@ -10,26 +10,20 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-func feedToolUpdate(t *testing.T, m *Model, f *ToolFeed, u ToolUpdate) Model {
+func feedToolUpdate(t *testing.T, m *Model, _ *EventFeed, u ToolUpdate) Model {
 	t.Helper()
-	f.updates <- u
-	cmd := toolWait(f)
-	if cmd == nil {
-		t.Fatal("expected a tool waiter command")
-	}
-	msg := cmd()
-	nm, _ := m.Update(msg)
+	nm, _ := m.Update(eventMsg{update: Event{Tool: &u}})
 	return asModel(t, nm)
 }
 
 func TestModel_toolEditEntryRenders(t *testing.T) {
 	t.Parallel()
-	feed := NewToolFeed()
+	feed := NewEventFeed()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
-		Tools: feed,
+		Events: feed,
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "edit it")
@@ -54,12 +48,12 @@ func TestModel_toolEditEntryRenders(t *testing.T) {
 
 func TestModel_toolEntryCollapsedThenExpandable(t *testing.T) {
 	t.Parallel()
-	feed := NewToolFeed()
+	feed := NewEventFeed()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
-		Tools: feed,
+		Events: feed,
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "run it")
@@ -91,12 +85,12 @@ func TestModel_toolEntryCollapsedThenExpandable(t *testing.T) {
 
 func TestModel_toolFeedDrainsLiveUpdates(t *testing.T) {
 	t.Parallel()
-	feed := NewToolFeed()
+	feed := NewEventFeed()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
-		Tools: feed,
+		Events: feed,
 	})
 	m = resize(t, m)
 
@@ -120,7 +114,7 @@ func TestModel_stylingToolHeadSplitsLabelAndArgs(t *testing.T) {
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
-		Tools: NewToolFeed(),
+		Events: NewEventFeed(),
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "run it")
@@ -143,7 +137,7 @@ func TestModel_stylingExpandedResultFramed(t *testing.T) {
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
-		Tools: NewToolFeed(),
+		Events: NewEventFeed(),
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "run it")
@@ -167,7 +161,7 @@ func TestModel_toolArgsTruncateToWidth(t *testing.T) {
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
-		Tools: NewToolFeed(),
+		Events: NewEventFeed(),
 	})
 	m = resizeTo(t, m, 80, 24)
 	m = typeText(t, m, "run it")
@@ -192,12 +186,12 @@ func TestModel_toolArgsTruncateToWidth(t *testing.T) {
 
 func TestModel_ctrlETogglesExpandedViewMode(t *testing.T) {
 	t.Parallel()
-	feed := NewToolFeed()
+	feed := NewEventFeed()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
-		Tools: feed,
+		Events: feed,
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "run it")
@@ -224,12 +218,12 @@ func TestModel_ctrlETogglesExpandedViewMode(t *testing.T) {
 
 func TestModel_expandedViewModeAppliesToNewlyDeliveredEntries(t *testing.T) {
 	t.Parallel()
-	feed := NewToolFeed()
+	feed := NewEventFeed()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
-		Tools: feed,
+		Events: feed,
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "run it")

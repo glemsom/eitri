@@ -95,12 +95,12 @@ func TestModel_stylingAgentPaneBordered(t *testing.T) {
 
 func TestModel_stylingToolOutcomeMarkers(t *testing.T) {
 	t.Parallel()
-	feed := NewToolFeed()
+	feed := NewEventFeed()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
-		Tools: feed,
+		Events: feed,
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "go")
@@ -152,12 +152,12 @@ func TestModel_stylingErrorMarker(t *testing.T) {
 
 func TestModel_stylingToolCategoryColors(t *testing.T) {
 	t.Parallel()
-	feed := NewToolFeed()
+	feed := NewEventFeed()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
-		Tools: feed,
+		Events: feed,
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "go")

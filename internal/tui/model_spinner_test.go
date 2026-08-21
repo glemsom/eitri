@@ -86,7 +86,7 @@ func TestToolElapsed_timerRenders(t *testing.T) {
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
-		Tools: NewToolFeed(),
+		Events: NewEventFeed(),
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "run it")
@@ -103,7 +103,7 @@ func TestToolElapsed_timerRenders(t *testing.T) {
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
-		Tools: NewToolFeed(),
+		Events: NewEventFeed(),
 	})
 	m2 = resize(t, m2)
 	m2 = typeText(t, m2, "fast")
@@ -119,7 +119,7 @@ func TestToolElapsed_timerRenders(t *testing.T) {
 func thinkingOffToolModel() Model {
 	return NewModelCfg(Dependencies{
 		Turn:   streamingTurn,
-		Tools:  NewToolFeed(),
+		Events: NewEventFeed(),
 		Config: config.Config{ThinkingEnabled: false},
 	})
 }
@@ -142,7 +142,7 @@ func TestToolPulse_setOnStartThinkingOff(t *testing.T) {
 func TestToolPulse_notSetWhenThinkingOn(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn:   streamingTurn,
-		Tools:  NewToolFeed(),
+		Events: NewEventFeed(),
 		Config: config.Config{ThinkingEnabled: true},
 	})
 	m = resize(t, m)
@@ -301,7 +301,7 @@ func TestComposerRail_modeColor(t *testing.T) {
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "done"}, nil
 		},
-		Tools: NewToolFeed(),
+		Events: NewEventFeed(),
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
