@@ -1,13 +1,13 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
 	"charm.land/lipgloss/v2"
-	"encoding/json"
-	"math"
 
 	"github.com/glemsom/eitri/internal/diff"
 )
@@ -478,7 +478,7 @@ func renderToolCardDiff(f reviewEntry, th Theme) string {
 	return renderCountSummary(f, th)
 }
 
-// deltaTag renders the conventional [+N, −M] add/delete vocabulary shared by the card diff body, the no-diff fallback, and the transcript's file-edit head, so the count formatting lives beside the log it renders for.
+// deltaTag renders the conventional [+N, −M] add/delete vocabulary shared by the card diff body, the no-diff fallback, and the transcript's file-edit head.
 func deltaTag(added, removed int) string {
 	return fmt.Sprintf("[+%d, "+g("−", "-")+"%d]", added, removed)
 }

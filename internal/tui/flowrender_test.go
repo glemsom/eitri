@@ -264,3 +264,39 @@ func TestRenderFlow_thinkingGateHidesReasoningBody(t *testing.T) {
 		t.Errorf("thinking-off turn must still render tool and answer, got:\n%s", plain)
 	}
 }
+
+// TestRenderFlow_toolEntryExpansionDrivesBodyAndRows locks the FlowRenderer's
+// tool-entry contract end to end: the caller's expansion decision (computed
+// through the ExpansionState seam) selects summary vs full result body, and
+// the reported row range covers every rendered row of the expanded card so the
+// hit-test cannot drift from what rendered.
+func TestRenderFlow_toolEntryExpansionDrivesBodyAndRows(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	events := []TimelineEvent{
+		{Kind: EventToolStart, Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}},
+		{Kind: EventToolResult, Result: &ToolResult{Name: "bash", Result: "a.go\nb.go", Lines: 2}},
+	}
+
+	collapsed, rows := RenderFlow(renderFlowInput(events, message{}, []flowTool{bashTool()}))
+	p := ansiStrip(collapsed)
+	if !strings.Contains(p, "2 lines") {
+		t.Errorf("collapsed tool entry must render the line-count summary, got:\n%s", p)
+	}
+	if strings.Contains(p, "b.go") {
+		t.Errorf("collapsed tool entry must not leak the result body, got:\n%s", p)
+	}
+	if len(rows) != 1 || rows[0].end != rows[0].start+1 || rows[0].idx != 0 {
+		t.Errorf("collapsed tool entry must account exactly two rows (head + summary) for idx 0, got %+v", rows)
+	}
+
+	exp := bashTool()
+	exp.expanded = true
+	expanded, rows := RenderFlow(renderFlowInput(events, message{}, []flowTool{exp}))
+	p = ansiStrip(expanded)
+	if !strings.Contains(p, "a.go") || !strings.Contains(p, "b.go") {
+		t.Errorf("expanded tool entry must render the full result body, got:\n%s", p)
+	}
+	if len(rows) != 1 || rows[0].end <= rows[0].start || rows[0].idx != 0 {
+		t.Errorf("expanded tool entry row range must span multiple rows for idx 0, got %+v", rows)
+	}
+}

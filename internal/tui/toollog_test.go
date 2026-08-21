@@ -22,7 +22,7 @@ func renderViaFlow(l toolLog, mode viewMode, defaultCollapsed bool, now time.Tim
 		if l.entries[i].anchor != anchor {
 			continue
 		}
-		tools = append(tools, flowTool{entry: l.entries[i], logIdx: i, expanded: l.expandedFor(i, mode, defaultCollapsed)})
+		tools = append(tools, flowTool{entry: l.entries[i], logIdx: i, expanded: l.expandedFor(i, expansionConfig{mode: mode, toolExpanded: !defaultCollapsed})})
 		events = append(events, TimelineEvent{Kind: EventToolStart})
 	}
 	return RenderFlow(flowInput{Events: events, Theme: defaultTheme, Width: width, Pulse: pulse, Now: now, Tools: tools})
@@ -78,11 +78,11 @@ func TestToolLog_ExpandForceCollapseBoundsChecks(t *testing.T) {
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: ""}})
 
 	l.Expand(0)
-	if !l.expandedFor(0, viewDefault, true) {
+	if !l.expandedFor(0, expansionConfig{mode: viewDefault, toolExpanded: !true}) {
 		t.Errorf("entry should be expanded after Expand(0)")
 	}
 	l.ForceCollapse(0)
-	if l.expandedFor(0, viewExpandAll, true) {
+	if l.expandedFor(0, expansionConfig{mode: viewExpandAll, toolExpanded: !true}) {
 		t.Errorf("entry should be collapsed after ForceCollapse(0)")
 	}
 
@@ -90,7 +90,7 @@ func TestToolLog_ExpandForceCollapseBoundsChecks(t *testing.T) {
 	l.Expand(5)
 	l.ForceCollapse(-1)
 	l.ForceCollapse(5)
-	if l.expandedFor(0, viewExpandAll, true) {
+	if l.expandedFor(0, expansionConfig{mode: viewExpandAll, toolExpanded: !true}) {
 		t.Errorf("out-of-range operations must not disturb the in-range force-collapse")
 	}
 }
@@ -106,7 +106,7 @@ func TestToolLog_ExpansionSeamOwnsForces(t *testing.T) {
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: ""}})
 
 	// No force yet: the default (collapsed) decision and no pinned force on the seam.
-	if l.expandedFor(0, viewDefault, true) {
+	if l.expandedFor(0, expansionConfig{mode: viewDefault, toolExpanded: !true}) {
 		t.Errorf("fresh entry must follow the collapsed default, got expanded")
 	}
 	if _, ok := l.expansion.forceFor(blockTool, 0); ok {
@@ -115,7 +115,7 @@ func TestToolLog_ExpansionSeamOwnsForces(t *testing.T) {
 
 	// Expand pins a force-expand on the seam that beats the collapsed default.
 	l.Expand(0)
-	if !l.expandedFor(0, viewDefault, true) {
+	if !l.expandedFor(0, expansionConfig{mode: viewDefault, toolExpanded: !true}) {
 		t.Errorf("Expand must leave the entry expanded under the collapsed default")
 	}
 	if f, ok := l.expansion.forceFor(blockTool, 0); !ok || !f {
@@ -124,7 +124,7 @@ func TestToolLog_ExpansionSeamOwnsForces(t *testing.T) {
 
 	// ForceCollapse pins the opposite force, beating even the expand-all mode.
 	l.ForceCollapse(0)
-	if l.expandedFor(0, viewExpandAll, true) {
+	if l.expandedFor(0, expansionConfig{mode: viewExpandAll, toolExpanded: !true}) {
 		t.Errorf("ForceCollapse must win over expand-all mode, got expanded")
 	}
 	if f, ok := l.expansion.forceFor(blockTool, 0); !ok || f {

@@ -114,18 +114,17 @@ func (l *toolLog) ForceCollapse(i int) {
 	l.expansion.set(blockTool, i, false)
 }
 
-// expandedFor returns whether entry i renders expanded, read through the
-// ExpansionState seam: a per-block force always wins, the expand-all mode
-// expands everything else, the collapse-all mode collapses everything else, and
-// otherwise the entry follows its collapsed-by-default flag (issue #432). The
-// decision is pure: the config bundle is built from the render call's params,
-// so the hit-test can pass the same bundle and never disagree with what was
-// rendered.
-func (l toolLog) expandedFor(i int, mode viewMode, defaultCollapsed bool) bool {
+// expandedFor returns whether entry i renders expanded, read solely through
+// the ExpansionState seam with the transcript's shared config bundle: a
+// per-block force always wins, the expand-all mode expands everything else,
+// the collapse-all mode collapses everything else, and otherwise the entry
+// follows its collapsed-by-default flag. One config builder (the Transcript's
+// expansionConfig) keeps every caller on the same values the renderer used.
+func (l toolLog) expandedFor(i int, cfg expansionConfig) bool {
 	if i < 0 || i >= len(l.entries) {
 		return false
 	}
-	return l.expansion.expanded(blockTool, i, expansionConfig{mode: mode, toolExpanded: !defaultCollapsed})
+	return l.expansion.expanded(blockTool, i, cfg)
 }
 
 // Review projects the changed-file review from the log's file-mutating (edit/write) entries: it consolidates by path, keeping the most recent state per path.
