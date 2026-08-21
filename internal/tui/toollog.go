@@ -128,17 +128,14 @@ func (l *toolLog) ForceCollapse(i int) {
 // ExpansionState seam: a per-block force always wins, the expand-all mode
 // expands everything else, the collapse-all mode collapses everything else, and
 // otherwise the entry follows its collapsed-by-default flag (issue #432). The
-// seam's own mode and toolExpanded default are bound from the render call's
-// params, mirroring how the transcript passes them today, so the decision lives
-// in one place while the per-entry forces persist on l.expansion.
+// decision is pure: the config bundle is built from the render call's params,
+// so the hit-test can pass the same bundle and never disagree with what was
+// rendered.
 func (l toolLog) expandedFor(i int, mode viewMode, defaultCollapsed bool) bool {
 	if i < 0 || i >= len(l.entries) {
 		return false
 	}
-	e := l.expansion
-	e.mode = mode
-	e.toolExpanded = !defaultCollapsed
-	return e.expanded(blockTool, i)
+	return l.expansion.expanded(blockTool, i, expansionConfig{mode: mode, toolExpanded: !defaultCollapsed})
 }
 
 // Render renders every entry anchored to the given message into the shared head/text surface and records each rendered entry's content-row range. focusedIdx is the log index of the entry under the block focus, or -1 when none.
@@ -208,14 +205,13 @@ func (l toolLog) Review() []reviewEntry {
 }
 
 // AtLine maps a content-line coordinate to the tool entry that owns it via the shared layout pass. rows is the row-account already produced by Render (the log never re-derives layout separately), so the hit-test cannot drift from what the transcript renders.
-func (l toolLog) AtLine(line int, rows []toolRowRange) (idx int, collapsed bool, ok bool) {
+func (l toolLog) AtLine(line int, rows []toolRowRange, cfg expansionConfig) (idx int, collapsed bool, ok bool) {
 	for _, r := range rows {
 		if line >= r.start && line <= r.end {
 			if r.idx < len(l.entries) {
-				// collapsed mirrors the seam's open/collapsed decision in the
-				// default (collapsed-by-default) mode, matching the historical
-				// read of the per-entry expanded flag the seam now owns.
-				return r.idx, !l.expansion.expanded(blockTool, r.idx), true
+				// collapsed mirrors the exact open/collapsed decision the render
+				// made, via the same config bundle the caller rendered with.
+				return r.idx, !l.expansion.expanded(blockTool, r.idx, cfg), true
 			}
 			return 0, false, false
 		}

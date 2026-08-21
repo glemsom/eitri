@@ -264,10 +264,10 @@ func TestToolLog_RenderRowAccountCollapsed(t *testing.T) {
 	if rows[0].start != 0 || rows[0].end != 1 {
 		t.Errorf("collapsed row range = %d..%d, want 0..1", rows[0].start, rows[0].end)
 	}
-	if idx, _, ok := l.AtLine(0, rows); !ok || idx != 0 {
+	if idx, _, ok := l.AtLine(0, rows, expansionConfig{mode: viewDefault, toolExpanded: false}); !ok || idx != 0 {
 		t.Errorf("AtLine(0) = %d/%v, want entry 0", idx, ok)
 	}
-	if idx, _, ok := l.AtLine(1, rows); !ok || idx != 0 {
+	if idx, _, ok := l.AtLine(1, rows, expansionConfig{mode: viewDefault, toolExpanded: false}); !ok || idx != 0 {
 		t.Errorf("AtLine(1) = %d/%v, want entry 0 (summary row)", idx, ok)
 	}
 }
@@ -332,6 +332,30 @@ func TestToolLog_RenderOutcomeElapsedAndTruncation(t *testing.T) {
 	}
 }
 
+// TestToolLog_AtLineConsistentWithRender locks the hit-test fix: AtLine's
+// collapsed answer must come from the same config the render used, even when
+// the seam's stored mode is stale (constructed in default mode, rendered under
+// collapse-all).
+func TestToolLog_AtLineConsistentWithRender(t *testing.T) {
+	var l toolLog
+	l.SetAnchor(0)
+	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: ""}})
+	l.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "a\nb\n", Lines: 2}})
+
+	// seam constructed/stored in default mode; render + hit-test in collapse-all.
+	cfg := expansionConfig{mode: viewCollapseAll}
+	_, rows := l.Render(defaultTheme, viewCollapseAll, true, time.Time{}, 80, 0, false, -1)
+	if idx, collapsed, ok := l.AtLine(1, rows, cfg); !ok || idx != 0 || !collapsed {
+		t.Errorf("AtLine under collapse-all = %d/%v/%v, want entry 0 collapsed", idx, collapsed, ok)
+	}
+
+	// expand-all config: same row now reports expanded.
+	_, rowsAll := l.Render(defaultTheme, viewExpandAll, true, time.Time{}, 80, 0, false, -1)
+	if idx, collapsed, ok := l.AtLine(1, rowsAll, expansionConfig{mode: viewExpandAll}); !ok || idx != 0 || collapsed {
+		t.Errorf("AtLine under expand-all = %d/%v/%v, want entry 0 expanded", idx, collapsed, ok)
+	}
+}
+
 func TestToolLog_AtLineMapping(t *testing.T) {
 	t.Parallel()
 	var l toolLog
@@ -346,23 +370,24 @@ func TestToolLog_AtLineMapping(t *testing.T) {
 		t.Fatalf("expected two row ranges, got %d", len(rows))
 	}
 
-	if idx, collapsed, ok := l.AtLine(1, rows); !ok || idx != 0 || !collapsed {
+	cfg := expansionConfig{mode: viewDefault, toolExpanded: false}
+	if idx, collapsed, ok := l.AtLine(1, rows, cfg); !ok || idx != 0 || !collapsed {
 		t.Errorf("AtLine(1) = %d/%v/%v, want entry 0 collapsed=ok", idx, collapsed, ok)
 	}
-	if idx, collapsed, ok := l.AtLine(2, rows); !ok || idx != 1 || !collapsed {
+	if idx, collapsed, ok := l.AtLine(2, rows, cfg); !ok || idx != 1 || !collapsed {
 		t.Errorf("AtLine(2) = %d/%v/%v, want entry 1 collapsed=ok", idx, collapsed, ok)
 	}
 
 	l.Expand(1)
 	_, rows2 := l.Render(defaultTheme, viewDefault, true, time.Time{}, 80, 0, false, -1)
-	if idx, collapsed, ok := l.AtLine(2, rows2); !ok || idx != 1 || collapsed {
+	if idx, collapsed, ok := l.AtLine(2, rows2, cfg); !ok || idx != 1 || collapsed {
 		t.Errorf("AtLine(2) = %d/%v/%v, want entry 1 expanded (collapsed=false)", idx, collapsed, ok)
 	}
 
-	if _, _, ok := l.AtLine(99, rows); ok {
+	if _, _, ok := l.AtLine(99, rows, cfg); ok {
 		t.Errorf("AtLine(99) should be out of range")
 	}
-	if _, _, ok := l.AtLine(0, nil); ok {
+	if _, _, ok := l.AtLine(0, nil, cfg); ok {
 		t.Errorf("AtLine over nil rows should be out of range")
 	}
 }
