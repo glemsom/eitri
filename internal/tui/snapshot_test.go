@@ -19,9 +19,8 @@ func newSnapshotRail() *Rail {
 	return r
 }
 
-func snapshotDeps(cfg config.Config) (Dependencies, *Telemetry, *Streamer, *ToolFeed) {
+func snapshotDeps(cfg config.Config) (Dependencies, *Telemetry, *ToolFeed) {
 	te := NewTelemetry("deepseek-v4-flash", "high", true, 10)
-	stream := NewStreamer()
 	tools := NewToolFeed()
 	return Dependencies{
 		Turn:          streamingTurn,
@@ -29,11 +28,11 @@ func snapshotDeps(cfg config.Config) (Dependencies, *Telemetry, *Streamer, *Tool
 		Config:        cfg,
 		Models:        []string{"deepseek-v4-flash", "deepseek-v3", "deepseek-v3-0324"},
 		Telemetry:     te,
-		Stream:        stream,
+		Events:        NewEventFeed(),
 		Tools:         tools,
 		Rail:          newSnapshotRail(),
 		Skills:        &SkillsSurface{Items: []SkillItem{{Name: "rust-review"}, {Name: "refactor"}}},
-	}, te, stream, tools
+	}, te, tools
 }
 
 func upd(t *testing.T, m Model, msg tea.Msg) Model {
@@ -113,7 +112,7 @@ func TestSnapshot_frames(t *testing.T) {
 		Model:           "deepseek-v4-flash",
 		ReasoningEffort: "high",
 	}
-	deps, _, _, _ := snapshotDeps(cfg)
+	deps, _, _ := snapshotDeps(cfg)
 	m := NewModelCfg(deps)
 	m = resizeTo(t, m, 120, 40)
 	writeFrame(t, out, "01_idle", m)
@@ -226,7 +225,7 @@ func TestSnapshot_frames(t *testing.T) {
 
 func scriptedChat(t *testing.T, cfg config.Config, w, h int) Model {
 	t.Helper()
-	deps, _, _, _ := snapshotDeps(cfg)
+	deps, _, _ := snapshotDeps(cfg)
 	m := NewModelCfg(deps)
 	m = resizeTo(t, m, w, h)
 
