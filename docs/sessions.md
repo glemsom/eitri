@@ -48,7 +48,8 @@ Use the CLI instead of reading raw JSONL; it emits compact output designed for d
 eitri session list                  # GUID, last activity, cycle count, model — newest first
 eitri session show <guid>           # one compact line per cycle: model, tools, calls, tokens, errors, answer preview
 eitri session show <guid> --turn N  # full pretty-printed JSON of that cycle's req+resp records only
-                                    # add --no-reasoning to strip chain-of-thought (reasoning_content) from the dump
+# --no-reasoning (any 'show' invocation) strips chain-of-thought (reasoning_content) from output,
+# so an agent can drill into a turn without pulling CoT text into its context
 eitri session grep <pattern> [guid|all]   # cycles whose content/reasoning/tool args match, with snippets
 ```
 
