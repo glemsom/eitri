@@ -46,7 +46,7 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 	rail.SetBranch(tui.GitBranch(workspace))
 	events := tui.NewEventFeed()
 	observer := tui.NewDeltaObserver(fileDeltaResolver(reg))
-	feedEngineEvents(e, te, nil, nil, observer, events)
+	feedEngineEvents(e, te, observer, events)
 	currentCfg := cfg
 	m := tui.NewModelCfg(tui.Dependencies{
 		DiscoverModels: discoveredModels(cfgPath),
@@ -83,37 +83,20 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 	return runProgram(m)
 }
 
-// feedEngineEvents wires the engine's live event stream into the TUI's status strip and, when a merged feed is provided, onto that single FIFO feed in the exact order the engine emitted the events. The legacy stream/tool channels are optional: feedEngineEvents bridges to whichever of them is non-nil, and the merged feed carries every stream delta and tool observation so the live TUI records the model's true arrival order instead of the delivery order of the separate channels (tea.Batch makes no ordering guarantee).
-func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, stream *tui.Streamer, toolFeed *tui.ToolFeed, obs *tui.DeltaObserver, merged *tui.EventFeed) {
+// feedEngineEvents wires the engine's live event stream into the TUI's status strip and onto the single merged FIFO feed in the exact order the engine emitted the events: every stream delta and tool observation lands on that one feed, so the live TUI records the model's true arrival order.
+func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, obs *tui.DeltaObserver, events *tui.EventFeed) {
 	teCh := te.UpdateChan()
-	var sCh chan<- tui.StreamUpdate
-	if stream != nil {
-		sCh = stream.UpdateChan()
-	}
-	var tCh chan<- tui.ToolUpdate
-	if toolFeed != nil {
-		tCh = toolFeed.UpdateChan()
-	}
-	var mCh chan<- tui.Event
-	if merged != nil {
-		mCh = merged.UpdateChan()
-	}
+	mCh := events.UpdateChan()
 	e.SetListener(func(evt engine.Event) {
 		switch ev := evt.(type) {
 		case engine.StreamEvent:
 			switch ev.Kind {
 			case engine.AnswerStream:
 				u := tui.StreamUpdate{Kind: tui.AnswerStream, Delta: ev.Delta}
-				pushStream(sCh, u)
-				if mCh != nil {
-					pushEvent(mCh, tui.Event{Stream: &u})
-				}
+				pushEvent(mCh, tui.Event{Stream: &u})
 			case engine.ReasoningStream:
 				u := tui.StreamUpdate{Kind: tui.ReasoningStream, Delta: ev.Delta}
-				pushStream(sCh, u)
-				if mCh != nil {
-					pushEvent(mCh, tui.Event{Stream: &u})
-				}
+				pushEvent(mCh, tui.Event{Stream: &u})
 			}
 		case engine.UsageEvent:
 			pushTelemetry(teCh, tui.TelemetryUpdate{Kind: tui.TelemetryUsage,
@@ -128,10 +111,7 @@ func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, stream *tui.Streamer,
 		case engine.ToolCallEvent:
 			obs.Start(ev.ID, ev.Name, ev.Arguments)
 			u := tui.ToolUpdate{Start: &tui.ToolStart{Name: ev.Name, Args: ev.Arguments}}
-			pushTool(tCh, u)
-			if mCh != nil {
-				pushEvent(mCh, tui.Event{Tool: &u})
-			}
+			pushEvent(mCh, tui.Event{Tool: &u})
 		case engine.ToolResultEvent:
 			added, removed, before, after, path := obs.Result(ev.ID, ev.Name)
 			u := tui.ToolUpdate{Result: &tui.ToolResult{
@@ -140,32 +120,13 @@ func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, stream *tui.Streamer,
 				Compressed: ev.Compressed, Added: added, Removed: removed,
 				Before: before, After: after, Path: path,
 			}}
-			pushTool(tCh, u)
-			if mCh != nil {
-				pushEvent(mCh, tui.Event{Tool: &u})
-			}
+			pushEvent(mCh, tui.Event{Tool: &u})
 		}
 	})
 }
 
-// pushStream delivers an answer-text delta to the streaming pane's channel without blocking the engine's event-goroutine: if the buffered channel is full the delta is dropped, because rendering is best-effort and must never stall a live run.
-func pushStream(ch chan<- tui.StreamUpdate, u tui.StreamUpdate) {
-	select {
-	case ch <- u:
-	default:
-	}
-}
-
 // pushTelemetry delivers an update to the strip's channel without blocking the engine's event-goroutine: if the buffered channel is full the update is dropped, because the strip is best-effort telemetry that must never stall a live run.
 func pushTelemetry(ch chan<- tui.TelemetryUpdate, u tui.TelemetryUpdate) {
-	select {
-	case ch <- u:
-	default:
-	}
-}
-
-// pushTool delivers a tool-call observation to the tool feed's channel without blocking the engine's event-goroutine: if the buffered channel is full the observation is dropped, because the tool render is best-effort that must never stall a live run.
-func pushTool(ch chan<- tui.ToolUpdate, u tui.ToolUpdate) {
 	select {
 	case ch <- u:
 	default:

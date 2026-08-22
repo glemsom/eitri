@@ -36,7 +36,7 @@ func TestFeedEngineEventsMergedArrivalOrder(t *testing.T) {
 	e := engine.New(scriptedInterleavedTurn(), mockTranscript{})
 	merged := tui.NewEventFeed()
 	feedEngineEvents(e, tui.NewTelemetry("deepseek-v4-flash", "low", true, 250),
-		nil, nil, tui.NewDeltaObserver(nil), merged)
+		tui.NewDeltaObserver(nil), merged)
 
 	if _, err := e.RunAgent(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "go"},
 		engine.AgentOptions{
@@ -86,17 +86,43 @@ func TestFeedEngineEventsMergedArrivalOrder(t *testing.T) {
 	}
 }
 
-func TestFeedEngineEventsMergedNilFeedSkipped(t *testing.T) {
+func TestFeedEngineEventsMergedCarriesAnswerDelta(t *testing.T) {
 	e := engine.New(provider.NewScripted(func(_ context.Context, _ provider.Request) (provider.Stream, error) {
 		return provider.StreamFunc(provider.Chunk{Content: "hi", FinishReason: "stop", Done: true}), nil
 	}), mockTranscript{})
 
-	// A nil merged feed must not panic: the legacy stream/tool channels still
-	// carry the events until the contract ticket deletes them (#500).
+	// The merged feed is the engine-to-TUI stream: every answer delta lands on
+	// the single FIFO feed the TUI model reads, with no legacy side channels.
+	merged := tui.NewEventFeed()
 	feedEngineEvents(e, tui.NewTelemetry("deepseek-v4-flash", "low", true, 250),
-		tui.NewStreamer(), tui.NewToolFeed(), tui.NewDeltaObserver(nil), nil)
+		tui.NewDeltaObserver(nil), merged)
 
 	if _, err := e.Run(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}); err != nil {
 		t.Fatalf("Run() error = %v", err)
+	}
+
+	var got []string
+loop:
+	for {
+		select {
+		case ev, ok := <-merged.Updates():
+			if !ok {
+				break loop
+			}
+			if ev.Stream != nil && ev.Stream.Kind == tui.AnswerStream {
+				got = append(got, ev.Stream.Delta)
+			}
+		default:
+			break loop
+		}
+	}
+	want := []string{"hi"}
+	if len(got) != len(want) {
+		t.Fatalf("answer deltas on the merged feed = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("answer delta %d = %q, want %q", i, got[i], want[i])
+		}
 	}
 }
