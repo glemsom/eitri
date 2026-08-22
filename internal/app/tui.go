@@ -65,6 +65,7 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 		Events:              events, // merged arrival-ordered feed: stream deltas and tool observations land in step
 		Rail:                rail,
 		ThinkingSuppression: thinkingSuppression(p),
+		Splash:              true,
 		Skills:              skillSurface(reg, skills),
 		Login: func(ctx context.Context, onCode func(tui.LoginCode)) (config.Config, error) {
 			if currentCfg.Provider != provider.ProviderCopilot {

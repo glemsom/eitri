@@ -57,6 +57,9 @@ const (
 	viewCollapseAll
 )
 
+// hasContent reports whether any turn material (committed messages or a live timeline) exists, i.e. the transcript is no longer showing the empty welcome state.
+func (t Transcript) hasContent() bool { return len(t.messages) > 0 || len(t.timeline) > 0 || t.busy }
+
 // viewMode returns the effective expansion mode from the mutually exclusive
 // expand-all / collapse-all flags.
 func (t Transcript) viewMode() viewMode {

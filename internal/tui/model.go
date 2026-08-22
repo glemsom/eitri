@@ -162,6 +162,8 @@ type Dependencies struct {
 	ThinkingSuppression func() bool
 	Clipboard           func(text string) error
 	OSC52Out            io.Writer
+	// Splash enables the animated launch splash (matrix rain resolving into the rainbow wordmark); tests default it off so views start settled.
+	Splash bool
 }
 
 // Model is the Bubble Tea state backing the TUI.
@@ -189,6 +191,8 @@ type Model struct {
 	events *EventFeed
 
 	clipboard func(text string) error
+
+	splash *splashState // non-nil while the launch splash is playing; nil once it settled or was skipped
 }
 
 // NewModel builds a bare chat-only model (no Settings surface), the historical default signature.
@@ -250,6 +254,7 @@ func NewModelCfg(d Dependencies) Model {
 		telemetry:    d.Telemetry,
 		events:       d.Events,
 		clipboard:    newClipboard(d),
+		splash:       splashFor(d.Splash),
 	}
 	m.td.SetThinkingEnabled(d.Config.ThinkingEnabled)
 	m.tx.layout.dirty = true
@@ -306,6 +311,9 @@ func clockTick() tea.Cmd {
 // Init returns any startup commands.
 func (m Model) Init() tea.Cmd {
 	var cmds []tea.Cmd
+	if m.splash != nil {
+		cmds = append(cmds, splashTick())
+	}
 	if m.telemetry != nil {
 		cmds = append(cmds, telemetryWait(m.telemetry))
 	}
@@ -355,7 +363,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.tx.layout.dirty = true // width change re-wraps the transcript rows
 		return m, nil
 
+	case splashTickMsg:
+		if m.splash == nil || m.tx.hasContent() {
+			m.splash = nil
+			return m, nil
+		}
+		m.splash.advance()
+		if m.splash.done() {
+			m.splash = nil
+			return m, nil
+		}
+		return m, splashTick()
+
 	case tea.KeyPressMsg:
+		// Any keypress skips the launch splash instantly; the key itself still lands on the composer.
+		if m.splash != nil {
+			m.splash = nil
+		}
 		if m.settings != nil {
 			return m.updateSettings(msgi)
 		}
@@ -923,6 +947,9 @@ func (m Model) View() tea.View {
 
 // viewString renders the surface content string (the tea.View content).
 func (m Model) viewString() string {
+	if m.splash != nil {
+		return renderSplash(m.splash, m.tx.width, m.tx.height)
+	}
 	if m.settings != nil {
 		return settingsView(*m.settings)
 	}
