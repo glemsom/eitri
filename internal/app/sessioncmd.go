@@ -117,13 +117,16 @@ func ListSessions(dataDir string, out io.Writer) error {
 }
 
 // ShowSession prints a compact per-cycle summary of a session; with turn > 0 it prints only that cycle's full JSON records.
-func ShowSession(dataDir, guid string, turn int, out io.Writer) error {
+func ShowSession(dataDir, guid string, turn int, noReasoning bool, out io.Writer) error {
 	cycles, err := readCycles(filepath.Join(dataDir, "sessions", guid, "messages.jsonl"))
 	if err != nil {
 		return fmt.Errorf("session %s unreadable: %w", guid, err)
 	}
 	if len(cycles) == 0 {
 		return fmt.Errorf("session %s has no message records", guid)
+	}
+	if noReasoning {
+		stripReasoning(cycles)
 	}
 	for _, c := range cycles {
 		if turn > 0 && c.Turn != turn {
@@ -165,6 +168,20 @@ func ShowSession(dataDir, guid string, turn int, out io.Writer) error {
 		fmt.Fprintf(out, "[%d] %s\n", c.Turn, b.String())
 	}
 	return nil
+}
+
+// stripReasoning drops chain-of-thought text in place: response reasoning_content and per-message reasoning_content on every cycle.
+func stripReasoning(cycles []sessionCycle) {
+	for i := range cycles {
+		if c := cycles[i].Resp; c != nil {
+			c.ReasoningContent = ""
+		}
+		if r := cycles[i].Req; r != nil {
+			for j := range r.Messages {
+				r.Messages[j].ReasoningContent = ""
+			}
+		}
+	}
 }
 
 // writeCycleJSON emits both records of one cycle as pretty-printed JSON for drill-down.

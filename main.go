@@ -16,7 +16,7 @@ Usage:
   eitri [flags]          launch the interactive TUI
   eitri -b <prompt>      run once in batch mode and exit
   eitri session list     list recorded sessions (GUID, time, cycles, model)
-  eitri session show <guid> [--turn N]
+  eitri session show <guid> [--turn N] [--no-reasoning]
                          compact per-cycle summary; --turn N dumps that cycle's full JSON records
   eitri session grep <pattern> [guid|all]
                          find cycles whose messages match pattern, with snippets

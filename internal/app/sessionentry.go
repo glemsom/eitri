@@ -10,7 +10,7 @@ import (
 // RunSessionCmd dispatches the `eitri session` debug subcommands. args is everything after "session".
 func RunSessionCmd(args []string, out io.Writer) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: eitri session list | show <guid> [--turn N] | grep <pattern> [guid|all]")
+		return fmt.Errorf("usage: eitri session list | show <guid> [--turn N] [--no-reasoning] | grep <pattern> [guid|all]")
 	}
 	dataDir, err := resolveDataDir("")
 	if err != nil {
@@ -21,19 +21,25 @@ func RunSessionCmd(args []string, out io.Writer) error {
 		return ListSessions(dataDir, out)
 	case "show":
 		if len(args) < 2 {
-			return fmt.Errorf("usage: eitri session show <guid> [--turn N]")
+			return fmt.Errorf("usage: eitri session show <guid> [--turn N] [--no-reasoning]")
 		}
 		guid := args[1]
 		turn := 0
+		noReasoning := false
 		for i := 2; i < len(args); i++ {
-			if args[i] == "--turn" && i+1 < len(args) {
+			switch {
+			case args[i] == "--turn" && i+1 < len(args):
 				if _, err := fmt.Sscanf(args[i+1], "%d", &turn); err != nil {
 					return fmt.Errorf("invalid --turn value %q", args[i+1])
 				}
 				i++
+			case args[i] == "--no-reasoning":
+				noReasoning = true
+			default:
+				return fmt.Errorf("unknown flag %q", args[i])
 			}
 		}
-		return ShowSession(dataDir, guid, turn, out)
+		return ShowSession(dataDir, guid, turn, noReasoning, out)
 	case "grep":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: eitri session grep <pattern> [guid|all]")

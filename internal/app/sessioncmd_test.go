@@ -50,7 +50,7 @@ func TestShowSessionSummaryAndTurn(t *testing.T) {
 	dataDir := t.TempDir()
 	writeMessagesFixture(t, dataDir, "bbbb2222")
 	var out bytes.Buffer
-	if err := ShowSession(dataDir, "bbbb2222", 0, &out); err != nil {
+	if err := ShowSession(dataDir, "bbbb2222", 0, false, &out); err != nil {
 		t.Fatalf("ShowSession() error = %v", err)
 	}
 	summary := out.String()
@@ -64,7 +64,7 @@ func TestShowSessionSummaryAndTurn(t *testing.T) {
 	}
 
 	out.Reset()
-	if err := ShowSession(dataDir, "bbbb2222", 1, &out); err != nil {
+	if err := ShowSession(dataDir, "bbbb2222", 1, false, &out); err != nil {
 		t.Fatalf("ShowSession(turn 1) error = %v", err)
 	}
 	turnJSON := out.String()
@@ -147,5 +147,42 @@ func TestRunBatchWritesMessageTranscript(t *testing.T) {
 	}
 	if !strings.Contains(list.String(), entries[0].Name()) {
 		t.Errorf("session list missing the new GUID: %q", list.String())
+	}
+}
+
+func TestShowSessionNoReasoning(t *testing.T) {
+	dataDir := t.TempDir()
+	guid := "eeee5555"
+	dir := filepath.Join(dataDir, "sessions", guid)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	lines := []string{
+		`{"ts":"2026-01-01T00:00:00Z","dir":"req","model":"m1","messages":[{"role":"assistant","content":"","reasoning_content":"secret thoughts"}]}`,
+		`{"ts":"2026-01-01T00:00:01Z","dir":"resp","content":"answer","reasoning_content":"more secret thoughts","finish_reason":"stop"}`,
+	}
+	var b strings.Builder
+	for _, l := range lines {
+		b.WriteString(l)
+		b.WriteByte('\n')
+	}
+	if err := os.WriteFile(filepath.Join(dir, "messages.jsonl"), []byte(b.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := ShowSession(dataDir, guid, 1, true, &out); err != nil {
+		t.Fatalf("ShowSession(--no-reasoning) error = %v", err)
+	}
+	if strings.Contains(out.String(), "secret thoughts") {
+		t.Errorf("--no-reasoning leaked reasoning:\n%s", out.String())
+	}
+
+	out.Reset()
+	if err := ShowSession(dataDir, guid, 1, false, &out); err != nil {
+		t.Fatalf("ShowSession() error = %v", err)
+	}
+	if !strings.Contains(out.String(), "secret thoughts") {
+		t.Errorf("default show must keep reasoning:\n%s", out.String())
 	}
 }
