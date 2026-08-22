@@ -329,7 +329,7 @@ func TestDragSelect_wideCharCopyMatchesHighlight(t *testing.T) {
 		t.Errorf("during-drag highlight spans = %q, want %q", spans, "ab你de")
 	}
 
-	m = mustUpdate(t, m, dragMsg("release", 9, answerRow))
+	mustUpdate(t, m, dragMsg("release", 9, answerRow))
 	if copied != "ab你de" {
 		t.Errorf("wide-char drag copy = %q, want %q", copied, "ab你de")
 	}
@@ -342,7 +342,7 @@ func TestDragSelect_boundaryInsideWideCharNoPanic(t *testing.T) {
 
 	m = mustUpdate(t, m, dragMsg("press", 5, answerRow))
 	m = mustUpdate(t, m, dragMsg("motion", 7, answerRow))
-	m = mustUpdate(t, m, dragMsg("release", 7, answerRow))
+	mustUpdate(t, m, dragMsg("release", 7, answerRow))
 	if copied != "b你" {
 		t.Errorf("boundary-inside-wide-char copy = %q, want %q", copied, "b你")
 	}

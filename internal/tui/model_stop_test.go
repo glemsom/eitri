@@ -13,11 +13,6 @@ import (
 	"github.com/glemsom/eitri/internal/testutil"
 )
 
-func blockingTurn(ctx context.Context, prompt string, _ string) (TurnResult, error) {
-	<-ctx.Done()
-	return TurnResult{}, ctx.Err()
-}
-
 func TestModel_escWhileBusyCancelsTurnAndKeepsPartial(t *testing.T) {
 	var canceled atomic.Bool
 	var enteredOnce sync.Once
@@ -305,7 +300,7 @@ func TestModel_ctrlCWhenIdleQuits(t *testing.T) {
 	m = typeText(t, m, "hi")
 
 	nm, cmd := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
-	m = asModel(t, nm)
+	asModel(t, nm)
 
 	if cmd == nil {
 		t.Fatal("idle ctrl+c must emit a quit command")

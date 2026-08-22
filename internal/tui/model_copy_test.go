@@ -61,7 +61,7 @@ func TestModel_ctrlOHidesReasoningWhenThinkingOff(t *testing.T) {
 	m = typeText(t, m, "hello")
 	m = submitAndWait(t, m)
 
-	m = keypressCtrlO(t, m)
+	keypressCtrlO(t, m)
 
 	if !strings.Contains(copied, "eitri: plain answer") {
 		t.Errorf("copied text missing the assistant answer, got: %q", copied)
