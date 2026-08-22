@@ -148,7 +148,7 @@ func TestSplash_settlesToIdleWelcomeAfterDuration(t *testing.T) {
 	if m.splash != nil {
 		t.Fatalf("splash must clear after %d frames", splashTotalFrames)
 	}
-	if cmd != nil {
+	if cmd != nil && cmd() != nil {
 		t.Errorf("finished splash must not re-issue ticks")
 	}
 	if !strings.Contains(view(m), "your terminal coding agent") {

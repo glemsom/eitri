@@ -166,6 +166,26 @@ type Dependencies struct {
 	Splash bool
 	// KittyDA1 is the optional live probe for the Kitty graphics DA1 fallback: when TERM_PROGRAM names no known Kitty-graphics terminal, the probe emits the CSI ? u query and reports whether the answer carries the graphics attribute. Tests leave it nil so detection stays environment-free.
 	KittyDA1 func() bool
+	// TitleOut is where OSC 0 window-title sequences are written; nil defaults to os.Stdout. Tests point it at a buffer.
+	TitleOut io.Writer
+	// TerminalTitle reports the terminal title current before the splash starts, so the splash can restore it on exit. Nil means the title was empty.
+	TerminalTitle func() string
+}
+
+// titleOut is where OSC 0 window-title escapes are written: the injected Dependencies.TitleOut when set, else os.Stdout.
+func (d Dependencies) titleOut() io.Writer {
+	if d.TitleOut != nil {
+		return d.TitleOut
+	}
+	return os.Stdout
+}
+
+// previousTerminalTitle resolves the title to restore after the splash: the injected reader when present, else the empty string.
+func previousTerminalTitle(d Dependencies) string {
+	if d.TerminalTitle == nil {
+		return ""
+	}
+	return d.TerminalTitle()
 }
 
 // Model is the Bubble Tea state backing the TUI.
@@ -195,6 +215,8 @@ type Model struct {
 	clipboard func(text string) error
 
 	splash *splashState // non-nil while the launch splash is playing; nil once it settled or was skipped
+	// prevTitle is the terminal window title captured before the splash replaced it with the branding title, so splash end can restore it.
+	prevTitle string
 
 	kittyCap bool // the terminal supports the Kitty graphics protocol (see kitty.go)
 }
@@ -260,6 +282,7 @@ func NewModelCfg(d Dependencies) Model {
 		clipboard:    newClipboard(d),
 		splash:       splashFor(d.Splash),
 		kittyCap:     detectKittyGraphics(liveKittyEnv, d.KittyDA1),
+		prevTitle:    previousTerminalTitle(d),
 	}
 	if m.splash != nil {
 		m.splash.kitty = m.kittyCap
@@ -323,7 +346,7 @@ func clockTick() tea.Cmd {
 func (m Model) Init() tea.Cmd {
 	var cmds []tea.Cmd
 	if m.splash != nil {
-		cmds = append(cmds, splashTick())
+		cmds = append(cmds, splashTick(), splashTitleCmd(m.deps.titleOut(), splashWindowTitle))
 	}
 	if m.telemetry != nil {
 		cmds = append(cmds, telemetryWait(m.telemetry))
@@ -377,12 +400,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case splashTickMsg:
 		if m.splash == nil || m.tx.hasContent() {
 			m.splash = nil
-			return m, nil
+			return m, splashTitleCmd(m.deps.titleOut(), m.prevTitle)
 		}
 		m.splash.advance()
 		if m.splash.done() {
 			m.splash = nil
-			return m, nil
+			return m, splashTitleCmd(m.deps.titleOut(), m.prevTitle)
 		}
 		return m, splashTick()
 
@@ -390,6 +413,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Any keypress skips the launch splash instantly; the key itself still lands on the composer.
 		if m.splash != nil {
 			m.splash = nil
+			return m, splashTitleCmd(m.deps.titleOut(), m.prevTitle)
 		}
 		if m.settings != nil {
 			return m.updateSettings(msgi)

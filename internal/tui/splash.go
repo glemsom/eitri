@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"io"
 	"math"
 	"strings"
 	"time"
@@ -42,6 +43,22 @@ func (s *splashState) done() bool { return s.frame >= splashTotalFrames }
 func (s *splashState) advance() {
 	if s.frame < splashTotalFrames {
 		s.frame++
+	}
+}
+
+// splashWindowTitle is the branding title the splash installs via OSC 0 while it plays.
+const splashWindowTitle = "⚒ Eitri — forging agents"
+
+// oscSetTitle returns the OSC 0 (icon-and-window-title) sequence for title.
+// Terminals without title support ignore the escape, so emitting it is always
+// harmless.
+func oscSetTitle(title string) string { return "\x1b]0;" + title + "\x07" }
+
+// splashTitleCmd returns a command that sets the terminal window title via an OSC 0 escape written to w. Terminals without title support ignore the escape, so emission is always harmless.
+func splashTitleCmd(w io.Writer, title string) tea.Cmd {
+	return func() tea.Msg {
+		_, _ = io.WriteString(w, oscSetTitle(title))
+		return nil
 	}
 }
 
