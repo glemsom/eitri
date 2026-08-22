@@ -31,6 +31,8 @@ const (
 // splashState tracks the splash's animation progress; a nil pointer on Model means the splash is over (or never ran).
 type splashState struct {
 	frame int
+	// kitty mirrors the model's Kitty graphics capability so the splash's own render path can gate image embedding without reaching back into the model.
+	kitty bool
 }
 
 // done reports whether the splash has played through its full duration.
