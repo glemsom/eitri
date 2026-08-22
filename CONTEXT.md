@@ -65,5 +65,5 @@ The JSONL record (`messages.jsonl` in a session dir) of every provider request/r
 _Avoid_: debug log, http trace
 
 **Kitty graphics capability**:
-The terminal's support for the Kitty graphics protocol, resolved once at TUI startup from `TERM_PROGRAM` (kitty, ghostty, wezterm) with a DA1 (`CSI ? u`) probe fallback. Every Kitty-gated render feature reads this flag; a non-Kitty terminal receives zero Kitty escape sequences and falls back to text-only rendering.
+The terminal's support for the Kitty graphics protocol, resolved once at TUI startup from `TERM_PROGRAM` (kitty, ghostty, wezterm) with a graphics-query + DA1 probe fallback. Every Kitty-gated render feature reads this flag; a non-Kitty terminal receives zero Kitty escape sequences and falls back to text-only rendering.
 _Avoid_: image support, graphics mode

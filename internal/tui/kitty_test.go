@@ -20,20 +20,21 @@ func TestKittyGraphicsFromEnv(t *testing.T) {
 }
 
 func TestKittyGraphicsFromDA1(t *testing.T) {
-	// A terminal answering CSI ? u with the Kitty graphics attribute (0x1000)
-	// among its feature flags reports support; one without it does not.
-	in := strings.NewReader("\x1b[?62;4100;4096u")
+	// Per the Kitty graphics spec, support is probed by sending the graphics
+	// query action followed by a DA1 query; a supporting terminal answers both,
+	// an unsupported one only the DA1.
+	in := strings.NewReader("\x1b_Gi=31;OK\x1b\\")
 	out := &strings.Builder{}
 	if !kittyGraphicsFromDA1(out, in) {
-		t.Fatal("kittyGraphicsFromDA1 with 0x1000 flag = false, want true")
+		t.Fatal("kittyGraphicsFromDA1 with graphics reply = false, want true")
 	}
-	if got := out.String(); got != "\x1b[?u" {
-		t.Errorf("query written = %q, want %q", got, "\x1b[?u")
+	if got, want := out.String(), "\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\\x1b[c"; got != want {
+		t.Errorf("probe written = %q, want %q", got, want)
 	}
 
-	in = strings.NewReader("\x1b[?62;22u")
+	in = strings.NewReader("\x1b[?62;c") // DA1 answer only: no graphics support
 	if kittyGraphicsFromDA1(&strings.Builder{}, in) {
-		t.Error("kittyGraphicsFromDA1 without 0x1000 flag = true, want false")
+		t.Error("kittyGraphicsFromDA1 without graphics reply = true, want false")
 	}
 
 	in = strings.NewReader("")

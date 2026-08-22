@@ -3,7 +3,6 @@ package tui
 import (
 	"io"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -12,14 +11,38 @@ import (
 // feature (image embedding in the splash, etc.) on this flag so non-Kitty
 // terminals never receive a single Kitty escape sequence.
 
-// kittyGraphicsQuery is the primary device attributes (DA1) query that a
-// Kitty-graphics-capable terminal answers with its feature flags.
-const kittyGraphicsQuery = "\x1b[?u"
+// kittyGraphicsProbe is the protocol's own query action (a=q, a 1×1 pixel
+// dummy) per the Kitty graphics spec's "Querying support" section; it is sent
+// together with the primary device attributes (DA1) query so a supporting
+// terminal answers both and an unsupported one only the DA1.
+const kittyGraphicsProbe = "\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\"
 
-// kittyGraphicsAttr is the feature-flag bit terminals set in the DA1
-// response when they implement the Kitty graphics protocol (Kitty ≥ 0.40,
-// Ghosty, WezTerm).
-const kittyGraphicsAttr = 0x1000
+// kittyDA1Query is the primary device attributes query that every VT-style
+// terminal answers, giving the probe pair its discriminator.
+const kittyDA1Query = "\x1b[c"
+
+// kittyGraphicsFromDA1 writes the graphics query action followed by the DA1
+// query to w and reads the responses from r, reporting whether a graphics
+// reply arrived. It is only consulted when TERM_PROGRAM names no known Kitty
+// terminal; a terminal that never answers yields false.
+func kittyGraphicsFromDA1(w io.Writer, r io.Reader) bool {
+	if _, err := io.WriteString(w, kittyGraphicsProbe+kittyDA1Query); err != nil {
+		return false
+	}
+	buf := make([]byte, 256)
+	n, err := readWithTimeout(r, buf, time.Second)
+	if err != nil && n == 0 {
+		return false
+	}
+	return apcGraphicsReply(string(buf[:n]))
+}
+
+// apcReportsKittyGraphics reports whether a raw response stream contains an
+// APC-wrapped reply to the graphics query action (`ESC _ G …`); a terminal
+// without graphics support answers only the DA1 query.
+func apcGraphicsReply(resp string) bool {
+	return strings.Contains(resp, "\x1b_G")
+}
 
 // kittyGraphicsFromEnv reports whether TERM_PROGRAM names a terminal family
 // known to support the Kitty graphics protocol.
@@ -30,43 +53,6 @@ func kittyGraphicsFromEnv(termProgram string) bool {
 	default:
 		return false
 	}
-}
-
-// kittyGraphicsFromDA1 writes the CSI ? u query to w and parses one response
-// from r, reporting whether the answer carries the Kitty graphics attribute.
-// It is only consulted when TERM_PROGRAM names no known Kitty terminal; a
-// terminal that never answers yields false.
-func kittyGraphicsFromDA1(w io.Writer, r io.Reader) bool {
-	if _, err := io.WriteString(w, kittyGraphicsQuery); err != nil {
-		return false
-	}
-	buf := make([]byte, 64)
-	n, err := readWithTimeout(r, buf, time.Second)
-	if err != nil && n == 0 {
-		return false
-	}
-	return da1ReportsKittyGraphics(string(buf[:n]))
-}
-
-// da1ReportsKittyGraphics parses a `CSI ? <flags> u` DA1 response and reports
-// whether any flag includes the Kitty graphics bit. Malformed or empty input
-// reports false.
-func da1ReportsKittyGraphics(resp string) bool {
-	resp = strings.TrimSpace(resp)
-	if !strings.HasPrefix(resp, "\x1b[?") || !strings.HasSuffix(resp, "u") {
-		return false
-	}
-	flags := strings.Split(strings.TrimSuffix(strings.TrimPrefix(resp, "\x1b[?"), "u"), ";")
-	for _, f := range flags {
-		v, err := strconv.ParseUint(strings.TrimSpace(f), 10, 32)
-		if err != nil {
-			continue
-		}
-		if v&kittyGraphicsAttr != 0 {
-			return true
-		}
-	}
-	return false
 }
 
 // detectKittyGraphics resolves the capability once at startup: TERM_PROGRAM
