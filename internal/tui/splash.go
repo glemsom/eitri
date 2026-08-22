@@ -54,19 +54,10 @@ const splashWindowTitle = "⚒ Eitri — forging agents"
 // harmless.
 func oscSetTitle(title string) string { return "\x1b]0;" + title + "\x07" }
 
-// splashShowTitle returns a command that emits the branding window title via OSC 0.
-func splashShowTitle(w io.Writer) tea.Cmd {
+// splashTitleCmd returns a command that sets the terminal window title via an OSC 0 escape written to w. Terminals without title support ignore the escape, so emission is always harmless.
+func splashTitleCmd(w io.Writer, title string) tea.Cmd {
 	return func() tea.Msg {
-		_, _ = io.WriteString(w, oscSetTitle(splashWindowTitle))
-		return nil
-	}
-}
-
-// splashRestoreTitle returns a command that re-emits the terminal title that
-// was current before the splash replaced it.
-func splashRestoreTitle(w io.Writer, prev string) tea.Cmd {
-	return func() tea.Msg {
-		_, _ = io.WriteString(w, oscSetTitle(prev))
+		_, _ = io.WriteString(w, oscSetTitle(title))
 		return nil
 	}
 }

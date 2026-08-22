@@ -172,6 +172,7 @@ type Dependencies struct {
 	TerminalTitle func() string
 }
 
+// titleOut is where OSC 0 window-title escapes are written: the injected Dependencies.TitleOut when set, else os.Stdout.
 func (d Dependencies) titleOut() io.Writer {
 	if d.TitleOut != nil {
 		return d.TitleOut
@@ -345,7 +346,7 @@ func clockTick() tea.Cmd {
 func (m Model) Init() tea.Cmd {
 	var cmds []tea.Cmd
 	if m.splash != nil {
-		cmds = append(cmds, splashTick(), splashShowTitle(m.deps.titleOut()))
+		cmds = append(cmds, splashTick(), splashTitleCmd(m.deps.titleOut(), splashWindowTitle))
 	}
 	if m.telemetry != nil {
 		cmds = append(cmds, telemetryWait(m.telemetry))
@@ -399,12 +400,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case splashTickMsg:
 		if m.splash == nil || m.tx.hasContent() {
 			m.splash = nil
-			return m, splashRestoreTitle(m.deps.titleOut(), m.prevTitle)
+			return m, splashTitleCmd(m.deps.titleOut(), m.prevTitle)
 		}
 		m.splash.advance()
 		if m.splash.done() {
 			m.splash = nil
-			return m, splashRestoreTitle(m.deps.titleOut(), m.prevTitle)
+			return m, splashTitleCmd(m.deps.titleOut(), m.prevTitle)
 		}
 		return m, splashTick()
 
@@ -412,7 +413,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Any keypress skips the launch splash instantly; the key itself still lands on the composer.
 		if m.splash != nil {
 			m.splash = nil
-			return m, splashRestoreTitle(m.deps.titleOut(), m.prevTitle)
+			return m, splashTitleCmd(m.deps.titleOut(), m.prevTitle)
 		}
 		if m.settings != nil {
 			return m.updateSettings(msgi)
