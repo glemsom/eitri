@@ -8,12 +8,12 @@ import (
 
 func TestModel_readRangeShownInEntryHead(t *testing.T) {
 	t.Parallel()
-	feed := NewToolFeed()
+	feed := NewEventFeed()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
-		Tools: feed,
+		Events: feed,
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "read it")
@@ -35,12 +35,12 @@ func TestModel_readRangeShownInEntryHead(t *testing.T) {
 
 func TestModel_readWholeFileHasNoRange(t *testing.T) {
 	t.Parallel()
-	feed := NewToolFeed()
+	feed := NewEventFeed()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
-		Tools: feed,
+		Events: feed,
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "read it")
@@ -70,12 +70,12 @@ func TestModel_readWholeFileHasNoRange(t *testing.T) {
 
 func TestModel_readMalformedArgsFallBackToPath(t *testing.T) {
 	t.Parallel()
-	feed := NewToolFeed()
+	feed := NewEventFeed()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
-		Tools: feed,
+		Events: feed,
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "read it")
@@ -103,12 +103,12 @@ func TestModel_readMalformedArgsFallBackToPath(t *testing.T) {
 func TestModel_clipboardCopyIncludesReadRange(t *testing.T) {
 	t.Parallel()
 	var copied string
-	feed := NewToolFeed()
+	feed := NewEventFeed()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
-		Tools:     feed,
+		Events:    feed,
 		Clipboard: func(s string) error { copied = s; return nil },
 	})
 	m = resize(t, m)

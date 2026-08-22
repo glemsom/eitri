@@ -59,7 +59,7 @@ func TestToolEntry_asciiGlyphs(t *testing.T) {
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "plain answer"}, nil
 		},
-		Tools: NewToolFeed(),
+		Events: NewEventFeed(),
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "run it")

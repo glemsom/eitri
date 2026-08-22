@@ -24,12 +24,12 @@ func fileEditModel(t *testing.T) Model {
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
-		Tools: NewToolFeed(),
+		Events: NewEventFeed(),
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "edit it")
 	m, _ = submitBusy(t, m)
-	feed := m.deps.Tools
+	feed := m.deps.Events
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: "edit", Args: `{"path":"/w/main.go"}`}})
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Result: &ToolResult{
 		Name: "edit", Result: "edited\n", Before: "old\n", After: "new\n", Path: "/w/main.go",
@@ -44,7 +44,7 @@ func TestCtrlD_unbound(t *testing.T) {
 			Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 				return TurnResult{Answer: "ok"}, nil
 			},
-			Tools: NewToolFeed(),
+			Events: NewEventFeed(),
 		})
 		m = resize(t, m)
 		before := view(m)

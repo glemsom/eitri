@@ -588,7 +588,7 @@ func TestClickToExpand_togglesToolEntry(t *testing.T) {
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
-		Tools:  NewToolFeed(),
+		Events: NewEventFeed(),
 		Config: config.Config{CoTCollapsedByDefault: true, ToolResultsCollapsedByDefault: true},
 	})
 	m = resize(t, m)

@@ -302,12 +302,21 @@ func typeText(t *testing.T, m Model, s string) Model {
 
 func submitAndWait(t *testing.T, m Model) Model {
 	t.Helper()
+	// Synchronous Turn stubs never emit live feed events, so detach the merged
+	// feed while the submitted turn runs. startTurn only arms an eventWait
+	// command when a feed is wired; executing that waiter here would block on
+	// the empty channel forever. The feed is restored on the returned model so
+	// later direct eventMsg deliveries (the merged seam) still apply.
+	savedEvents := m.events
+	m.events = nil
 	nm, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatalf("turn command was nil after submit")
 	}
 	out := asModel(t, nm)
-	return runSubmitted(t, out, cmd)
+	out = runSubmitted(t, out, cmd)
+	out.events = savedEvents
+	return out
 }
 
 func runSubmitted(t *testing.T, m Model, cmd tea.Cmd) Model {

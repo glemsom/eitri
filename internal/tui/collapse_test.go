@@ -252,13 +252,13 @@ func TestModel_eExpandsAllECollapseAllHints(t *testing.T) {
 // Enter toggles the focused block.
 func TestModel_tabFocusesEnterTogglesBlock(t *testing.T) {
 	t.Parallel()
-	feed := NewToolFeed()
+	feed := NewEventFeed()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok", Reasoning: "hidden reasoning"}, nil
 		},
 		Config: config.Config{ThinkingEnabled: true, CoTCollapsedByDefault: true, ToolResultsCollapsedByDefault: true},
-		Tools:  feed,
+		Events: feed,
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "go")

@@ -12,7 +12,7 @@ func TestLayoutCache_hitTestsReuseRecordedIndex(t *testing.T) {
 			return TurnResult{Answer: "ok"}, nil
 		},
 		WorkspacePath: "/tmp/acme",
-		Tools:         NewToolFeed(),
+		Events:        NewEventFeed(),
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "run it")
@@ -52,7 +52,7 @@ func TestLayoutCache_recordsRowMessageIndex(t *testing.T) {
 			return TurnResult{Answer: "ok"}, nil
 		},
 		WorkspacePath: "/tmp/acme",
-		Tools:         NewToolFeed(),
+		Events:        NewEventFeed(),
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "run it")
@@ -84,7 +84,7 @@ func TestLayoutCache_messageAtLineConsumesRowIndex(t *testing.T) {
 			return TurnResult{Answer: "ok"}, nil
 		},
 		WorkspacePath: "/tmp/acme",
-		Tools:         NewToolFeed(),
+		Events:        NewEventFeed(),
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "run it")

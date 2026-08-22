@@ -149,7 +149,7 @@ func TestComposer_CaretStaysAttachedOnCtrlD(t *testing.T) {
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
-		Tools: NewToolFeed(),
+		Events: NewEventFeed(),
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "hi")

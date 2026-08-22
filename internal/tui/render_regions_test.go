@@ -10,12 +10,12 @@ import (
 
 func TestModel_expandedViewEditCardRendersInlineDiff(t *testing.T) {
 	t.Parallel()
-	feed := NewToolFeed()
+	feed := NewEventFeed()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
-		Tools: feed,
+		Events: feed,
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "edit it")
@@ -46,7 +46,7 @@ func TestModel_expandedViewEditCardRendersInlineDiff(t *testing.T) {
 
 func TestRenderRegions_HistoryVsBandSeparation(t *testing.T) {
 	t.Parallel()
-	feed := NewToolFeed()
+	feed := NewEventFeed()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
 
@@ -56,7 +56,7 @@ func TestRenderRegions_HistoryVsBandSeparation(t *testing.T) {
 		},
 		WorkspacePath: "/tmp/acme-project",
 		Telemetry:     te,
-		Tools:         feed,
+		Events:        feed,
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "edit it")

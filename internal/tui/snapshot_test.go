@@ -19,9 +19,8 @@ func newSnapshotRail() *Rail {
 	return r
 }
 
-func snapshotDeps(cfg config.Config) (Dependencies, *Telemetry, *ToolFeed) {
+func snapshotDeps(cfg config.Config) (Dependencies, *Telemetry) {
 	te := NewTelemetry("deepseek-v4-flash", "high", true, 10)
-	tools := NewToolFeed()
 	return Dependencies{
 		Turn:          streamingTurn,
 		WorkspacePath: "/home/dev/acme",
@@ -29,10 +28,9 @@ func snapshotDeps(cfg config.Config) (Dependencies, *Telemetry, *ToolFeed) {
 		Models:        []string{"deepseek-v4-flash", "deepseek-v3", "deepseek-v3-0324"},
 		Telemetry:     te,
 		Events:        NewEventFeed(),
-		Tools:         tools,
 		Rail:          newSnapshotRail(),
 		Skills:        &SkillsSurface{Items: []SkillItem{{Name: "rust-review"}, {Name: "refactor"}}},
-	}, te, tools
+	}, te
 }
 
 func upd(t *testing.T, m Model, msg tea.Msg) Model {
@@ -43,12 +41,12 @@ func upd(t *testing.T, m Model, msg tea.Msg) Model {
 
 func toolStart(t *testing.T, m Model, name, args string) Model {
 	t.Helper()
-	return upd(t, m, toolUpdateMsg{update: ToolUpdate{Start: &ToolStart{Name: name, Args: args}}})
+	return upd(t, m, eventMsg{update: Event{Tool: &ToolUpdate{Start: &ToolStart{Name: name, Args: args}}}})
 }
 
 func toolResult(t *testing.T, m Model, r ToolResult) Model {
 	t.Helper()
-	return upd(t, m, toolUpdateMsg{update: ToolUpdate{Result: &r}})
+	return upd(t, m, eventMsg{update: Event{Tool: &ToolUpdate{Result: &r}}})
 }
 
 func backdateTool(m Model, idx int, d time.Duration) Model {
@@ -112,7 +110,7 @@ func TestSnapshot_frames(t *testing.T) {
 		Model:           "deepseek-v4-flash",
 		ReasoningEffort: "high",
 	}
-	deps, _, _ := snapshotDeps(cfg)
+	deps, _ := snapshotDeps(cfg)
 	m := NewModelCfg(deps)
 	m = resizeTo(t, m, 120, 40)
 	writeFrame(t, out, "01_idle", m)
@@ -225,7 +223,7 @@ func TestSnapshot_frames(t *testing.T) {
 
 func scriptedChat(t *testing.T, cfg config.Config, w, h int) Model {
 	t.Helper()
-	deps, _, _ := snapshotDeps(cfg)
+	deps, _ := snapshotDeps(cfg)
 	m := NewModelCfg(deps)
 	m = resizeTo(t, m, w, h)
 
