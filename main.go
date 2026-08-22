@@ -18,8 +18,13 @@ Usage:
   eitri session list     list recorded sessions (GUID, time, cycles, model)
   eitri session show <guid> [--turn N] [--no-reasoning]
                          compact per-cycle summary; --turn N dumps that cycle's full JSON records
-  eitri session grep <pattern> [guid|all]
-                         find cycles whose messages match pattern, with snippets
+  eitri session talk <guid> [--turn N|N-M] [--from N] [--role user|assistant|tool|system]
+                     [--reasoning] [--all]
+                         full conversation as plain text; shared request history is deduped
+                         unless --all, reasoning is stripped unless --reasoning
+  eitri session grep <pattern> [guid|all] [-full]
+                         find cycles whose messages match pattern, with snippets;
+                         -full prints the complete matching field text
 
 Flags:
 

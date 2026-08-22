@@ -196,8 +196,109 @@ func writeCycleJSON(c sessionCycle, out io.Writer) {
 	}
 }
 
-// GrepSession prints one compact line per cycle whose message-layer content matches substr, with a snippet around the first hit. Empty guid searches all sessions.
-func GrepSession(dataDir, pattern, guid string, out io.Writer) error {
+// TalkOptions controls what TalkSession renders.
+type TalkOptions struct {
+	FromTurn  int    // 1-based; 0 = from the start
+	ToTurn    int    // inclusive; 0 = through the last cycle
+	Role      string // "", "user", "assistant", "tool", or "system"
+	Reasoning bool   // include chain-of-thought blocks
+	AllCycles bool   // print every message of every request (default dedupes shared history)
+}
+
+// TalkSession prints a session's conversation as plain text, one block per message: `[N] role:` followed by the full untruncated content. Request history shared with the previous cycle is skipped unless AllCycles is set.
+func TalkSession(dataDir, guid string, opts TalkOptions, out io.Writer) error {
+	cycles, err := readCycles(filepath.Join(dataDir, "sessions", guid, "messages.jsonl"))
+	if err != nil {
+		return fmt.Errorf("session %s unreadable: %w", guid, err)
+	}
+	if len(cycles) == 0 {
+		return fmt.Errorf("session %s has no message records", guid)
+	}
+	if !opts.Reasoning {
+		stripReasoning(cycles)
+	}
+	var prevReqs [][]provider.Message
+	for _, c := range cycles {
+		n := c.Turn
+		if opts.FromTurn > 0 && n < opts.FromTurn {
+			continue
+		}
+		if opts.ToTurn > 0 && n > opts.ToTurn {
+			break
+		}
+		if c.Req != nil {
+			start := 0
+			if !opts.AllCycles && len(prevReqs) > 0 {
+				start = lenSharedPrefix(prevReqs[len(prevReqs)-1], c.Req.Messages)
+			}
+			for _, m := range c.Req.Messages[start:] {
+				writeTalkMessage(n, string(m.Role), m, out, opts.Role)
+			}
+			prevReqs = append(prevReqs, c.Req.Messages)
+		}
+		if c.Resp != nil {
+			if opts.Role == "" || opts.Role == "assistant" {
+				fmt.Fprintf(out, "[%d] assistant:\n%s\n", n, indent(c.Resp.Content))
+				if opts.Reasoning && c.Resp.ReasoningContent != "" {
+					fmt.Fprintf(out, "[%d] assistant(reasoning):\n%s\n", n, indent(c.Resp.ReasoningContent))
+				}
+			}
+			if (opts.Role == "" || opts.Role == "tool") && len(c.Resp.ToolCalls) > 0 {
+				for _, tc := range c.Resp.ToolCalls {
+					fmt.Fprintf(out, "[%d] assistant→tool %s(%s)\n", n, tc.Name, tc.Arguments)
+				}
+			}
+			if c.Resp.Error != "" {
+				fmt.Fprintf(out, "[%d] ERROR: %s\n", n, c.Resp.Error)
+			}
+		}
+	}
+	return nil
+}
+
+// lenSharedPrefix returns how many leading messages of cur are identical to prev's tail-aligned history, so Talk can skip already-printed context.
+func lenSharedPrefix(prev, cur []provider.Message) int {
+	// Requests resend the whole conversation, so prev is a prefix of cur in the common case.
+	if len(cur) < len(prev) {
+		return 0
+	}
+	for i := range prev {
+		if prev[i].Role != cur[i].Role || prev[i].Content != cur[i].Content {
+			return 0
+		}
+	}
+	return len(prev)
+}
+
+// writeTalkMessage renders one request-side message if it passes the role filter.
+func writeTalkMessage(turn int, role string, m provider.Message, out io.Writer, roleFilter string) {
+	if roleFilter != "" && role != roleFilter {
+		return
+	}
+	label := role
+	if m.ToolCallID != "" {
+		label = fmt.Sprintf("%s(%s)", role, truncate(m.ToolCallID, 16))
+	}
+	fmt.Fprintf(out, "[%d] %s:\n%s\n", turn, label, indent(m.Content))
+	if m.ReasoningContent != "" {
+		fmt.Fprintf(out, "[%d] %s(reasoning):\n%s\n", turn, label, indent(m.ReasoningContent))
+	}
+	for _, tc := range m.ToolCalls {
+		fmt.Fprintf(out, "[%d] %s→tool %s(%s)\n", turn, label, tc.Name, tc.Arguments)
+	}
+}
+
+// indent indents every line of s by four spaces so message bodies sit under their `[N] role:` header; empty bodies render as an empty line.
+func indent(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, l := range lines {
+		lines[i] = "    " + l
+	}
+	return strings.Join(lines, "\n")
+}
+
+// GrepSession prints one compact line per cycle whose message-layer content matches substr — snippets around each hit, or full field text when full is set. Empty guid searches all sessions.
+func GrepSession(dataDir, pattern, guid string, full bool, out io.Writer) error {
 	root := filepath.Join(dataDir, "sessions")
 	dirs := []string{filepath.Join(root, guid)}
 	all := guid == "" || guid == "all"
@@ -220,40 +321,37 @@ func GrepSession(dataDir, pattern, guid string, out io.Writer) error {
 			continue
 		}
 		tag := filepath.Base(dir)
+		var hits []string
+		hit := func(label, text string) {
+			if !strings.Contains(text, pattern) {
+				return
+			}
+			if full {
+				hits = append(hits, fmt.Sprintf("%s:\n%s", label, indent(text)))
+			} else if s := snippet(text, pattern); s != "" {
+				hits = append(hits, fmt.Sprintf("%s: %s", label, s))
+			}
+		}
 		for _, c := range cycles {
-			var hits []string
+			hits = hits[:0]
 			if c.Req != nil {
 				for i, m := range c.Req.Messages {
-					for _, field := range []struct{ label, text string }{
-						{"content", m.Content}, {"reasoning", m.ReasoningContent}, {"tool_call_id", m.ToolCallID},
-					} {
-						if s := snippet(field.text, pattern); s != "" {
-							hits = append(hits, fmt.Sprintf("req.msg[%d].%s: %s", i, field.label, s))
-						}
-					}
+					hit(fmt.Sprintf("req.msg[%d].content", i), m.Content)
+					hit(fmt.Sprintf("req.msg[%d].reasoning", i), m.ReasoningContent)
+					hit(fmt.Sprintf("req.msg[%d].tool_call_id", i), m.ToolCallID)
 					for _, tc := range m.ToolCalls {
-						for _, field := range []struct{ label, text string }{{"tool", tc.Name}, {"args", tc.Arguments}} {
-							if s := snippet(field.text, pattern); s != "" {
-								hits = append(hits, fmt.Sprintf("req.msg[%d].%s: %s", i, field.label, s))
-							}
-						}
+						hit(fmt.Sprintf("req.msg[%d].tool", i), tc.Name)
+						hit(fmt.Sprintf("req.msg[%d].args", i), tc.Arguments)
 					}
 				}
 			}
 			if c.Resp != nil {
-				for _, field := range []struct{ label, text string }{
-					{"content", c.Resp.Content}, {"reasoning", c.Resp.ReasoningContent}, {"error", c.Resp.Error},
-				} {
-					if s := snippet(field.text, pattern); s != "" {
-						hits = append(hits, fmt.Sprintf("resp.%s: %s", field.label, s))
-					}
-				}
+				hit("resp.content", c.Resp.Content)
+				hit("resp.reasoning", c.Resp.ReasoningContent)
+				hit("resp.error", c.Resp.Error)
 				for _, tc := range c.Resp.ToolCalls {
-					for _, field := range []struct{ label, text string }{{"tool", tc.Name}, {"args", tc.Arguments}} {
-						if s := snippet(field.text, pattern); s != "" {
-							hits = append(hits, fmt.Sprintf("resp.%s: %s", field.label, s))
-						}
-					}
+					hit("resp.tool", tc.Name)
+					hit("resp.args", tc.Arguments)
 				}
 			}
 			for _, h := range hits {

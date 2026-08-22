@@ -77,7 +77,7 @@ func TestGrepSession(t *testing.T) {
 	dataDir := t.TempDir()
 	writeMessagesFixture(t, dataDir, "cccc3333")
 	var out bytes.Buffer
-	if err := GrepSession(dataDir, "one file", "", &out); err != nil {
+	if err := GrepSession(dataDir, "one file", "", false, &out); err != nil {
 		t.Fatalf("GrepSession() error = %v", err)
 	}
 	got := out.String()
@@ -86,7 +86,7 @@ func TestGrepSession(t *testing.T) {
 	}
 
 	out.Reset()
-	if err := GrepSession(dataDir, "zzz-no-match-zzz", "cccc3333", &out); err != nil {
+	if err := GrepSession(dataDir, "zzz-no-match-zzz", "cccc3333", false, &out); err != nil {
 		t.Fatalf("GrepSession() error = %v", err)
 	}
 	if out.Len() != 0 {
@@ -184,5 +184,124 @@ func TestShowSessionNoReasoning(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "secret thoughts") {
 		t.Errorf("default show must keep reasoning:\n%s", out.String())
+	}
+}
+
+func TestTalkSession(t *testing.T) {
+	dataDir := t.TempDir()
+	writeMessagesFixture(t, dataDir, "ffff6666")
+	var out bytes.Buffer
+	if err := TalkSession(dataDir, "ffff6666", TalkOptions{}, &out); err != nil {
+		t.Fatalf("TalkSession() error = %v", err)
+	}
+	full := out.String()
+	// Dedupe: turn 1's user message must appear once even though turn 2 resends it.
+	if got := strings.Count(full, "list the files"); got != 1 {
+		t.Errorf("user message repeated %d times (want 1, deduped history):\n%s", got, full)
+	}
+	for _, want := range []string{"[1] user:", "[2] tool:", "package main", "there is one file"} {
+		if !strings.Contains(full, want) {
+			t.Errorf("talk missing %q:\n%s", want, full)
+		}
+	}
+
+	// Turn range.
+	out.Reset()
+	if err := TalkSession(dataDir, "ffff6666", TalkOptions{FromTurn: 2, ToTurn: 2}, &out); err != nil {
+		t.Fatalf("TalkSession(turn 2) error = %v", err)
+	}
+	if strings.Contains(out.String(), "[1]") || !strings.Contains(out.String(), "[2] assistant:") {
+		t.Errorf("--turn 2 output wrong:\n%s", out.String())
+	}
+
+	// Role filter.
+	out.Reset()
+	if err := TalkSession(dataDir, "ffff6666", TalkOptions{Role: "user"}, &out); err != nil {
+		t.Fatalf("TalkSession(role=user) error = %v", err)
+	}
+	got := out.String()
+	if strings.Contains(got, "assistant") || strings.Contains(got, "tool") || !strings.Contains(got, "list the files") {
+		t.Errorf("--role user output wrong:\n%s", got)
+	}
+}
+
+func TestTalkSessionReasoning(t *testing.T) {
+	dataDir := t.TempDir()
+	guid := "aaaa7777"
+	dir := filepath.Join(dataDir, "sessions", guid)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	lines := []string{
+		`{"ts":"2026-01-01T00:00:00Z","dir":"req","model":"m1","messages":[{"role":"user","content":"hi"}]}`,
+		`{"ts":"2026-01-01T00:00:01Z","dir":"resp","content":"answer","reasoning_content":"secret thoughts","finish_reason":"stop"}`,
+	}
+	var b strings.Builder
+	for _, l := range lines {
+		b.WriteString(l)
+		b.WriteByte('\n')
+	}
+	if err := os.WriteFile(filepath.Join(dir, "messages.jsonl"), []byte(b.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := TalkSession(dataDir, guid, TalkOptions{}, &out); err != nil {
+		t.Fatalf("TalkSession() error = %v", err)
+	}
+	if strings.Contains(out.String(), "secret thoughts") {
+		t.Errorf("default talk must strip reasoning:\n%s", out.String())
+	}
+	out.Reset()
+	if err := TalkSession(dataDir, guid, TalkOptions{Reasoning: true}, &out); err != nil {
+		t.Fatalf("TalkSession(--reasoning) error = %v", err)
+	}
+	if !strings.Contains(out.String(), "secret thoughts") {
+		t.Errorf("--reasoning talk dropped reasoning:\n%s", out.String())
+	}
+}
+
+func TestGrepSessionFullMode(t *testing.T) {
+	dataDir := t.TempDir()
+	writeMessagesFixture(t, dataDir, "bbbb8888")
+	var out bytes.Buffer
+	if err := GrepSession(dataDir, "one file", "bbbb8888", true, &out); err != nil {
+		t.Fatalf("GrepSession(full) error = %v", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "resp.content:\n    there is one file") {
+		t.Errorf("-full grep missing full field text:\n%q", got)
+	}
+	if strings.Contains(got, "…") {
+		t.Errorf("-full grep must not truncate with ellipsis:\n%q", got)
+	}
+}
+
+func TestRunSessionCmdTalkAndGrepFull(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Setenv(DataDirEnv, dataDir)
+	writeMessagesFixture(t, dataDir, "cccc9999")
+	var out bytes.Buffer
+	if err := RunSessionCmd([]string{"talk", "cccc9999", "--turn", "1-2", "--role", "user"}, &out); err != nil {
+		t.Fatalf("RunSessionCmd(talk) error = %v", err)
+	}
+	if !strings.Contains(out.String(), "[1] user:") || strings.Contains(out.String(), "[2] assistant") {
+		t.Errorf("dispatched talk wrong:\n%s", out.String())
+	}
+	out.Reset()
+	if err := RunSessionCmd([]string{"grep", "one file", "cccc9999", "-full"}, &out); err != nil {
+		t.Fatalf("RunSessionCmd(grep -full) error = %v", err)
+	}
+	if !strings.Contains(out.String(), "there is one file") {
+		t.Errorf("dispatched grep -full wrong:\n%s", out.String())
+	}
+	if _, _, err := parseTurnRange("3"); err != nil {
+		t.Errorf("parseTurnRange(3): %v", err)
+	}
+	if lo, hi, err := parseTurnRange("2-5"); err != nil || lo != 2 || hi != 5 {
+		t.Errorf("parseTurnRange(2-5) = %d,%d,%v", lo, hi, err)
+	}
+	if _, _, err := parseTurnRange("bogus"); err == nil {
+		t.Error("parseTurnRange(bogus) must error")
 	}
 }
