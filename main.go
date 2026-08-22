@@ -15,6 +15,11 @@ Usage:
 
   eitri [flags]          launch the interactive TUI
   eitri -b <prompt>      run once in batch mode and exit
+  eitri session list     list recorded sessions (GUID, time, cycles, model)
+  eitri session show <guid> [--turn N]
+                         compact per-cycle summary; --turn N dumps that cycle's full JSON records
+  eitri session grep <pattern> [guid|all]
+                         find cycles whose messages match pattern, with snippets
 
 Flags:
 
@@ -28,6 +33,13 @@ requires bubblewrap (bwrap) to be installed; it never runs unsandboxed.
 `
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "session" {
+		if err := app.RunSessionCmd(os.Args[2:], os.Stdout); err != nil {
+			die(err)
+		}
+		return
+	}
+
 	var (
 		prompt   = flag.String("b", "", "run once in batch mode with the given prompt and exit")
 		verbose  = flag.Bool("v", false, "print the model's thinking to stdout in batch mode")

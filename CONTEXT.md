@@ -59,3 +59,7 @@ _Avoid_: detail view, full view
 **Thinking suppression**:
 A per-provider capability to actually stop chain-of-thought on the wire when the thinking toggle is off, negotiated with the provider at session start. A provider that cannot suppress reasoning surfaces a warning rather than silently ignoring the toggle.
 _Avoid_: reasoning off, cot off
+
+**Message-layer transcript**:
+The JSONL record (`messages.jsonl` in a session dir) of every provider request/response cycle at the wire level: full messages (system, user, assistant with reasoning and tool calls, tool results), tool names, finish reason, usage, and errors. Ground truth for debugging Eitri and LLM behavior; navigated via `eitri session list/show/grep`. See docs/sessions.md.
+_Avoid_: debug log, http trace

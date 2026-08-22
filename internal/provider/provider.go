@@ -301,3 +301,16 @@ func consume(s Stream) (string, *Usage, error) {
 		}
 	}
 }
+
+// UnmarshalJSON decodes a ToolCall from the Chat Completions wire shape (id/type at top level, name+arguments nested under function), mirroring MarshalJSON.
+func (t *ToolCall) UnmarshalJSON(data []byte) error {
+	var w toolCallWire
+	if err := json.Unmarshal(data, &w); err != nil {
+		return err
+	}
+	t.ID = w.ID
+	t.Type = w.Type
+	t.Name = w.Function.Name
+	t.Arguments = w.Function.Arguments
+	return nil
+}

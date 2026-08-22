@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/glemsom/eitri/internal/provider"
 )
 
 // transcriptName is the session transcript file inside a session dir.
@@ -20,9 +22,10 @@ type TraceSink interface {
 
 // Session is a single run's persistent, auditable on-disk trail.
 type Session struct {
-	dir   string
-	data  *os.File
-	trace *fileTrace
+	dir      string
+	data     *os.File
+	trace    *fileTrace
+	messages *messageLog
 }
 
 // New creates a session under dataDir/sessions/<GUID>, GUID-named so runs are unique and auditable. debug enables the HTTP trace sink.
@@ -36,11 +39,16 @@ func New(dataDir string, debug bool) (*Session, error) {
 		return nil, fmt.Errorf("create session dir %s: %w", dir, err)
 	}
 
-	s := &Session{dir: dir}
+	s := &Session{dir: dir, messages: newMessageLog(dir)}
 	if debug {
 		s.trace = &fileTrace{dir: dir}
 	}
 	return s, nil
+}
+
+// MessageLogSink returns the message-layer JSONL sink for this session (always non-nil).
+func (s *Session) MessageLogSink() provider.MessageLogSink {
+	return s.messages
 }
 
 // GUID returns this session's unique identifier.
@@ -82,7 +90,7 @@ func (s *Session) Close() error {
 		_ = s.data.Close()
 		s.data = nil
 	}
-	return nil
+	return s.closeMessageLog()
 }
 
 // fileTrace writes HTTP request/response bodies to sibling files in the session dir, one per direction.

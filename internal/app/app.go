@@ -170,7 +170,9 @@ func Run(opts Options) error {
 		}
 	}
 	liveProvider := newHotProvider(p)
-	e := engine.New(liveProvider, sess)
+	// Message-layer debug transcript: every request/response cycle the engine sees is mirrored to messages.jsonl.
+	logged := provider.NewLoggingProvider(liveProvider, sess.MessageLogSink())
+	e := engine.New(logged, sess)
 	key := sess.GUID() // opt into the session-scoped prompt cache
 
 	if opts.Prompt == "" {
