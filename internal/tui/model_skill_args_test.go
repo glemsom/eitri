@@ -26,7 +26,7 @@ func TestModel_slashSkillWithArgs(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "/my-skill improve this")
-	m = submitAndWait(t, m)
+	submitAndWait(t, m)
 
 	if activated != "my-skill" {
 		t.Errorf("activation seam called with %q, want \"my-skill\"", activated)
@@ -61,7 +61,7 @@ func TestModel_slashSkillWithMultiWordArgs(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "/my-skill "+want)
-	m = submitAndWait(t, m)
+	submitAndWait(t, m)
 
 	if len(turnPrompts) != 1 || turnPrompts[0] != want {
 		t.Errorf("multi-word args in turn seam = %v, want [%q]", turnPrompts, want)

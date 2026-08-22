@@ -183,20 +183,19 @@ func (t Transcript) turnFlowEvents(i int) ([]TimelineEvent, bool) {
 	if t.isLiveTurnPrompt(i) {
 		return t.timeline, true
 	}
-	// A finished turn's events live on the first assistant message that
-	// follows its prompt.
-	for j := i + 1; j < len(t.messages); j++ {
-		m := t.messages[j]
-		if m.role == "you" {
+	// A finished turn's events live on the first message that follows its
+	// prompt: a later prompt means this one left no log, an assistant message
+	// with events carries them, and anything else terminates the search.
+	if i+1 < len(t.messages) {
+		m := t.messages[i+1]
+		switch {
+		case m.role == "you":
 			return nil, false // the next turn began; this one left no log
-		}
-		if len(m.events) > 0 {
+		case len(m.events) > 0:
 			return m.events, true
-		}
-		if t.busy && m.streaming && len(t.timeline) > 0 {
+		case t.busy && m.streaming && len(t.timeline) > 0:
 			return t.timeline, true
 		}
-		return nil, false
 	}
 	return nil, false
 }

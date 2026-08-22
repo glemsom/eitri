@@ -374,7 +374,7 @@ func TestTUISlashHiddenSkillThroughEngineSeamWithArgs(t *testing.T) {
 	})
 	m = appTestResize(t, m)
 	m = appTestTypeText(t, m, "/improve-codebase-architecture "+wantArgs)
-	m = appTestSubmitAndWait(t, m)
+	appTestSubmitAndWait(t, m)
 
 	if len(turnPrompts) != 1 || turnPrompts[0] != wantArgs {
 		t.Fatalf("args turn seam = %v, want [%q]", turnPrompts, wantArgs)
@@ -518,7 +518,7 @@ func TestTUISlashArgsPutsSkillInProviderContext(t *testing.T) {
 	})
 	m = appTestResize(t, m)
 	m = appTestTypeText(t, m, "/improve-codebase-architecture Let us improve this")
-	m = appTestSubmitAndWait(t, m)
+	appTestSubmitAndWait(t, m)
 
 	if len(cap.reqs) == 0 {
 		t.Fatal("provider received no requests for the args turn")
@@ -595,7 +595,7 @@ func TestTUISlashBarePutsSkillInProviderContext(t *testing.T) {
 	})
 	m = appTestResize(t, m)
 	m = appTestTypeText(t, m, "/improve-codebase-architecture")
-	m = appTestSubmitAndWait(t, m)
+	appTestSubmitAndWait(t, m)
 
 	if len(cap.reqs) == 0 {
 		t.Fatal("provider received no requests for the bare slash turn")

@@ -16,7 +16,7 @@ import (
 )
 
 // ErrReauthRequired is returned by a Copilot batch run when no usable credential is available — a valid access token nor a refresh path.
-var ErrReauthRequired = errors.New("Copilot: no valid credential; re-authenticate in the TUI, which saves a fresh token to config")
+var ErrReauthRequired = errors.New("copilot: no valid credential; re-authenticate in the TUI, which saves a fresh token to config")
 
 // RefreshFunc renews a Copilot credential from a refresh token, non-interactively, returning a fresh token set.
 type RefreshFunc func(ctx context.Context, refreshToken string) (config.CopilotConfig, error)

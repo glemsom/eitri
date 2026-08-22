@@ -454,7 +454,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.tx.focusNext() // empty composer: Tab cycles the block focus
 				return m, nil
 			}
-			break // non-slash draft: the textarea handles the tab
+			// Non-slash draft: fall through to the textarea, which handles the tab.
 		case "ctrl+x", "ctrl+shift+[":
 			m.adjustRailWidth(-2)
 			return m, nil
