@@ -108,7 +108,7 @@ func TestModel_clipboardCopyIncludesReadRange(t *testing.T) {
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
-		Events: feed,
+		Events:    feed,
 		Clipboard: func(s string) error { copied = s; return nil },
 	})
 	m = resize(t, m)

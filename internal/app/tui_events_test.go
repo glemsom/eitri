@@ -36,7 +36,7 @@ func TestFeedEngineEventsMergedArrivalOrder(t *testing.T) {
 	e := engine.New(scriptedInterleavedTurn(), mockTranscript{})
 	merged := tui.NewEventFeed()
 	feedEngineEvents(e, tui.NewTelemetry("deepseek-v4-flash", "low", true, 250),
-		tui.NewStreamer(), tui.NewToolFeed(), tui.NewDeltaObserver(nil), merged)
+		nil, nil, tui.NewDeltaObserver(nil), merged)
 
 	if _, err := e.RunAgent(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "go"},
 		engine.AgentOptions{
@@ -91,7 +91,8 @@ func TestFeedEngineEventsMergedNilFeedSkipped(t *testing.T) {
 		return provider.StreamFunc(provider.Chunk{Content: "hi", FinishReason: "stop", Done: true}), nil
 	}), mockTranscript{})
 
-	// A nil merged feed must not panic: the legacy stream/tool channels carry the events.
+	// A nil merged feed must not panic: the legacy stream/tool channels still
+	// carry the events until the contract ticket deletes them (#500).
 	feedEngineEvents(e, tui.NewTelemetry("deepseek-v4-flash", "low", true, 250),
 		tui.NewStreamer(), tui.NewToolFeed(), tui.NewDeltaObserver(nil), nil)
 

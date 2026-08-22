@@ -139,8 +139,8 @@ func scriptedToolEditTurn() *provider.Scripted {
 
 func TestFeedEngineEventsBridgesToolEvents(t *testing.T) {
 	e := engine.New(scriptedToolEditTurn(), mockTranscript{})
-	feed := tui.NewToolFeed()
-	feedEngineEvents(e, tui.NewTelemetry("deepseek-v4-flash", "low", true, 250), tui.NewStreamer(), feed, tui.NewDeltaObserver(nil), nil)
+	merged := tui.NewEventFeed()
+	feedEngineEvents(e, tui.NewTelemetry("deepseek-v4-flash", "low", true, 250), nil, nil, tui.NewDeltaObserver(nil), merged)
 
 	if _, err := e.RunAgent(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "edit"},
 		engine.AgentOptions{
@@ -153,18 +153,22 @@ func TestFeedEngineEventsBridgesToolEvents(t *testing.T) {
 		t.Fatalf("RunAgent() error = %v", err)
 	}
 
+	// Tool observations arrive on the single merged feed, in arrival order.
 	var start *tui.ToolStart
 	var res *tui.ToolResult
 	for {
-		u, ok := <-feed.Updates()
+		ev, ok := <-merged.Updates()
 		if !ok {
-			t.Fatal("tool feed channel closed")
+			t.Fatal("merged feed channel closed")
 		}
-		if u.Start != nil {
-			start = u.Start
+		if ev.Tool == nil {
+			continue // stream deltas and telemetry events carry no tool observation
 		}
-		if u.Result != nil {
-			res = u.Result
+		if ev.Tool.Start != nil {
+			start = ev.Tool.Start
+		}
+		if ev.Tool.Result != nil {
+			res = ev.Tool.Result
 			break
 		}
 	}

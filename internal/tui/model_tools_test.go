@@ -10,9 +10,17 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-func feedToolUpdate(t *testing.T, m *Model, _ *EventFeed, u ToolUpdate) Model {
+func feedToolUpdate(t *testing.T, m *Model, f *EventFeed, u ToolUpdate) Model {
 	t.Helper()
-	nm, _ := m.Update(eventMsg{update: Event{Tool: &u}})
+	// Deliver through the live merged seam: push the observation onto the feed
+	// channel and let the model's eventWait command pick it up as an eventMsg.
+	f.updates <- Event{Tool: &u}
+	cmd := eventWait(f)
+	if cmd == nil {
+		t.Fatal("expected an event waiter command")
+	}
+	msg := cmd()
+	nm, _ := m.Update(msg)
 	return asModel(t, nm)
 }
 
@@ -83,7 +91,7 @@ func TestModel_toolEntryCollapsedThenExpandable(t *testing.T) {
 	}
 }
 
-func TestModel_toolFeedDrainsLiveUpdates(t *testing.T) {
+func TestModel_eventFeedDrainsLiveToolUpdates(t *testing.T) {
 	t.Parallel()
 	feed := NewEventFeed()
 	m := NewModelCfg(Dependencies{

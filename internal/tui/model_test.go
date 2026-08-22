@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -304,17 +303,19 @@ func typeText(t *testing.T, m Model, s string) Model {
 func submitAndWait(t *testing.T, m Model) Model {
 	t.Helper()
 	// Synchronous Turn stubs never emit live feed events, so detach the merged
-	// feed while the submitted turn runs: this keeps startTurn from arming an
-	// eventWait command whose blocked reader would steal later test pushes.
-	savedEvents := m.deps.Events
-	m.deps.Events = nil
+	// feed while the submitted turn runs. startTurn only arms an eventWait
+	// command when a feed is wired; executing that waiter here would block on
+	// the empty channel forever. The feed is restored on the returned model so
+	// later direct eventMsg deliveries (the merged seam) still apply.
+	savedEvents := m.events
+	m.events = nil
 	nm, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatalf("turn command was nil after submit")
 	}
 	out := asModel(t, nm)
 	out = runSubmitted(t, out, cmd)
-	out.deps.Events = savedEvents
+	out.events = savedEvents
 	return out
 }
 
@@ -323,7 +324,7 @@ func runSubmitted(t *testing.T, m Model, cmd tea.Cmd) Model {
 	if cmd == nil {
 		return m
 	}
-	msg := runGuarded(t, cmd)
+	msg := cmd()
 	if bm, ok := msg.(tea.BatchMsg); ok {
 		for _, c := range bm {
 			m = runSubmitted(t, m, c)
@@ -336,25 +337,6 @@ func runSubmitted(t *testing.T, m Model, cmd tea.Cmd) Model {
 	nm, next := m.Update(msg)
 	m = asModel(t, nm)
 	return runSubmitted(t, m, next)
-}
-
-// runGuarded runs one command but abandons commands that block on an empty
-// feed channel (the live stream/tool/event waiters armed by startTurn). Tests
-// with synchronous Turn stubs never produce feed events, so a waiter that
-// hasn't fired within the grace period has nothing to deliver.
-func runGuarded(t *testing.T, cmd tea.Cmd) tea.Msg {
-	t.Helper()
-	type result struct {
-		msg tea.Msg
-	}
-	ch := make(chan result, 1)
-	go func() { ch <- result{msg: cmd()} }()
-	select {
-	case r := <-ch:
-		return r.msg
-	case <-time.After(100 * time.Millisecond):
-		return nil
-	}
 }
 
 func asModel(t *testing.T, tm tea.Model) Model {

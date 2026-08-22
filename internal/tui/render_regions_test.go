@@ -56,7 +56,7 @@ func TestRenderRegions_HistoryVsBandSeparation(t *testing.T) {
 		},
 		WorkspacePath: "/tmp/acme-project",
 		Telemetry:     te,
-		Events: feed,
+		Events:        feed,
 	})
 	m = resize(t, m)
 	m = typeText(t, m, "edit it")
