@@ -1,12 +1,15 @@
 package tui
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/colorprofile"
 )
 
 // splashModel builds a model with the launch splash enabled and a sized surface.
@@ -26,12 +29,7 @@ func splashModel(t *testing.T) Model {
 }
 
 func TestSplash_rendersWordmarkAndTagline(t *testing.T) {
-	m := splashModel(t)
-	for i := 0; i < splashTotalFrames-1; i++ {
-		nm, _ := m.Update(splashTickMsg{})
-		m = asModel(t, nm)
-	}
-	content := stripANSI(view(m))
+	content := stripANSI(finalSplashView(t))
 
 	for _, want := range []string{"██████", "████"} {
 		if !strings.Contains(content, want) {
@@ -62,7 +60,7 @@ func stripANSI(s string) string {
 	return b.String()
 }
 
-// TestSplash_ansiColorsPresent
+// TestSplash_wordmarkUsesTrueColorGradient
 func TestSplash_wordmarkUsesTrueColorGradient(t *testing.T) {
 	first := lipgloss.NewStyle().Foreground(splashWordPalette[0]).Render("x")
 	if !strings.Contains(first, "38;2;0;255;200") {
@@ -72,20 +70,46 @@ func TestSplash_wordmarkUsesTrueColorGradient(t *testing.T) {
 	if !strings.Contains(lastSGR, "38;2;0;170;255") {
 		t.Errorf("gradient must end at #00AAFF, got %q", lastSGR)
 	}
+	if !strings.Contains(finalSplashView(t), "\x1b[38;2;") {
+		t.Errorf("wordmark must use true-color SGR (\\x1b[38;2;), got plain/256-color text")
+	}
+}
+
+// finalSplashView advances a fresh splash-enabled model to the last frame and
+// returns its view, where the wordmark is fully revealed.
+func finalSplashView(t *testing.T) string {
+	t.Helper()
 	m := splashModel(t)
 	for i := 0; i < splashTotalFrames-1; i++ {
 		nm, _ := m.Update(splashTickMsg{})
 		m = asModel(t, nm)
 	}
-	if !strings.Contains(view(m), "\x1b[38;2;") {
-		t.Errorf("wordmark must use true-color SGR (\\x1b[38;2;), got plain/256-color text")
-	}
+	return view(m)
 }
 
 func TestSplash_ansiColorsPresent(t *testing.T) {
 	m := splashModel(t)
 	if !strings.Contains(view(m), "\x1b[38;5;") {
 		t.Errorf("splash must carry ANSI colors, got plain text")
+	}
+}
+
+// TestSplash_ansi256Fallback verifies the terminal-side fallback: pushing a
+// wordmark gradient color through colorprofile.Writer with an ANSI256 profile
+// downgrades the true-color SGR to a 256-color one.
+func TestSplash_ansi256Fallback(t *testing.T) {
+	var buf bytes.Buffer
+	w := colorprofile.NewWriter(&buf, nil)
+	w.Profile = colorprofile.ANSI256
+	if _, err := fmt.Fprint(w, lipgloss.NewStyle().Foreground(splashWordPalette[0]).Render("x")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	out := buf.String()
+	if strings.Contains(out, "\x1b[38;2;") {
+		t.Errorf("ANSI256 profile must downgrade true-color SGR, got %q", out)
+	}
+	if !strings.Contains(out, "\x1b[38;5;") {
+		t.Errorf("ANSI256 profile must emit 256-color SGR, got %q", out)
 	}
 }
 
