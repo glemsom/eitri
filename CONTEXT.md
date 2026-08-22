@@ -63,3 +63,7 @@ _Avoid_: reasoning off, cot off
 **Message-layer transcript**:
 The JSONL record (`messages.jsonl` in a session dir) of every provider request/response cycle at the wire level: full messages (system, user, assistant with reasoning and tool calls, tool results), tool names, finish reason, usage, and errors. Ground truth for debugging Eitri and LLM behavior; navigated via `eitri session list/show/grep`. See docs/sessions.md.
 _Avoid_: debug log, http trace
+
+**Kitty graphics capability**:
+The terminal's support for the Kitty graphics protocol, resolved once at TUI startup from `TERM_PROGRAM` (kitty, ghostty, wezterm) with a graphics-query + DA1 probe fallback. Every Kitty-gated render feature reads this flag; a non-Kitty terminal receives zero Kitty escape sequences and falls back to text-only rendering.
+_Avoid_: image support, graphics mode

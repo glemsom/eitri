@@ -164,6 +164,8 @@ type Dependencies struct {
 	OSC52Out            io.Writer
 	// Splash enables the animated launch splash (matrix rain resolving into the rainbow wordmark); tests default it off so views start settled.
 	Splash bool
+	// KittyDA1 is the optional live probe for the Kitty graphics DA1 fallback: when TERM_PROGRAM names no known Kitty-graphics terminal, the probe emits the CSI ? u query and reports whether the answer carries the graphics attribute. Tests leave it nil so detection stays environment-free.
+	KittyDA1 func() bool
 }
 
 // Model is the Bubble Tea state backing the TUI.
@@ -193,6 +195,8 @@ type Model struct {
 	clipboard func(text string) error
 
 	splash *splashState // non-nil while the launch splash is playing; nil once it settled or was skipped
+
+	kittyCap bool // the terminal supports the Kitty graphics protocol (see kitty.go)
 }
 
 // NewModel builds a bare chat-only model (no Settings surface), the historical default signature.
@@ -255,6 +259,10 @@ func NewModelCfg(d Dependencies) Model {
 		events:       d.Events,
 		clipboard:    newClipboard(d),
 		splash:       splashFor(d.Splash),
+		kittyCap:     detectKittyGraphics(liveKittyEnv, d.KittyDA1),
+	}
+	if m.splash != nil {
+		m.splash.kitty = m.kittyCap
 	}
 	m.td.SetThinkingEnabled(d.Config.ThinkingEnabled)
 	m.tx.layout.dirty = true
@@ -263,6 +271,9 @@ func NewModelCfg(d Dependencies) Model {
 	}
 	return m
 }
+
+// kittyGraphics reports whether the terminal supports the Kitty graphics protocol: every Kitty-gated feature reads this flag instead of probing the environment itself, so a non-Kitty terminal never sees a single Kitty escape sequence.
+func (m *Model) kittyGraphics() bool { return m.kittyCap }
 
 // newClipboard returns the clipboard write seam: the injected Dependencies.Clipboard when set, else the atotto/clipboard package default so Ctrl+O and /copy work out of the box.
 func newClipboard(d Dependencies) func(text string) error {
