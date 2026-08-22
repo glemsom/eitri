@@ -24,7 +24,7 @@ func TestFeedTelemetryBridgesUsageEvent(t *testing.T) {
 	}), mockTranscript{})
 
 	te := tui.NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	feedEngineEvents(e, te, tui.NewStreamer(), tui.NewToolFeed(), tui.NewDeltaObserver(nil), nil)
+	feedEngineEvents(e, te, tui.NewDeltaObserver(nil), tui.NewEventFeed())
 
 	if _, err := e.Run(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}); err != nil {
 		t.Fatalf("Run() error = %v", err)
@@ -54,7 +54,7 @@ func TestFeedTelemetryBridgesTurnEvent(t *testing.T) {
 	}), mockTranscript{})
 
 	te := tui.NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	feedEngineEvents(e, te, tui.NewStreamer(), tui.NewToolFeed(), tui.NewDeltaObserver(nil), nil)
+	feedEngineEvents(e, te, tui.NewDeltaObserver(nil), tui.NewEventFeed())
 
 	for i := 0; i < 2; i++ {
 		if _, err := e.Run(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}); err != nil {
@@ -81,8 +81,8 @@ func TestFeedEngineEventsBridgesAnswerDelta(t *testing.T) {
 	}), mockTranscript{})
 
 	te := tui.NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	stream := tui.NewStreamer()
-	feedEngineEvents(e, te, stream, tui.NewToolFeed(), tui.NewDeltaObserver(nil), nil)
+	events := tui.NewEventFeed()
+	feedEngineEvents(e, te, tui.NewDeltaObserver(nil), events)
 
 	if _, err := e.Run(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}); err != nil {
 		t.Fatalf("Run() error = %v", err)
@@ -92,14 +92,17 @@ func TestFeedEngineEventsBridgesAnswerDelta(t *testing.T) {
 loop:
 	for {
 		select {
-		case u, ok := <-stream.Updates():
+		case ev, ok := <-events.Updates():
 			if !ok {
 				break loop
 			}
-			if u.Kind == tui.AnswerStream {
-				answers = append(answers, u.Delta)
-			} else if u.Kind == tui.ReasoningStream {
-				reasonings = append(reasonings, u.Delta)
+			if ev.Stream == nil {
+				continue // tool observations and telemetry are not stream deltas
+			}
+			if ev.Stream.Kind == tui.AnswerStream {
+				answers = append(answers, ev.Stream.Delta)
+			} else if ev.Stream.Kind == tui.ReasoningStream {
+				reasonings = append(reasonings, ev.Stream.Delta)
 			}
 		default:
 			break loop
@@ -140,7 +143,7 @@ func scriptedToolEditTurn() *provider.Scripted {
 func TestFeedEngineEventsBridgesToolEvents(t *testing.T) {
 	e := engine.New(scriptedToolEditTurn(), mockTranscript{})
 	merged := tui.NewEventFeed()
-	feedEngineEvents(e, tui.NewTelemetry("deepseek-v4-flash", "low", true, 250), nil, nil, tui.NewDeltaObserver(nil), merged)
+	feedEngineEvents(e, tui.NewTelemetry("deepseek-v4-flash", "low", true, 250), tui.NewDeltaObserver(nil), merged)
 
 	if _, err := e.RunAgent(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "edit"},
 		engine.AgentOptions{

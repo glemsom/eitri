@@ -93,7 +93,7 @@ func TestModel_streamFinalize(t *testing.T) {
 	}
 }
 
-func TestModel_streamFallbackWithoutStreamer(t *testing.T) {
+func TestModel_streamFallbackWithoutFeed(t *testing.T) {
 	t.Parallel()
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		return TurnResult{Answer: "plain answer"}, nil

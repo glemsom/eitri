@@ -157,8 +157,6 @@ type Dependencies struct {
 	Login               func(ctx context.Context, onCode func(LoginCode)) (config.Config, error)
 	Skills              *SkillsSurface
 	Telemetry           *Telemetry
-	Stream              *Streamer
-	Tools               *ToolFeed
 	Events              *EventFeed
 	Rail                *Rail
 	ThinkingSuppression func() bool
@@ -187,10 +185,6 @@ type Model struct {
 	slashPrefix string
 
 	telemetry *Telemetry
-
-	stream *Streamer
-
-	toolFeed *ToolFeed
 
 	events *EventFeed
 
@@ -254,8 +248,6 @@ func NewModelCfg(d Dependencies) Model {
 		continueResp: make(chan bool, 1),
 		skills:       skillSnapshot(d),
 		telemetry:    d.Telemetry,
-		stream:       d.Stream,
-		toolFeed:     d.Tools,
 		events:       d.Events,
 		clipboard:    newClipboard(d),
 	}
@@ -317,12 +309,6 @@ func (m Model) Init() tea.Cmd {
 	if m.telemetry != nil {
 		cmds = append(cmds, telemetryWait(m.telemetry))
 	}
-	if m.stream != nil {
-		cmds = append(cmds, streamWait(m.stream))
-	}
-	if m.toolFeed != nil {
-		cmds = append(cmds, toolWait(m.toolFeed))
-	}
 	if m.events != nil {
 		cmds = append(cmds, eventWait(m.events))
 	}
@@ -349,20 +335,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.telemetry.apply(msgi.update)
 		return m, telemetryWait(m.telemetry)
-
-	case toolUpdateMsg:
-		if m.toolFeed == nil {
-			return m, nil
-		}
-		m.applyToolUpdate(msgi.update)
-		return m, toolWait(m.toolFeed)
-
-	case streamDeltaMsg:
-		if m.stream == nil {
-			return m, nil
-		}
-		m.applyStreamDelta(StreamUpdate{Kind: msgi.kind, Delta: msgi.delta})
-		return m, streamWait(m.stream)
 
 	case eventMsg:
 		if m.events == nil {
@@ -707,13 +679,10 @@ func (s *settingsForm) save(m *Model) {
 	m.settings = nil
 }
 
-// startTurn delegates to the TurnDispatch, which installs the per-turn cancel handle, appends a user message, marks busy, resets the stream cursor, and anchors the tool log. The live event feed (or the legacy stream channel) is re-armed here, and the spinner tick starts so the busy indicator animates.
+// startTurn delegates to the TurnDispatch, which installs the per-turn cancel handle, appends a user message, marks busy, resets the stream cursor, and anchors the tool log. The live merged event feed is re-armed here, and the spinner tick starts so the busy indicator animates.
 func (m *Model) startTurn(prompt string, payload string) tea.Cmd {
 	m.td.startTurn(m.tx, prompt, payload)
 	m.syncComposerRail()
-	if m.stream != nil {
-		return tea.Batch(m.td.turnCmd(prompt, payload), streamWait(m.stream), spinnerTick())
-	}
 	if m.events != nil {
 		return tea.Batch(m.td.turnCmd(prompt, payload), eventWait(m.events), spinnerTick())
 	}
@@ -728,9 +697,7 @@ func (m *Model) appendStreamDelta(kind StreamKind, delta string) {
 	m.td.appendStreamDelta(m.tx, kind, delta)
 }
 
-// applyStreamDelta folds one streamed delta (from either the legacy stream
-// channel or the merged event feed) into the live turn; deltas arriving while
-// no turn runs are dropped, matching the pre-timeline stream behavior.
+// applyStreamDelta folds one streamed delta from the merged event feed into the live turn; deltas arriving while no turn runs are dropped, matching the pre-timeline stream behavior.
 func (m *Model) applyStreamDelta(u StreamUpdate) {
 	if !m.tx.busy {
 		return
@@ -739,9 +706,7 @@ func (m *Model) applyStreamDelta(u StreamUpdate) {
 	m.tx.layout.dirty = true // the in-progress message grew
 }
 
-// applyToolUpdate folds one tool observation (from either the legacy tool
-// channel or the merged event feed) into the transcript, arming the tool-start
-// pulse for thinking-off turns along the way.
+// applyToolUpdate folds one tool observation from the merged event feed into the transcript, arming the tool-start pulse for thinking-off turns along the way.
 func (m *Model) applyToolUpdate(u ToolUpdate) {
 	m.tx.apply(u) // tool updates route through the Transcript
 	if u.Start != nil && !m.td.thinkingEnabled && motionEnabled() {

@@ -2,6 +2,47 @@ package tui
 
 import tea "charm.land/bubbletea/v2"
 
+// StreamKind identifies which stream a StreamUpdate carries: chain-of-thought reasoning or assistant answer text.
+type StreamKind int
+
+const (
+	ReasoningStream StreamKind = iota
+	AnswerStream
+)
+
+// StreamUpdate is one additive delta for the transcript, on one of the two streams the engine emits: reasoning or answer text.
+type StreamUpdate struct {
+	Kind  StreamKind
+	Delta string
+}
+
+// ToolUpdate is one tool-call observation for the transcript.
+type ToolUpdate struct {
+	Start  *ToolStart
+	Result *ToolResult
+}
+
+// ToolStart is the leading half of a tool entry: the tool began executing.
+type ToolStart struct {
+	Name string
+	Args string
+}
+
+// ToolResult is the trailing half of a tool entry: the tool's delivered result plus the deterministic compression metadata the TUI renders and the file line-delta / before-after content computed by the TUI-side delta observer from the paired tool start/result events — the source of the `⊕ edit path [+N,-M]` tag and the card diff's inline diff.
+type ToolResult struct {
+	Name         string
+	Result       string
+	BytesDropped int
+	Lines        int
+	Dropped      int
+	Compressed   bool
+	Added        int
+	Removed      int
+	Before       string
+	After        string
+	Path         string
+}
+
 // Event is one merged observation from the engine seam, carrying exactly one of
 // Stream (a reasoning/answer delta) or Tool (a tool start/result). The app
 // pushes these onto a single ordered feed in the order the engine emits them,
