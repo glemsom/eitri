@@ -10,7 +10,7 @@ const (
 	AnswerStream
 )
 
-// StreamUpdate is one additive delta for the transcript, on one of the two channels the engine streams: reasoning or answer text.
+// StreamUpdate is one additive delta for the transcript, on one of the two streams the engine emits: reasoning or answer text.
 type StreamUpdate struct {
 	Kind  StreamKind
 	Delta string
