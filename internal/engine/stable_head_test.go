@@ -20,8 +20,8 @@ func TestRunSystemHeadPrefersRipgrep(t *testing.T) {
 		return provider.StreamFunc(provider.Chunk{Content: "hi"}, provider.Chunk{FinishReason: "stop", Done: true}), nil
 	}), &mockTranscript{})
 
-	if _, err := e.Run(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "go"}); err != nil {
-		t.Fatalf("Run() error = %v, want nil", err)
+	if _, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "go"}, AgentOptions{}); err != nil {
+		t.Fatalf("RunAgent() error = %v, want nil", err)
 	}
 	if len(cap.reqs) != 1 {
 		t.Fatalf("provider requests = %d, want 1", len(cap.reqs))
@@ -42,11 +42,11 @@ func TestRunOpensWithSystemPrompt(t *testing.T) {
 	cap := &headRecorder{}
 	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
 		cap.reqs = append(cap.reqs, req)
-		return provider.StreamFunc(provider.Chunk{Content: "hi"}, provider.Chunk{FinishReason: "stop", Done: true}), nil
+		return provider.StreamFunc(provider.Chunk{Content: "hi", FinishReason: "stop", Done: true}), nil
 	}), &mockTranscript{})
 
-	if _, err := e.Run(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "go"}); err != nil {
-		t.Fatalf("Run() error = %v, want nil", err)
+	if _, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "go"}, AgentOptions{}); err != nil {
+		t.Fatalf("RunAgent() error = %v, want nil", err)
 	}
 	if len(cap.reqs) != 1 {
 		t.Fatalf("provider requests = %d, want 1", len(cap.reqs))
@@ -68,47 +68,6 @@ func assertSystemPromptHead(t *testing.T, msgs []provider.Message) {
 	}
 }
 
-func TestRunJSONObjectModeOpensWithSystemPrompt(t *testing.T) {
-	t.Parallel()
-	cap := &headRecorder{}
-	p := &capableScripted{
-		Scripted: provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
-			cap.reqs = append(cap.reqs, req)
-			return provider.StreamFunc(provider.Chunk{Content: `{"ok":1}`}, provider.Chunk{FinishReason: "stop", Done: true}), nil
-		}),
-		supported: []provider.GenerationControl{provider.GenerationControlJSONObjectMode},
-	}
-	e := New(p, &mockTranscript{})
-
-	if _, err := e.RunJSONObjectMode(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "go"}); err != nil {
-		t.Fatalf("RunJSONObjectMode() error = %v, want nil", err)
-	}
-	if len(cap.reqs) != 1 {
-		t.Fatalf("provider requests = %d, want 1", len(cap.reqs))
-	}
-	assertSystemPromptHead(t, cap.reqs[0].Messages)
-}
-
-func TestRunSamplingPolicyOpensWithSystemPrompt(t *testing.T) {
-	t.Parallel()
-	cap := &headRecorder{}
-	p := &capableScripted{
-		Scripted: provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
-			cap.reqs = append(cap.reqs, req)
-			return provider.StreamFunc(provider.Chunk{Content: "draft"}, provider.Chunk{FinishReason: "stop", Done: true}), nil
-		}),
-		supported: []provider.GenerationControl{provider.GenerationControlSamplingPolicy},
-	}
-	e := New(p, &mockTranscript{})
-
-	if _, err := e.RunSamplingPolicy(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "go"}, provider.SamplingPolicy{Mode: provider.SamplingTemperature, Value: 0.7}); err != nil {
-		t.Fatalf("RunSamplingPolicy() error = %v, want nil", err)
-	}
-	if len(cap.reqs) != 1 {
-		t.Fatalf("provider requests = %d, want 1", len(cap.reqs))
-	}
-	assertSystemPromptHead(t, cap.reqs[0].Messages)
-}
 
 func TestRunAgentOpensWithSystemPrompt(t *testing.T) {
 	t.Parallel()

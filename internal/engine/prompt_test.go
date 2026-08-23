@@ -20,10 +20,22 @@ func TestSystemPromptEmbedded(t *testing.T) {
 
 func TestSystemPromptTokenBudget(t *testing.T) {
 	t.Parallel()
-	if n := CountTokens(SystemPrompt); n > MaxSystemPromptTokens {
+	if n := promptTokenEstimate(SystemPrompt); n > MaxSystemPromptTokens {
 		t.Fatalf("system prompt %d tokens exceeds ceiling %d",
 			n, MaxSystemPromptTokens)
 	}
+}
+
+// promptTokenEstimate mirrors the provider-side ~4-bytes-per-token estimate used for the ceiling gate.
+func promptTokenEstimate(s string) int {
+	if s == "" {
+		return 0
+	}
+	n := len(s) / 4
+	if n < 50 {
+		return 50
+	}
+	return n
 }
 
 func TestSystemPromptNamesAgent(t *testing.T) {

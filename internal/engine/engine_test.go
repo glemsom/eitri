@@ -23,12 +23,12 @@ func TestRunProducesFinalAnswer(t *testing.T) {
 	tr := &mockTranscript{}
 	e := New(provider.NewFake("../provider/testdata/hello.sse"), tr)
 
-	res, err := e.Run(context.Background(), RunRequest{
+	res, err := e.RunAgent(context.Background(), RunRequest{
 		Model:  "deepseek-v4-flash",
 		Prompt: "Say hello",
-	})
+	}, AgentOptions{})
 	if err != nil {
-		t.Fatalf("Run() error = %v, want nil", err)
+		t.Fatalf("run error = %v, want nil", err)
 	}
 	if res.Answer != "Hello world" {
 		t.Fatalf("Answer = %q, want %q", res.Answer, "Hello world")
@@ -49,9 +49,9 @@ func TestRunWritesAnswerToTranscript(t *testing.T) {
 	tr := &mockTranscript{}
 	e := New(provider.NewFake("../provider/testdata/usage-final.sse"), tr)
 
-	res, err := e.Run(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"})
+	res, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}, AgentOptions{})
 	if err != nil {
-		t.Fatalf("Run() error = %v, want nil", err)
+		t.Fatalf("run error = %v, want nil", err)
 	}
 	if res.Answer != "ack" {
 		t.Fatalf("Answer = %q, want %q", res.Answer, "ack")
@@ -88,14 +88,14 @@ func TestRunThreadsThinkingAndEffort(t *testing.T) {
 		return provider.StreamFunc(provider.Chunk{Content: "hi"}, provider.Chunk{FinishReason: "stop", Done: true}), nil
 	}), &mockTranscript{})
 
-	_, err := e.Run(context.Background(), RunRequest{
+	_, err := e.RunAgent(context.Background(), RunRequest{
 		Model:           "deepseek-v4-flash",
 		Prompt:          "go",
 		ThinkingEnabled: true,
 		ReasoningEffort: "medium", // normalized to high by the provider
-	})
+	}, AgentOptions{})
 	if err != nil {
-		t.Fatalf("Run() error = %v, want nil", err)
+		t.Fatalf("run error = %v, want nil", err)
 	}
 	if len(cap.reqs) != 1 {
 		t.Fatalf("provider requests = %d, want 1", len(cap.reqs))
