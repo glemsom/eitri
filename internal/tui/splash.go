@@ -33,6 +33,8 @@ const (
 	splashEmergenceStartFrame = 10
 	// splashEyeFlashFrame is when the dwarf's eyes flash bright green.
 	splashEyeFlashFrame = 18
+	// splashEyeFlashColor is the exact bright green the eyes flash with.
+	splashEyeFlashColor = "#00FF88"
 	// splashEmergencePeakDensity is the storm ceiling the non-Kitty path ramps
 	// to during emergence, so terminals without graphics still get a crescendo.
 	splashEmergencePeakDensity = 0.45
@@ -233,7 +235,7 @@ func letterDropRows(frame, letter int) int {
 	return 0
 }
 
-// rainDensity returns the fraction of cells raining at a frame: full storm until emergence, an intensification ramp for non-Kitty terminals through frames 10–20, then thinning to nothing by splashRainEndFrame.
+// rainDensity returns the fraction of cells raining at a frame: full storm until emergence, an intensification ramp for non-Kitty terminals until the wordmark starts, then thinning to nothing by splashRainEndFrame.
 func rainDensity(frame int, kitty bool) float64 {
 	switch {
 	case frame <= splashEmergenceStartFrame:
@@ -291,8 +293,8 @@ func renderSplash(s *splashState, w, h int) string {
 
 	// The eyes flash bright green for exactly one frame at the peak of the
 	// emergence ramp — the moment the face is fully revealed.
-	eyeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#00FF88"))
-	var eyes [2]struct{ row, col int }
+	eyeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(splashEyeFlashColor))
+	var eyes [2]cellPos
 	eyesFlash := false
 	if s.kitty && s.frame == splashEyeFlashFrame {
 		if place, ok := faceGeometry(w, h); ok {
@@ -302,7 +304,7 @@ func renderSplash(s *splashState, w, h int) string {
 	}
 	isEyeCell := func(r, c int) bool {
 		for _, e := range eyes {
-			if e.row == r && e.col == c {
+			if e == (cellPos{r, c}) {
 				return true
 			}
 		}

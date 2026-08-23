@@ -130,6 +130,11 @@ func faceGeometry(w, h int) (p facePlacement, ok bool) {
 	return p, true
 }
 
+// cellPos is one terminal-grid cell.
+type cellPos struct {
+	row, col int
+}
+
 // eyeFlashOffsets locate the dwarf's eyes within the face's cell footprint,
 // as fractions of that footprint measured off the source image: the eyes sit
 // roughly 42% down and a third/two-thirds across.
@@ -141,14 +146,14 @@ const (
 
 // eyeFlashCells returns the two terminal cells covering the eyes for the
 // given placement.
-func eyeFlashCells(p facePlacement) [2]struct{ row, col int } {
-	mk := func(colFrac float64) struct{ row, col int } {
-		return struct{ row, col int }{
+func eyeFlashCells(p facePlacement) [2]cellPos {
+	mk := func(colFrac float64) cellPos {
+		return cellPos{
 			row: p.row + int(eyeRowFrac*float64(p.rows)),
 			col: p.col + int(colFrac*float64(p.cols)),
 		}
 	}
-	return [2]struct{ row, col int }{mk(eyeLeftColFrac), mk(eyeRightColFrac)}
+	return [2]cellPos{mk(eyeLeftColFrac), mk(eyeRightColFrac)}
 }
 
 // kittyFaceEscape renders the escape sequences that show the face at the
