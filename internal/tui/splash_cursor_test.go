@@ -73,4 +73,3 @@ func TestSplashCursor_restoredWhenSplashCompletes(t *testing.T) {
 		t.Errorf("splash completion must restore cursor show+blink, got %q", buf.String())
 	}
 }
-
