@@ -217,3 +217,88 @@ func TestSplash_disabledAndReducedMotion(t *testing.T) {
 		t.Fatalf("reduced motion must skip the splash entirely")
 	}
 }
+
+// splashLetterRows scans a stripped splash view and returns, per letter
+// (0=E … 4=I), the sorted screen rows where that letter's column window
+// carries any block glyph; an absent letter yields an empty slice.
+func splashLetterRows(t *testing.T, frame int) [][]int {
+	t.Helper()
+	content := stripANSI(splashFrameView(t, frame))
+	lines := strings.Split(content, "\n")
+	markWidth := len([]rune(eitriWordmark[0]))
+	markLeft := (80 - markWidth) / 2
+	rows := make([][]int, splashLetterCount)
+	for r, line := range lines {
+		runes := []rune(line)
+		for l := 0; l < splashLetterCount; l++ {
+			start := markLeft + l*(splashLetterCells+splashLetterGap)
+			for c := start; c < start+splashLetterCells && c < len(runes); c++ {
+				if runes[c] == '█' {
+					rows[l] = append(rows[l], r)
+					break
+				}
+			}
+		}
+	}
+	return rows
+}
+
+func TestSplash_staggeredLetterVisibilityWindows(t *testing.T) {
+	if rows := splashLetterRows(t, splashWordmarkStartFrame-1); !allLettersAbsent(rows) {
+		t.Errorf("no letter may be visible before frame %d", splashWordmarkStartFrame)
+	}
+	for f := splashWordmarkStartFrame; f < splashWordmarkStartFrame+5; f++ {
+		rows := splashLetterRows(t, f)
+		shown := f - splashWordmarkStartFrame + 1
+		for l := range rows {
+			visible := len(rows[l]) > 0
+			if l < shown && !visible {
+				t.Errorf("frame %d: letter %d must be visible", f, l)
+			}
+			if l >= shown && visible {
+				t.Errorf("frame %d: letter %d must not be visible yet", f, l)
+			}
+		}
+	}
+	if rows := splashLetterRows(t, splashWordmarkStartFrame + 5); !allLettersPresent(rows) {
+		t.Errorf("all five letters must be visible by frame %d", splashWordmarkStartFrame+5)
+	}
+}
+
+// TestSplash_letterEntryDropSettlesUp verifies the 2-row overshoot: on its
+// entry frame a letter renders two rows below its final position and settles
+// upward from the next frame on. Compared via the bottommost block row so the
+// frame-22 flash bar (which blanks the wordmark's middle row) can't skew it.
+func TestSplash_letterEntryDropSettlesUp(t *testing.T) {
+	settled := splashLetterRows(t, 40)
+	for i := 0; i < 5; i++ {
+		entry := splashLetterRows(t, splashWordmarkStartFrame+i)
+		entryBottom := entry[i][len(entry[i])-1]
+		settledBottom := settled[i][len(settled[i])-1]
+		if entryBottom != settledBottom+2 {
+			t.Errorf("letter %d must enter 2 rows low: entry bottom %d, want %d", i, entryBottom, settledBottom+2)
+		}
+		next := splashLetterRows(t, splashWordmarkStartFrame+i+1)
+		if next[i][0] != settled[i][0] {
+			t.Errorf("letter %d must settle into final position one frame after entry", i)
+		}
+	}
+}
+
+func allLettersAbsent(rows [][]int) bool {
+	for _, r := range rows {
+		if len(r) > 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func allLettersPresent(rows [][]int) bool {
+	for _, r := range rows {
+		if len(r) == 0 {
+			return false
+		}
+	}
+	return true
+}

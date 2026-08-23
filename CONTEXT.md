@@ -72,6 +72,10 @@ _Avoid_: image support, graphics mode
 The single-frame (frame 22) ignition flash at the moment the wordmark starts resolving out of the rain: a full-width solid bar of true-color `#00FFC8` background replacing the wordmark's vertical middle row for exactly one frame, while rain keeps collapsing around it. Rendered as background-colored spaces, which no other splash element uses — the hue matches the wordmark gradient's hottest stop so it reads as the gradient flaring.
 _Avoid_: flash overlay, screen blink
 
+**Staggered letter reveal**:
+The splash wordmark's assembly motion: each letter of EITRI enters one frame after its left neighbor (frames 22–26), dropping two rows below its final position on the entry frame and settling upward the next frame, so the mark reads as assembling itself from the converging rain. Total splash duration is unchanged; letters render through the same storm cell path as the settled wordmark.
+_Avoid_: per-letter animation, bounce-in
+
 **Splash title branding**:
 The OSC 0 window title (`⚒ Eitri — forging agents`) installed when the launch splash starts and restored (to the title captured at splash start) when it ends. Terminals without OSC 0 support ignore the escape, so emission is always harmless.
 _Avoid_: tab name, header text
