@@ -37,10 +37,10 @@ func runCmd(t *testing.T, cmd tea.Cmd) {
 
 func TestSplashTitle_beginEmitsBrandingOSC0(t *testing.T) {
 	var buf bytes.Buffer
-	runCmd(t, splashTitleCmd(&buf, splashWindowTitle))
-	want := "\x1b]0;⚒ Eitri — forging agents\x07"
+	runCmd(t, splashStartCmd(&buf))
+	want := "\x1b]0;⚒ Eitri — forging agents\x07" + splashCursorHide
 	if buf.String() != want {
-		t.Errorf("splash start must emit OSC 0 branding %q, got %q", want, buf.String())
+		t.Errorf("splash start must emit OSC 0 branding plus cursor hide %q, got %q", want, buf.String())
 	}
 }
 
