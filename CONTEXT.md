@@ -71,3 +71,7 @@ _Avoid_: image support, graphics mode
 **Splash title branding**:
 The OSC 0 window title (`⚒ Eitri — forging agents`) installed when the launch splash starts and restored (to the title captured at splash start) when it ends. Terminals without OSC 0 support ignore the escape, so emission is always harmless.
 _Avoid_: tab name, header text
+
+**Splash cursor choreography**:
+The hardware-cursor hide (`CSI ? 25 l`) emitted when the launch splash starts and the show-plus-blink restore (`CSI ? 25 h` then `CSI ? 12 h`) emitted when it settles back into idleWelcome, on every exit path (full playback, skip keypress, mid-splash transcript content). The animation owns the full screen, so no cursor is ever visible during a splash frame.
+_Avoid_: caret hiding, cursor blink mode

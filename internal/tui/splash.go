@@ -54,10 +54,24 @@ const splashWindowTitle = "⚒ Eitri — forging agents"
 // harmless.
 func oscSetTitle(title string) string { return "\x1b]0;" + title + "\x07" }
 
-// splashTitleCmd returns a command that sets the terminal window title via an OSC 0 escape written to w. Terminals without title support ignore the escape, so emission is always harmless.
-func splashTitleCmd(w io.Writer, title string) tea.Cmd {
+// splashCursorHide is DECTCEM off (CSI ? 25 l): the hardware cursor disappears while the splash owns the screen.
+const splashCursorHide = "\x1b[?25l"
+
+// splashCursorShow is DECTCEM on followed by ATT160 blink-on, so the restored cursor reappears blinking rather than static.
+const splashCursorShow = "\x1b[?25h\x1b[?12h"
+
+// splashStartCmd installs the branding title and hides the cursor in one synchronous write: both belong to the moment the splash takes over the screen.
+func splashStartCmd(w io.Writer) tea.Cmd {
 	return func() tea.Msg {
-		_, _ = io.WriteString(w, oscSetTitle(title))
+		_, _ = io.WriteString(w, oscSetTitle(splashWindowTitle)+splashCursorHide)
+		return nil
+	}
+}
+
+// splashEndCmd restores the pre-splash title and re-shows the blinking cursor in one synchronous write: both belong to the moment the splash hands the screen back.
+func splashEndCmd(w io.Writer, prevTitle string) tea.Cmd {
+	return func() tea.Msg {
+		_, _ = io.WriteString(w, oscSetTitle(prevTitle)+splashCursorShow)
 		return nil
 	}
 }

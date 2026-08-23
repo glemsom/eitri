@@ -37,10 +37,10 @@ func runCmd(t *testing.T, cmd tea.Cmd) {
 
 func TestSplashTitle_beginEmitsBrandingOSC0(t *testing.T) {
 	var buf bytes.Buffer
-	runCmd(t, splashTitleCmd(&buf, splashWindowTitle))
-	want := "\x1b]0;⚒ Eitri — forging agents\x07"
+	runCmd(t, splashStartCmd(&buf))
+	want := "\x1b]0;⚒ Eitri — forging agents\x07" + splashCursorHide
 	if buf.String() != want {
-		t.Errorf("splash start must emit OSC 0 branding %q, got %q", want, buf.String())
+		t.Errorf("splash start must emit OSC 0 branding plus cursor hide %q, got %q", want, buf.String())
 	}
 }
 
@@ -50,8 +50,8 @@ func TestSplashTitle_restoresPreviousTitleOnSkip(t *testing.T) {
 	m := splashTitleModel(t, &buf, "old title")
 	nm, cmd := m.Update(tea.KeyPressMsg{Code: 'x'})
 	runCmd(t, cmd)
-	if got := buf.String(); got != "\x1b]0;⚒ Eitri — forging agents\x07\x1b]0;old title\x07" {
-		t.Errorf("splash skip must restore the stored previous title via OSC 0, got %q", got)
+	if got := buf.String(); got != "\x1b]0;⚒ Eitri — forging agents\x07\x1b]0;old title\x07\x1b[?25h\x1b[?12h" {
+		t.Errorf("splash skip must restore the stored previous title via OSC 0 plus cursor show, got %q", got)
 	}
 	if am := asModel(t, nm); am.prevTitle != "old title" {
 		t.Errorf("previous title must be stored at splash start, got %q", am.prevTitle)
