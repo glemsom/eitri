@@ -6,8 +6,8 @@ import (
 	"image/color"
 	"strings"
 
-	"charm.land/lipgloss/v2"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/glemsom/eitri/internal/config"
 )
@@ -460,4 +460,36 @@ func settingsView(f settingsForm) string {
 	b.WriteString(save + "  " + cancel + "\n")
 	b.WriteString(th.statusStyle.Render("tab/enter: navigate " + g("·", ".") + " arrows/+" + g("−", "-") + ": adjust " + g("·", ".") + " esc: close"))
 	return b.String()
+}
+
+// startSettings opens the Settings surface and returns the command to run.
+func (m Model) startSettings() (tea.Model, tea.Cmd) {
+	o, cmd := openSettingsOverlay(m.deps.Config, m.deps.Models, m.tx.theme, m.telemetry, m.deps.ThinkingSuppression, m.deps)
+	m.settings = o
+	return m, cmd
+}
+
+// updateSettings routes one message through the open Settings overlay and applies its outcome.
+func (m Model) updateSettings(msgi tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	res := m.settings.Handle(msgi)
+	switch res.outcome {
+	case outcomeClosed:
+		m.settings = nil
+	case outcomeSaved:
+		m.savedMsg = res.status
+		m.deps.Config = *res.saved
+		m.tx.applySettings(*res.saved)
+		m.settings = nil
+	}
+	return m, res.cmd
+}
+
+// discoverCmd runs one on-demand provider model discovery off the main loop and reports its result .
+func discoverCmd(discover func(ctx context.Context, cfg config.Config) ([]string, error), cfg config.Config) tea.Cmd {
+	return tea.Cmd(func() tea.Msg {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		models, err := discover(ctx, cfg)
+		return discoverDoneMsg{provider: cfg.Provider, models: models, err: err}
+	})
 }

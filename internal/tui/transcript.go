@@ -49,6 +49,24 @@ type Transcript struct {
 	rail *Rail
 }
 
+type toolRowRange struct {
+	start, end, idx int
+}
+
+// msgRowRange maps a rendered history row span to the message that owns it, so the transcript exposes a row->message index alongside the row->tool-entry index. start/end are content-line indexes in the viewport's split space (the same space mouseToContent maps into); idx indexes the Transcript-owned messages.
+type msgRowRange struct {
+	start, end, idx int
+}
+
+// transcriptLayout is the persistent layout cache for the history region : one batched renderHistory pass captures the row->tool-entry mapping (rows), the row->message mapping (msgs), both in content-line coordinates, and the ANSI-stripped history rows (plain, the drag-select copy space) so the mouse hit-test reads the recorded index instead of re-deriving layout on every pointer event. dirty is true when a transcript-affecting change makes the cached index stale; the lazy hit-test rebuilds exactly once per invalidate.
+type transcriptLayout struct {
+	rows   []toolRowRange // row->tool-entry index in content-line coordinates
+	msgs   []msgRowRange  // row->message index in content-line coordinates
+	plain  []string       // ANSI-stripped history rows (the drag-select space)
+	dirty  bool
+	builds int
+}
+
 // viewMode is the transcript's global expansion mode: the default (respects
 // the config defaults plus per-block state), the e / ctrl+e expand-all mode,
 // or the E collapse-all-to-hints mode.

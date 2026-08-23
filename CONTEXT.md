@@ -76,6 +76,10 @@ _Avoid_: settings form handler, settings state machine
 The animated full-screen startup sequence (matrix rain resolving into the rainbow wordmark) that owns the screen until it settles or is skipped. The Splash module owns the lifecycle end to end — the animation state, the tick cadence, the title/cursor side-effects, the keypress skip, and the early end when the transcript gains content — so the Model only tracks whether the splash is active (a nil pointer) and routes every message through the module's single Handle entry point, while Init asks it for the startup commands and View asks it for the frame. Splash tests hit the module seam directly rather than driving a full Model.
 _Avoid_: boot screen, loading screen
 
+**Busy spinner**:
+The animated braille indicator that runs while a turn works — an OpenCode-style frame set advanced every 80 ms tick by the spinner module — degrading to a static "… thinking" line for reduced-motion or non-UTF-8 environments. The motion gate it shares with the Launch splash disables all animation when `EITRI_NO_MOTION` is set or the locale cannot render braille, so working state stays readable as text.
+_Avoid_: loader, progress indicator
+
 **Thinking suppression**:
 A per-provider capability to actually stop chain-of-thought on the wire when the thinking toggle is off, negotiated with the provider at session start. A provider that cannot suppress reasoning surfaces a warning rather than silently ignoring the toggle.
 _Avoid_: reasoning off, cot off
