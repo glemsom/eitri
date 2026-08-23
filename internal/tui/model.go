@@ -768,7 +768,7 @@ func (m *Model) applyStreamDelta(u StreamUpdate) {
 // applyToolUpdate folds one tool observation from the merged event feed into the transcript, arming the tool-start pulse for thinking-off turns along the way.
 func (m *Model) applyToolUpdate(u ToolUpdate) {
 	m.tx.apply(u) // tool updates route through the Transcript
-	if u.Start != nil && !m.td.session.thinkingEnabled && motionEnabled() {
+	if u.Start != nil && !m.td.session.ThinkingEnabled() && motionEnabled() {
 		m.tx.busyPulse = 3
 	}
 }

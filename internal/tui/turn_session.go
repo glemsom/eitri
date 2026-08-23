@@ -23,6 +23,9 @@ func (s *TurnSession) Begin() {
 // Context returns the armed per-turn context, or nil if no turn is armed.
 func (s *TurnSession) Context() context.Context { return s.ctx }
 
+// ThinkingEnabled reports whether new messages this turn creates request thinking.
+func (s *TurnSession) ThinkingEnabled() bool { return s.thinkingEnabled }
+
 // Stop cancels the armed turn's context, if any.
 func (s *TurnSession) Stop() {
 	if s.cancel != nil {
