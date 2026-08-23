@@ -68,6 +68,10 @@ _Avoid_: debug log, http trace
 The terminal's support for the Kitty graphics protocol, resolved once at TUI startup from `TERM_PROGRAM` (kitty, ghostty, wezterm) with a graphics-query + DA1 probe fallback. Every Kitty-gated render feature reads this flag; a non-Kitty terminal receives zero Kitty escape sequences and falls back to text-only rendering.
 _Avoid_: image support, graphics mode
 
+**Splash convergence flash**:
+The single-frame (frame 22) ignition flash at the moment the wordmark starts resolving out of the rain: a full-width solid bar of true-color `#00FFC8` background replacing the wordmark's vertical middle row for exactly one frame, while rain keeps collapsing around it. Rendered as background-colored spaces, which no other splash element uses — the hue matches the wordmark gradient's hottest stop so it reads as the gradient flaring.
+_Avoid_: flash overlay, screen blink
+
 **Splash title branding**:
 The OSC 0 window title (`⚒ Eitri — forging agents`) installed when the launch splash starts and restored (to the title captured at splash start) when it ends. Terminals without OSC 0 support ignore the escape, so emission is always harmless.
 _Avoid_: tab name, header text

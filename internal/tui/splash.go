@@ -27,6 +27,9 @@ const (
 	splashWordmarkStartFrame = 22
 	// splashRainEndFrame is when the last rain glyphs fade away.
 	splashRainEndFrame = 46
+	// splashFlashColor matches the palette's hottest stop so the ignition
+	// flash reads as the gradient flaring up rather than a foreign color.
+	splashFlashColor = "#00FFC8"
 )
 
 // splashState tracks the splash's animation progress; a nil pointer on Model means the splash is over (or never ran).
@@ -228,6 +231,16 @@ func renderSplash(s *splashState, w, h int) string {
 		markLeft = 0
 	}
 
+	// The convergence flash fires for exactly one frame at the moment the
+	// first wordmark row resolves. It replaces only its own row so the rain
+	// keeps collapsing around it — a full-screen blank would read as a
+	// glitch, not an ignition.
+	flashRow := markTop + markRows/2
+	var flashBar string
+	if s.frame == splashWordmarkStartFrame {
+		flashBar = lipgloss.NewStyle().Background(lipgloss.Color(splashFlashColor)).Render(strings.Repeat(" ", w))
+	}
+
 	stormCell := func(r, c int) string {
 		mr := r - markTop
 		mc := c - markLeft
@@ -249,8 +262,12 @@ func renderSplash(s *splashState, w, h int) string {
 		return " "
 	}
 	for r := 0; r < h-2; r++ {
-		for c := 0; c < w; c++ {
-			b.WriteString(stormCell(r, c))
+		if flashBar != "" && r == flashRow {
+			b.WriteString(flashBar)
+		} else {
+			for c := 0; c < w; c++ {
+				b.WriteString(stormCell(r, c))
+			}
 		}
 		b.WriteString("\n")
 	}
