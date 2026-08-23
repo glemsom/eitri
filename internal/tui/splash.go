@@ -103,25 +103,32 @@ func (s *Splash) Handle(msg tea.Msg) splashResult {
 	case splashTickMsg:
 		if s.state == nil || s.tx.hasContent() {
 			s.state = nil
-			return splashResult{handled: true, ended: true, cmd: s.end()}
+			return s.finish()
 		}
 		s.state.advance()
 		if s.state.done() {
 			s.state = nil
-			return splashResult{handled: true, ended: true, cmd: s.end()}
+			return s.finish()
 		}
 		return splashResult{handled: true, cmd: splashTick()}
 	case tea.KeyPressMsg:
 		// Any keypress skips the launch splash instantly; the skip consumes
 		// the keypress itself, so the composer never sees the skipping key.
 		s.state = nil
-		return splashResult{handled: true, ended: true, cmd: s.end()}
+		return s.finish()
 	}
 	return splashResult{}
 }
 
 // View renders the current splash frame at the given size.
 func (s *Splash) View(w, h int) string { return renderSplash(s.state, w, h) }
+
+// finish returns the result of the splash ending right now: the message is
+// consumed, the Model should drop the module pointer, and the screen is
+// handed back through the end command.
+func (s *Splash) finish() splashResult {
+	return splashResult{handled: true, ended: true, cmd: s.end()}
+}
 
 // end returns the command that hands the screen back: it restores the
 // pre-splash title and re-shows the blinking cursor in one synchronous write.

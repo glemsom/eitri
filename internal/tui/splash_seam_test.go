@@ -38,17 +38,12 @@ func TestSplash_handleTickAdvances(t *testing.T) {
 	if res.cmd == nil {
 		t.Fatal("an advancing tick must schedule the next frame")
 	}
-	if s.state == nil || s.state.frame != 1 {
-		t.Fatalf("frame = %v, want 1 after the first tick", frame(s))
-	}
-}
-
-// frame reports the splash's current animation frame for assertions.
-func frame(s *Splash) int {
 	if s.state == nil {
-		return -1
+		t.Fatal("splash state must survive an advancing tick")
 	}
-	return s.state.frame
+	if s.state.frame != 1 {
+		t.Fatalf("frame after the first tick = %d, want 1", s.state.frame)
+	}
 }
 
 func TestSplash_handleTickEndsOnLastFrame(t *testing.T) {
