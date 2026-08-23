@@ -126,15 +126,43 @@ func isSGRReset(params []string) bool {
 	return false
 }
 
-// reattachBubbleBackground rewrites a glamour-rendered markdown block so the theme's bubble fill survives its SGR resets: every glamour reset is followed by a re-assertion of the bubble background, so text and inline styled runs all sit on the carded fill instead of default terminal background.
+// reattachBubbleBackground rewrites a glamour-rendered markdown block so the theme's bubble fill survives both SGR resets and glamour's per-span background colors. Two failure modes are covered: (1) every glamour reset is followed by a re-assertion of the bubble background so unstyled text sits on the carded fill instead of the default terminal background; (2) any SGR that carries a background-color param (`48;5;X` or `48;2;R;G;B`) is rewritten to the bubble tint, so glamour's inline `code` style — which emits `38;2;...;48;5;236` in the dark theme and `48;5;254` in the light theme — no longer paints a contrasting patch inside the user card. Without (2) the inline code cells render as bright text on a slightly-darker fill, which the eye reads as a colored block inside the bubble.
 func reattachBubbleBackground(s string, th Theme) string {
 	bg := bubbleBgSGR(th)
+	// bg is "\x1b[48;2;R;G;Bm"; bubbleBgParams is the inside ("48;2;R;G;B")
+	// we splice into any SGR that already carries a background-color param.
+	bubbleBgParams := strings.TrimSuffix(strings.TrimPrefix(bg, "\x1b["), "m")
 	return sgrParamRe.ReplaceAllStringFunc(s, func(seq string) string {
 		params := strings.SplitN(seq[2:len(seq)-1], ";", -1)
-		if !isSGRReset(params) {
+		if isSGRReset(params) {
+			return seq + bg
+		}
+		// Rewrite any background-color param to the bubble tint; keep the
+		// rest of the SGR (fg color, bold, etc.) intact.
+		var out []string
+		rewrote := false
+		for i := 0; i < len(params); {
+			if params[i] == "48" && i+1 < len(params) {
+				switch {
+				case params[i+1] == "5" && i+2 < len(params):
+					out = append(out, bubbleBgParams)
+					i += 3
+					rewrote = true
+					continue
+				case params[i+1] == "2" && i+4 < len(params):
+					out = append(out, bubbleBgParams)
+					i += 5
+					rewrote = true
+					continue
+				}
+			}
+			out = append(out, params[i])
+			i++
+		}
+		if !rewrote {
 			return seq
 		}
-		return seq + bg
+		return "\x1b[" + strings.Join(out, ";") + "m"
 	})
 }
 
