@@ -203,8 +203,7 @@ func stepFrac(v float64, d int) float64 {
 
 // SettingsOverlay owns the open Settings surface: the draft form, its
 // on-demand model-discovery lifecycle, and persistence of the draft through
-// the save seams. The Model only tracks whether an overlay is open and
-// routes key presses, discovery results, and save side effects to it.
+// the save seams.
 type SettingsOverlay struct {
 	// Embedded form keeps the pure state API (fields, Model(), draft) intact.
 	settingsForm
@@ -223,11 +222,8 @@ type SettingsOverlay struct {
 type settingsKeyOutcome int
 
 const (
-	// outcomeContinue keeps the overlay open with no follow-up work.
 	outcomeContinue settingsKeyOutcome = iota
-	// outcomeClosed dismisses the overlay without persisting.
 	outcomeClosed
-	// outcomeSaved persists the draft via Save() and closes the overlay.
 	outcomeSaved
 )
 
