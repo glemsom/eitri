@@ -243,6 +243,12 @@ func renderSplash(s *splashState, w, h int) string {
 		h = 24
 	}
 	var b strings.Builder
+	// On Kitty terminals the face fades in behind the rain during emergence
+	// and dissolves with the shatter; the graphics escape rides at the top of
+	// the frame so the rain cells render over it.
+	if s.kitty {
+		b.WriteString(kittyFaceEscape(s.frame, w, h))
+	}
 
 	markRows := len(eitriWordmark)
 	markWidth := len([]rune(eitriWordmark[0]))
