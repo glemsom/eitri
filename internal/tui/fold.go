@@ -22,6 +22,7 @@ func (f *Fold) Stream(tx *Transcript, kind StreamKind, delta string) {
 		return
 	}
 	f.session.recordLive(TimelineEvent{Kind: streamEventKind(kind), Delta: delta})
+	tx.layout.dirty = true // the in-progress message grew
 	cur := f.session.curStream
 	if cur >= 0 && cur < len(tx.messages) && tx.messages[cur].streaming {
 		tx.syncStreamSnapshots(cur, f.session.timeline)

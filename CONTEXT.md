@@ -57,7 +57,7 @@ The persistent Ctrl+E mode that renders every tool entry full-size. A file-chang
 _Avoid_: detail view, full view
 
 **Fold**:
-The session-owned writer for a running turn's live material: streamed deltas grow the streaming assistant message, and tool observations land in both the tool log and the arrival-ordered event log, with sequence numbers stamped by Fold alone. No code outside the session folds turn events directly.
+The session-owned writer for a running turn's live material: streamed deltas grow the streaming assistant message, and tool observations land in both the tool log and the arrival-ordered event log, with sequence numbers stamped by Fold alone. No code outside the session folds turn events directly. Stream and Tool mark the transcript's layout cache stale inside themselves, so the Model's stream-delta and tool-update handlers never invalidate by hand around a Fold call.
 _Avoid_: stream handler, event appender
 
 **TurnSession**:
