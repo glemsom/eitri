@@ -290,7 +290,6 @@ func NewModelCfg(d Dependencies) Model {
 	}
 	m.fold = NewFold(m.session)
 	m.session.SetThinkingEnabled(d.Config.ThinkingEnabled)
-	m.tx.layout.dirty = true
 	if !isSupportedTheme(d.Config.Theme) {
 		m.savedMsg = fmt.Sprintf("unknown theme %q, using %s", d.Config.Theme, config.DefaultTheme)
 	}
@@ -396,10 +395,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, eventWait(m.events)
 
 	case tea.WindowSizeMsg:
-		m.tx.width = msgi.Width
-		m.tx.height = msgi.Height
+		m.tx.SetSize(msgi.Width, msgi.Height)
 		m.syncWidths()
-		m.tx.layout.dirty = true // width change re-wraps the transcript rows
 		return m, nil
 
 	case splashTickMsg:
@@ -735,11 +732,7 @@ func (s *settingsForm) save(m *Model) {
 		m.deps.SaveBack(cfg)
 	}
 	m.deps.Config = cfg
-	m.tx.theme = themeFor(cfg.Theme)
-	m.tx.configTheme = cfg.Theme
-	m.tx.cotExpanded = !cfg.CoTCollapsedByDefault
-	m.tx.toolResultsExpanded = !cfg.ToolResultsCollapsedByDefault
-	m.tx.layout.dirty = true // the flip can re-wrap the transcript
+	m.tx.applySettings(cfg)
 	m.settings = nil
 }
 
@@ -855,8 +848,7 @@ func slashCommand(prompt string, skills []SkillItem) (name, args string, ok bool
 
 // activateSkill runs one slash-command activation through the SkillsSurface activation seam (the skill tool) on a detached command; the resulting payload is injected into the follow-up agent turn's context so the model acts on the skill instructions.
 func (m Model) activateSkill(name, args string) (tea.Model, tea.Cmd) {
-	m.tx.messages = append(m.tx.messages, message{role: "you", content: "/" + name})
-	m.tx.layout.dirty = true
+	m.tx.appendUserMsg("/" + name)
 	if m.deps.Skills == nil || m.deps.Skills.Activate == nil {
 		m.tx.appendMsg(failurePrefix() + "no skill activation available")
 		return m, nil
@@ -866,8 +858,7 @@ func (m Model) activateSkill(name, args string) (tea.Model, tea.Cmd) {
 
 // startLogin runs the built-in `/login` command through the interactive login seam and renders its code/result as assistant notes.
 func (m Model) startLogin() (tea.Model, tea.Cmd) {
-	m.tx.messages = append(m.tx.messages, message{role: "you", content: "/login"})
-	m.tx.layout.dirty = true
+	m.tx.appendUserMsg("/login")
 	if m.deps.Login == nil {
 		m.tx.appendMsg(failurePrefix() + "no login flow available")
 		return m, nil

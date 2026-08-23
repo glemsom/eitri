@@ -22,7 +22,6 @@ func (f *Fold) Stream(tx *Transcript, kind StreamKind, delta string) {
 		return
 	}
 	f.session.recordLive(TimelineEvent{Kind: streamEventKind(kind), Delta: delta})
-	tx.layout.dirty = true // the in-progress message grew
 	cur := f.session.curStream
 	if cur >= 0 && cur < len(tx.messages) && tx.messages[cur].streaming {
 		tx.syncStreamSnapshots(cur, f.session.timeline)
@@ -41,7 +40,7 @@ func (f *Fold) Stream(tx *Transcript, kind StreamKind, delta string) {
 // to the most recent assistant message so trailing results stay in that
 // turn's log.
 func (f *Fold) Tool(tx *Transcript, u ToolUpdate) {
-	tx.log.Apply(u)
+	tx.applyTool(u)
 	if kind, ok := toolEventKind(u); ok {
 		ev := TimelineEvent{Kind: kind, Start: u.Start, Result: u.Result}
 		if tx.busy {
@@ -50,7 +49,6 @@ func (f *Fold) Tool(tx *Transcript, u ToolUpdate) {
 			f.attachToLastAssistant(tx, ev)
 		}
 	}
-	tx.layout.dirty = true // an entry changed the tool log's rendered rows
 }
 
 // attachToLastAssistant appends an event to the newest committed assistant

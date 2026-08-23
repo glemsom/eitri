@@ -37,12 +37,11 @@ func NewTurnSession(turn Turn) *TurnSession {
 func (s *TurnSession) Begin(tx *Transcript, prompt, payload string) tea.Cmd {
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	tx.live = s
-	tx.messages = append(tx.messages, message{role: "you", content: prompt})
+	tx.appendUserMsg(prompt)
 	tx.busy = true
 	s.curStream = -1
 	s.timeline = nil
 	s.turnSeq = 0
-	tx.layout.dirty = true
 	tx.log.SetAnchor(len(tx.messages) - 1)
 	return tea.Cmd(func() tea.Msg {
 		defer s.Stop()
@@ -99,10 +98,8 @@ func (s *TurnSession) SetThinkingEnabled(v bool) { s.thinkingEnabled = v }
 // Timeline-commit vs fresh-assistant bookkeeping stays internal so callers
 // see a single completion verb.
 func (s *TurnSession) Commit(tx *Transcript, msg turnDoneMsg) (stopped bool, err error) {
-	tx.busy = false
-	tx.spinner = 0
+	tx.endTurn()
 	s.End()
-	tx.layout.dirty = true
 	wasStreaming := s.curStream >= 0 && s.curStream < len(tx.messages)
 
 	if msg.stopped {
