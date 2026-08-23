@@ -95,12 +95,13 @@ func TestMutationsKeepHitTestCorrectWithoutCallerInvalidation(t *testing.T) {
 			t.Errorf("after appends+resize: messageAtLine(%d) for %q = (%d,%v), want message %d", c.line, c.marker, idx, ok, c.want)
 		}
 	}
-	toolLine = findLine(plain, "bash")
+	toolLine = findLine(plain, "bash  ls")
 	if idx, _, ok := tx.toolEntryAtLine(toolLine); !ok || idx != 0 {
 		t.Errorf("after appends+resize: toolEntryAtLine(%d) = (%d,%v), want tool entry 0", toolLine, idx, ok)
 	}
 
-	// Repeat queries serve from the cache: no further rebuilds.
+	// Repeat queries serve from the cache: no further rebuilds. One rebuild
+	// per mutation phase above, so the total is the phase count.
 	_, _ = tx.messageAtLine(answerLine)
 	_, _, _ = tx.toolEntryAtLine(toolLine)
 	if tx.layout.builds != 4 {
