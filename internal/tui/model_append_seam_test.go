@@ -86,8 +86,7 @@ func TestModel_skillNoActivationAppendsThroughSeam(t *testing.T) {
 	})
 	m = resize(t, m)
 	m.tx.layout.dirty = false // isolate the append: only the seam may re-mark it
-	nm, _ := m.activateSkill("my-skill", "")
-	m = asModel(t, nm)
+	m.slash.Activate(m.tx, m.deps.Skills, "my-skill", "")
 	if got := lastEitri(t, m); !strings.Contains(got, "no skill activation available") {
 		t.Errorf("skill failure note missing, got: %q", got)
 	}

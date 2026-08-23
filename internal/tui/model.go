@@ -204,10 +204,7 @@ type Model struct {
 	continueResp chan bool
 	prompting    bool
 
-	skills []SkillItem
-
-	slashIdx    int
-	slashPrefix string
+	slash *SkillActivation
 
 	telemetry *Telemetry
 
@@ -277,7 +274,7 @@ func NewModelCfg(d Dependencies) Model {
 		tx:           transcript,
 		continueReq:  make(chan struct{}, 1),
 		continueResp: make(chan bool, 1),
-		skills:       skillSnapshot(d),
+		slash: NewSkillActivation(d),
 		telemetry:    d.Telemetry,
 		events:       d.Events,
 		clipboard:    newClipboard(d),
@@ -485,8 +482,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tx.histFollow = true
 			m.composer.Reset()
 			m.syncComposerHeight()
-			m.slashIdx = 0
-			m.slashPrefix = ""
+			m.slash.Reset()
 			if prompt == "/settings" {
 				return m.startSettings()
 			}
@@ -501,13 +497,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.tx.appendMsg(helpView())
 				return m, nil
 			}
-			if name, args, ok := slashCommand(prompt, m.skills); ok {
-				return m.activateSkill(name, args)
+			if name, args, ok := m.slash.Command(prompt); ok {
+				return m, m.slash.Activate(m.tx, m.deps.Skills, name, args)
 			}
 			cmd := m.startTurn(prompt, "")
 			return m, cmd
 		case "tab":
-			if m.composer.Value() != "" && strings.HasPrefix(m.composer.Value(), "/") && len(slashCandidates(m.composer.Value(), m.skills)) > 0 {
+			if m.composer.Value() != "" && strings.HasPrefix(m.composer.Value(), "/") && len(m.slash.Candidates(m.composer.Value())) > 0 {
 				m.completeSlashCommand()
 				return m, nil
 			}
@@ -535,14 +531,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		nm, cmd := m.composer.Update(msg)
 		m.composer = nm
-		val := m.composer.Value()
-		if strings.HasPrefix(val, "/") {
-			m.slashPrefix = val
-			m.slashIdx = 0
-		} else {
-			m.slashPrefix = ""
-			m.slashIdx = 0
-		}
+		m.slash.TrackComposer(m.composer.Value())
 		m.syncComposerHeight()
 		cmds = append(cmds, cmd)
 		return m, tea.Batch(cmds...)
@@ -684,14 +673,6 @@ func (m *Model) applyToolUpdate(u ToolUpdate) {
 	}
 }
 
-// skillSnapshot captures the detected skills at construction so the slash completion has a stable list even if the Dependencies snapshot is nil or empty.
-func skillSnapshot(d Dependencies) []SkillItem {
-	if d.Skills != nil {
-		return d.Skills.Items
-	}
-	return nil
-}
-
 // copyTranscript copies the plain-text transcript to the system clipboard through the injected seam: Ctrl+O and /copy both route here.
 func (m *Model) copyTranscript() {
 	if m.clipboard == nil {
@@ -737,38 +718,6 @@ func clipboardToolText(l toolLog, anchor int) string {
 	return b.String()
 }
 
-// slashCommand reports whether prompt is a `/skillname` activation command for a detected skill .
-func slashCommand(prompt string, skills []SkillItem) (name, args string, ok bool) {
-	if len(skills) == 0 || !strings.HasPrefix(prompt, "/") {
-		return "", "", false
-	}
-	rest := strings.TrimSpace(strings.TrimPrefix(prompt, "/"))
-	name, args = rest, ""
-	if i := strings.IndexAny(rest, " \t"); i >= 0 {
-		name = rest[:i]
-		args = rest[i+1:]
-	}
-	if name == "" {
-		return "", "", false
-	}
-	for _, it := range skills {
-		if it.Name == name {
-			return name, strings.TrimSpace(args), true
-		}
-	}
-	return "", "", false
-}
-
-// activateSkill runs one slash-command activation through the SkillsSurface activation seam (the skill tool) on a detached command; the resulting payload is injected into the follow-up agent turn's context so the model acts on the skill instructions.
-func (m Model) activateSkill(name, args string) (tea.Model, tea.Cmd) {
-	m.tx.appendUserMsg("/" + name)
-	if m.deps.Skills == nil || m.deps.Skills.Activate == nil {
-		m.tx.appendMsg(failurePrefix() + "no skill activation available")
-		return m, nil
-	}
-	return m, skillCmd(m.deps.Skills.Activate, name, args)
-}
-
 // startLogin runs the built-in `/login` command through the interactive login seam and renders its code/result as assistant notes.
 func (m Model) startLogin() (tea.Model, tea.Cmd) {
 	m.tx.appendUserMsg("/login")
@@ -786,21 +735,6 @@ func discoverCmd(discover func(ctx context.Context, cfg config.Config) ([]string
 		defer cancel()
 		models, err := discover(ctx, cfg)
 		return discoverDoneMsg{provider: cfg.Provider, models: models, err: err}
-	})
-}
-
-// skillCmd runs a skill activation off the main loop and reports its payload. name and args ride along
-// on skillDoneMsg so the handler can start the agent turn (args as the prompt, or a default prompt for
-// a bare `/skillname`) with the payload injected into context.
-func skillCmd(activate func(ctx context.Context, name string) (string, error), name, args string) tea.Cmd {
-	return tea.Cmd(func() tea.Msg {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		payload, err := activate(ctx, name)
-		if err != nil {
-			return turnDoneMsg{err: fmt.Errorf("activate skill %q: %w", name, err)}
-		}
-		return skillDoneMsg{name: name, payload: payload, args: args}
 	})
 }
 
@@ -830,49 +764,13 @@ func loginWait(ch <-chan tea.Msg) tea.Cmd {
 	}
 }
 
-// slashCandidates returns the ordered slash-command completion candidates for the current composer value: the built-in `/settings`, `/copy`, and `/login` commands first, then every detected skill whose name starts with the `/...` partial.
-func slashCandidates(value string, skills []SkillItem) []string {
-	if !strings.HasPrefix(value, "/") {
-		return nil
-	}
-	partial := strings.TrimSpace(strings.TrimPrefix(value, "/"))
-	cands := make([]string, 0, len(skills)+3)
-	if partial == "" || strings.HasPrefix("settings", partial) {
-		cands = append(cands, "/settings")
-	}
-	if partial == "" || strings.HasPrefix("copy", partial) {
-		cands = append(cands, "/copy")
-	}
-	if partial == "" || strings.HasPrefix("login", partial) {
-		cands = append(cands, "/login")
-	}
-	if partial == "" || strings.HasPrefix("help", partial) {
-		cands = append(cands, "/help")
-	}
-	for _, it := range skills {
-		if it.Name == "settings" {
-			continue
-		}
-		if strings.HasPrefix(it.Name, partial) {
-			cands = append(cands, "/"+it.Name)
-		}
-	}
-	return cands
-}
-
-// completeSlashCommand fills the composer with the next slash-command completion candidate, cycling deterministicly through the built-in commands and matching detected skills .
+// completeSlashCommand delegates the completion cycle to the SkillActivation module, applying the chosen candidate to the composer.
 func (m *Model) completeSlashCommand() {
-	cands := slashCandidates(m.slashPrefix, m.skills)
-	if len(cands) == 0 {
-		return
-	}
-	if m.slashIdx < 0 || m.slashIdx >= len(cands) {
-		m.slashIdx = 0
-	}
-	m.composer.SetValue(cands[m.slashIdx])
-	m.composer.SetCursorColumn(len(cands[m.slashIdx]))
-	m.syncComposerHeight()
-	m.slashIdx = (m.slashIdx + 1) % len(cands)
+	m.slash.Complete(func(candidate string) {
+		m.composer.SetValue(candidate)
+		m.composer.SetCursorColumn(len(candidate))
+		m.syncComposerHeight()
+	})
 }
 
 // View renders the conversation plus composer as a tea.View (bubbletea v2).
@@ -1029,7 +927,7 @@ func (m Model) renderBand(b *strings.Builder) {
 		inner.WriteString(statusRow)
 		inner.WriteString("\n")
 	}
-	renderSlashCompletion(&inner, m.tx.theme, m.slashPrefix, m.composer.Value(), m.skills, m.slashIdx)
+	renderSlashCompletion(&inner, m.tx.theme, m.slash.Prefix(), m.composer.Value(), m.slash.items(), m.slash.cycle())
 	inner.WriteString(m.composer.View())
 	if m.savedMsg != "" {
 		inner.WriteString("\n" + m.tx.theme.statusStyle.Render(m.savedMsg))
@@ -1065,8 +963,14 @@ func (m Model) composerPreRows() int {
 	if m.telemetry != nil {
 		n++
 	}
-	return n + len(slashCandidates(m.slashPrefix, m.skills))
+	return n + len(m.slash.Candidates(m.slash.Prefix()))
 }
+
+// items exposes the module's skill snapshot for rendering the completion list.
+func (s *SkillActivation) items() []SkillItem { return s.skills }
+
+// cycle exposes the current completion selection index for highlight rendering.
+func (s *SkillActivation) cycle() int { return s.slashIdx }
 
 // renderSlashCompletion appends the slash-command completion list to the view above the composer: the built-in slash commands plus any matching detected skills.
 func renderSlashCompletion(b *strings.Builder, th Theme, value string, cur string, skills []SkillItem, selected int) {
