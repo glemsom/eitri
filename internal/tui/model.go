@@ -564,7 +564,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		res := m.settings.Handle(msgi)
 		if res.handled {
-			m.deps.Models = append([]string(nil), m.settings.models...)
+			m.deps.Models = append([]string(nil), res.models...)
 		}
 		return m, nil
 

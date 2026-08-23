@@ -289,13 +289,15 @@ func (o *SettingsOverlay) Key(k tea.KeyPressMsg) (settingsKeyOutcome, tea.Cmd) {
 
 // settingsResult reports the outcome of one message routed into the open
 // overlay: what the caller should do next, any follow-up command, and — when
-// the outcome is a save — the accepted config plus its status line.
+// the outcome is a save — the accepted config plus its status line, and for
+// discovery results the refreshed model list.
 type settingsResult struct {
 	outcome settingsKeyOutcome
 	handled bool
 	cmd     tea.Cmd
 	saved   *config.Config
 	status  string
+	models  []string
 }
 
 // Handle routes one message into the overlay: key presses navigate/save,
@@ -316,7 +318,7 @@ func (o *SettingsOverlay) Handle(msg tea.Msg) settingsResult {
 			return settingsResult{outcome: outcomeContinue}
 		}
 		o.ApplyDiscovery(msgi)
-		return settingsResult{outcome: outcomeContinue, handled: true}
+		return settingsResult{outcome: outcomeContinue, handled: true, models: o.models}
 	default:
 		return settingsResult{outcome: outcomeContinue}
 	}
