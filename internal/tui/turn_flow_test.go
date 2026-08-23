@@ -145,14 +145,14 @@ func TestTranscript_liveTurnRendersFromTimelineFlow(t *testing.T) {
 			{role: "you", content: "read it"},
 			{role: "eitri", content: "It is alpha", reasoning: "Reading the file.", streaming: true, thinkingRequested: true},
 		},
-		timeline: []TimelineEvent{
-			{Kind: EventReasoning, Seq: 0, Delta: "Reading the file."},
-			{Kind: EventToolStart, Seq: 1, Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}},
-			{Kind: EventToolResult, Seq: 2, Result: &ToolResult{Name: "read", Result: "alpha", Lines: 1}},
-			{Kind: EventAnswer, Seq: 3, Delta: "It is"},
-			{Kind: EventAnswer, Seq: 4, Delta: " alpha"},
-		},
 	}
+	wireLive(tx, []TimelineEvent{
+		{Kind: EventReasoning, Seq: 0, Delta: "Reading the file."},
+		{Kind: EventToolStart, Seq: 1, Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}},
+		{Kind: EventToolResult, Seq: 2, Result: &ToolResult{Name: "read", Result: "alpha", Lines: 1}},
+		{Kind: EventAnswer, Seq: 3, Delta: "It is"},
+		{Kind: EventAnswer, Seq: 4, Delta: " alpha"},
+	})
 
 	var hist strings.Builder
 	tx.renderHistory(&hist, nil, nil)
@@ -210,6 +210,10 @@ func lineBorderColor(rendered, body string) string {
 	return ""
 }
 
+func wireLive(tx *Transcript, events []TimelineEvent) {
+	tx.live = &TurnSession{timeline: events}
+}
+
 // answerInterleaveTranscript builds a completed turn whose answer text streams
 // in fragments around two tool calls — partial answers before and between the
 // tools, and a final fragment at the tail — the arrival order the flat flow
@@ -222,7 +226,7 @@ func answerInterleaveTranscript() *Transcript {
 	log.Apply(ToolUpdate{Result: &ToolResult{Name: "read", Result: "alpha", Lines: 1}})
 	log.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
 	log.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "x", Lines: 1}})
-	return &Transcript{
+	tx := &Transcript{
 		theme:           th,
 		configTheme:     config.DefaultTheme,
 		reasoningEffort: "medium",
@@ -235,16 +239,17 @@ func answerInterleaveTranscript() *Transcript {
 			{role: "you", content: "p"},
 			{role: "eitri", content: "alpha, and ls gave gives-x-final", thinkingRequested: true},
 		},
-		timeline: []TimelineEvent{
-			{Kind: EventAnswer, Seq: 0, Delta: "alpha, "},
-			{Kind: EventToolStart, Seq: 1, Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}},
-			{Kind: EventToolResult, Seq: 2, Result: &ToolResult{Name: "read", Result: "alpha", Lines: 1}},
-			{Kind: EventAnswer, Seq: 3, Delta: "and ls gave "},
-			{Kind: EventToolStart, Seq: 4, Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}},
-			{Kind: EventToolResult, Seq: 5, Result: &ToolResult{Name: "bash", Result: "x", Lines: 1}},
-			{Kind: EventAnswer, Seq: 6, Delta: "gives-x-final"},
-		},
 	}
+	wireLive(tx, []TimelineEvent{
+		{Kind: EventAnswer, Seq: 0, Delta: "alpha, "},
+		{Kind: EventToolStart, Seq: 1, Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}},
+		{Kind: EventToolResult, Seq: 2, Result: &ToolResult{Name: "read", Result: "alpha", Lines: 1}},
+		{Kind: EventAnswer, Seq: 3, Delta: "and ls gave "},
+		{Kind: EventToolStart, Seq: 4, Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}},
+		{Kind: EventToolResult, Seq: 5, Result: &ToolResult{Name: "bash", Result: "x", Lines: 1}},
+		{Kind: EventAnswer, Seq: 6, Delta: "gives-x-final"},
+	})
+	return tx
 }
 
 // liveReasoningInterleaveTranscript builds a Transcript mid-live-turn whose
@@ -260,7 +265,7 @@ func liveReasoningInterleaveTranscript() *Transcript {
 	log.Apply(ToolUpdate{Result: &ToolResult{Name: "read", Result: "alpha", Lines: 1}})
 	log.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
 	log.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "x", Lines: 1}})
-	return &Transcript{
+	tx := &Transcript{
 		theme:           th,
 		configTheme:     config.DefaultTheme,
 		reasoningEffort: "medium",
@@ -274,16 +279,17 @@ func liveReasoningInterleaveTranscript() *Transcript {
 			{role: "you", content: "p"},
 			{role: "eitri", reasoning: "reasoning one reasoning two", streaming: true, thinkingRequested: true},
 		},
-		timeline: []TimelineEvent{
-			{Kind: EventReasoning, Seq: 0, Delta: "reasoning one"},
-			{Kind: EventToolStart, Seq: 1, Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}},
-			{Kind: EventToolResult, Seq: 2, Result: &ToolResult{Name: "read", Result: "alpha", Lines: 1}},
-			{Kind: EventReasoning, Seq: 3, Delta: "reasoning two"},
-			{Kind: EventToolStart, Seq: 4, Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}},
-			{Kind: EventToolResult, Seq: 5, Result: &ToolResult{Name: "bash", Result: "x", Lines: 1}},
-			{Kind: EventAnswer, Seq: 6, Delta: "final answer text"},
-		},
 	}
+	wireLive(tx, []TimelineEvent{
+		{Kind: EventReasoning, Seq: 0, Delta: "reasoning one"},
+		{Kind: EventToolStart, Seq: 1, Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}},
+		{Kind: EventToolResult, Seq: 2, Result: &ToolResult{Name: "read", Result: "alpha", Lines: 1}},
+		{Kind: EventReasoning, Seq: 3, Delta: "reasoning two"},
+		{Kind: EventToolStart, Seq: 4, Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}},
+		{Kind: EventToolResult, Seq: 5, Result: &ToolResult{Name: "bash", Result: "x", Lines: 1}},
+		{Kind: EventAnswer, Seq: 6, Delta: "final answer text"},
+	})
+	return tx
 }
 
 func TestTranscript_liveReasoningInterleavesWithToolsInEmissionOrder(t *testing.T) {
@@ -491,7 +497,7 @@ func TestTranscript_committedReasoningSnapshotOnceAtTailWhenNoToolFollows(t *tes
 func TestTranscript_partialAnswersInterleaveWithToolsInArrivalOrder(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := answerInterleaveTranscript()
-	tx.messages[1].events = tx.timeline
+	tx.messages[1].events = tx.LiveTimeline()
 
 	var hist strings.Builder
 	tx.renderHistory(&hist, nil, nil)

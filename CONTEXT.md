@@ -61,7 +61,7 @@ The session-owned writer for a running turn's live material: streamed deltas gro
 _Avoid_: stream handler, event appender
 
 **TurnSession**:
-The owner of a turn's whole life through four verbs: Begin arms the cancelable context and submits the prompt, Stop cancels the in-flight turn, Fold writes live stream/tool events, and Commit reconciles completion (success, error, or stopped) into the transcript. The Model routes messages; all live-turn state — timeline, sequence counter, streaming cursor, busy flag — lives behind these verbs, so tests can drive a full turn without a UI loop.
+The owner of a turn's whole life through four verbs: Begin arms the cancelable context and submits the prompt, Stop cancels the in-flight turn, Fold writes live stream/tool events, and Commit reconciles completion (success, error, or stopped) into the transcript. The Model routes messages; all live-turn state — timeline, sequence counter, streaming cursor, busy flag — lives behind these verbs (the transcript reads the live event log through a read-only accessor), so tests can drive a full turn without a UI loop.
 _Avoid_: dispatch, turn state machine
 
 **Thinking suppression**:

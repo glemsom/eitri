@@ -257,11 +257,11 @@ func TestToolPulse_busyBandFlashesWithCollapsedCoT(t *testing.T) {
 			{role: "you", content: "run it"},
 			{role: "eitri", content: "", streaming: true, thinkingRequested: false},
 		},
-		timeline: []TimelineEvent{
-			{Kind: EventReasoning, Seq: 0, Delta: "secret reasoning"},
-			{Kind: EventToolStart, Seq: 1, Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}},
-		},
 	}
+	wireLive(tx, []TimelineEvent{
+		{Kind: EventReasoning, Seq: 0, Delta: "secret reasoning"},
+		{Kind: EventToolStart, Seq: 1, Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}},
+	})
 	tx.busyPulse = 3 // the tool start armed the pulse (model.applyToolUpdate)
 
 	renderBand := func() string {

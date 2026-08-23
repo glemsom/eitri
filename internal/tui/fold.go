@@ -21,15 +21,15 @@ func (f *Fold) Stream(tx *Transcript, kind StreamKind, delta string) {
 	if delta == "" {
 		return
 	}
-	f.recordLive(tx, TimelineEvent{Kind: streamEventKind(kind), Delta: delta})
+	f.session.recordLive(TimelineEvent{Kind: streamEventKind(kind), Delta: delta})
 	cur := f.session.curStream
 	if cur >= 0 && cur < len(tx.messages) && tx.messages[cur].streaming {
-		tx.syncStreamSnapshots(cur)
+		tx.syncStreamSnapshots(cur, f.session.timeline)
 		return
 	}
 	tx.messages = append(tx.messages, message{role: "eitri", streaming: true, thinkingRequested: f.session.thinkingEnabled})
 	f.session.curStream = len(tx.messages) - 1
-	tx.syncStreamSnapshots(f.session.curStream)
+	tx.syncStreamSnapshots(f.session.curStream, f.session.timeline)
 	tx.busyPulse = 3
 }
 
@@ -44,20 +44,12 @@ func (f *Fold) Tool(tx *Transcript, u ToolUpdate) {
 	if kind, ok := toolEventKind(u); ok {
 		ev := TimelineEvent{Kind: kind, Start: u.Start, Result: u.Result}
 		if tx.busy {
-			f.recordLive(tx, ev)
+			f.session.recordLive(ev)
 		} else {
 			f.attachToLastAssistant(tx, ev)
 		}
 	}
 	tx.layout.dirty = true // an entry changed the tool log's rendered rows
-}
-
-// recordLive appends one event to the live per-turn log in arrival order,
-// stamping it with the turn's next sequence number.
-func (f *Fold) recordLive(tx *Transcript, ev TimelineEvent) {
-	ev.Seq = tx.turnSeq
-	tx.turnSeq++
-	tx.timeline = append(tx.timeline, ev)
 }
 
 // attachToLastAssistant appends an event to the newest committed assistant
