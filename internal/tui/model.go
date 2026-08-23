@@ -570,13 +570,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case skillDoneMsg:
 		// The skill payload is injected into the turn's context (single delivery) instead of being
-		// echoed as an assistant note, and every slash activation starts an agent turn: the trailing
-		// args become the prompt, while a bare `/skillname` falls back to a default apply-skill prompt.
-		prompt := msgi.args
-		if prompt == "" {
-			prompt = fmt.Sprintf("apply the %s skill", msgi.name)
-		}
-		cmd := m.startTurn(prompt, msgi.payload)
+		// echoed as an assistant note, and every slash activation starts an agent turn.
+		cmd := m.startTurn(m.slash.TurnPrompt(msgi.name, msgi.args), msgi.payload)
 		return m, cmd
 
 	case loginCodeMsg:
@@ -925,7 +920,7 @@ func (m Model) renderBand(b *strings.Builder) {
 		inner.WriteString(statusRow)
 		inner.WriteString("\n")
 	}
-	renderSlashCompletion(&inner, m.tx.theme, m.slash.Prefix(), m.composer.Value(), m.slash.items(), m.slash.cycle())
+	m.slash.RenderCompletion(&inner, m.tx.theme, m.composer.Value())
 	inner.WriteString(m.composer.View())
 	if m.savedMsg != "" {
 		inner.WriteString("\n" + m.tx.theme.statusStyle.Render(m.savedMsg))
@@ -961,39 +956,8 @@ func (m Model) composerPreRows() int {
 	if m.telemetry != nil {
 		n++
 	}
-	return n + len(m.slash.Candidates(m.slash.Prefix()))
-}
-
-// items exposes the module's skill snapshot for rendering the completion list.
-func (s *SkillActivation) items() []SkillItem { return s.skills }
-
-// cycle exposes the current completion selection index for highlight rendering.
-func (s *SkillActivation) cycle() int { return s.slashIdx }
-
-// renderSlashCompletion appends the slash-command completion list to the view above the composer: the built-in slash commands plus any matching detected skills.
-func renderSlashCompletion(b *strings.Builder, th Theme, value string, cur string, skills []SkillItem, selected int) {
-	cands := slashCandidates(value, skills)
-	if len(cands) == 0 {
-		return
-	}
-	sel := selected
-	for i, c := range cands {
-		if c == cur {
-			sel = i
-			break
-		}
-	}
-	if sel < 0 || sel >= len(cands) {
-		sel = 0
-	}
-	for i, c := range cands {
-		if i == sel {
-			b.WriteString(th.slashSelectStyle.Render(g("▸ ", "> ") + c))
-		} else {
-			b.WriteString(th.statusStyle.Render("  " + c))
-		}
-		b.WriteString("\n")
-	}
+	n += m.slash.CandidateCount(m.composer.Value())
+	return n
 }
 
 // telemetryWait returns a command that blocks until the next live telemetry update arrives on the engine seam channel, then delivers it to the UI loop as a telemetryUpdateMsg.
