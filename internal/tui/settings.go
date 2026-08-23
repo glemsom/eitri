@@ -287,6 +287,46 @@ func (o *SettingsOverlay) Key(k tea.KeyPressMsg) (settingsKeyOutcome, tea.Cmd) {
 	return outcomeContinue, nil
 }
 
+// settingsResult reports the outcome of one message routed into the open
+// overlay: what the caller should do next, any follow-up command, and — when
+// the outcome is a save — the accepted config plus its status line, and for
+// discovery results the refreshed model list.
+type settingsResult struct {
+	outcome settingsKeyOutcome
+	handled bool
+	cmd     tea.Cmd
+	saved   *config.Config
+	status  string
+	models  []string
+}
+
+// Handle routes one message into the overlay: key presses navigate/save,
+// discovery results fold in unless stale from an earlier draft provider.
+// Unrelated messages are ignored.
+func (o *SettingsOverlay) Handle(msg tea.Msg) settingsResult {
+	switch msgi := msg.(type) {
+	case tea.KeyPressMsg:
+		outcome, cmd := o.Key(msgi)
+		res := settingsResult{outcome: outcome, handled: true, cmd: cmd}
+		if outcome == outcomeSaved {
+			cfg, status := o.Save()
+			res.saved, res.status = &cfg, status
+		}
+		return res
+	case discoverDoneMsg:
+		if o.cfg.Provider != msgi.provider {
+			return settingsResult{outcome: outcomeContinue}
+		}
+		o.ApplyDiscovery(msgi)
+		return settingsResult{outcome: outcomeContinue, handled: true, models: o.models}
+	default:
+		return settingsResult{outcome: outcomeContinue}
+	}
+}
+
+// View renders the open Settings surface.
+func (o *SettingsOverlay) View() string { return settingsView(o.settingsForm) }
+
 // beginDiscovery arms the loading state for the draft config and returns the
 // discovery command; nil when discovery is unavailable.
 func (o *SettingsOverlay) beginDiscovery() tea.Cmd {

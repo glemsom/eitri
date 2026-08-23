@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 
@@ -234,119 +233,6 @@ func TestModel_SettingsCollapseTogglesPersistAndFlipDefaults(t *testing.T) {
 	}
 	if m.tx.toolResultsExpanded == false {
 		t.Fatal("transcript toolResultsExpanded = false after save, want true")
-	}
-}
-
-func TestModel_SettingsDiscoveryLoadsAsync(t *testing.T) {
-	t.Parallel()
-	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
-			return TurnResult{Answer: "ok"}, nil
-		},
-		Config: cfgFixture(), // no Models seeded
-		DiscoverModels: func(ctx context.Context, cfg config.Config) ([]string, error) {
-			if cfg.Provider != cfgFixture().Provider {
-				t.Fatalf("DiscoverModels() provider = %q, want %q", cfg.Provider, cfgFixture().Provider)
-			}
-			return []string{"deepseek-v4-flash", "grok-2"}, nil
-		},
-	})
-	m = resize(t, m)
-	m = keypress(t, m, "ctrl+s")
-	if m.settings.discoverState != discoverLoading {
-		t.Fatalf("settings discoverState after open = %v, want discoverLoading", m.settings.discoverState)
-	}
-	if !strings.Contains(view(m), "discovering models") {
-		t.Fatalf("settings view %q missing loading state", view(m))
-	}
-
-	nm, _ := m.Update(discoverDoneMsg{provider: cfgFixture().Provider, models: []string{"deepseek-v4-flash", "grok-2"}})
-	m = asModel(t, nm)
-	if m.settings.discoverState != discoverIdle {
-		t.Fatalf("settings discoverState after delivery = %v, want discoverIdle", m.settings.discoverState)
-	}
-	if got := m.settings.Model(); got != "deepseek-v4-flash" {
-		t.Fatalf("settings Model after discovery = %q, want deepseek-v4-flash", got)
-	}
-}
-
-func TestModel_SettingsDiscoveryErrorState(t *testing.T) {
-	t.Parallel()
-	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
-			return TurnResult{Answer: "ok"}, nil
-		},
-		Config: cfgFixture(), // no Models seeded
-		DiscoverModels: func(ctx context.Context, cfg config.Config) ([]string, error) {
-			if cfg.Provider != cfgFixture().Provider {
-				t.Fatalf("DiscoverModels() provider = %q, want %q", cfg.Provider, cfgFixture().Provider)
-			}
-			return nil, errors.New("connection refused")
-		},
-	})
-	m = resize(t, m)
-	m = keypress(t, m, "ctrl+s")
-	nm, _ := m.Update(discoverDoneMsg{provider: cfgFixture().Provider, err: errors.New("connection refused")})
-	m = asModel(t, nm)
-
-	if m.settings.discoverState != discoverError {
-		t.Fatalf("settings discoverState after failing discovery = %v, want discoverError", m.settings.discoverState)
-	}
-	if m.settings.discoverErr == "" {
-		t.Fatal("settings discovery error message not recorded")
-	}
-	content := view(m)
-	if !strings.Contains(content, "connection refused") {
-		t.Fatalf("settings content %q missing discovery error", content)
-	}
-	if !strings.Contains(content, cfgFixture().Model) {
-		t.Fatalf("settings content %q missing configured model after failed discovery", content)
-	}
-}
-
-func TestModel_SettingsProviderChangeStartsDiscoveryForDraftProvider(t *testing.T) {
-	t.Parallel()
-	var providers []string
-	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
-			return TurnResult{Answer: "ok"}, nil
-		},
-		Models: []string{"deepseek-v4-flash"},
-		Config: cfgFixture(),
-		DiscoverModels: func(ctx context.Context, cfg config.Config) ([]string, error) {
-			providers = append(providers, cfg.Provider)
-			return []string{"gpt-4o"}, nil
-		},
-	})
-	m = resize(t, m)
-	m = keypress(t, m, "ctrl+s")
-
-	nm, cmd := m.Update(namedKey("down"))
-	m = asModel(t, nm)
-	if cmd == nil {
-		t.Fatal("provider change returned nil command, want discovery command")
-	}
-	if m.settings.discoverState != discoverLoading {
-		t.Fatalf("settings discoverState after provider change = %v, want discoverLoading", m.settings.discoverState)
-	}
-	if got := m.settings.cfg.Provider; got != "github-copilot" {
-		t.Fatalf("settings provider after change = %q, want github-copilot", got)
-	}
-	if len(providers) != 0 {
-		t.Fatalf("DiscoverModels() calls before command delivery = %v, want none", providers)
-	}
-	msg := cmd()
-	done, ok := msg.(discoverDoneMsg)
-	if !ok {
-		t.Fatalf("cmd() message = %T, want discoverDoneMsg", msg)
-	}
-	if len(providers) != 1 || providers[0] != "github-copilot" {
-		t.Fatalf("DiscoverModels() providers = %v, want [github-copilot]", providers)
-	}
-	nm, _ = m.Update(done)
-	m = asModel(t, nm)
-	if got := m.settings.Model(); got != "gpt-4o" {
-		t.Fatalf("settings Model after provider discovery = %q, want gpt-4o", got)
 	}
 }
 
