@@ -15,7 +15,7 @@ func timelineKinds(events []TimelineEvent) []EventKind {
 	return ks
 }
 
-func TestTurnDispatch_timelinePreservesArrivalOrder(t *testing.T) {
+func TestTurnSession_timelinePreservesArrivalOrder(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))
 	f := NewFold(s)
@@ -51,7 +51,7 @@ func TestTurnDispatch_timelinePreservesArrivalOrder(t *testing.T) {
 	}
 }
 
-func TestTurnDispatch_timelineSnapshotsDerivedFromLog(t *testing.T) {
+func TestTurnSession_timelineSnapshotsDerivedFromLog(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))
 	f := NewFold(s)
@@ -83,7 +83,7 @@ func TestTurnDispatch_timelineSnapshotsDerivedFromLog(t *testing.T) {
 	}
 }
 
-func TestTurnDispatch_timelineToolBeforeFirstDelta(t *testing.T) {
+func TestTurnSession_timelineToolBeforeFirstDelta(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))
 	f := NewFold(s)
@@ -142,7 +142,7 @@ func TestTranscript_applyPostTurnToolAppendsToLastMessage(t *testing.T) {
 	}
 }
 
-func TestTurnDispatch_timelineCommitsOnStoppedTurn(t *testing.T) {
+func TestTurnSession_timelineCommitsOnStoppedTurn(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))
 	f := NewFold(s)
@@ -163,7 +163,7 @@ func TestTurnDispatch_timelineCommitsOnStoppedTurn(t *testing.T) {
 	}
 }
 
-func TestTurnDispatch_timelineCommitsOnErrorTurn(t *testing.T) {
+func TestTurnSession_timelineCommitsOnErrorTurn(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))
 	f := NewFold(s)

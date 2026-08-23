@@ -88,7 +88,6 @@ func (s *TurnSession) Commit(tx *Transcript, msg turnDoneMsg) (stopped bool, err
 	wasStreaming := s.curStream >= 0 && s.curStream < len(tx.messages)
 
 	if msg.stopped {
-		tx.layout.dirty = true
 		if wasStreaming {
 			i := s.curStream
 			tx.messages[i].content = msg.answer

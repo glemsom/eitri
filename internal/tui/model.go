@@ -288,8 +288,7 @@ func NewModelCfg(d Dependencies) Model {
 	if m.splash != nil {
 		m.splash.kitty = m.kittyCap
 	}
-	fold := NewFold(m.session)
-	m.fold = fold
+	m.fold = NewFold(m.session)
 	m.session.SetThinkingEnabled(d.Config.ThinkingEnabled)
 	m.tx.layout.dirty = true
 	if !isSupportedTheme(d.Config.Theme) {
