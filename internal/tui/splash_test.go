@@ -127,6 +127,40 @@ func TestSplash_wordmarkUsesRobustGlyphs(t *testing.T) {
 	}
 }
 
+// splashFrameView advances a fresh splash to the given frame and returns its view.
+func splashFrameView(t *testing.T, frame int) string {
+	t.Helper()
+	m := splashModel(t)
+	for i := 0; i < frame; i++ {
+		nm, _ := m.Update(splashTickMsg{})
+		m = asModel(t, nm)
+	}
+	return view(m)
+}
+
+// flashBarSGR is the true-color background SGR for #00FFC8; the flash renders
+// as a solid bar (cyan-backed spaces), which no other splash element uses.
+const flashBarSGR = "\x1b[48;2;0;255;200"
+
+// TestSplash_convergenceFlash verifies the one-frame ignition flash at
+// splashWordmarkStartFrame: a full-width bright cyan bar across the wordmark
+// row that exists for exactly that single frame.
+func TestSplash_convergenceFlash(t *testing.T) {
+	if strings.Contains(splashFrameView(t, splashWordmarkStartFrame-1), flashBarSGR) {
+		t.Errorf("flash bar must be absent before frame %d", splashWordmarkStartFrame)
+	}
+
+	flash := splashFrameView(t, splashWordmarkStartFrame)
+	if !strings.Contains(flash, flashBarSGR) {
+		t.Errorf("frame %d must carry the bright cyan flash bar (#00FFC8), got:\n%s", splashWordmarkStartFrame, stripANSI(flash))
+	}
+
+	after := splashFrameView(t, splashWordmarkStartFrame+1)
+	if strings.Contains(after, flashBarSGR) {
+		t.Errorf("flash bar must vanish after frame %d", splashWordmarkStartFrame)
+	}
+}
+
 func TestSplash_rainBeforeWordmark(t *testing.T) {
 	m := splashModel(t)
 	if strings.Contains(view(m), "███████╗") {

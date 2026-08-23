@@ -27,6 +27,8 @@ const (
 	splashWordmarkStartFrame = 22
 	// splashRainEndFrame is when the last rain glyphs fade away.
 	splashRainEndFrame = 46
+	// splashFlashColor is the ignition-flash hue for the convergence flash.
+	splashFlashColor = "#00FFC8"
 )
 
 // splashState tracks the splash's animation progress; a nil pointer on Model means the splash is over (or never ran).
@@ -226,6 +228,24 @@ func renderSplash(s *splashState, w, h int) string {
 	markLeft := (w - markWidth) / 2
 	if markLeft < 0 {
 		markLeft = 0
+	}
+
+	// The convergence flash fires for exactly one frame at the moment the
+	// first wordmark row resolves: a full-width solid cyan bar across the
+	// wordmark's vertical middle reads as the particle storm igniting.
+	if s.frame == splashWordmarkStartFrame {
+		flashRow := markTop + markRows/2
+		bar := lipgloss.NewStyle().Background(lipgloss.Color(splashFlashColor)).Render(strings.Repeat(" ", w))
+		for r := 0; r < h-2; r++ {
+			if r == flashRow {
+				b.WriteString(bar)
+			} else {
+				b.WriteString(strings.Repeat(" ", w))
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
+		return b.String()
 	}
 
 	stormCell := func(r, c int) string {
