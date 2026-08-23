@@ -186,13 +186,41 @@ func splashGlyphAt(col, row, frame int) rune {
 	return runes[splashHash(col, row, frame)%len(runes)]
 }
 
-// wordmarkVisible reports whether wordmark row r has resolved out of the rain by the given frame: rows appear top-down once the convergence phase starts.
-func wordmarkVisible(frame, row, rows int) bool {
-	if frame < splashWordmarkStartFrame {
-		return false
+// Wordmark geometry shared by the staggered reveal: five 6-cell letters with
+// 3-cell gaps, matching how eitriWordmark lays out E I T R I.
+const (
+	splashLetterCells   = 6
+	splashLetterGap     = 3
+	splashLetterCount   = 5
+	// splashEntryDropRows is the vertical overshoot a letter enters with before settling upward.
+	splashEntryDropRows = 2
+)
+
+// letterIndexAt maps a wordmark column to its letter index (0=E … 4=I);
+// gap columns between letters return -1.
+func letterIndexAt(col int) int {
+	if col < 0 || col >= splashLetterCount*(splashLetterCells+splashLetterGap)-splashLetterGap {
+		return -1
 	}
-	revealed := (frame-splashWordmarkStartFrame)*(rows+1)/(splashTotalFrames-splashWordmarkStartFrame) + 1
-	return row < revealed
+	l := col / (splashLetterCells + splashLetterGap)
+	if col%(splashLetterCells+splashLetterGap) >= splashLetterCells {
+		return -1
+	}
+	return l
+}
+
+// letterEntryFrame is the frame letter enters on: one frame after its left
+// neighbor, so the wordmark assembles E → I → T → R → I across frames
+// splashWordmarkStartFrame…splashWordmarkStartFrame+4.
+func letterEntryFrame(letter int) int { return splashWordmarkStartFrame + letter }
+
+// letterDropRows reports how many rows below its final position letter sits at frame:
+// the full overshoot on the entry frame, zero once settled.
+func letterDropRows(frame, letter int) int {
+	if frame == letterEntryFrame(letter) {
+		return splashEntryDropRows
+	}
+	return 0
 }
 
 // rainDensity returns the fraction of cells raining at a frame: full storm until the wordmark starts, thinning to nothing by splashRainEndFrame.
@@ -244,13 +272,19 @@ func renderSplash(s *splashState, w, h int) string {
 	stormCell := func(r, c int) string {
 		mr := r - markTop
 		mc := c - markLeft
-		if mr >= 0 && mr < markRows && mc >= 0 && mc < markWidth {
-			runes := []rune(eitriWordmark[mr])
+		// An entering letter sits splashEntryDropRows low, so its glyphs can
+		// reach drop rows below the settled footprint — scan those too.
+		if mr >= 0 && mr < markRows+splashEntryDropRows && mc >= 0 && mc < markWidth {
+			letter := letterIndexAt(mc)
+			srcRow := mr - letterDropRows(s.frame, letter)
 			var ch rune
-			if mc < len(runes) {
-				ch = runes[mc]
+			if letter >= 0 && srcRow >= 0 && srcRow < markRows {
+				runes := []rune(eitriWordmark[srcRow])
+				if mc < len(runes) {
+					ch = runes[mc]
+				}
 			}
-			if wordmarkVisible(s.frame, mr, markRows) && ch != ' ' && ch != 0 {
+			if letter >= 0 && s.frame >= letterEntryFrame(letter) && ch != ' ' && ch != 0 {
 				// Diagonal tone sweep (column + row drift) reads as light
 				// gliding across the mark instead of a flat fill.
 				return lipgloss.NewStyle().Foreground(splashColor(splashWordPalette, mc+mr*2, s.frame)).Render(string(ch))
