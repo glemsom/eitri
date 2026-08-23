@@ -68,6 +68,10 @@ _Avoid_: stream handler, event appender
 The owner of a turn's whole life through four verbs: Begin arms the cancelable context and submits the prompt, Stop cancels the in-flight turn, Fold writes live stream/tool events, and Commit reconciles completion (success, error, or stopped) into the transcript. The Model routes messages; all live-turn state — timeline, sequence counter, streaming cursor, busy flag — lives behind these verbs (the transcript reads the live event log through a read-only accessor), so tests can drive a full turn without a UI loop. Each verb keeps the transcript's layout cache correct itself — marking it stale inside the mutation path — so no caller ever invalidates by hand around a verb call.
 _Avoid_: dispatch, turn state machine
 
+**Settings overlay**:
+The owner of an open Settings surface: the draft form, its on-demand model-discovery lifecycle, and persistence of the draft through the save seams. The Model only tracks whether an overlay is open and routes key presses, discovery results, and save side effects to it; the overlay's verbs keep the form state internally consistent.
+_Avoid_: settings form handler, settings state machine
+
 **Thinking suppression**:
 A per-provider capability to actually stop chain-of-thought on the wire when the thinking toggle is off, negotiated with the provider at session start. A provider that cannot suppress reasoning surfaces a warning rather than silently ignoring the toggle.
 _Avoid_: reasoning off, cot off

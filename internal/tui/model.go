@@ -197,7 +197,7 @@ type Model struct {
 
 	tx *Transcript
 
-	settings *settingsForm
+	settings *SettingsOverlay
 	savedMsg string
 
 	continueReq  chan struct{}
@@ -576,18 +576,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.settings.cfg.Provider != msgi.provider {
 			return m, nil
 		}
-		m.settings.models = msgi.models
 		m.deps.Models = append([]string(nil), msgi.models...)
-		m.settings.discoverState = discoverIdle
-		m.settings.discoverErr = ""
-		if msgi.err != nil {
-			m.settings.discoverErr = msgi.err.Error()
-			m.settings.discoverState = discoverError
-			return m, nil
-		}
-		if len(msgi.models) != 0 && indexOf(msgi.models, m.settings.cfg.Model) < 0 {
-			m.settings.cfg.Model = msgi.models[0]
-		}
+		m.settings.ApplyDiscovery(msgi)
 		return m, nil
 
 	case skillDoneMsg:
@@ -636,104 +626,27 @@ func (m Model) updatePrompt(msgi tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// openSettings seeds the Settings form from the loaded config + discovery, borrowing the live telemetry for the cache hit-ratio readout (the cost readout was removed in issue #374).
-func (m *Model) openSettings() *settingsForm {
-	cfg := m.deps.Config
-	if cfg.Provider == "" {
-		cfg = config.Default()
-	}
-	sf := newSettingsForm(cfg, m.deps.Models)
-	sf.theme = m.tx.theme
-	sf.telemetry = m.telemetry
-	sf.thinkingSuppression = m.deps.ThinkingSuppression
-	m.settings = &sf
-	return &sf
-}
-
 // startSettings opens the Settings surface and returns the command to run.
 func (m Model) startSettings() (tea.Model, tea.Cmd) {
-	sf := m.openSettings()
-	if len(m.deps.Models) != 0 || m.deps.DiscoverModels == nil {
-		return m, nil
-	}
-	sf.discoverState = discoverLoading
-	return m, discoverCmd(m.deps.DiscoverModels, sf.cfg)
+	o, cmd := openSettingsOverlay(m.deps.Config, m.deps.Models, m.tx.theme, m.telemetry, m.deps.ThinkingSuppression, m.deps)
+	m.settings = o
+	return m, cmd
 }
 
-// updateSettings drives the Settings surface from key input.
+// updateSettings routes one key press through the open Settings overlay.
 func (m Model) updateSettings(msgi tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	s := m.settings
-	if s == nil {
-		return m, nil
-	}
-	switch msgi.String() {
-	case "esc", "ctrl+c":
+	outcome, cmd := m.settings.Key(msgi)
+	switch outcome {
+	case outcomeClosed:
 		m.settings = nil
-		return m, nil
-	case "tab", "enter":
-		if msgi.String() == "enter" && s.onSave() {
-			s.save(&m)
-			return m, nil
-		}
-		if s.field == fieldPaths {
-			s.cfg.ExtraWritablePaths = splitPaths(s.pathBuf)
-		}
-		s.next()
-	case "up", "shift+up", "left":
-		before := s.cfg.Provider
-		s.adjust(-1)
-		if s.cfg.Provider != before {
-			m.settings = s
-			return m, m.maybeDiscoverSettingsModels(s)
-		}
-	case "down", "shift+down", "right":
-		before := s.cfg.Provider
-		s.adjust(1)
-		if s.cfg.Provider != before {
-			m.settings = s
-			return m, m.maybeDiscoverSettingsModels(s)
-		}
-	default:
-		if s.field == fieldPaths {
-			if msgi.String() == "backspace" && len(s.pathBuf) > 0 {
-				s.SetPathBuf(s.pathBuf[:len(s.pathBuf)-1])
-			} else if msgi.String() != "backspace" {
-				s.SetPathBuf(s.pathBuf + msgi.Text)
-			}
-		}
+	case outcomeSaved:
+		cfg, status := m.settings.Save()
+		m.savedMsg = status
+		m.deps.Config = cfg
+		m.tx.applySettings(cfg)
+		m.settings = nil
 	}
-	m.settings = s
-	return m, nil
-}
-
-func (m *Model) maybeDiscoverSettingsModels(s *settingsForm) tea.Cmd {
-	if m.deps.DiscoverModels == nil || s == nil {
-		return nil
-	}
-	s.discoverState = discoverLoading
-	s.discoverErr = ""
-	s.models = []string{s.cfg.Model}
-	return discoverCmd(m.deps.DiscoverModels, s.cfg)
-}
-
-// save persists the Settings draft via the Save seam and closes the surface.
-func (s *settingsForm) save(m *Model) {
-	cfg := s.draft()
-	if m.deps.Save != nil {
-		if err := m.deps.Save(cfg); err == nil {
-			m.savedMsg = "saved"
-		} else {
-			m.savedMsg = "save failed: " + err.Error()
-		}
-	} else {
-		m.savedMsg = "view-only"
-	}
-	if m.deps.SaveBack != nil {
-		m.deps.SaveBack(cfg)
-	}
-	m.deps.Config = cfg
-	m.tx.applySettings(cfg)
-	m.settings = nil
+	return m, cmd
 }
 
 // startTurn begins the turn through the session, which owns all of turn start. The live merged event feed is re-armed here, and the spinner tick starts so the busy indicator animates.
@@ -982,7 +895,7 @@ func (m Model) viewString() string {
 		return renderSplash(m.splash, m.tx.width, m.tx.height)
 	}
 	if m.settings != nil {
-		return settingsView(*m.settings)
+		return settingsView(m.settings.settingsForm)
 	}
 	if m.prompting {
 		return promptView(m.tx.theme)

@@ -1,11 +1,13 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"image/color"
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/glemsom/eitri/internal/config"
 )
@@ -197,6 +199,143 @@ func stepFrac(v float64, d int) float64 {
 		nv = 1
 	}
 	return nv
+}
+
+// SettingsOverlay owns the open Settings surface: the draft form, its
+// on-demand model-discovery lifecycle, and persistence of the draft through
+// the save seams. The Model only tracks whether an overlay is open and
+// routes key presses, discovery results, and save side effects to it.
+type SettingsOverlay struct {
+	// Embedded form keeps the pure state API (fields, Model(), draft) intact.
+	settingsForm
+
+	// discover issues one on-demand model discovery for the draft config;
+	// nil disables discovery entirely.
+	discover func(ctx context.Context, cfg config.Config) ([]string, error)
+	// save persists the accepted draft; nil makes the surface view-only.
+	save func(config.Config) error
+	// saveBack mirrors an accepted draft back to the caller (engine-side apply).
+	saveBack func(config.Config)
+}
+
+// settingsKeyOutcome reports what the Model must do after one key press
+// lands on the open overlay.
+type settingsKeyOutcome int
+
+const (
+	// outcomeContinue keeps the overlay open with no follow-up work.
+	outcomeContinue settingsKeyOutcome = iota
+	// outcomeClosed dismisses the overlay without persisting.
+	outcomeClosed
+	// outcomeSaved persists the draft via Save() and closes the overlay.
+	outcomeSaved
+)
+
+// openSettingsOverlay seeds the overlay from the loaded config + discovery,
+// borrowing the live theme and telemetry for rendering (the cost readout was
+// removed in issue #374). When no models are known yet and discovery is
+// available it arms the loading state and returns the discovery command.
+func openSettingsOverlay(cfg config.Config, models []string, theme Theme, telemetry *Telemetry, thinkingSuppressed func() bool, deps Dependencies) (*SettingsOverlay, tea.Cmd) {
+	if cfg.Provider == "" {
+		cfg = config.Default()
+	}
+	sf := newSettingsForm(cfg, models)
+	sf.theme = theme
+	sf.telemetry = telemetry
+	sf.thinkingSuppression = thinkingSuppressed
+	o := &SettingsOverlay{settingsForm: sf, discover: deps.DiscoverModels, save: deps.Save, saveBack: deps.SaveBack}
+	if len(models) != 0 || o.discover == nil {
+		return o, nil
+	}
+	o.discoverState = discoverLoading
+	return o, discoverCmd(o.discover, o.cfg)
+}
+
+// Key routes one key press into the overlay. It returns what the caller
+// should do next plus any follow-up command (model discovery after a
+// provider change).
+func (o *SettingsOverlay) Key(k tea.KeyPressMsg) (settingsKeyOutcome, tea.Cmd) {
+	s := &o.settingsForm
+	switch k.String() {
+	case "esc", "ctrl+c":
+		return outcomeClosed, nil
+	case "tab", "enter":
+		if k.String() == "enter" && s.onSave() {
+			return outcomeSaved, nil
+		}
+		if s.field == fieldPaths {
+			s.cfg.ExtraWritablePaths = splitPaths(s.pathBuf)
+		}
+		s.next()
+	case "up", "shift+up", "left":
+		before := s.cfg.Provider
+		s.adjust(-1)
+		if s.cfg.Provider != before {
+			return outcomeContinue, o.beginDiscovery()
+		}
+	case "down", "shift+down", "right":
+		before := s.cfg.Provider
+		s.adjust(1)
+		if s.cfg.Provider != before {
+			return outcomeContinue, o.beginDiscovery()
+		}
+	default:
+		if s.field == fieldPaths {
+			if k.String() == "backspace" && len(s.pathBuf) > 0 {
+				s.SetPathBuf(s.pathBuf[:len(s.pathBuf)-1])
+			} else if k.String() != "backspace" {
+				s.SetPathBuf(s.pathBuf + k.Text)
+			}
+		}
+	}
+	return outcomeContinue, nil
+}
+
+// beginDiscovery arms the loading state for the draft config and returns the
+// discovery command; nil when discovery is unavailable.
+func (o *SettingsOverlay) beginDiscovery() tea.Cmd {
+	if o.discover == nil {
+		return nil
+	}
+	o.discoverState = discoverLoading
+	o.discoverErr = ""
+	o.models = []string{o.cfg.Model}
+	return discoverCmd(o.discover, o.cfg)
+}
+
+// ApplyDiscovery folds one discovery result into the form; callers drop the
+// message before calling when the overlay is closed or stale.
+func (o *SettingsOverlay) ApplyDiscovery(msg discoverDoneMsg) {
+	o.models = msg.models
+	o.discoverState = discoverIdle
+	o.discoverErr = ""
+	if msg.err != nil {
+		o.discoverErr = msg.err.Error()
+		o.discoverState = discoverError
+		return
+	}
+	if len(msg.models) != 0 && indexOf(msg.models, o.cfg.Model) < 0 {
+		o.cfg.Model = msg.models[0]
+	}
+}
+
+// Save persists the draft via the save seams and reports the resulting status
+// message alongside the accepted config; the caller applies the config to the
+// live session.
+func (o *SettingsOverlay) Save() (config.Config, string) {
+	cfg := o.draft()
+	var status string
+	if o.save == nil {
+		status = "view-only"
+	} else if err := o.save(cfg); err != nil {
+		status = "save failed: " + err.Error()
+	} else {
+		status = "saved"
+	}
+	if o.saveBack != nil {
+		o.saveBack(cfg)
+	}
+	return cfg, status
 }
 
 // settingsView renders the Settings surface: a focused row per settable knob, the focused row highlighted, a Save/Cancel footer.
