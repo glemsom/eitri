@@ -238,6 +238,25 @@ func (m *Model) syncWidths() {
 	m.syncComposerHeight()
 }
 
+// adjustRailWidth nudges the rail width by delta (clamped to minWidthRail) and persists it, so ctrl+x/z resize the right pane across sessions.
+func (m *Model) adjustRailWidth(delta int) {
+	w := m.tx.railWidthOrDefault() + delta
+	if w < minWidthRail {
+		w = minWidthRail
+	}
+	m.tx.setRailWidth(w)
+	m.persistRailWidth()
+	m.syncWidths()
+}
+
+// persistRailWidth writes the current rail width into deps.Config and persists it via the Save seam so the width round-trips across sessions.
+func (m *Model) persistRailWidth() {
+	m.deps.Config.RailWidth = m.tx.railWidthOrDefault()
+	if m.deps.Save != nil {
+		_ = m.deps.Save(m.deps.Config)
+	}
+}
+
 // styledRail frames the rail's rendered sections into a fixed-width right column with a left border, so it reads as a distinct state pane alongside the transcript.
 func styledRail(content string, maxHeight, railWidth int) string {
 	if maxHeight >= 0 {
