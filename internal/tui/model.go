@@ -191,7 +191,8 @@ func previousTerminalTitle(d Dependencies) string {
 // Model is the Bubble Tea state backing the TUI.
 type Model struct {
 	composer textarea.Model
-	td       *TurnDispatch
+	session  *TurnSession
+	fold     *Fold
 	deps     Dependencies
 
 	tx *Transcript
@@ -271,7 +272,7 @@ func NewModelCfg(d Dependencies) Model {
 
 	m := Model{
 		composer:     comp,
-		td:           NewTurnDispatch(d.Turn),
+		session:      NewTurnSession(d.Turn),
 		deps:         d,
 		tx:           transcript,
 		continueReq:  make(chan struct{}, 1),
@@ -287,7 +288,9 @@ func NewModelCfg(d Dependencies) Model {
 	if m.splash != nil {
 		m.splash.kitty = m.kittyCap
 	}
-	m.td.SetThinkingEnabled(d.Config.ThinkingEnabled)
+	fold := NewFold(m.session)
+	m.fold = fold
+	m.session.SetThinkingEnabled(d.Config.ThinkingEnabled)
 	m.tx.layout.dirty = true
 	if !isSupportedTheme(d.Config.Theme) {
 		m.savedMsg = fmt.Sprintf("unknown theme %q, using %s", d.Config.Theme, config.DefaultTheme)
@@ -320,8 +323,11 @@ func newHistoryViewport() viewport.Model {
 	return v
 }
 
-// SetTurnDispatch wires the TurnDispatch that folds stream events and reconciles turn completion.
-func (m *Model) SetTurnDispatch(td *TurnDispatch) { m.td = td }
+// SetTurnSession wires the TurnSession that owns turn start/stop and commits turn completion.
+func (m *Model) SetTurnSession(ts *TurnSession) {
+	m.session = ts
+	m.fold = NewFold(ts)
+}
 
 // ContinueHook returns the interactive continuation hook wired to this Model's prompt channels.
 func (m Model) ContinueHook() func() bool {
@@ -550,7 +556,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case turnDoneMsg:
-		m.td.handleTurnDone(m.tx, msgi)
+		m.session.Commit(m.tx, msgi)
 		m.syncComposerRail()
 		return m, nil
 	case clockTickMsg:
@@ -740,7 +746,7 @@ func (s *settingsForm) save(m *Model) {
 
 // startTurn begins the turn through the session, which owns all of turn start. The live merged event feed is re-armed here, and the spinner tick starts so the busy indicator animates.
 func (m *Model) startTurn(prompt string, payload string) tea.Cmd {
-	cmd := m.td.session.Begin(m.tx, prompt, payload)
+	cmd := m.session.Begin(m.tx, prompt, payload)
 	m.syncComposerRail()
 	if m.events != nil {
 		return tea.Batch(cmd, eventWait(m.events), spinnerTick())
@@ -749,12 +755,12 @@ func (m *Model) startTurn(prompt string, payload string) tea.Cmd {
 }
 
 // stopTurn cancels the in-flight turn through the session.
-func (m *Model) stopTurn() { m.td.session.Stop() }
+func (m *Model) stopTurn() { m.session.Stop() }
 
 // appendStreamDelta folds one streamed delta through the Fold, the sole
 // writer of the streaming assistant message and live timeline.
 func (m *Model) appendStreamDelta(kind StreamKind, delta string) {
-	m.td.fold.Stream(m.tx, kind, delta)
+	m.fold.Stream(m.tx, kind, delta)
 }
 
 // applyStreamDelta folds one streamed delta from the merged event feed into the live turn; deltas arriving while no turn runs are dropped, matching the pre-timeline stream behavior.
@@ -768,8 +774,8 @@ func (m *Model) applyStreamDelta(u StreamUpdate) {
 
 // applyToolUpdate folds one tool observation from the merged event feed through the Fold, arming the tool-start pulse for thinking-off turns along the way.
 func (m *Model) applyToolUpdate(u ToolUpdate) {
-	m.td.fold.Tool(m.tx, u) // tool updates route through the Fold
-	if u.Start != nil && !m.td.session.ThinkingEnabled() && motionEnabled() {
+	m.fold.Tool(m.tx, u) // tool updates route through the Fold
+	if u.Start != nil && !m.session.ThinkingEnabled() && motionEnabled() {
 		m.tx.busyPulse = 3
 	}
 }

@@ -17,21 +17,23 @@ func timelineKinds(events []TimelineEvent) []EventKind {
 
 func TestTurnDispatch_timelinePreservesArrivalOrder(t *testing.T) {
 	t.Parallel()
-	d := NewTurnDispatch(stubTurn("", nil))
+	s := NewTurnSession(stubTurn("", nil))
+	f := NewFold(s)
+
 	tx := newTestTx()
-	d.session.Begin(&tx, "go", "")
+	s.Begin(&tx, "go", "")
 
 	// The interleaved stream from the acceptance criteria:
 	// reasoning -> tool start -> tool result -> reasoning -> answer.
-	d.fold.Stream(&tx, ReasoningStream, "r1")
+	f.Stream(&tx, ReasoningStream, "r1")
 	applyTool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
 	applyTool(&tx, ToolUpdate{Result: &ToolResult{Name: "bash", Result: "a\n", Lines: 1}})
-	d.fold.Stream(&tx, ReasoningStream, "r2")
-	d.fold.Stream(&tx, AnswerStream, "a1")
+	f.Stream(&tx, ReasoningStream, "r2")
+	f.Stream(&tx, AnswerStream, "a1")
 
-	stopped, err := d.handleTurnDone(&tx, turnDoneMsg{answer: "a1", reasoning: "r1r2"})
+	stopped, err := s.Commit(&tx, turnDoneMsg{answer: "a1", reasoning: "r1r2"})
 	if stopped || err != nil {
-		t.Fatalf("handleTurnDone = stopped %v, err %v", stopped, err)
+		t.Fatalf("Commit = stopped %v, err %v", stopped, err)
 	}
 
 	msg := tx.messages[1]
@@ -51,19 +53,21 @@ func TestTurnDispatch_timelinePreservesArrivalOrder(t *testing.T) {
 
 func TestTurnDispatch_timelineSnapshotsDerivedFromLog(t *testing.T) {
 	t.Parallel()
-	d := NewTurnDispatch(stubTurn("", nil))
-	tx := newTestTx()
-	d.session.Begin(&tx, "go", "")
+	s := NewTurnSession(stubTurn("", nil))
+	f := NewFold(s)
 
-	d.fold.Stream(&tx, ReasoningStream, "r1")
+	tx := newTestTx()
+	s.Begin(&tx, "go", "")
+
+	f.Stream(&tx, ReasoningStream, "r1")
 	applyTool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{}`}})
 	applyTool(&tx, ToolUpdate{Result: &ToolResult{Name: "bash", Result: "a\n", Lines: 1}})
-	d.fold.Stream(&tx, ReasoningStream, "r2")
-	d.fold.Stream(&tx, AnswerStream, "a1")
-	d.fold.Stream(&tx, AnswerStream, "a2")
+	f.Stream(&tx, ReasoningStream, "r2")
+	f.Stream(&tx, AnswerStream, "a1")
+	f.Stream(&tx, AnswerStream, "a2")
 
-	if _, err := d.handleTurnDone(&tx, turnDoneMsg{answer: "a1a2", reasoning: "r1r2"}); err != nil {
-		t.Fatalf("handleTurnDone err = %v", err)
+	if _, err := s.Commit(&tx, turnDoneMsg{answer: "a1a2", reasoning: "r1r2"}); err != nil {
+		t.Fatalf("Commit err = %v", err)
 	}
 
 	msg := tx.messages[1]
@@ -81,18 +85,20 @@ func TestTurnDispatch_timelineSnapshotsDerivedFromLog(t *testing.T) {
 
 func TestTurnDispatch_timelineToolBeforeFirstDelta(t *testing.T) {
 	t.Parallel()
-	d := NewTurnDispatch(stubTurn("", nil))
+	s := NewTurnSession(stubTurn("", nil))
+	f := NewFold(s)
+
 	tx := newTestTx()
-	d.session.Begin(&tx, "go", "")
+	s.Begin(&tx, "go", "")
 
 	// Tool activity can arrive before any stream delta creates the message;
 	// the event log must still record it first.
 	applyTool(&tx, ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}})
 	applyTool(&tx, ToolUpdate{Result: &ToolResult{Name: "read", Result: "x", Lines: 1}})
-	d.fold.Stream(&tx, AnswerStream, "hi")
+	f.Stream(&tx, AnswerStream, "hi")
 
-	if _, err := d.handleTurnDone(&tx, turnDoneMsg{answer: "hi"}); err != nil {
-		t.Fatalf("handleTurnDone err = %v", err)
+	if _, err := s.Commit(&tx, turnDoneMsg{answer: "hi"}); err != nil {
+		t.Fatalf("Commit err = %v", err)
 	}
 
 	msg := tx.messages[1]
@@ -109,12 +115,14 @@ func TestTurnDispatch_timelineToolBeforeFirstDelta(t *testing.T) {
 
 func TestTranscript_applyPostTurnToolAppendsToLastMessage(t *testing.T) {
 	t.Parallel()
-	d := NewTurnDispatch(stubTurn("", nil))
+	s := NewTurnSession(stubTurn("", nil))
+	f := NewFold(s)
+
 	tx := newTestTx()
-	d.session.Begin(&tx, "go", "")
-	d.fold.Stream(&tx, AnswerStream, "done")
-	if _, err := d.handleTurnDone(&tx, turnDoneMsg{answer: "done"}); err != nil {
-		t.Fatalf("handleTurnDone err = %v", err)
+	s.Begin(&tx, "go", "")
+	f.Stream(&tx, AnswerStream, "done")
+	if _, err := s.Commit(&tx, turnDoneMsg{answer: "done"}); err != nil {
+		t.Fatalf("Commit err = %v", err)
 	}
 	if tx.busy {
 		t.Fatal("turn should be over")
@@ -136,15 +144,17 @@ func TestTranscript_applyPostTurnToolAppendsToLastMessage(t *testing.T) {
 
 func TestTurnDispatch_timelineCommitsOnStoppedTurn(t *testing.T) {
 	t.Parallel()
-	d := NewTurnDispatch(stubTurn("", nil))
+	s := NewTurnSession(stubTurn("", nil))
+	f := NewFold(s)
+
 	tx := newTestTx()
-	d.session.Begin(&tx, "go", "")
+	s.Begin(&tx, "go", "")
 
 	applyTool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{}`}})
-	d.fold.Stream(&tx, AnswerStream, "partial")
-	stopped, err := d.handleTurnDone(&tx, turnDoneMsg{stopped: true, answer: "partial"})
+	f.Stream(&tx, AnswerStream, "partial")
+	stopped, err := s.Commit(&tx, turnDoneMsg{stopped: true, answer: "partial"})
 	if !stopped || err != nil {
-		t.Fatalf("handleTurnDone = stopped %v, err %v", stopped, err)
+		t.Fatalf("Commit = stopped %v, err %v", stopped, err)
 	}
 
 	msg := tx.messages[1]
@@ -155,15 +165,17 @@ func TestTurnDispatch_timelineCommitsOnStoppedTurn(t *testing.T) {
 
 func TestTurnDispatch_timelineCommitsOnErrorTurn(t *testing.T) {
 	t.Parallel()
-	d := NewTurnDispatch(stubTurn("", nil))
-	tx := newTestTx()
-	d.session.Begin(&tx, "go", "")
+	s := NewTurnSession(stubTurn("", nil))
+	f := NewFold(s)
 
-	d.fold.Stream(&tx, ReasoningStream, "r")
+	tx := newTestTx()
+	s.Begin(&tx, "go", "")
+
+	f.Stream(&tx, ReasoningStream, "r")
 	applyTool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{}`}})
-	stopped, err := d.handleTurnDone(&tx, turnDoneMsg{err: errors.New("provider failed")})
+	stopped, err := s.Commit(&tx, turnDoneMsg{err: errors.New("provider failed")})
 	if stopped || err == nil {
-		t.Fatalf("handleTurnDone = stopped %v, err %v", stopped, err)
+		t.Fatalf("Commit = stopped %v, err %v", stopped, err)
 	}
 
 	msg := tx.messages[1]

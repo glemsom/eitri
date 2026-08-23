@@ -11,7 +11,7 @@ import (
 // longSessionTranscript builds a completed multi-turn transcript where every
 // turn carries a reasoning block, one tool call, and an answer — the long-
 // session shape T05 must keep scannable. Each turn's message carries the
-// finalized reasoning snapshot (handleTurnDone sets it) alongside its event
+// finalized reasoning snapshot (Commit sets it) alongside its event
 // log, mirroring real committed turns.
 func longSessionTranscript(n int) *Transcript {
 	th := themeFor(config.DefaultTheme)

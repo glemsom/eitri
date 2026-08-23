@@ -66,8 +66,8 @@ func TestModel_escWhileBusyCancelsTurnAndKeepsPartial(t *testing.T) {
 	if m.tx.busy {
 		t.Error("busy state must clear after the stop")
 	}
-	if m.td.session.curStream != -1 {
-		t.Errorf("stream pointer = %d, want -1 after stop", m.td.session.curStream)
+	if m.session.curStream != -1 {
+		t.Errorf("stream pointer = %d, want -1 after stop", m.session.curStream)
 	}
 
 	m = typeText(t, m, "next")
@@ -175,8 +175,8 @@ func TestModel_stoppedStreamKeepsStreamedBuffer(t *testing.T) {
 	if !last.stopped {
 		t.Error("message must be marked stopped")
 	}
-	if m.td.session.curStream != -1 {
-		t.Errorf("stream pointer = %d, want -1 after stop", m.td.session.curStream)
+	if m.session.curStream != -1 {
+		t.Errorf("stream pointer = %d, want -1 after stop", m.session.curStream)
 	}
 }
 

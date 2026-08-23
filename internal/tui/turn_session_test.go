@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/glemsom/eitri/internal/config"
 )
 
 // A fresh session owns no live turn until Begin arms it; Stop before Begin is a no-op.
@@ -173,5 +175,21 @@ func TestTurnSessionFailedTurnCarriesError(t *testing.T) {
 	tdm := msg.(turnDoneMsg)
 	if tdm.err == nil || tdm.err.Error() != "boom" {
 		t.Errorf("err = %v, want boom", tdm.err)
+	}
+}
+
+func newTestTx() Transcript {
+	th := themeFor(config.DefaultTheme)
+	return Transcript{
+		theme:       th,
+		configTheme: config.DefaultTheme,
+		layout:      transcriptLayout{dirty: true},
+		log:         toolLog{},
+	}
+}
+
+func stubTurn(answer string, err error) Turn {
+	return func(_ context.Context, _ string, _ string) (TurnResult, error) {
+		return TurnResult{Answer: answer}, err
 	}
 }
