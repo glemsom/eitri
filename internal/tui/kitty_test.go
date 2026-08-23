@@ -70,22 +70,23 @@ func TestDetectKittyGraphics(t *testing.T) {
 func TestModelKittyGraphicsFlag(t *testing.T) {
 	t.Setenv("TERM_PROGRAM", "")
 	m := NewModelCfg(Dependencies{Turn: func(context.Context, string, string) (TurnResult, error) { return TurnResult{}, nil }})
-	m.splash = &splashState{} // splashFor is environment-gated; seed the state directly
+	m.splash = &Splash{state: &splashState{}} // splashFor is environment-gated; seed the module directly
 	if m.kittyGraphics() {
 		t.Error("model reports Kitty graphics for an unknown terminal")
 	}
 
 	t.Setenv("TERM_PROGRAM", "kitty")
-	k := NewModelCfg(Dependencies{Turn: func(context.Context, string, string) (TurnResult, error) { return TurnResult{}, nil }, KittyDA1: func() bool { return false }})
+	k := NewModelCfg(Dependencies{Turn: func(context.Context, string, string) (TurnResult, error) { return TurnResult{}, nil }, KittyDA1: func() bool { return false }, Splash: true})
 	if !k.kittyGraphics() {
 		t.Error("model should detect Kitty graphics from TERM_PROGRAM=kitty")
 	}
-	if k.splash != nil {
-		if !k.splash.kitty {
-			t.Error("splashState should mirror the model's Kitty capability")
-		}
-		if !k.splash.kitty || !k.kittyGraphics() {
-			t.Error("flag should agree across splashState and model")
-		}
+	if k.splash == nil || k.splash.state == nil {
+		t.Fatal("splash-enabled model must start with an active splash")
+	}
+	if !k.splash.state.kitty {
+		t.Error("splashState should mirror the model's Kitty capability")
+	}
+	if !k.splash.state.kitty || !k.kittyGraphics() {
+		t.Error("flag should agree across splashState and model")
 	}
 }

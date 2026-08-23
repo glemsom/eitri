@@ -48,13 +48,16 @@ func TestSplashTitle_restoresPreviousTitleOnSkip(t *testing.T) {
 	var buf bytes.Buffer
 	buf.WriteString("\x1b]0;⚒ Eitri — forging agents\x07") // branding emitted at splash start
 	m := splashTitleModel(t, &buf, "old title")
+	if got := m.splash.prevTitle; got != "old title" {
+		t.Errorf("previous title must be stored at splash start, got %q", got)
+	}
 	nm, cmd := m.Update(tea.KeyPressMsg{Code: 'x'})
 	runCmd(t, cmd)
 	if got := buf.String(); got != "\x1b]0;⚒ Eitri — forging agents\x07\x1b]0;old title\x07\x1b[?25h\x1b[?12h" {
 		t.Errorf("splash skip must restore the stored previous title via OSC 0 plus cursor show, got %q", got)
 	}
-	if am := asModel(t, nm); am.prevTitle != "old title" {
-		t.Errorf("previous title must be stored at splash start, got %q", am.prevTitle)
+	if am := asModel(t, nm); am.splash != nil {
+		t.Errorf("skipping the splash must drop the module pointer, got %v", am.splash)
 	}
 }
 
@@ -63,7 +66,7 @@ func TestSplashTitle_restoresPreviousTitleWhenSplashCompletes(t *testing.T) {
 	m := splashTitleModel(t, &buf, "old title")
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = asModel(t, nm)
-	for m.splash != nil && !m.splash.done() {
+	for m.splash != nil && !m.splash.state.done() {
 		nm, cmd := m.Update(splashTickMsg{})
 		if cmd != nil {
 			cmd()

@@ -72,6 +72,10 @@ _Avoid_: dispatch, turn state machine
 The owner of an open Settings surface: the draft form, its on-demand model-discovery lifecycle, and persistence of the draft through the save seams. The Model only tracks whether an overlay is open and routes messages to it through a single Handle entry point; the overlay answers with an outcome (continue, closed, saved), any follow-up command, and the accepted draft on save. The overlay's verbs keep the form state internally consistent.
 _Avoid_: settings form handler, settings state machine
 
+**Launch splash**:
+The animated full-screen startup sequence (matrix rain resolving into the rainbow wordmark) that owns the screen until it settles or is skipped. The Splash module owns the lifecycle end to end — the animation state, the tick cadence, the title/cursor side-effects, the keypress skip, and the early end when the transcript gains content — so the Model only tracks whether the splash is active (a nil pointer) and routes every message through the module's single Handle entry point, while Init asks it for the startup commands and View asks it for the frame. Splash tests hit the module seam directly rather than driving a full Model.
+_Avoid_: boot screen, loading screen
+
 **Thinking suppression**:
 A per-provider capability to actually stop chain-of-thought on the wire when the thinking toggle is off, negotiated with the provider at session start. A provider that cannot suppress reasoning surfaces a warning rather than silently ignoring the toggle.
 _Avoid_: reasoning off, cot off

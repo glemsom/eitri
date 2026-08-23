@@ -212,9 +212,7 @@ type Model struct {
 
 	clipboard func(text string) error
 
-	splash *splashState // non-nil while the launch splash is playing; nil once it settled or was skipped
-	// prevTitle is the terminal window title captured before the splash replaced it with the branding title, so splash end can restore it.
-	prevTitle string
+	splash *Splash // non-nil while the launch splash is playing; nil once it settled or was skipped
 
 	kittyCap bool // the terminal supports the Kitty graphics protocol (see kitty.go)
 }
@@ -267,6 +265,7 @@ func NewModelCfg(d Dependencies) Model {
 		toolResultsExpanded: !d.Config.ToolResultsCollapsedByDefault,
 	}
 
+	kittyCap := detectKittyGraphics(liveKittyEnv, d.KittyDA1)
 	m := Model{
 		composer:     comp,
 		session:      NewTurnSession(d.Turn),
@@ -274,16 +273,12 @@ func NewModelCfg(d Dependencies) Model {
 		tx:           transcript,
 		continueReq:  make(chan struct{}, 1),
 		continueResp: make(chan bool, 1),
-		slash: NewSkillActivation(d),
+		slash:        NewSkillActivation(d),
 		telemetry:    d.Telemetry,
 		events:       d.Events,
 		clipboard:    newClipboard(d),
-		splash:       splashFor(d.Splash),
-		kittyCap:     detectKittyGraphics(liveKittyEnv, d.KittyDA1),
-		prevTitle:    previousTerminalTitle(d),
-	}
-	if m.splash != nil {
-		m.splash.kitty = m.kittyCap
+		splash:       newSplash(d, transcript, kittyCap),
+		kittyCap:     kittyCap,
 	}
 	m.fold = NewFold(m.session)
 	m.session.SetThinkingEnabled(d.Config.ThinkingEnabled)
@@ -347,7 +342,7 @@ func clockTick() tea.Cmd {
 func (m Model) Init() tea.Cmd {
 	var cmds []tea.Cmd
 	if m.splash != nil {
-		cmds = append(cmds, splashTick(), splashStartCmd(m.deps.titleOut()))
+		cmds = append(cmds, m.splash.Start())
 	}
 	if m.telemetry != nil {
 		cmds = append(cmds, telemetryWait(m.telemetry))
@@ -361,6 +356,20 @@ func (m Model) Init() tea.Cmd {
 
 // Update handles a UI event and returns the next state plus any commands.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// While the splash owns the screen, every message first lands on the
+	// splash module's single Handle entry point: the animation tick advances
+	// it and any keypress skips it, both wholly inside the module. Nothing
+	// that arrives during the splash reaches the hot path below.
+	if m.splash != nil {
+		res := m.splash.Handle(msg)
+		if res.handled {
+			if res.ended {
+				m.splash = nil
+			}
+			return m, res.cmd
+		}
+	}
+
 	var cmds []tea.Cmd
 
 	m.savedMsg = ""
@@ -396,24 +405,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncWidths()
 		return m, nil
 
-	case splashTickMsg:
-		if m.splash == nil || m.tx.hasContent() {
-			m.splash = nil
-			return m, splashEndCmd(m.deps.titleOut(), m.prevTitle)
-		}
-		m.splash.advance()
-		if m.splash.done() {
-			m.splash = nil
-			return m, splashEndCmd(m.deps.titleOut(), m.prevTitle)
-		}
-		return m, splashTick()
-
 	case tea.KeyPressMsg:
-		// Any keypress skips the launch splash instantly; the key itself still lands on the composer.
-		if m.splash != nil {
-			m.splash = nil
-			return m, splashEndCmd(m.deps.titleOut(), m.prevTitle)
-		}
 		if m.settings != nil {
 			return m.updateSettings(msgi)
 		}
@@ -783,7 +775,7 @@ func (m Model) View() tea.View {
 // viewString renders the surface content string (the tea.View content).
 func (m Model) viewString() string {
 	if m.splash != nil {
-		return renderSplash(m.splash, m.tx.width, m.tx.height)
+		return m.splash.View(m.tx.width, m.tx.height)
 	}
 	if m.settings != nil {
 		return m.settings.View()

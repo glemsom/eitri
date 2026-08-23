@@ -94,21 +94,21 @@ func TestFaceGatedByModelKittyGraphics(t *testing.T) {
 	plain := NewModelCfg(deps)
 	// splashFor is environment-gated, so seed the state with the model's own
 	// capability flag — exactly the mirror construction performs.
-	plain.splash = &splashState{frame: 12, kitty: plain.kittyGraphics()}
+	plain.splash = &Splash{state: &splashState{frame: 12, kitty: plain.kittyGraphics()}}
 	if plain.kittyGraphics() {
 		t.Fatal("model reports Kitty graphics for an unknown terminal")
 	}
-	if out := renderSplash(plain.splash, 120, 40); strings.Contains(out, "\x1b_G") {
+	if out := plain.splash.View(120, 40); strings.Contains(out, "\x1b_G") {
 		t.Error("kittyGraphics()=false still emitted a base64 graphics payload")
 	}
 
 	t.Setenv("TERM_PROGRAM", "kitty")
 	kitty := NewModelCfg(Dependencies{Turn: deps.Turn, KittyDA1: func() bool { return false }})
-	kitty.splash = &splashState{frame: 12, kitty: kitty.kittyGraphics()}
+	kitty.splash = &Splash{state: &splashState{frame: 12, kitty: kitty.kittyGraphics()}}
 	if !kitty.kittyGraphics() {
 		t.Fatal("model should detect Kitty graphics from TERM_PROGRAM=kitty")
 	}
-	if out := renderSplash(kitty.splash, 120, 40); !strings.Contains(out, "\x1b_Gi=") {
+	if out := kitty.splash.View(120, 40); !strings.Contains(out, "\x1b_Gi=") {
 		t.Error("kittyGraphics()=true emitted no base64 graphics payload at frame 12")
 	}
 }
