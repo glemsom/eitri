@@ -69,7 +69,7 @@ The terminal's support for the Kitty graphics protocol, resolved once at TUI sta
 _Avoid_: image support, graphics mode
 
 **Splash convergence flash**:
-The single-frame (frame 22) ignition flash at the moment the wordmark starts resolving out of the rain: a full-width solid bar of true-color `#00FFC8` background across the wordmark's vertical middle row, present for exactly one frame so it reads as a bright strobe rather than content. Rendered as background-colored spaces, which no other splash element uses.
+The single-frame (frame 22) ignition flash at the moment the wordmark starts resolving out of the rain: a full-width solid bar of true-color `#00FFC8` background replacing the wordmark's vertical middle row for exactly one frame, while rain keeps collapsing around it. Rendered as background-colored spaces, which no other splash element uses — the hue matches the wordmark gradient's hottest stop so it reads as the gradient flaring.
 _Avoid_: flash overlay, screen blink
 
 **Splash title branding**:
