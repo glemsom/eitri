@@ -15,10 +15,6 @@ func NewTurnDispatch(turn Turn) *TurnDispatch {
 // SetThinkingEnabled delegates to the session, which owns the thinking flag.
 func (d *TurnDispatch) SetThinkingEnabled(v bool) { d.session.SetThinkingEnabled(v) }
 
-// appendStreamDelta delegates to the Fold, the sole writer of the streaming message and live timeline.
-func (d *TurnDispatch) appendStreamDelta(tx *Transcript, kind StreamKind, delta string) {
-	d.fold.Stream(tx, kind, delta)
-}
 
 // commitTimeline attaches the live per-turn event log to the turn's assistant
 // message and resets the live log, so a completed turn owns its arrival-ordered

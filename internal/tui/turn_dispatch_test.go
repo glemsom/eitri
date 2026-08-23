@@ -29,7 +29,7 @@ func TestTurnDispatch_appendStreamDelta_createsMessageOnFirstDelta(t *testing.T)
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
 
-	d.appendStreamDelta(&tx, AnswerStream, "hello")
+	d.fold.Stream(&tx, AnswerStream, "hello")
 
 	if len(tx.messages) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(tx.messages))
@@ -54,8 +54,8 @@ func TestTurnDispatch_appendStreamDelta_extendsExistingMessage(t *testing.T) {
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
 
-	d.appendStreamDelta(&tx, AnswerStream, "hel")
-	d.appendStreamDelta(&tx, AnswerStream, "lo")
+	d.fold.Stream(&tx, AnswerStream, "hel")
+	d.fold.Stream(&tx, AnswerStream, "lo")
 
 	if len(tx.messages) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(tx.messages))
@@ -70,8 +70,8 @@ func TestTurnDispatch_appendStreamDelta_reasoningSeparate(t *testing.T) {
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
 
-	d.appendStreamDelta(&tx, ReasoningStream, "thinking...")
-	d.appendStreamDelta(&tx, AnswerStream, "answer")
+	d.fold.Stream(&tx, ReasoningStream, "thinking...")
+	d.fold.Stream(&tx, AnswerStream, "answer")
 
 	if len(tx.messages) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(tx.messages))
@@ -89,7 +89,7 @@ func TestTurnDispatch_appendStreamDelta_emptyNoop(t *testing.T) {
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
 
-	d.appendStreamDelta(&tx, AnswerStream, "")
+	d.fold.Stream(&tx, AnswerStream, "")
 
 	if len(tx.messages) != 0 {
 		t.Fatalf("expected 0 messages, got %d", len(tx.messages))
@@ -101,7 +101,7 @@ func TestTurnDispatch_appendStreamDelta_setsBusyPulseOnFirstDelta(t *testing.T) 
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
 
-	d.appendStreamDelta(&tx, AnswerStream, "hello")
+	d.fold.Stream(&tx, AnswerStream, "hello")
 
 	if tx.busyPulse != 3 {
 		t.Errorf("busyPulse = %d, want 3", tx.busyPulse)
@@ -113,9 +113,9 @@ func TestTurnDispatch_appendStreamDelta_doesNotResetBusyPulseOnSubsequentDelta(t
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
 
-	d.appendStreamDelta(&tx, AnswerStream, "hel")
+	d.fold.Stream(&tx, AnswerStream, "hel")
 	tx.busyPulse = 1 // simulate mid-pulse
-	d.appendStreamDelta(&tx, AnswerStream, "lo")
+	d.fold.Stream(&tx, AnswerStream, "lo")
 
 	if tx.busyPulse != 1 {
 		t.Errorf("busyPulse = %d, want 1 (should not reset on subsequent delta)", tx.busyPulse)
@@ -294,8 +294,8 @@ func TestTurnDispatch_fullCycle(t *testing.T) {
 		t.Fatal("should be busy")
 	}
 
-	d.appendStreamDelta(&tx, AnswerStream, "par")
-	d.appendStreamDelta(&tx, AnswerStream, "tial")
+	d.fold.Stream(&tx, AnswerStream, "par")
+	d.fold.Stream(&tx, AnswerStream, "tial")
 
 	msg := cmd()
 	tdm := msg.(turnDoneMsg)

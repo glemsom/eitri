@@ -100,8 +100,9 @@ func TestFoldToolRoutesToLogAndTimeline(t *testing.T) {
 	}
 }
 
-// applyTool folds a tool observation through a standalone Fold; the
-// #498/#499 migration call-sites use this instead of Transcript.apply.
+// applyTool folds a tool observation through a Fold bound to a throwaway
+// disarmed session: Tool never reads the stream cursor or thinking flag, so
+// the binding is inert and the call-sites below stay one line.
 func applyTool(tx *Transcript, u ToolUpdate) {
 	NewFold(NewTurnSession(nil)).Tool(tx, u)
 }

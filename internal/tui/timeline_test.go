@@ -23,11 +23,11 @@ func TestTurnDispatch_timelinePreservesArrivalOrder(t *testing.T) {
 
 	// The interleaved stream from the acceptance criteria:
 	// reasoning -> tool start -> tool result -> reasoning -> answer.
-	d.appendStreamDelta(&tx, ReasoningStream, "r1")
+	d.fold.Stream(&tx, ReasoningStream, "r1")
 	applyTool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
 	applyTool(&tx, ToolUpdate{Result: &ToolResult{Name: "bash", Result: "a\n", Lines: 1}})
-	d.appendStreamDelta(&tx, ReasoningStream, "r2")
-	d.appendStreamDelta(&tx, AnswerStream, "a1")
+	d.fold.Stream(&tx, ReasoningStream, "r2")
+	d.fold.Stream(&tx, AnswerStream, "a1")
 
 	stopped, err := d.handleTurnDone(&tx, turnDoneMsg{answer: "a1", reasoning: "r1r2"})
 	if stopped || err != nil {
@@ -55,12 +55,12 @@ func TestTurnDispatch_timelineSnapshotsDerivedFromLog(t *testing.T) {
 	tx := newTestTx()
 	d.session.Begin(&tx, "go", "")
 
-	d.appendStreamDelta(&tx, ReasoningStream, "r1")
+	d.fold.Stream(&tx, ReasoningStream, "r1")
 	applyTool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{}`}})
 	applyTool(&tx, ToolUpdate{Result: &ToolResult{Name: "bash", Result: "a\n", Lines: 1}})
-	d.appendStreamDelta(&tx, ReasoningStream, "r2")
-	d.appendStreamDelta(&tx, AnswerStream, "a1")
-	d.appendStreamDelta(&tx, AnswerStream, "a2")
+	d.fold.Stream(&tx, ReasoningStream, "r2")
+	d.fold.Stream(&tx, AnswerStream, "a1")
+	d.fold.Stream(&tx, AnswerStream, "a2")
 
 	if _, err := d.handleTurnDone(&tx, turnDoneMsg{answer: "a1a2", reasoning: "r1r2"}); err != nil {
 		t.Fatalf("handleTurnDone err = %v", err)
@@ -89,7 +89,7 @@ func TestTurnDispatch_timelineToolBeforeFirstDelta(t *testing.T) {
 	// the event log must still record it first.
 	applyTool(&tx, ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}})
 	applyTool(&tx, ToolUpdate{Result: &ToolResult{Name: "read", Result: "x", Lines: 1}})
-	d.appendStreamDelta(&tx, AnswerStream, "hi")
+	d.fold.Stream(&tx, AnswerStream, "hi")
 
 	if _, err := d.handleTurnDone(&tx, turnDoneMsg{answer: "hi"}); err != nil {
 		t.Fatalf("handleTurnDone err = %v", err)
@@ -112,7 +112,7 @@ func TestTranscript_applyPostTurnToolAppendsToLastMessage(t *testing.T) {
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
 	d.session.Begin(&tx, "go", "")
-	d.appendStreamDelta(&tx, AnswerStream, "done")
+	d.fold.Stream(&tx, AnswerStream, "done")
 	if _, err := d.handleTurnDone(&tx, turnDoneMsg{answer: "done"}); err != nil {
 		t.Fatalf("handleTurnDone err = %v", err)
 	}
@@ -141,7 +141,7 @@ func TestTurnDispatch_timelineCommitsOnStoppedTurn(t *testing.T) {
 	d.session.Begin(&tx, "go", "")
 
 	applyTool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{}`}})
-	d.appendStreamDelta(&tx, AnswerStream, "partial")
+	d.fold.Stream(&tx, AnswerStream, "partial")
 	stopped, err := d.handleTurnDone(&tx, turnDoneMsg{stopped: true, answer: "partial"})
 	if !stopped || err != nil {
 		t.Fatalf("handleTurnDone = stopped %v, err %v", stopped, err)
@@ -159,7 +159,7 @@ func TestTurnDispatch_timelineCommitsOnErrorTurn(t *testing.T) {
 	tx := newTestTx()
 	d.session.Begin(&tx, "go", "")
 
-	d.appendStreamDelta(&tx, ReasoningStream, "r")
+	d.fold.Stream(&tx, ReasoningStream, "r")
 	applyTool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{}`}})
 	stopped, err := d.handleTurnDone(&tx, turnDoneMsg{err: errors.New("provider failed")})
 	if stopped || err == nil {
