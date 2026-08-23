@@ -50,8 +50,8 @@ func TestSplashTitle_restoresPreviousTitleOnSkip(t *testing.T) {
 	m := splashTitleModel(t, &buf, "old title")
 	nm, cmd := m.Update(tea.KeyPressMsg{Code: 'x'})
 	runCmd(t, cmd)
-	if got := buf.String(); got != "\x1b]0;⚒ Eitri — forging agents\x07\x1b]0;old title\x07" {
-		t.Errorf("splash skip must restore the stored previous title via OSC 0, got %q", got)
+	if got := buf.String(); got != "\x1b]0;⚒ Eitri — forging agents\x07\x1b]0;old title\x07\x1b[?25h\x1b[?12h" {
+		t.Errorf("splash skip must restore the stored previous title via OSC 0 plus cursor show, got %q", got)
 	}
 	if am := asModel(t, nm); am.prevTitle != "old title" {
 		t.Errorf("previous title must be stored at splash start, got %q", am.prevTitle)
