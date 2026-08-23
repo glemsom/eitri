@@ -32,6 +32,15 @@ const maxFacePixelSize = 200
 // instead of accumulating images in the terminal.
 const kittyFaceImageID = 1
 
+// Face choreography frames: the fade-in ramp, the hold, and the shatter
+// dissolve — one source of truth shared by faceOpacity and the tests.
+const (
+	faceStartFrame = 10 // first frame the face appears (ramp begins)
+	faceFullFrame  = 18 // ramp reaches full opacity
+	holdEndFrame   = 19 // last fully-visible frame
+	faceGoneFrame  = 22 // shatter dissolve completes; invisible after
+)
+
 var (
 	facePNGOnce sync.Once
 	facePNGData []byte
@@ -65,17 +74,18 @@ func facePNG() []byte {
 
 // faceOpacity returns the face's opacity at a frame: zero before the
 // emergence phase, an even ramp from frame 10 to full visibility by frame 18,
-// held through frame 19, then fading out across the shatter (frames 20–22).
+// held through frame 19, then fading out across the shatter until it is gone
+// at frame 22.
 func faceOpacity(frame int) float64 {
 	switch {
-	case frame < 10 || frame > 22:
+	case frame < faceStartFrame || frame > faceGoneFrame:
 		return 0
-	case frame <= 18:
-		return float64(frame-9) / 9 // frames 10–18: 1/9 … 9/9
-	case frame == 19:
+	case frame <= faceFullFrame:
+		return float64(frame-faceStartFrame+1) / (faceFullFrame - faceStartFrame + 1)
+	case frame <= holdEndFrame:
 		return 1
 	default:
-		return float64(23-frame) / 4 // frames 20–22: 3/4 … 1/4, dissolving toward the wordmark convergence
+		return float64(faceGoneFrame-frame) / (faceGoneFrame - holdEndFrame) // 2/3 … 0 across the shatter
 	}
 }
 
@@ -127,8 +137,10 @@ func kittyFaceEscape(frame, w, h int) string {
 	b64 := base64.StdEncoding.EncodeToString(payload)
 
 	var b strings.Builder
-	// Move the hardware cursor to the placement anchor before placing; C=1
-	// makes the placement relative to the cursor instead of the screen origin.
+	// The placement anchor needs the hardware cursor, but this string rides
+	// inside a bubbletea-rendered frame — so save and restore the cursor
+	// (DECSC/DECRC) around the move, leaving the renderer's cursor untouched.
+	b.WriteString("\x1b7")
 	fmt.Fprintf(&b, "\x1b[%d;%dH", row, col)
 	for {
 		chunk := b64
@@ -137,20 +149,31 @@ func kittyFaceEscape(frame, w, h int) string {
 			chunk, b64 = chunk[:chunkLimit], chunk[chunkLimit:]
 			more = true
 		}
-		keys := fmt.Sprintf("i=%d,f=100,a=T,q=1,m=%d", kittyFaceImageID, boolToInt(more))
+		// Continuation chunks carry only the m key per the graphics spec.
+		keys := fmt.Sprintf("i=%d,f=100,a=T,q=1", kittyFaceImageID)
+		if more {
+			keys = "m=1"
+		}
 		fmt.Fprintf(&b, "\x1b_G%s;%s\x1b\\", keys, chunk)
 		if !more {
 			break
 		}
 	}
 	fmt.Fprintf(&b, "\x1b_Ga=p,i=%d,C=1,q=1,c=%d,r=%d\x1b\\", kittyFaceImageID, cols, rows)
+	b.WriteString("\x1b8")
 	return b.String()
 }
 
 // scaleFaceAlpha multiplies every opaque pixel's alpha by op so the same PNG
 // encoder produces the fade ramp: Kitty has no per-image opacity key, so the
-// transparency is baked into each frame's payload.
+// transparency is baked into each frame's payload. Results are memoized per
+// opacity level — the splash revisits each only once.
+var faceAlphaCache sync.Map
+
 func scaleFaceAlpha(pngData []byte, op float64) []byte {
+	if cached, ok := faceAlphaCache.Load(op); ok {
+		return cached.([]byte)
+	}
 	img, err := png.Decode(bytes.NewReader(pngData))
 	if err != nil {
 		return pngData
@@ -168,12 +191,7 @@ func scaleFaceAlpha(pngData []byte, op float64) []byte {
 	if png.Encode(&buf, scaled) != nil {
 		return pngData
 	}
-	return buf.Bytes()
-}
-
-func boolToInt(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
+	out := buf.Bytes()
+	faceAlphaCache.Store(op, out)
+	return out
 }

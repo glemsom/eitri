@@ -2,6 +2,7 @@ package tui
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"image/png"
 	"regexp"
@@ -27,7 +28,7 @@ func TestKittyFaceEscapeWellFormed(t *testing.T) {
 	if esc == "" {
 		t.Fatal("kittyFaceEscape(frame 12) = empty, want a graphics escape")
 	}
-	if !strings.HasPrefix(esc, "\x1b[") || !strings.HasSuffix(esc, "\x1b\\") {
+	if !strings.HasPrefix(esc, "\x1b7\x1b[") || !strings.HasSuffix(esc, "\x1b8") {
 		t.Fatalf("escape not cursor-prefixed and APC-terminated in Kitty form: %q", esc[:min(len(esc), 40)])
 	}
 	// The transmission command must declare PNG payload format (f=100).
@@ -83,6 +84,35 @@ func TestKittyFaceOnlyWhenKitty(t *testing.T) {
 	}
 }
 
+// TestFaceGatedByModelKittyGraphics pins the full gate chain the issue names:
+// the base64 payload appears only when the model's kittyGraphics() flag is
+// true, via the splashState mirror it seeds.
+func TestFaceGatedByModelKittyGraphics(t *testing.T) {
+	deps := Dependencies{Turn: func(context.Context, string, string) (TurnResult, error) { return TurnResult{}, nil }}
+
+	t.Setenv("TERM_PROGRAM", "")
+	plain := NewModelCfg(deps)
+	// splashFor is environment-gated, so seed the state with the model's own
+	// capability flag — exactly the mirror construction performs.
+	plain.splash = &splashState{frame: 12, kitty: plain.kittyGraphics()}
+	if plain.kittyGraphics() {
+		t.Fatal("model reports Kitty graphics for an unknown terminal")
+	}
+	if out := renderSplash(plain.splash, 120, 40); strings.Contains(out, "\x1b_G") {
+		t.Error("kittyGraphics()=false still emitted a base64 graphics payload")
+	}
+
+	t.Setenv("TERM_PROGRAM", "kitty")
+	kitty := NewModelCfg(Dependencies{Turn: deps.Turn, KittyDA1: func() bool { return false }})
+	kitty.splash = &splashState{frame: 12, kitty: kitty.kittyGraphics()}
+	if !kitty.kittyGraphics() {
+		t.Fatal("model should detect Kitty graphics from TERM_PROGRAM=kitty")
+	}
+	if out := renderSplash(kitty.splash, 120, 40); !strings.Contains(out, "\x1b_Gi=") {
+		t.Error("kittyGraphics()=true emitted no base64 graphics payload at frame 12")
+	}
+}
+
 // TestFaceOpacityRamp pins the fade choreography: silent before 10, ramping
 // up to full by 18, fading out across the shatter (20–22), gone after 22.
 func TestFaceOpacityRamp(t *testing.T) {
@@ -110,6 +140,9 @@ func TestFaceOpacityRamp(t *testing.T) {
 			t.Fatalf("shatter fade-out not monotonically decreasing: frame %d → %v", f, o)
 		}
 		prev = o
+	}
+	if faceOpacity(22) != 0 {
+		t.Errorf("faceOpacity(22) = %v, want fully gone at end of shatter", faceOpacity(22))
 	}
 	if faceOpacity(23) != 0 || faceOpacity(50) != 0 {
 		t.Error("face should be invisible after frame 22")
