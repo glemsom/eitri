@@ -20,7 +20,7 @@ func TestSystemPromptEmbedded(t *testing.T) {
 
 func TestSystemPromptTokenBudget(t *testing.T) {
 	t.Parallel()
-	if n := CountTokens(SystemPrompt); n > MaxSystemPromptTokens {
+	if n := estimateString(SystemPrompt); n > MaxSystemPromptTokens {
 		t.Fatalf("system prompt %d tokens exceeds ceiling %d",
 			n, MaxSystemPromptTokens)
 	}

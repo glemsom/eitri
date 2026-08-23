@@ -94,69 +94,6 @@ func bindSkillToPrompt(prompt, skill string) string {
 	return b.String()
 }
 
-// Run performs a non-tool turn: it sends the model + a user message and streams the provider response to a final assistant answer.
-func (e *Engine) Run(ctx context.Context, req RunRequest) (Result, error) {
-	if ctx.Err() != nil {
-		return Result{}, ErrStopped
-	}
-	s, err := e.provider.Stream(ctx, provider.Request{
-		Model:           req.Model,
-		Messages:        append(systemPromptHead(), provider.Message{Role: provider.RoleUser, Content: req.Prompt}),
-		SetCacheKey:     req.SessionKey != "",
-		SessionKey:      req.SessionKey,
-		ThinkingEnabled: req.ThinkingEnabled,
-		ReasoningEffort: req.ReasoningEffort,
-	})
-	if err != nil {
-		return Result{}, err
-	}
-
-	return e.drain(ctx, s, req.Prompt, 0)
-}
-
-// drain streams s to completion, accumulating the assistant answer, reasoning, and terminal usage into a Result, writing the run to the transcript sink, and returning the finished Result.
-func (e *Engine) drain(ctx context.Context, s provider.Stream, prompt string, turn int) (Result, error) {
-	e.emit(TurnEvent{Turn: turn, Start: true})
-	var res Result
-	var endReason string
-	for {
-		c, err := s.Next()
-		if err != nil {
-			ce := closeErr(err)
-			if ce == nil {
-				break
-			}
-			if e.stopped(ctx) {
-				e.finishStopped(res, prompt, turn)
-				return res, ErrStopped
-			}
-			return res, ce
-		}
-		if c.Content != "" {
-			res.Answer += c.Content
-			e.emit(StreamEvent{Turn: turn, Kind: AnswerStream, Delta: c.Content})
-		}
-		if c.ReasoningContent != "" {
-			res.Reasoning += c.ReasoningContent
-			e.emit(StreamEvent{Turn: turn, Kind: ReasoningStream, Delta: c.ReasoningContent})
-		}
-		if c.Usage != nil {
-			res.Usage = c.Usage
-			e.emit(UsageEvent{Turn: turn, Usage: *c.Usage})
-		}
-		endReason = c.FinishReason
-		if c.Done {
-			break
-		}
-	}
-	e.emit(TurnEvent{Turn: turn, EndReason: endReason})
-
-	if e.transcript != nil {
-		_ = e.transcript.WriteTranscript(fmt.Appendf(nil, "=== %s ===\n%s\n", prompt, res.Answer))
-	}
-	return res, nil
-}
-
 // stopped reports whether the caller's context was canceled, the condition that turns a stream/tool error into a user stop rather than a failure.
 func (e *Engine) stopped(ctx context.Context) bool {
 	return ctx.Err() != nil
@@ -168,65 +105,6 @@ func (e *Engine) finishStopped(res Result, prompt string, turn int) {
 	if e.transcript != nil {
 		_ = e.transcript.WriteTranscript(fmt.Appendf(nil, "=== %s ===\n%s\n[stopped]\n", prompt, res.Answer))
 	}
-}
-
-// jsonObjectSuffix is appended to a JSON Object Mode prompt when the caller's text does not already ask for JSON.
-const jsonObjectSuffix = "\n\nPlease output a JSON object."
-
-// jsonObjectPrompt returns prompt, appending jsonObjectSuffix only when the prompt does not already ask for JSON (case-insensitive).
-func jsonObjectPrompt(prompt string) string {
-	if strings.Contains(strings.ToLower(prompt), "json") {
-		return prompt
-	}
-	return prompt + jsonObjectSuffix
-}
-
-// RunJSONObjectMode runs a JSON Object Mode finalization turn: an internal, non-tool special turn that requires provider-side JSON Object Mode so the final answer is a valid JSON object without mixing structured-output rules into an ordinary agent/tool loop.
-func (e *Engine) RunJSONObjectMode(ctx context.Context, req RunRequest) (Result, error) {
-	if _, err := e.NegotiateGenerationControls(ctx, []provider.ControlRequirement{
-		{Control: provider.GenerationControlJSONObjectMode, Required: true},
-	}); err != nil {
-		return Result{}, err
-	}
-
-	s, err := e.provider.Stream(ctx, provider.Request{
-		Model:           req.Model,
-		Messages:        append(systemPromptHead(), provider.Message{Role: provider.RoleUser, Content: jsonObjectPrompt(req.Prompt)}),
-		SetCacheKey:     req.SessionKey != "",
-		SessionKey:      req.SessionKey,
-		ThinkingEnabled: req.ThinkingEnabled,
-		ReasoningEffort: req.ReasoningEffort,
-		JSONObjectMode:  true,
-	})
-	if err != nil {
-		return Result{}, err
-	}
-
-	return e.drain(ctx, s, req.Prompt, 0)
-}
-
-// RunSamplingPolicy runs a Sampling Policy special turn: an internal, non-tool turn that requests temperature- or nucleus-based sampling for a constrained generation.
-func (e *Engine) RunSamplingPolicy(ctx context.Context, req RunRequest, policy provider.SamplingPolicy) (Result, error) {
-	if _, err := e.NegotiateGenerationControls(ctx, []provider.ControlRequirement{
-		{Control: provider.GenerationControlSamplingPolicy, Required: true},
-	}); err != nil {
-		return Result{}, err
-	}
-
-	s, err := e.provider.Stream(ctx, provider.Request{
-		Model:           req.Model,
-		Messages:        append(systemPromptHead(), provider.Message{Role: provider.RoleUser, Content: req.Prompt}),
-		SetCacheKey:     req.SessionKey != "",
-		SessionKey:      req.SessionKey,
-		ThinkingEnabled: req.ThinkingEnabled,
-		ReasoningEffort: req.ReasoningEffort,
-		Sampling:        &policy,
-	})
-	if err != nil {
-		return Result{}, err
-	}
-
-	return e.drain(ctx, s, req.Prompt, 0)
 }
 
 // ToolExecutor executes an agent tool call.
@@ -474,11 +352,4 @@ func (e *Engine) storeSessionHistory(sessionKey string, messages []provider.Mess
 	e.histMu.Lock()
 	defer e.histMu.Unlock()
 	e.histories[sessionKey] = persisted
-}
-
-func closeErr(err error) error {
-	if err == io.EOF {
-		return nil
-	}
-	return err
 }

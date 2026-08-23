@@ -3,7 +3,6 @@ package engine
 import (
 	"context"
 	"errors"
-	"io"
 	"testing"
 
 	"github.com/glemsom/eitri/internal/provider"
@@ -40,51 +39,6 @@ func TestErrStoppedWrapsContextCanceled(t *testing.T) {
 	}
 	if errors.Is(ErrStopped, errors.New("some other failure")) {
 		t.Error("ErrStopped must not match an unrelated error")
-	}
-}
-
-func TestRunCanceledDuringStreamReturnsStoppedWithPartialContent(t *testing.T) {
-	t.Parallel()
-	ctx, cancel := context.WithCancel(context.Background())
-	tr := &mockTranscript{}
-	reqs := 0
-	started := make(chan struct{})
-	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
-		reqs++
-		return &blockedStream{ctx: ctx, ready: started, chunks: []provider.Chunk{
-			{Content: "partial "},
-			{Content: "answer"},
-		}}, nil
-	}), tr)
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		res, err := e.Run(ctx, RunRequest{Model: "m", Prompt: "hi"})
-		if err == nil {
-			t.Errorf("Run error = nil, want stop sentinel")
-			return
-		}
-		if !errors.Is(err, context.Canceled) {
-			t.Errorf("Run error = %v, want a context.Canceled-wrapping error", err)
-			return
-		}
-		if res.Answer != "partial answer" {
-			t.Errorf("Answer = %q, want %q (partial content preserved)", res.Answer, "partial answer")
-		}
-	}()
-	testutil.Await(t, "provider stream to start", started)
-	cancel()
-	<-done
-
-	if reqs != 1 {
-		t.Errorf("provider streams = %d, want 1", reqs)
-	}
-	if len(tr.lines) != 1 {
-		t.Fatalf("transcript writes = %d, want 1", len(tr.lines))
-	}
-	if !contains(tr.lines[0], "partial answer") {
-		t.Errorf("stopped transcript record %q missing the partial content", tr.lines[0])
 	}
 }
 
@@ -245,32 +199,4 @@ func TestRunAgentStopPreservesPromptInTranscriptRecord(t *testing.T) {
 	if stoppedLine == cleanLine {
 		t.Errorf("stopped record %q must differ from the clean record %q", stoppedLine, cleanLine)
 	}
-}
-
-func TestRunIoEOFStillClean(t *testing.T) {
-	t.Parallel()
-	tr := &mockTranscript{}
-	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
-		return &eofAfterChunkStream{}, nil
-	}), tr)
-
-	res, err := e.Run(context.Background(), RunRequest{Model: "m", Prompt: "hi"})
-	if err != nil {
-		t.Fatalf("Run error = %v, want nil", err)
-	}
-	if res.Answer != "kind of done" {
-		t.Errorf("Answer = %q, want %q", res.Answer, "kind of done")
-	}
-}
-
-type eofAfterChunkStream struct {
-	n int
-}
-
-func (s *eofAfterChunkStream) Next() (provider.Chunk, error) {
-	s.n++
-	if s.n == 1 {
-		return provider.Chunk{Content: "kind of done"}, nil
-	}
-	return provider.Chunk{}, io.EOF
 }

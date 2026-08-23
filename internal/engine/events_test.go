@@ -55,9 +55,9 @@ func TestRunEmitsStreamAndUsageAndTurnEvents(t *testing.T) {
 	}), &mockTranscript{})
 	e.SetListener(col.on)
 
-	res, err := e.Run(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "say hi"})
+	res, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "say hi"}, AgentOptions{})
 	if err != nil {
-		t.Fatalf("Run() error = %v, want nil", err)
+		t.Fatalf("run error = %v, want nil", err)
 	}
 	if res.Answer != "Hello world" || res.Reasoning != "think" {
 		t.Fatalf("Result answer=%q reasoning=%q", res.Answer, res.Reasoning)
@@ -194,8 +194,8 @@ func TestRunWithoutSubscriberEmitsNoEvents(t *testing.T) {
 		), nil
 	}), &mockTranscript{})
 
-	if _, err := e.Run(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "go"}); err != nil {
-		t.Fatalf("Run() error = %v, want nil", err)
+	if _, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "go"}, AgentOptions{}); err != nil {
+		t.Fatalf("run error = %v, want nil", err)
 	}
 	if len(col.events) != 0 {
 		t.Fatalf("events emitted without a subscriber: %v", col.eventTypes())
@@ -211,8 +211,8 @@ func TestSetListenerNilStopsDelivery(t *testing.T) {
 	e.SetListener(col.on)
 	e.SetListener(nil) // unsubscribe
 
-	if _, err := e.Run(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "go"}); err != nil {
-		t.Fatalf("Run() error = %v, want nil", err)
+	if _, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "go"}, AgentOptions{}); err != nil {
+		t.Fatalf("run error = %v, want nil", err)
 	}
 	if len(col.events) != 0 {
 		t.Fatalf("events delivered after unsubscribe: %v", col.eventTypes())
