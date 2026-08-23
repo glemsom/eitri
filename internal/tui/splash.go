@@ -210,8 +210,7 @@ func letterIndexAt(col int) int {
 }
 
 // letterEntryFrame is the frame letter enters on: one frame after its left
-// neighbor, so the wordmark assembles E → I → T → R → I across frames
-// splashWordmarkStartFrame…splashWordmarkStartFrame+4.
+// neighbor, so the wordmark reads as assembling left-to-right out of the rain.
 func letterEntryFrame(letter int) int { return splashWordmarkStartFrame + letter }
 
 // letterDropRows reports how many rows below its final position letter sits at frame:

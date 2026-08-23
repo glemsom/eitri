@@ -227,13 +227,12 @@ func splashLetterRows(t *testing.T, frame int) [][]int {
 	lines := strings.Split(content, "\n")
 	markWidth := len([]rune(eitriWordmark[0]))
 	markLeft := (80 - markWidth) / 2
-	const letterW, gap, letters = 6, 3, 5
-	rows := make([][]int, letters)
+	rows := make([][]int, splashLetterCount)
 	for r, line := range lines {
 		runes := []rune(line)
-		for l := 0; l < letters; l++ {
-			start := markLeft + l*(letterW+gap)
-			for c := start; c < start+letterW && c < len(runes); c++ {
+		for l := 0; l < splashLetterCount; l++ {
+			start := markLeft + l*(splashLetterCells+splashLetterGap)
+			for c := start; c < start+splashLetterCells && c < len(runes); c++ {
 				if runes[c] == '█' {
 					rows[l] = append(rows[l], r)
 					break
