@@ -738,7 +738,7 @@ func (s *settingsForm) save(m *Model) {
 	m.settings = nil
 }
 
-// startTurn begins the turn through the session, which installs the per-turn cancel handle, appends the user message, marks busy, resets the stream cursor, and anchors the tool log. The live merged event feed is re-armed here, and the spinner tick starts so the busy indicator animates.
+// startTurn begins the turn through the session, which owns all of turn start. The live merged event feed is re-armed here, and the spinner tick starts so the busy indicator animates.
 func (m *Model) startTurn(prompt string, payload string) tea.Cmd {
 	cmd := m.td.session.Begin(m.tx, prompt, payload)
 	m.syncComposerRail()

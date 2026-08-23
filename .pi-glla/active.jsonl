@@ -1,0 +1,8 @@
+{"type":"session_rebound","value":{"reason":"startup"},"at":"2026-08-23T14:08:38.318Z"}
+{"type":"session_waiting_for_load","value":{"reason":"startup"},"at":"2026-08-23T14:08:38.321Z"}
+{"type":"state","value":{"goal":null,"list":[],"loop":null,"mainModelRecovery":null,"lastModelRef":"opencode-go/ox-alpha-free","lastCompactionAt":null,"supervisorPausedAt":null,"loadHoldAt":null},"at":"2026-08-23T14:08:38.322Z"}
+{"type":"session_rebound","value":{"reason":"startup"},"at":"2026-08-23T14:08:38.327Z"}
+{"type":"id_invalidation","value":{"oldId":"01a02ef3-b16e-7479-a8d0-9d53fce8de2a","newId":"01a02ef3-b179-752c-9486-ca9d32645a24","reason":"forced_rewrite","at":"2026-08-23T14:08:38.330Z"},"at":"2026-08-23T14:08:38.330Z"}
+{"type":"session_waiting_for_load","value":{"reason":"startup"},"at":"2026-08-23T14:08:38.330Z"}
+{"type":"session_shutdown","value":{"reason":"quit"},"at":"2026-08-23T14:09:17.673Z"}
+{"type":"session_shutdown","value":{"reason":"quit"},"at":"2026-08-23T14:09:18.065Z"}

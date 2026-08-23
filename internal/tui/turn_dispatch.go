@@ -81,8 +81,9 @@ func (d *TurnDispatch) handleTurnDone(tx *Transcript, msg turnDoneMsg) (stopped 
 	}
 	if msg.err != nil {
 		if wasStreaming {
-			tx.messages[d.session.curStream].streaming = false
-			d.commitTimeline(tx, d.session.curStream)
+			i := d.session.curStream
+			tx.messages[i].streaming = false
+			d.commitTimeline(tx, i)
 		}
 		d.session.curStream = -1
 		tx.messages = append(tx.messages, message{role: "eitri", content: failurePrefix() + msg.err.Error(), thinkingRequested: d.session.thinkingEnabled})

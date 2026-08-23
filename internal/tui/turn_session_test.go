@@ -144,8 +144,8 @@ func TestTurnSessionBeginSetsAnchor(t *testing.T) {
 	}
 }
 
-// A canceled turn comes back through the dispatch command as a stopped turn with partial output preserved.
-func TestTurnSessionCanceledTurnReportsStopped(t *testing.T) {
+// A turn whose context dies comes back through the dispatch command as a stopped turn with partial output preserved.
+func TestTurnSessionStoppedTurnKeepsPartialOutput(t *testing.T) {
 	s := NewTurnSession(func(_ context.Context, _, _ string) (TurnResult, error) {
 		return TurnResult{Answer: "partial"}, context.Canceled
 	})
