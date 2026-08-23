@@ -69,7 +69,7 @@ func TestTurnDone_withoutStream_carriesEventLog(t *testing.T) {
 	t.Parallel()
 	d := NewTurnDispatch(stubTurn("done", nil))
 	tx := newTestTx()
-	d.startTurn(&tx, "go", "")
+	d.session.Begin(&tx, "go", "")
 
 	if _, err := d.handleTurnDone(&tx, turnDoneMsg{answer: "done"}); err != nil {
 		t.Fatalf("handleTurnDone err = %v", err)

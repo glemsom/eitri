@@ -1,69 +1,17 @@
 package tui
 
-import (
-	"context"
-	"errors"
-
-	tea "charm.land/bubbletea/v2"
-)
-
-// TurnDispatch owns the turn state machine: startTurn, stopTurn, turnCmd, appendStreamDelta, and handleTurnDone.
+// TurnDispatch owns the turn state machine: appendStreamDelta and handleTurnDone.
 type TurnDispatch struct {
-	turn      Turn
-	session   *TurnSession
-	curStream int
+	session *TurnSession
 }
 
 // NewTurnDispatch creates a TurnDispatch with the given engine seam.
 func NewTurnDispatch(turn Turn) *TurnDispatch {
-	return &TurnDispatch{
-		turn:      turn,
-		session:   NewTurnSession(),
-		curStream: -1,
-	}
-}
-
-// startTurn installs a cancelable context, appends a user message to the transcript, marks the transcript busy, resets the stream cursor, anchors the tool log, and returns the command that dispatches the turn. The per-turn event timeline and its arrival counter are reset here so each turn owns a fresh, arrival-ordered log of its own events.
-func (d *TurnDispatch) startTurn(tx *Transcript, prompt, payload string) tea.Cmd {
-	d.session.Begin()
-	tx.messages = append(tx.messages, message{role: "you", content: prompt})
-	tx.busy = true
-	d.curStream = -1
-	tx.timeline = nil
-	tx.turnSeq = 0
-	tx.layout.dirty = true
-	tx.log.SetAnchor(len(tx.messages) - 1)
-	return d.turnCmd(prompt, payload)
+	return &TurnDispatch{session: NewTurnSession(turn)}
 }
 
 // SetThinkingEnabled delegates to the session, which owns the thinking flag.
 func (d *TurnDispatch) SetThinkingEnabled(v bool) { d.session.SetThinkingEnabled(v) }
-
-// stopTurn cancels the in-flight turn's context via the session.
-func (d *TurnDispatch) stopTurn() { d.session.Stop() }
-
-// turnCmd returns a command that runs the turn on the cancelable context and delivers a turnDoneMsg when complete.
-func (d *TurnDispatch) turnCmd(prompt, payload string) tea.Cmd {
-	return tea.Cmd(func() tea.Msg {
-		ctx := d.session.Context()
-		if ctx == nil {
-			// Defensive fallback for a command dispatched before startTurn ran.
-			var cancel context.CancelFunc
-			ctx, cancel = context.WithCancel(context.Background())
-			defer cancel()
-		} else {
-			defer d.session.Stop()
-		}
-		res, err := d.turn(ctx, prompt, payload)
-		if err != nil {
-			if errors.Is(err, context.Canceled) {
-				return turnDoneMsg{prompt: prompt, stopped: true, answer: res.Answer, reasoning: res.Reasoning}
-			}
-			return turnDoneMsg{prompt: prompt, err: err}
-		}
-		return turnDoneMsg{prompt: prompt, answer: res.Answer, reasoning: res.Reasoning, stopped: res.Stopped}
-	})
-}
 
 // appendStreamDelta grows the in-progress assistant message by one streamed delta and records the delta on the turn's arrival-ordered event timeline.
 func (d *TurnDispatch) appendStreamDelta(tx *Transcript, kind StreamKind, delta string) {
@@ -71,13 +19,14 @@ func (d *TurnDispatch) appendStreamDelta(tx *Transcript, kind StreamKind, delta 
 		return
 	}
 	tx.recordLive(TimelineEvent{Kind: streamEventKind(kind), Delta: delta})
-	if d.curStream >= 0 && d.curStream < len(tx.messages) && tx.messages[d.curStream].streaming {
-		tx.syncStreamSnapshots(d.curStream)
+	cur := d.session.curStream
+	if cur >= 0 && cur < len(tx.messages) && tx.messages[cur].streaming {
+		tx.syncStreamSnapshots(cur)
 		return
 	}
 	tx.messages = append(tx.messages, message{role: "eitri", streaming: true, thinkingRequested: d.session.thinkingEnabled})
-	d.curStream = len(tx.messages) - 1
-	tx.syncStreamSnapshots(d.curStream)
+	d.session.curStream = len(tx.messages) - 1
+	tx.syncStreamSnapshots(d.session.curStream)
 	tx.busyPulse = 3
 }
 
@@ -111,18 +60,19 @@ func (d *TurnDispatch) handleTurnDone(tx *Transcript, msg turnDoneMsg) (stopped 
 	tx.spinner = 0
 	d.session.End()
 	tx.layout.dirty = true
-	wasStreaming := d.curStream >= 0 && d.curStream < len(tx.messages)
+	wasStreaming := d.session.curStream >= 0 && d.session.curStream < len(tx.messages)
 
 	if msg.stopped {
 		tx.layout.dirty = true
 		if wasStreaming {
-			tx.messages[d.curStream].content = msg.answer
-			tx.messages[d.curStream].reasoning = msg.reasoning
-			tx.messages[d.curStream].streaming = false
-			tx.messages[d.curStream].stopped = true
-			tx.clearReasoningFragments(d.curStream)
-			d.commitTimeline(tx, d.curStream)
-			d.curStream = -1
+			i := d.session.curStream
+			tx.messages[i].content = msg.answer
+			tx.messages[i].reasoning = msg.reasoning
+			tx.messages[i].streaming = false
+			tx.messages[i].stopped = true
+			tx.clearReasoningFragments(i)
+			d.commitTimeline(tx, i)
+			d.session.curStream = -1
 		} else if msg.answer != "" || msg.reasoning != "" {
 			tx.messages = append(tx.messages, message{role: "eitri", content: msg.answer, reasoning: msg.reasoning, stopped: true, thinkingRequested: d.session.thinkingEnabled})
 			d.commitNewAssistant(tx)
@@ -131,24 +81,26 @@ func (d *TurnDispatch) handleTurnDone(tx *Transcript, msg turnDoneMsg) (stopped 
 	}
 	if msg.err != nil {
 		if wasStreaming {
-			tx.messages[d.curStream].streaming = false
-			d.commitTimeline(tx, d.curStream)
+			i := d.session.curStream
+			tx.messages[i].streaming = false
+			d.commitTimeline(tx, i)
 		}
-		d.curStream = -1
+		d.session.curStream = -1
 		tx.messages = append(tx.messages, message{role: "eitri", content: failurePrefix() + msg.err.Error(), thinkingRequested: d.session.thinkingEnabled})
 		d.commitNewAssistant(tx)
 		return false, msg.err
 	}
 	if wasStreaming {
-		tx.messages[d.curStream].content = msg.answer
-		tx.messages[d.curStream].reasoning = msg.reasoning
-		tx.messages[d.curStream].streaming = false
-		tx.clearReasoningFragments(d.curStream)
+		i := d.session.curStream
+		tx.messages[i].content = msg.answer
+		tx.messages[i].reasoning = msg.reasoning
+		tx.messages[i].streaming = false
+		tx.clearReasoningFragments(i)
 		if !tx.expandAll {
-			tx.clearReasoningExpandForce(d.curStream)
+			tx.clearReasoningExpandForce(i)
 		}
-		d.commitTimeline(tx, d.curStream)
-		d.curStream = -1
+		d.commitTimeline(tx, i)
+		d.session.curStream = -1
 	} else {
 		tx.messages = append(tx.messages, message{role: "eitri", content: msg.answer, reasoning: msg.reasoning, thinkingRequested: d.session.thinkingEnabled})
 		d.commitNewAssistant(tx)

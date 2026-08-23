@@ -320,7 +320,7 @@ func newHistoryViewport() viewport.Model {
 	return v
 }
 
-// SetTurnDispatch wires the TurnDispatch that owns the turn state machine.
+// SetTurnDispatch wires the TurnDispatch that folds stream events and reconciles turn completion.
 func (m *Model) SetTurnDispatch(td *TurnDispatch) { m.td = td }
 
 // ContinueHook returns the interactive continuation hook wired to this Model's prompt channels.
@@ -738,18 +738,18 @@ func (s *settingsForm) save(m *Model) {
 	m.settings = nil
 }
 
-// startTurn delegates to the TurnDispatch, which installs the per-turn cancel handle, appends a user message, marks busy, resets the stream cursor, and anchors the tool log. The live merged event feed is re-armed here, and the spinner tick starts so the busy indicator animates.
+// startTurn begins the turn through the session, which owns all of turn start. The live merged event feed is re-armed here, and the spinner tick starts so the busy indicator animates.
 func (m *Model) startTurn(prompt string, payload string) tea.Cmd {
-	m.td.startTurn(m.tx, prompt, payload)
+	cmd := m.td.session.Begin(m.tx, prompt, payload)
 	m.syncComposerRail()
 	if m.events != nil {
-		return tea.Batch(m.td.turnCmd(prompt, payload), eventWait(m.events), spinnerTick())
+		return tea.Batch(cmd, eventWait(m.events), spinnerTick())
 	}
-	return m.td.turnCmd(prompt, payload)
+	return cmd
 }
 
-// stopTurn delegates to the TurnDispatch, which cancels the per-turn context.
-func (m *Model) stopTurn() { m.td.stopTurn() }
+// stopTurn cancels the in-flight turn through the session.
+func (m *Model) stopTurn() { m.td.session.Stop() }
 
 // appendStreamDelta delegates to the TurnDispatch, which grows the in-progress assistant message by one streamed delta.
 func (m *Model) appendStreamDelta(kind StreamKind, delta string) {

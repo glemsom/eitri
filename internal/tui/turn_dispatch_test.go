@@ -24,159 +24,6 @@ func stubTurn(answer string, err error) Turn {
 	}
 }
 
-func TestTurnDispatch_startTurn_installsContext(t *testing.T) {
-	t.Parallel()
-	d := NewTurnDispatch(stubTurn("ok", nil))
-	tx := newTestTx()
-
-	cmd := d.startTurn(&tx, "hello", "")
-	if cmd == nil {
-		t.Fatal("startTurn returned nil command")
-	}
-	if d.session.Context() == nil {
-		t.Fatal("startTurn did not install non-nil context")
-	}
-	if d.session.cancel == nil {
-		t.Fatal("startTurn did not install non-nil cancel func")
-	}
-}
-
-func TestTurnDispatch_startTurn_appendsUserMessage(t *testing.T) {
-	t.Parallel()
-	d := NewTurnDispatch(stubTurn("ok", nil))
-	tx := newTestTx()
-
-	d.startTurn(&tx, "hello", "")
-
-	if len(tx.messages) != 1 {
-		t.Fatalf("expected 1 message, got %d", len(tx.messages))
-	}
-	if tx.messages[0].role != "you" {
-		t.Errorf("message role = %q, want %q", tx.messages[0].role, "you")
-	}
-	if tx.messages[0].content != "hello" {
-		t.Errorf("message content = %q, want %q", tx.messages[0].content, "hello")
-	}
-}
-
-func TestTurnDispatch_startTurn_setsBusyAndDirty(t *testing.T) {
-	t.Parallel()
-	d := NewTurnDispatch(stubTurn("ok", nil))
-	tx := newTestTx()
-
-	d.startTurn(&tx, "hello", "")
-
-	if !tx.busy {
-		t.Error("startTurn did not set busy")
-	}
-	if !tx.layout.dirty {
-		t.Error("startTurn did not mark layout dirty")
-	}
-}
-
-func TestTurnDispatch_startTurn_resetsCurStream(t *testing.T) {
-	t.Parallel()
-	d := NewTurnDispatch(stubTurn("ok", nil))
-	tx := newTestTx()
-	d.curStream = 5 // pre-set to non-default
-
-	d.startTurn(&tx, "hello", "")
-
-	if d.curStream != -1 {
-		t.Errorf("curStream = %d, want -1", d.curStream)
-	}
-}
-
-func TestTurnDispatch_startTurn_setsAnchor(t *testing.T) {
-	t.Parallel()
-	d := NewTurnDispatch(stubTurn("ok", nil))
-	tx := newTestTx()
-
-	d.startTurn(&tx, "hello", "")
-
-	if tx.log.curAnchor != 0 {
-		t.Errorf("tool log anchor = %d, want 0", tx.log.curAnchor)
-	}
-}
-
-func TestTurnDispatch_stopTurn_cancelsContext(t *testing.T) {
-	t.Parallel()
-	d := NewTurnDispatch(stubTurn("ok", nil))
-	tx := newTestTx()
-	d.startTurn(&tx, "hello", "")
-
-	if d.session.Context().Err() != nil {
-		t.Fatal("context already cancelled before stop")
-	}
-
-	d.stopTurn()
-
-	if d.session.Context().Err() == nil {
-		t.Error("stopTurn did not cancel the context")
-	}
-}
-
-func TestTurnDispatch_stopTurn_noopWhenNil(t *testing.T) {
-	t.Parallel()
-	d := NewTurnDispatch(stubTurn("ok", nil))
-	d.stopTurn() // must not panic
-}
-
-func TestTurnDispatch_turnCmd_returnsTurnDoneMsg(t *testing.T) {
-	t.Parallel()
-	d := NewTurnDispatch(stubTurn("answer", nil))
-	tx := newTestTx()
-	d.startTurn(&tx, "prompt", "")
-
-	cmd := d.turnCmd("prompt", "")
-	if cmd == nil {
-		t.Fatal("turnCmd returned nil")
-	}
-	msg := cmd()
-	tdm, ok := msg.(turnDoneMsg)
-	if !ok {
-		t.Fatalf("expected turnDoneMsg, got %T", msg)
-	}
-	if tdm.answer != "answer" {
-		t.Errorf("answer = %q, want %q", tdm.answer, "answer")
-	}
-}
-
-func TestTurnDispatch_turnCmd_contextCanceledMapsToStopped(t *testing.T) {
-	t.Parallel()
-	turnFn := func(ctx context.Context, _ string, _ string) (TurnResult, error) {
-		return TurnResult{Answer: "partial"}, context.Canceled
-	}
-	d := NewTurnDispatch(turnFn)
-	tx := newTestTx()
-	d.startTurn(&tx, "hi", "")
-
-	msg := d.turnCmd("hi", "")()
-	tdm := msg.(turnDoneMsg)
-	if !tdm.stopped {
-		t.Error("context.Canceled should map to stopped")
-	}
-	if tdm.answer != "partial" {
-		t.Errorf("answer = %q, want %q", tdm.answer, "partial")
-	}
-}
-
-func TestTurnDispatch_turnCmd_errorReturnsErr(t *testing.T) {
-	t.Parallel()
-	d := NewTurnDispatch(stubTurn("", errors.New("boom")))
-	tx := newTestTx()
-	d.startTurn(&tx, "hi", "")
-
-	msg := d.turnCmd("hi", "")()
-	tdm := msg.(turnDoneMsg)
-	if tdm.err == nil {
-		t.Fatal("expected non-nil error")
-	}
-	if tdm.err.Error() != "boom" {
-		t.Errorf("err = %q, want %q", tdm.err.Error(), "boom")
-	}
-}
-
 func TestTurnDispatch_appendStreamDelta_createsMessageOnFirstDelta(t *testing.T) {
 	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", nil))
@@ -197,8 +44,8 @@ func TestTurnDispatch_appendStreamDelta_createsMessageOnFirstDelta(t *testing.T)
 	if !msg.streaming {
 		t.Error("message should be streaming")
 	}
-	if d.curStream != 0 {
-		t.Errorf("curStream = %d, want 0", d.curStream)
+	if d.session.curStream != 0 {
+		t.Errorf("curStream = %d, want 0", d.session.curStream)
 	}
 }
 
@@ -279,10 +126,10 @@ func TestTurnDispatch_handleTurnDone_stoppedStreaming(t *testing.T) {
 	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
-	d.startTurn(&tx, "q", "")
+	d.session.Begin(&tx, "q", "")
 
 	tx.messages = append(tx.messages, message{role: "eitri", content: "partial", streaming: true})
-	d.curStream = 0
+	d.session.curStream = 0
 
 	stopped, err := d.handleTurnDone(&tx, turnDoneMsg{
 		stopped:   true,
@@ -308,8 +155,8 @@ func TestTurnDispatch_handleTurnDone_stoppedStreaming(t *testing.T) {
 	if !msg.stopped {
 		t.Error("message should be marked stopped")
 	}
-	if d.curStream != -1 {
-		t.Errorf("curStream = %d, want -1", d.curStream)
+	if d.session.curStream != -1 {
+		t.Errorf("curStream = %d, want -1", d.session.curStream)
 	}
 	if tx.busy {
 		t.Error("busy should be false after turn done")
@@ -320,7 +167,7 @@ func TestTurnDispatch_handleTurnDone_stoppedNoStreaming(t *testing.T) {
 	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
-	d.startTurn(&tx, "q", "")
+	d.session.Begin(&tx, "q", "")
 
 	stopped, err := d.handleTurnDone(&tx, turnDoneMsg{
 		stopped: true,
@@ -348,7 +195,7 @@ func TestTurnDispatch_handleTurnDone_error(t *testing.T) {
 	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
-	d.startTurn(&tx, "q", "")
+	d.session.Begin(&tx, "q", "")
 
 	stopped, err := d.handleTurnDone(&tx, turnDoneMsg{
 		err: errors.New("provider failed"),
@@ -365,8 +212,8 @@ func TestTurnDispatch_handleTurnDone_error(t *testing.T) {
 	if tx.messages[1].role != "eitri" {
 		t.Errorf("role = %q, want %q", tx.messages[1].role, "eitri")
 	}
-	if d.curStream != -1 {
-		t.Errorf("curStream = %d, want -1", d.curStream)
+	if d.session.curStream != -1 {
+		t.Errorf("curStream = %d, want -1", d.session.curStream)
 	}
 }
 
@@ -374,10 +221,10 @@ func TestTurnDispatch_handleTurnDone_successStreaming(t *testing.T) {
 	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
-	d.startTurn(&tx, "q", "")
+	d.session.Begin(&tx, "q", "")
 
 	tx.messages = append(tx.messages, message{role: "eitri", content: "partial", streaming: true})
-	d.curStream = 0
+	d.session.curStream = 0
 
 	stopped, err := d.handleTurnDone(&tx, turnDoneMsg{
 		answer:    "final answer",
@@ -399,8 +246,8 @@ func TestTurnDispatch_handleTurnDone_successStreaming(t *testing.T) {
 	if msg.streaming {
 		t.Error("message should not be streaming")
 	}
-	if d.curStream != -1 {
-		t.Errorf("curStream = %d, want -1", d.curStream)
+	if d.session.curStream != -1 {
+		t.Errorf("curStream = %d, want -1", d.session.curStream)
 	}
 	if tx.busy {
 		t.Error("busy should be false")
@@ -411,7 +258,7 @@ func TestTurnDispatch_handleTurnDone_successNoStreaming(t *testing.T) {
 	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
-	d.startTurn(&tx, "q", "")
+	d.session.Begin(&tx, "q", "")
 
 	stopped, err := d.handleTurnDone(&tx, turnDoneMsg{
 		answer: "the answer",
@@ -434,35 +281,14 @@ func TestTurnDispatch_handleTurnDone_successNoStreaming(t *testing.T) {
 	}
 }
 
-func TestTurnDispatch_turnCmd_dispatchesTurn(t *testing.T) {
-	t.Parallel()
-	var calledPrompt string
-	turnFn := func(_ context.Context, prompt string, _ string) (TurnResult, error) {
-		calledPrompt = prompt
-		return TurnResult{Answer: "ok"}, nil
-	}
-	d := NewTurnDispatch(turnFn)
-	tx := newTestTx()
-	cmd := d.startTurn(&tx, "hello", "")
-
-	msg := cmd()
-	tdm := msg.(turnDoneMsg)
-	if tdm.prompt != "hello" {
-		t.Errorf("prompt = %q, want %q", tdm.prompt, "hello")
-	}
-	if calledPrompt != "hello" {
-		t.Errorf("turn not called with correct prompt, got %q", calledPrompt)
-	}
-}
-
 func TestTurnDispatch_fullCycle(t *testing.T) {
 	t.Parallel()
 	d := NewTurnDispatch(stubTurn("final", nil))
 	tx := newTestTx()
 
-	cmd := d.startTurn(&tx, "go", "")
+	cmd := d.session.Begin(&tx, "go", "")
 	if cmd == nil {
-		t.Fatal("startTurn returned nil")
+		t.Fatal("Begin returned nil command")
 	}
 	if !tx.busy {
 		t.Fatal("should be busy")
