@@ -33,10 +33,10 @@ func TestTurnDispatch_startTurn_installsContext(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("startTurn returned nil command")
 	}
-	if d.turnCtx == nil {
+	if d.session.Context() == nil {
 		t.Fatal("startTurn did not install non-nil context")
 	}
-	if d.turnCancel == nil {
+	if d.session.cancel == nil {
 		t.Fatal("startTurn did not install non-nil cancel func")
 	}
 }
@@ -105,13 +105,13 @@ func TestTurnDispatch_stopTurn_cancelsContext(t *testing.T) {
 	tx := newTestTx()
 	d.startTurn(&tx, "hello", "")
 
-	if d.turnCtx.Err() != nil {
+	if d.session.Context().Err() != nil {
 		t.Fatal("context already cancelled before stop")
 	}
 
 	d.stopTurn()
 
-	if d.turnCtx.Err() == nil {
+	if d.session.Context().Err() == nil {
 		t.Error("stopTurn did not cancel the context")
 	}
 }

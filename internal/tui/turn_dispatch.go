@@ -9,24 +9,23 @@ import (
 
 // TurnDispatch owns the turn state machine: startTurn, stopTurn, turnCmd, appendStreamDelta, and handleTurnDone.
 type TurnDispatch struct {
-	turn            Turn
-	thinkingEnabled bool
-	turnCtx         context.Context
-	turnCancel      context.CancelFunc
-	curStream       int
+	turn      Turn
+	session   *TurnSession
+	curStream int
 }
 
 // NewTurnDispatch creates a TurnDispatch with the given engine seam.
 func NewTurnDispatch(turn Turn) *TurnDispatch {
 	return &TurnDispatch{
 		turn:      turn,
+		session:   NewTurnSession(),
 		curStream: -1,
 	}
 }
 
 // startTurn installs a cancelable context, appends a user message to the transcript, marks the transcript busy, resets the stream cursor, anchors the tool log, and returns the command that dispatches the turn. The per-turn event timeline and its arrival counter are reset here so each turn owns a fresh, arrival-ordered log of its own events.
 func (d *TurnDispatch) startTurn(tx *Transcript, prompt, payload string) tea.Cmd {
-	d.turnCtx, d.turnCancel = context.WithCancel(context.Background())
+	d.session.Begin()
 	tx.messages = append(tx.messages, message{role: "you", content: prompt})
 	tx.busy = true
 	d.curStream = -1
@@ -37,27 +36,23 @@ func (d *TurnDispatch) startTurn(tx *Transcript, prompt, payload string) tea.Cmd
 	return d.turnCmd(prompt, payload)
 }
 
-// SetThinkingEnabled updates the thinking flag for new messages created by appendStreamDelta and handleTurnDone.
-func (d *TurnDispatch) SetThinkingEnabled(v bool) { d.thinkingEnabled = v }
+// SetThinkingEnabled delegates to the session, which owns the thinking flag.
+func (d *TurnDispatch) SetThinkingEnabled(v bool) { d.session.SetThinkingEnabled(v) }
 
-// stopTurn cancels the in-flight turn's context.
-func (d *TurnDispatch) stopTurn() {
-	if d.turnCancel != nil {
-		d.turnCancel()
-	}
-}
+// stopTurn cancels the in-flight turn's context via the session.
+func (d *TurnDispatch) stopTurn() { d.session.Stop() }
 
 // turnCmd returns a command that runs the turn on the cancelable context and delivers a turnDoneMsg when complete.
 func (d *TurnDispatch) turnCmd(prompt, payload string) tea.Cmd {
 	return tea.Cmd(func() tea.Msg {
-		ctx := d.turnCtx
+		ctx := d.session.Context()
 		if ctx == nil {
 			// Defensive fallback for a command dispatched before startTurn ran.
 			var cancel context.CancelFunc
 			ctx, cancel = context.WithCancel(context.Background())
 			defer cancel()
 		} else {
-			defer d.turnCancel()
+			defer d.session.Stop()
 		}
 		res, err := d.turn(ctx, prompt, payload)
 		if err != nil {
@@ -80,7 +75,7 @@ func (d *TurnDispatch) appendStreamDelta(tx *Transcript, kind StreamKind, delta 
 		tx.syncStreamSnapshots(d.curStream)
 		return
 	}
-	tx.messages = append(tx.messages, message{role: "eitri", streaming: true, thinkingRequested: d.thinkingEnabled})
+	tx.messages = append(tx.messages, message{role: "eitri", streaming: true, thinkingRequested: d.session.thinkingEnabled})
 	d.curStream = len(tx.messages) - 1
 	tx.syncStreamSnapshots(d.curStream)
 	tx.busyPulse = 3
@@ -114,8 +109,7 @@ func (d *TurnDispatch) commitNewAssistant(tx *Transcript) {
 func (d *TurnDispatch) handleTurnDone(tx *Transcript, msg turnDoneMsg) (stopped bool, err error) {
 	tx.busy = false
 	tx.spinner = 0
-	d.turnCancel = nil
-	d.turnCtx = nil
+	d.session.End()
 	tx.layout.dirty = true
 	wasStreaming := d.curStream >= 0 && d.curStream < len(tx.messages)
 
@@ -130,7 +124,7 @@ func (d *TurnDispatch) handleTurnDone(tx *Transcript, msg turnDoneMsg) (stopped 
 			d.commitTimeline(tx, d.curStream)
 			d.curStream = -1
 		} else if msg.answer != "" || msg.reasoning != "" {
-			tx.messages = append(tx.messages, message{role: "eitri", content: msg.answer, reasoning: msg.reasoning, stopped: true, thinkingRequested: d.thinkingEnabled})
+			tx.messages = append(tx.messages, message{role: "eitri", content: msg.answer, reasoning: msg.reasoning, stopped: true, thinkingRequested: d.session.thinkingEnabled})
 			d.commitNewAssistant(tx)
 		}
 		return true, nil
@@ -141,7 +135,7 @@ func (d *TurnDispatch) handleTurnDone(tx *Transcript, msg turnDoneMsg) (stopped 
 			d.commitTimeline(tx, d.curStream)
 		}
 		d.curStream = -1
-		tx.messages = append(tx.messages, message{role: "eitri", content: failurePrefix() + msg.err.Error(), thinkingRequested: d.thinkingEnabled})
+		tx.messages = append(tx.messages, message{role: "eitri", content: failurePrefix() + msg.err.Error(), thinkingRequested: d.session.thinkingEnabled})
 		d.commitNewAssistant(tx)
 		return false, msg.err
 	}
@@ -156,7 +150,7 @@ func (d *TurnDispatch) handleTurnDone(tx *Transcript, msg turnDoneMsg) (stopped 
 		d.commitTimeline(tx, d.curStream)
 		d.curStream = -1
 	} else {
-		tx.messages = append(tx.messages, message{role: "eitri", content: msg.answer, reasoning: msg.reasoning, thinkingRequested: d.thinkingEnabled})
+		tx.messages = append(tx.messages, message{role: "eitri", content: msg.answer, reasoning: msg.reasoning, thinkingRequested: d.session.thinkingEnabled})
 		d.commitNewAssistant(tx)
 	}
 	return false, nil
