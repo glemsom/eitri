@@ -26,7 +26,7 @@ func TestFeedTelemetryBridgesUsageEvent(t *testing.T) {
 	te := tui.NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	feedEngineEvents(e, te, tui.NewDeltaObserver(nil), tui.NewEventFeed())
 
-	if _, err := e.Run(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}); err != nil {
+	if _, err := e.RunAgent(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}, engine.AgentOptions{}); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
 
@@ -57,7 +57,7 @@ func TestFeedTelemetryBridgesTurnEvent(t *testing.T) {
 	feedEngineEvents(e, te, tui.NewDeltaObserver(nil), tui.NewEventFeed())
 
 	for i := 0; i < 2; i++ {
-		if _, err := e.Run(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}); err != nil {
+		if _, err := e.RunAgent(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}, engine.AgentOptions{}); err != nil {
 			t.Fatalf("Run() error = %v", err)
 		}
 		u, ok := <-te.Updates()
@@ -84,7 +84,7 @@ func TestFeedEngineEventsBridgesAnswerDelta(t *testing.T) {
 	events := tui.NewEventFeed()
 	feedEngineEvents(e, te, tui.NewDeltaObserver(nil), events)
 
-	if _, err := e.Run(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}); err != nil {
+	if _, err := e.RunAgent(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}, engine.AgentOptions{}); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
 

@@ -97,7 +97,7 @@ func TestFeedEngineEventsMergedCarriesAnswerDelta(t *testing.T) {
 	feedEngineEvents(e, tui.NewTelemetry("deepseek-v4-flash", "low", true, 250),
 		tui.NewDeltaObserver(nil), merged)
 
-	if _, err := e.Run(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}); err != nil {
+	if _, err := e.RunAgent(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}, engine.AgentOptions{}); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
 
