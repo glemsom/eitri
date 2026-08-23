@@ -504,7 +504,7 @@ func (m Model) updatePrompt(msgi tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 // submitPrompt handles Enter on the composer: an empty draft toggles the focused
 // transcript block, a busy turn swallows the key, and a draft routes to the
-// built-in `/commands` or a slash-activated skill before falling back to a
+// built-in slash commands or a slash-activated skill before falling back to a
 // plain agent turn.
 func (m Model) submitPrompt() (tea.Model, tea.Cmd) {
 	prompt := strings.TrimSpace(m.composer.Value())
