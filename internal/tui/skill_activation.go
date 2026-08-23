@@ -83,6 +83,45 @@ func (s *SkillActivation) Activate(tx *Transcript, surface *SkillsSurface, name,
 	return skillCmd(surface.Activate, name, args)
 }
 
+// CandidateCount returns how many slash-completion rows the composer value renders above the composer.
+func (s *SkillActivation) CandidateCount(value string) int {
+	return len(slashCandidates(value, s.skills))
+}
+
+// RenderCompletion appends the slash-command completion list to the view: the built-in slash commands plus any matching detected skills, with the current cycle selection highlighted. The composer value selects the highlight when it matches a candidate exactly.
+func (s *SkillActivation) RenderCompletion(b *strings.Builder, th Theme, value string) {
+	cands := slashCandidates(value, s.skills)
+	if len(cands) == 0 {
+		return
+	}
+	sel := s.slashIdx
+	for i, c := range cands {
+		if c == value {
+			sel = i
+			break
+		}
+	}
+	if sel < 0 || sel >= len(cands) {
+		sel = 0
+	}
+	for i, c := range cands {
+		if i == sel {
+			b.WriteString(th.slashSelectStyle.Render(g("▸ ", "> ") + c))
+		} else {
+			b.WriteString(th.statusStyle.Render("  " + c))
+		}
+		b.WriteString("\n")
+	}
+}
+
+// TurnPrompt returns the agent-turn prompt for a completed activation: the trailing args when present, otherwise a default apply-skill prompt so a bare `/skillname` still starts a turn.
+func (s *SkillActivation) TurnPrompt(name, args string) string {
+	if args != "" {
+		return args
+	}
+	return fmt.Sprintf("apply the %s skill", name)
+}
+
 // slashCommand reports whether prompt is a `/skillname` activation command for a detected skill.
 func slashCommand(prompt string, skills []SkillItem) (name, args string, ok bool) {
 	if len(skills) == 0 || !strings.HasPrefix(prompt, "/") {
