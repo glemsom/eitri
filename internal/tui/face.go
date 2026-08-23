@@ -106,6 +106,51 @@ func faceCells(imgW, imgH, termW, termH int) (cols, rows int) {
 	return cols, rows
 }
 
+// facePlacement is where the face sits on the terminal grid: centered,
+// aspect-corrected, capped at half the screen. Shared by the graphics escape
+// and the eye-flash overlay so both agree on the face's cell footprint.
+type facePlacement struct {
+	col, row, cols, rows int
+}
+
+// faceGeometry computes the face's cell-grid placement for a w×h terminal;
+// ok is false when there is no decodable face payload.
+func faceGeometry(w, h int) (p facePlacement, ok bool) {
+	src := facePNG()
+	if src == nil || w <= 0 || h <= 0 {
+		return p, false
+	}
+	cfg, err := png.DecodeConfig(bytes.NewReader(src))
+	if err != nil {
+		return p, false
+	}
+	p.cols, p.rows = faceCells(cfg.Width, cfg.Height, w, h)
+	p.row = max(1, (h-p.rows)/2+1)
+	p.col = max(1, (w-p.cols)/2+1)
+	return p, true
+}
+
+// eyeFlashOffsets locate the dwarf's eyes within the face's cell footprint,
+// as fractions of that footprint measured off the source image: the eyes sit
+// roughly 42% down and a third/two-thirds across.
+const (
+	eyeRowFrac      = 0.42
+	eyeLeftColFrac  = 0.37
+	eyeRightColFrac = 0.63
+)
+
+// eyeFlashCells returns the two terminal cells covering the eyes for the
+// given placement.
+func eyeFlashCells(p facePlacement) [2]struct{ row, col int } {
+	mk := func(colFrac float64) struct{ row, col int } {
+		return struct{ row, col int }{
+			row: p.row + int(eyeRowFrac*float64(p.rows)),
+			col: p.col + int(colFrac*float64(p.cols)),
+		}
+	}
+	return [2]struct{ row, col int }{mk(eyeLeftColFrac), mk(eyeRightColFrac)}
+}
+
 // kittyFaceEscape renders the escape sequences that show the face at the
 // given opacity for a terminal of w×h cells: the image is transmitted as
 // chunked base64 PNG, then placed centered via cursor positioning (C=1). An
@@ -120,19 +165,13 @@ func kittyFaceEscape(frame, w, h int) string {
 	if op <= 0 || w <= 0 || h <= 0 {
 		return ""
 	}
-	src := facePNG()
-	if src == nil {
+	place, ok := faceGeometry(w, h)
+	if !ok {
 		return ""
 	}
-	cfg, err := png.DecodeConfig(bytes.NewReader(src))
-	if err != nil {
-		return ""
-	}
-	cols, rows := faceCells(cfg.Width, cfg.Height, w, h)
-	row := max(1, (h-rows)/2+1)
-	col := max(1, (w-cols)/2+1)
+	cols, rows, row, col := place.cols, place.rows, place.row, place.col
 
-	payload := scaleFaceAlpha(src, op)
+	payload := scaleFaceAlpha(facePNG(), op)
 	const chunkLimit = 4096
 	b64 := base64.StdEncoding.EncodeToString(payload)
 
