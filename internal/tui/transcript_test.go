@@ -522,7 +522,7 @@ func newStreamPaneTestTranscript(th Theme, msgs []message) Transcript {
 // place of the three-pane layout's standalone-message fallback.
 func liveReasoningFlowTranscript(reasoning string) *Transcript {
 	th := themeFor(config.DefaultTheme)
-	return &Transcript{
+	tx := &Transcript{
 		theme:           th,
 		configTheme:     config.DefaultTheme,
 		reasoningEffort: "medium",
@@ -535,10 +535,11 @@ func liveReasoningFlowTranscript(reasoning string) *Transcript {
 			{role: "you", content: "hi"},
 			{role: "eitri", reasoning: reasoning, streaming: true, thinkingRequested: true},
 		},
-		timeline: []TimelineEvent{
-			{Kind: EventReasoning, Seq: 0, Delta: reasoning},
-		},
 	}
+	wireLive(tx, []TimelineEvent{
+		{Kind: EventReasoning, Seq: 0, Delta: reasoning},
+	})
+	return tx
 }
 
 // committedReasoningFlowTranscript builds a completed turn whose committed

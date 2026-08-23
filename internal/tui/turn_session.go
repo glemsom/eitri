@@ -17,6 +17,11 @@ type TurnSession struct {
 	cancel          context.CancelFunc
 	thinkingEnabled bool
 	curStream       int
+	// timeline and turnSeq are the live per-turn event log and its arrival
+	// counter — owned by the session alone; the Transcript only reads them
+	// through LiveTimeline.
+	timeline []TimelineEvent
+	turnSeq  int
 }
 
 // NewTurnSession creates a disarmed session for the given turn function.
@@ -31,11 +36,12 @@ func NewTurnSession(turn Turn) *TurnSession {
 // Stop cannot touch a finished turn's context.
 func (s *TurnSession) Begin(tx *Transcript, prompt, payload string) tea.Cmd {
 	s.ctx, s.cancel = context.WithCancel(context.Background())
+	tx.live = s
 	tx.messages = append(tx.messages, message{role: "you", content: prompt})
 	tx.busy = true
 	s.curStream = -1
-	tx.timeline = nil
-	tx.turnSeq = 0
+	s.timeline = nil
+	s.turnSeq = 0
 	tx.layout.dirty = true
 	tx.log.SetAnchor(len(tx.messages) - 1)
 	return tea.Cmd(func() tea.Msg {
@@ -53,6 +59,10 @@ func (s *TurnSession) Begin(tx *Transcript, prompt, payload string) tea.Cmd {
 
 // Context returns the armed per-turn context, or nil if no turn is armed.
 func (s *TurnSession) Context() context.Context { return s.ctx }
+
+// LiveTimeline exposes the in-progress turn's arrival-ordered event log for
+// read-only rendering; the session stays its only writer.
+func (s *TurnSession) LiveTimeline() []TimelineEvent { return s.timeline }
 
 // ThinkingEnabled reports whether new messages this turn creates request thinking.
 func (s *TurnSession) ThinkingEnabled() bool { return s.thinkingEnabled }
@@ -137,10 +147,10 @@ func (s *TurnSession) Commit(tx *Transcript, msg turnDoneMsg) (stopped bool, err
 // record and the next turn starts clean.
 func (s *TurnSession) commitTimeline(tx *Transcript, i int) {
 	if i >= 0 && i < len(tx.messages) {
-		tx.messages[i].events = tx.timeline
+		tx.messages[i].events = s.timeline
 	}
-	tx.timeline = nil
-	tx.turnSeq = 0
+	s.timeline = nil
+	s.turnSeq = 0
 }
 
 // commitNewAssistant attaches the live event log to the freshly appended
@@ -148,10 +158,10 @@ func (s *TurnSession) commitTimeline(tx *Transcript, i int) {
 // resets the live log.
 func (s *TurnSession) commitNewAssistant(tx *Transcript) {
 	idx := len(tx.messages) - 1
-	if len(tx.timeline) == 0 {
-		tx.timeline = synthAnswerLog(tx.messages[idx].content)
+	if len(s.timeline) == 0 {
+		s.timeline = synthAnswerLog(tx.messages[idx].content)
 	}
-	tx.messages[idx].events = tx.timeline
-	tx.timeline = nil
-	tx.turnSeq = 0
+	tx.messages[idx].events = s.timeline
+	s.timeline = nil
+	s.turnSeq = 0
 }

@@ -30,9 +30,10 @@ type Transcript struct {
 	// focus owns the block-focus cursor (the per-block Tab/Enter interaction):
 	// whether the cursor is active and which collapsible block it points at.
 	// A bare Transcript's zero value means no block is focused.
-	focus        collapseFocus
-	timeline     []TimelineEvent // live arrival-ordered event log of the in-progress turn
-	turnSeq      int             // arrival sequence counter feeding the live timeline
+	focus collapseFocus
+	// live is the TurnSession owning the in-progress turn, wired at Begin so
+	// render paths can read the live event log; a bare Transcript has none.
+	live         *TurnSession
 	layout       transcriptLayout
 	telemetry    *Telemetry
 	weaver       selectionWeaver
@@ -58,7 +59,19 @@ const (
 )
 
 // hasContent reports whether any turn material (committed messages or a live timeline) exists, i.e. the transcript is no longer showing the empty welcome state.
-func (t Transcript) hasContent() bool { return len(t.messages) > 0 || len(t.timeline) > 0 || t.busy }
+func (t Transcript) hasContent() bool {
+	return len(t.messages) > 0 || t.LiveTimeline() != nil || t.busy
+}
+
+// LiveTimeline returns the in-progress turn's event log through the wired
+// session — read-only; the session alone writes it. A transcript with no wired
+// session reads empty.
+func (t Transcript) LiveTimeline() []TimelineEvent {
+	if t.live == nil {
+		return nil
+	}
+	return t.live.LiveTimeline()
+}
 
 // viewMode returns the effective expansion mode from the mutually exclusive
 // expand-all / collapse-all flags.
@@ -184,7 +197,7 @@ func (t Transcript) turnFlowEvents(i int) ([]TimelineEvent, bool) {
 	// the pre-stream gap synthesizes a minimal empty event log so the prompt
 	// renders through the FlowRenderer like every other turn.
 	if t.isLiveTurnPrompt(i) {
-		return t.timeline, true
+		return t.LiveTimeline(), true
 	}
 	// A finished turn's events live on the first message that follows its
 	// prompt: a later prompt means this one left no log, an assistant message
@@ -196,8 +209,8 @@ func (t Transcript) turnFlowEvents(i int) ([]TimelineEvent, bool) {
 			return nil, false // the next turn began; this one left no log
 		case len(m.events) > 0:
 			return m.events, true
-		case t.busy && m.streaming && len(t.timeline) > 0:
-			return t.timeline, true
+		case t.busy && m.streaming && len(t.LiveTimeline()) > 0:
+			return t.LiveTimeline(), true
 		}
 	}
 	return nil, false
@@ -274,10 +287,10 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 			// Committed turn: walk its typed event log as one continuous flow
 			// through the shared FlowRenderer emitter.
 			emitFlow(msg.events, anchor, i, msg)
-		} else if t.busy && msg.streaming && len(t.timeline) > 0 {
+		} else if t.busy && msg.streaming && len(t.LiveTimeline()) > 0 {
 			// Live turn: walk the in-progress timeline as one continuous flow
 			// through the shared FlowRenderer emitter.
-			emitFlow(t.timeline, anchor, i, msg)
+			emitFlow(t.LiveTimeline(), anchor, i, msg)
 		}
 
 		if msgRows != nil {
@@ -490,9 +503,9 @@ func synthAnswerLog(content string) []TimelineEvent {
 }
 
 // syncStreamSnapshots re-derives the streaming message's content/reasoning text from the turn's event log: the log is the single arrival-ordered source of text, and the snapshots keep copy-to-clipboard, telemetry, and the gateway export reading identical content without touching their seams.
-func (t *Transcript) syncStreamSnapshots(i int) {
+func (t *Transcript) syncStreamSnapshots(i int, events []TimelineEvent) {
 	m := &t.messages[i]
-	m.content, m.reasoning = deriveSnapshots(t.timeline)
+	m.content, m.reasoning = deriveSnapshots(events)
 }
 
 // toggleExpandAll flips the persistent Ctrl+E expanded-view mode: Ctrl+E on the Model routes here, and it marks the shared layout dirty because showing or hiding all tool results re-wraps the log. Turning the mode on clears the collapse-all mode; turning it off returns to the defaults (issue #432).
@@ -612,8 +625,8 @@ func (t Transcript) collapsibleBlocks() []collapsibleBlock {
 // log.
 func (t Transcript) reasoningFragmentsFor(m message) []string {
 	events := m.events
-	if t.busy && m.streaming && len(t.timeline) > 0 {
-		events = t.timeline
+	if t.busy && m.streaming && len(t.LiveTimeline()) > 0 {
+		events = t.LiveTimeline()
 	}
 	return reasoningFragments(events)
 }

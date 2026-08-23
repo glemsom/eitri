@@ -26,8 +26,8 @@ func TestTurnSession_timelinePreservesArrivalOrder(t *testing.T) {
 	// The interleaved stream from the acceptance criteria:
 	// reasoning -> tool start -> tool result -> reasoning -> answer.
 	f.Stream(&tx, ReasoningStream, "r1")
-	applyTool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
-	applyTool(&tx, ToolUpdate{Result: &ToolResult{Name: "bash", Result: "a\n", Lines: 1}})
+	f.Tool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
+	f.Tool(&tx, ToolUpdate{Result: &ToolResult{Name: "bash", Result: "a\n", Lines: 1}})
 	f.Stream(&tx, ReasoningStream, "r2")
 	f.Stream(&tx, AnswerStream, "a1")
 
@@ -60,8 +60,8 @@ func TestTurnSession_timelineSnapshotsDerivedFromLog(t *testing.T) {
 	s.Begin(&tx, "go", "")
 
 	f.Stream(&tx, ReasoningStream, "r1")
-	applyTool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{}`}})
-	applyTool(&tx, ToolUpdate{Result: &ToolResult{Name: "bash", Result: "a\n", Lines: 1}})
+	f.Tool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{}`}})
+	f.Tool(&tx, ToolUpdate{Result: &ToolResult{Name: "bash", Result: "a\n", Lines: 1}})
 	f.Stream(&tx, ReasoningStream, "r2")
 	f.Stream(&tx, AnswerStream, "a1")
 	f.Stream(&tx, AnswerStream, "a2")
@@ -93,8 +93,8 @@ func TestTurnSession_timelineToolBeforeFirstDelta(t *testing.T) {
 
 	// Tool activity can arrive before any stream delta creates the message;
 	// the event log must still record it first.
-	applyTool(&tx, ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}})
-	applyTool(&tx, ToolUpdate{Result: &ToolResult{Name: "read", Result: "x", Lines: 1}})
+	f.Tool(&tx, ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}})
+	f.Tool(&tx, ToolUpdate{Result: &ToolResult{Name: "read", Result: "x", Lines: 1}})
 	f.Stream(&tx, AnswerStream, "hi")
 
 	if _, err := s.Commit(&tx, turnDoneMsg{answer: "hi"}); err != nil {
@@ -150,7 +150,7 @@ func TestTurnSession_timelineCommitsOnStoppedTurn(t *testing.T) {
 	tx := newTestTx()
 	s.Begin(&tx, "go", "")
 
-	applyTool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{}`}})
+	f.Tool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{}`}})
 	f.Stream(&tx, AnswerStream, "partial")
 	stopped, err := s.Commit(&tx, turnDoneMsg{stopped: true, answer: "partial"})
 	if !stopped || err != nil {
@@ -172,7 +172,7 @@ func TestTurnSession_timelineCommitsOnErrorTurn(t *testing.T) {
 	s.Begin(&tx, "go", "")
 
 	f.Stream(&tx, ReasoningStream, "r")
-	applyTool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{}`}})
+	f.Tool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{}`}})
 	stopped, err := s.Commit(&tx, turnDoneMsg{err: errors.New("provider failed")})
 	if stopped || err == nil {
 		t.Fatalf("Commit = stopped %v, err %v", stopped, err)
