@@ -260,7 +260,7 @@ func TestSplash_staggeredLetterVisibilityWindows(t *testing.T) {
 			}
 		}
 	}
-	if rows := splashLetterRows(t, splashWordmarkStartFrame + 5); !allLettersPresent(rows) {
+	if rows := splashLetterRows(t, splashWordmarkStartFrame+5); !allLettersPresent(rows) {
 		t.Errorf("all five letters must be visible by frame %d", splashWordmarkStartFrame+5)
 	}
 }

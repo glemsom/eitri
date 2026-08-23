@@ -13,11 +13,12 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// The launch splash: a Matrix-style falling glyph rain that converges into a
-// lolcat rainbow-gradient EITRI wordmark, shown for roughly two seconds on an
-// empty transcript before settling into the static idleWelcome. Any keypress
-// skips it instantly. Reduced-motion and non-UTF-8 locales never see the
-// splash at all — they go straight to idleWelcome.
+// The launch splash: a five-phase, 50-frame (2 s at 40 ms/frame) choreography
+// — particle storm (0–10), dwarf emergence (10–20), shatter (20–22),
+// wordmark convergence (22–27) and settling (27–50) — shown on an empty
+// transcript before settling into the static idleWelcome. Any keypress skips
+// it instantly. Reduced-motion and non-UTF-8 locales never see the splash at
+// all — they go straight to idleWelcome.
 
 const (
 	// splashTickInterval is the animation cadence; splashTotalFrames × interval ≈ 2 s.
@@ -27,6 +28,18 @@ const (
 	splashWordmarkStartFrame = 22
 	// splashRainEndFrame is when the last rain glyphs fade away.
 	splashRainEndFrame = 46
+	// splashEmergenceStartFrame is when the dwarf face begins fading in and the
+	// non-Kitty fallback starts intensifying the rain.
+	splashEmergenceStartFrame = 10
+	// splashEyeFlashFrame is when the dwarf's eyes flash bright green.
+	splashEyeFlashFrame = 18
+	// splashEyeFlashColor is the exact bright green the eyes flash with.
+	splashEyeFlashColor = "#00FF88"
+	// splashEmergencePeakDensity is the storm ceiling the non-Kitty path ramps
+	// to during emergence, so terminals without graphics still get a crescendo.
+	splashEmergencePeakDensity = 0.45
+	// splashStormDensity is the baseline particle-storm density (frames 0–10).
+	splashStormDensity = 0.28
 	// splashFlashColor matches the palette's hottest stop so the ignition
 	// flash reads as the gradient flaring up rather than a foreign color.
 	splashFlashColor = "#00FFC8"
@@ -189,9 +202,9 @@ func splashGlyphAt(col, row, frame int) rune {
 // Wordmark geometry shared by the staggered reveal: five 6-cell letters with
 // 3-cell gaps, matching how eitriWordmark lays out E I T R I.
 const (
-	splashLetterCells   = 6
-	splashLetterGap     = 3
-	splashLetterCount   = 5
+	splashLetterCells = 6
+	splashLetterGap   = 3
+	splashLetterCount = 5
 	// splashEntryDropRows is the vertical overshoot a letter enters with before settling upward.
 	splashEntryDropRows = 2
 )
@@ -222,15 +235,19 @@ func letterDropRows(frame, letter int) int {
 	return 0
 }
 
-// rainDensity returns the fraction of cells raining at a frame: full storm until the wordmark starts, thinning to nothing by splashRainEndFrame.
-func rainDensity(frame int) float64 {
+// rainDensity returns the fraction of cells raining at a frame: full storm until emergence, an intensification ramp for non-Kitty terminals until the wordmark starts, then thinning to nothing by splashRainEndFrame.
+func rainDensity(frame int, kitty bool) float64 {
 	switch {
-	case frame <= splashWordmarkStartFrame:
-		return 0.28
+	case frame <= splashEmergenceStartFrame:
+		return splashStormDensity
+	case frame <= splashWordmarkStartFrame && !kitty:
+		// Non-Kitty crescendo: no face to reveal, so the rain itself builds.
+		t := float64(frame-splashEmergenceStartFrame) / float64(splashWordmarkStartFrame-splashEmergenceStartFrame)
+		return splashStormDensity + t*(splashEmergencePeakDensity-splashStormDensity)
 	case frame >= splashRainEndFrame:
 		return 0
 	default:
-		return 0.28 * float64(splashRainEndFrame-frame) / float64(splashRainEndFrame-splashWordmarkStartFrame)
+		return splashStormDensity * float64(splashRainEndFrame-frame) / float64(splashRainEndFrame-splashWordmarkStartFrame)
 	}
 }
 
@@ -274,6 +291,26 @@ func renderSplash(s *splashState, w, h int) string {
 		flashBar = lipgloss.NewStyle().Background(lipgloss.Color(splashFlashColor)).Render(strings.Repeat(" ", w))
 	}
 
+	// The eyes flash bright green for exactly one frame at the peak of the
+	// emergence ramp — the moment the face is fully revealed.
+	eyeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(splashEyeFlashColor))
+	var eyes [2]cellPos
+	eyesFlash := false
+	if s.kitty && s.frame == splashEyeFlashFrame {
+		if place, ok := faceGeometry(w, h); ok {
+			eyes = eyeFlashCells(place)
+			eyesFlash = true
+		}
+	}
+	isEyeCell := func(r, c int) bool {
+		for _, e := range eyes {
+			if e == (cellPos{r, c}) {
+				return true
+			}
+		}
+		return false
+	}
+
 	stormCell := func(r, c int) string {
 		mr := r - markTop
 		mc := c - markLeft
@@ -295,7 +332,10 @@ func renderSplash(s *splashState, w, h int) string {
 				return lipgloss.NewStyle().Foreground(splashColor(splashWordPalette, mc+mr*2, s.frame)).Render(string(ch))
 			}
 		}
-		if rainDrop(r, c, s.frame) {
+		if eyesFlash && isEyeCell(r, c) {
+			return eyeStyle.Render("█")
+		}
+		if rainDrop(r, c, s.frame, s.kitty) {
 			return lipgloss.NewStyle().Foreground(splashColor(splashRainPalette, -c, -s.frame)).Render(string(splashGlyphAt(c, r, s.frame)))
 		}
 		return " "
@@ -324,8 +364,8 @@ func renderSplash(s *splashState, w, h int) string {
 }
 
 // rainDrop decides whether cell (row,col) rains at a frame: a per-cell pseudo-random gate thinned by the frame's density, with vertical streak alignment so the fall reads as columns.
-func rainDrop(row, col, frame int) bool {
-	d := rainDensity(frame)
+func rainDrop(row, col, frame int, kitty bool) bool {
+	d := rainDensity(frame, kitty)
 	if d <= 0 {
 		return false
 	}
