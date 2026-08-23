@@ -64,6 +64,14 @@ func (s *TurnSession) Context() context.Context { return s.ctx }
 // read-only rendering; the session stays its only writer.
 func (s *TurnSession) LiveTimeline() []TimelineEvent { return s.timeline }
 
+// recordLive appends one event to the live per-turn log in arrival order,
+// stamping it with the turn's next sequence number.
+func (s *TurnSession) recordLive(ev TimelineEvent) {
+	ev.Seq = s.turnSeq
+	s.turnSeq++
+	s.timeline = append(s.timeline, ev)
+}
+
 // ThinkingEnabled reports whether new messages this turn creates request thinking.
 func (s *TurnSession) ThinkingEnabled() bool { return s.thinkingEnabled }
 
