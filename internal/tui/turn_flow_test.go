@@ -581,15 +581,16 @@ func TestTranscript_emptyTimelineGapRendersThroughFlowRenderer(t *testing.T) {
 
 func TestTranscript_instantErrorTurnRendersFlow(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
-	d := NewTurnDispatch(stubTurn("", errors.New("boom")))
+	s := NewTurnSession(stubTurn("", errors.New("boom")))
+
 	tx := newTestTx()
 	tx.width = 100
 	tx.height = 30
 	tx.histFollow = true
 	tx.histViewport = newHistoryViewport()
-	d.session.Begin(&tx, "go", "")
+	s.Begin(&tx, "go", "")
 
-	if _, err := d.handleTurnDone(&tx, turnDoneMsg{prompt: "go", err: errors.New("boom")}); err == nil {
+	if _, err := s.Commit(&tx, turnDoneMsg{prompt: "go", err: errors.New("boom")}); err == nil {
 		t.Fatal("expected error")
 	}
 

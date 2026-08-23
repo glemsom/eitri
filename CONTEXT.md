@@ -60,6 +60,10 @@ _Avoid_: detail view, full view
 The session-owned writer for a running turn's live material: streamed deltas grow the streaming assistant message, and tool observations land in both the tool log and the arrival-ordered event log, with sequence numbers stamped by Fold alone. No code outside the session folds turn events directly.
 _Avoid_: stream handler, event appender
 
+**TurnSession**:
+The owner of a turn's whole life through four verbs: Begin arms the cancelable context and submits the prompt, Stop cancels the in-flight turn, Fold writes live stream/tool events, and Commit reconciles completion (success, error, or stopped) into the transcript. The Model routes messages; all live-turn state — timeline, sequence counter, streaming cursor, busy flag — lives behind these verbs, so tests can drive a full turn without a UI loop.
+_Avoid_: dispatch, turn state machine
+
 **Thinking suppression**:
 A per-provider capability to actually stop chain-of-thought on the wire when the thinking toggle is off, negotiated with the provider at session start. A provider that cannot suppress reasoning surfaces a warning rather than silently ignoring the toggle.
 _Avoid_: reasoning off, cot off

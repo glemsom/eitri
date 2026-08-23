@@ -67,12 +67,13 @@ func TestAppendMsg_rendersPixelIdenticalThroughFlow(t *testing.T) {
 // message must still carry an event log so no legacy render branch survives.
 func TestTurnDone_withoutStream_carriesEventLog(t *testing.T) {
 	t.Parallel()
-	d := NewTurnDispatch(stubTurn("done", nil))
-	tx := newTestTx()
-	d.session.Begin(&tx, "go", "")
+	s := NewTurnSession(stubTurn("done", nil))
 
-	if _, err := d.handleTurnDone(&tx, turnDoneMsg{answer: "done"}); err != nil {
-		t.Fatalf("handleTurnDone err = %v", err)
+	tx := newTestTx()
+	s.Begin(&tx, "go", "")
+
+	if _, err := s.Commit(&tx, turnDoneMsg{answer: "done"}); err != nil {
+		t.Fatalf("Commit err = %v", err)
 	}
 
 	events := tx.messages[1].events

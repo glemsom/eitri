@@ -489,9 +489,6 @@ func synthAnswerLog(content string) []TimelineEvent {
 	return []TimelineEvent{{Kind: EventAnswer, Delta: content}}
 }
 
-
-
-
 // syncStreamSnapshots re-derives the streaming message's content/reasoning text from the turn's event log: the log is the single arrival-ordered source of text, and the snapshots keep copy-to-clipboard, telemetry, and the gateway export reading identical content without touching their seams.
 func (t *Transcript) syncStreamSnapshots(i int) {
 	m := &t.messages[i]
