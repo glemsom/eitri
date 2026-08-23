@@ -69,7 +69,7 @@ The owner of a turn's whole life through four verbs: Begin arms the cancelable c
 _Avoid_: dispatch, turn state machine
 
 **Settings overlay**:
-The owner of an open Settings surface: the draft form, its on-demand model-discovery lifecycle, and persistence of the draft through the save seams. The Model only tracks whether an overlay is open and routes key presses, discovery results, and save side effects to it; the overlay's verbs keep the form state internally consistent.
+The owner of an open Settings surface: the draft form, its on-demand model-discovery lifecycle, and persistence of the draft through the save seams. The Model only tracks whether an overlay is open and routes messages to it through a single Handle entry point; the overlay answers with an outcome (continue, closed, saved), any follow-up command, and the accepted draft on save. The overlay's verbs keep the form state internally consistent.
 _Avoid_: settings form handler, settings state machine
 
 **Thinking suppression**:

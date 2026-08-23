@@ -562,11 +562,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.settings == nil {
 			return m, nil
 		}
-		if m.settings.cfg.Provider != msgi.provider {
-			return m, nil
+		res := m.settings.Handle(msgi)
+		if res.handled {
+			m.deps.Models = append([]string(nil), m.settings.models...)
 		}
-		m.deps.Models = append([]string(nil), msgi.models...)
-		m.settings.ApplyDiscovery(msgi)
 		return m, nil
 
 	case skillDoneMsg:
@@ -622,20 +621,19 @@ func (m Model) startSettings() (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// updateSettings routes one key press through the open Settings overlay.
+// updateSettings routes one message through the open Settings overlay and applies its outcome.
 func (m Model) updateSettings(msgi tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	outcome, cmd := m.settings.Key(msgi)
-	switch outcome {
+	res := m.settings.Handle(msgi)
+	switch res.outcome {
 	case outcomeClosed:
 		m.settings = nil
 	case outcomeSaved:
-		cfg, status := m.settings.Save()
-		m.savedMsg = status
-		m.deps.Config = cfg
-		m.tx.applySettings(cfg)
+		m.savedMsg = res.status
+		m.deps.Config = *res.saved
+		m.tx.applySettings(*res.saved)
 		m.settings = nil
 	}
-	return m, cmd
+	return m, res.cmd
 }
 
 // startTurn begins the turn through the session, which owns all of turn start. The live merged event feed is re-armed here, and the spinner tick starts so the busy indicator animates.
@@ -793,7 +791,7 @@ func (m Model) viewString() string {
 		return renderSplash(m.splash, m.tx.width, m.tx.height)
 	}
 	if m.settings != nil {
-		return settingsView(m.settings.settingsForm)
+		return m.settings.View()
 	}
 	if m.prompting {
 		return promptView(m.tx.theme)

@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -87,6 +88,9 @@ func TestSettingsOverlay_ApplyDiscoveryErrorState(t *testing.T) {
 	if o.discoverState != discoverError || o.discoverErr != "boom" {
 		t.Fatalf("discovery state = %v/%q, want discoverError/boom", o.discoverState, o.discoverErr)
 	}
+	if content := o.View(); !strings.Contains(content, "boom") {
+		t.Fatalf("view %q missing discovery error", content)
+	}
 }
 
 func TestSettingsOverlay_SaveFailureCarriesError(t *testing.T) {
@@ -98,6 +102,61 @@ func TestSettingsOverlay_SaveFailureCarriesError(t *testing.T) {
 	_, status := o.Save()
 	if status != "save failed: disk full" {
 		t.Fatalf("save status = %q, want \"save failed: disk full\"", status)
+	}
+}
+
+func TestSettingsOverlay_HandleSavesOnEnterAtSaveField(t *testing.T) {
+	t.Parallel()
+	var saved config.Config
+	deps := Dependencies{Save: func(c config.Config) error { saved = c; return nil }}
+	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, deps)
+	for range fieldSave {
+		o.Handle(tea.KeyPressMsg{Code: tea.KeyTab})
+	}
+
+	res := o.Handle(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if res.outcome != outcomeSaved || res.cmd != nil {
+		t.Fatalf("enter-at-save outcome/cmd = %v/%v, want outcomeSaved/nil", res.outcome, res.cmd)
+	}
+	if res.saved == nil || res.status != "saved" {
+		t.Fatalf("save result = %v/%q, want draft/\"saved\"", res.saved, res.status)
+	}
+	if saved.Provider != cfgFixture().Provider {
+		t.Fatalf("seam-saved provider = %q, want %q", saved.Provider, cfgFixture().Provider)
+	}
+}
+
+func TestSettingsOverlay_HandleAppliesFreshDiscoveryDropsStale(t *testing.T) {
+	t.Parallel()
+	deps := Dependencies{}
+	o, _ := openSettingsOverlay(cfgFixture(), nil, defaultTheme, nil, nil, deps)
+
+	stale := o.Handle(discoverDoneMsg{provider: "some-other-provider", models: []string{"stale-model"}})
+	if stale.handled || len(o.models) != 1 {
+		t.Fatalf("stale discovery handled/models = %v/%v, want false/seeded only", stale.handled, o.models)
+	}
+
+	fresh := o.Handle(discoverDoneMsg{provider: cfgFixture().Provider, models: []string{"deepseek-v4-flash", "grok-2"}})
+	if !fresh.handled {
+		t.Fatal("fresh discovery result not handled")
+	}
+	if o.discoverState != discoverIdle {
+		t.Fatalf("discoverState = %v, want discoverIdle", o.discoverState)
+	}
+	if got := o.Model(); got != "deepseek-v4-flash" {
+		t.Fatalf("model after fresh discovery = %q, want deepseek-v4-flash", got)
+	}
+}
+
+func TestSettingsOverlay_ViewRendersSurface(t *testing.T) {
+	t.Parallel()
+	o, _ := openSettingsOverlay(cfgFixture(), []string{"deepseek-v4-flash"}, defaultTheme, nil, nil, Dependencies{})
+	content := o.View()
+	if !strings.Contains(content, "Eitri Settings") {
+		t.Fatalf("view %q missing title", content)
+	}
+	if !strings.Contains(content, "deepseek-v4-flash") {
+		t.Fatalf("view %q missing model row", content)
 	}
 }
 
