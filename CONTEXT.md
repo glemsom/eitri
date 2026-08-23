@@ -76,26 +76,3 @@ _Avoid_: debug log, http trace
 The terminal's support for the Kitty graphics protocol, resolved once at TUI startup from `TERM_PROGRAM` (kitty, ghostty, wezterm) with a graphics-query + DA1 probe fallback. Every Kitty-gated render feature reads this flag; a non-Kitty terminal receives zero Kitty escape sequences and falls back to text-only rendering.
 _Avoid_: image support, graphics mode
 
-**Splash convergence flash**:
-The single-frame (frame 22) ignition flash at the moment the wordmark starts resolving out of the rain: a full-width solid bar of true-color `#00FFC8` background replacing the wordmark's vertical middle row for exactly one frame, while rain keeps collapsing around it. Rendered as background-colored spaces, which no other splash element uses — the hue matches the wordmark gradient's hottest stop so it reads as the gradient flaring.
-_Avoid_: flash overlay, screen blink
-
-**Staggered letter reveal**:
-The splash wordmark's assembly motion: each letter of EITRI enters one frame after its left neighbor (frames 22–26), dropping two rows below its final position on the entry frame and settling upward the next frame, so the mark reads as assembling itself from the converging rain. Total splash duration is unchanged; letters render through the same storm cell path as the settled wordmark.
-_Avoid_: per-letter animation, bounce-in
-
-**Splash face reveal**:
-The embedded dwarf face (`face.webp`, compiled into the binary) shown on Kitty-capable terminals during the splash's emergence phase: fading in from frame 10 to full visibility at frame 18, holding through 19, and dissolving across the shatter (frames 20–22). Transmitted as a downscaled PNG via the Kitty graphics protocol (chunked base64 APC commands) and placed centered in the cell grid; opacity is baked into each frame's pixel alpha since the protocol has no per-image opacity key. Non-Kitty terminals see no graphics escapes and only the rain.
-_Avoid_: logo display, image splash
-
-**Splash eye flash**:
-The one-frame (frame 18) bright-green (`#00FF88`) highlight over the dwarf's two eye cells at the peak of the emergence ramp — the moment the face is fully revealed. The eye positions are fixed fractions of the face's cell footprint, so the overlay tracks the face's centered placement at any terminal size. Kitty terminals only; non-Kitty terminals intensify the rain through emergence instead.
-_Avoid_: laser eyes, glow effect
-
-**Splash title branding**:
-The OSC 0 window title (`⚒ Eitri — forging agents`) installed when the launch splash starts and restored (to the title captured at splash start) when it ends. Terminals without OSC 0 support ignore the escape, so emission is always harmless.
-_Avoid_: tab name, header text
-
-**Splash cursor choreography**:
-The hardware-cursor hide (`CSI ? 25 l`) emitted when the launch splash starts and the show-plus-blink restore (`CSI ? 25 h` then `CSI ? 12 h`) emitted when it settles back into idleWelcome, on every exit path (full playback, skip keypress, mid-splash transcript content). The animation owns the full screen, so no cursor is ever visible during a splash frame.
-_Avoid_: caret hiding, cursor blink mode
