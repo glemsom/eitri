@@ -76,6 +76,10 @@ _Avoid_: flash overlay, screen blink
 The splash wordmark's assembly motion: each letter of EITRI enters one frame after its left neighbor (frames 22–26), dropping two rows below its final position on the entry frame and settling upward the next frame, so the mark reads as assembling itself from the converging rain. Total splash duration is unchanged; letters render through the same storm cell path as the settled wordmark.
 _Avoid_: per-letter animation, bounce-in
 
+**Splash face reveal**:
+The embedded dwarf face (`face.webp`, compiled into the binary) shown on Kitty-capable terminals during the splash's emergence phase: fading in from frame 10 to full visibility at frame 18, holding through 19, and dissolving across the shatter (frames 20–22). Transmitted as a downscaled PNG via the Kitty graphics protocol (chunked base64 APC commands) and placed centered in the cell grid; opacity is baked into each frame's pixel alpha since the protocol has no per-image opacity key. Non-Kitty terminals see no graphics escapes and only the rain.
+_Avoid_: logo display, image splash
+
 **Splash title branding**:
 The OSC 0 window title (`⚒ Eitri — forging agents`) installed when the launch splash starts and restored (to the title captured at splash start) when it ends. Terminals without OSC 0 support ignore the escape, so emission is always harmless.
 _Avoid_: tab name, header text
