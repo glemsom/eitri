@@ -587,7 +587,7 @@ func TestTranscript_instantErrorTurnRendersFlow(t *testing.T) {
 	tx.height = 30
 	tx.histFollow = true
 	tx.histViewport = newHistoryViewport()
-	d.startTurn(&tx, "go", "")
+	d.session.Begin(&tx, "go", "")
 
 	if _, err := d.handleTurnDone(&tx, turnDoneMsg{prompt: "go", err: errors.New("boom")}); err == nil {
 		t.Fatal("expected error")

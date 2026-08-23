@@ -19,7 +19,7 @@ func TestTurnDispatch_timelinePreservesArrivalOrder(t *testing.T) {
 	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
-	d.startTurn(&tx, "go", "")
+	d.session.Begin(&tx, "go", "")
 
 	// The interleaved stream from the acceptance criteria:
 	// reasoning -> tool start -> tool result -> reasoning -> answer.
@@ -53,7 +53,7 @@ func TestTurnDispatch_timelineSnapshotsDerivedFromLog(t *testing.T) {
 	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
-	d.startTurn(&tx, "go", "")
+	d.session.Begin(&tx, "go", "")
 
 	d.appendStreamDelta(&tx, ReasoningStream, "r1")
 	tx.apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{}`}})
@@ -83,7 +83,7 @@ func TestTurnDispatch_timelineToolBeforeFirstDelta(t *testing.T) {
 	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
-	d.startTurn(&tx, "go", "")
+	d.session.Begin(&tx, "go", "")
 
 	// Tool activity can arrive before any stream delta creates the message;
 	// the event log must still record it first.
@@ -111,7 +111,7 @@ func TestTranscript_applyPostTurnToolAppendsToLastMessage(t *testing.T) {
 	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
-	d.startTurn(&tx, "go", "")
+	d.session.Begin(&tx, "go", "")
 	d.appendStreamDelta(&tx, AnswerStream, "done")
 	if _, err := d.handleTurnDone(&tx, turnDoneMsg{answer: "done"}); err != nil {
 		t.Fatalf("handleTurnDone err = %v", err)
@@ -138,7 +138,7 @@ func TestTurnDispatch_timelineCommitsOnStoppedTurn(t *testing.T) {
 	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
-	d.startTurn(&tx, "go", "")
+	d.session.Begin(&tx, "go", "")
 
 	tx.apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{}`}})
 	d.appendStreamDelta(&tx, AnswerStream, "partial")
@@ -157,7 +157,7 @@ func TestTurnDispatch_timelineCommitsOnErrorTurn(t *testing.T) {
 	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
-	d.startTurn(&tx, "go", "")
+	d.session.Begin(&tx, "go", "")
 
 	d.appendStreamDelta(&tx, ReasoningStream, "r")
 	tx.apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{}`}})

@@ -9,10 +9,10 @@ func TestTurnDispatch_handleTurnDone_errorClearsLiveStream(t *testing.T) {
 	t.Parallel()
 	d := NewTurnDispatch(stubTurn("", nil))
 	tx := newTestTx()
-	d.startTurn(&tx, "q", "")
+	d.session.Begin(&tx, "q", "")
 
 	tx.messages = append(tx.messages, message{role: "eitri", reasoning: "partial thought", streaming: true})
-	d.curStream = 1
+	d.session.curStream = 1
 
 	stopped, err := d.handleTurnDone(&tx, turnDoneMsg{err: errors.New("provider failed")})
 	if stopped {
