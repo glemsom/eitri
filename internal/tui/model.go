@@ -751,9 +751,10 @@ func (m *Model) startTurn(prompt string, payload string) tea.Cmd {
 // stopTurn cancels the in-flight turn through the session.
 func (m *Model) stopTurn() { m.td.session.Stop() }
 
-// appendStreamDelta delegates to the TurnDispatch, which grows the in-progress assistant message by one streamed delta.
+// appendStreamDelta folds one streamed delta through the Fold, the sole
+// writer of the streaming assistant message and live timeline.
 func (m *Model) appendStreamDelta(kind StreamKind, delta string) {
-	m.td.appendStreamDelta(m.tx, kind, delta)
+	m.td.fold.Stream(m.tx, kind, delta)
 }
 
 // applyStreamDelta folds one streamed delta from the merged event feed into the live turn; deltas arriving while no turn runs are dropped, matching the pre-timeline stream behavior.
@@ -765,9 +766,9 @@ func (m *Model) applyStreamDelta(u StreamUpdate) {
 	m.tx.layout.dirty = true // the in-progress message grew
 }
 
-// applyToolUpdate folds one tool observation from the merged event feed into the transcript, arming the tool-start pulse for thinking-off turns along the way.
+// applyToolUpdate folds one tool observation from the merged event feed through the Fold, arming the tool-start pulse for thinking-off turns along the way.
 func (m *Model) applyToolUpdate(u ToolUpdate) {
-	m.tx.apply(u) // tool updates route through the Transcript
+	m.td.fold.Tool(m.tx, u) // tool updates route through the Fold
 	if u.Start != nil && !m.td.session.ThinkingEnabled() && motionEnabled() {
 		m.tx.busyPulse = 3
 	}

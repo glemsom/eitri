@@ -3,32 +3,18 @@ package tui
 // TurnDispatch owns the turn state machine: appendStreamDelta and handleTurnDone.
 type TurnDispatch struct {
 	session *TurnSession
+	fold    *Fold
 }
 
 // NewTurnDispatch creates a TurnDispatch with the given engine seam.
 func NewTurnDispatch(turn Turn) *TurnDispatch {
-	return &TurnDispatch{session: NewTurnSession(turn)}
+	session := NewTurnSession(turn)
+	return &TurnDispatch{session: session, fold: NewFold(session)}
 }
 
 // SetThinkingEnabled delegates to the session, which owns the thinking flag.
 func (d *TurnDispatch) SetThinkingEnabled(v bool) { d.session.SetThinkingEnabled(v) }
 
-// appendStreamDelta grows the in-progress assistant message by one streamed delta and records the delta on the turn's arrival-ordered event timeline.
-func (d *TurnDispatch) appendStreamDelta(tx *Transcript, kind StreamKind, delta string) {
-	if delta == "" {
-		return
-	}
-	tx.recordLive(TimelineEvent{Kind: streamEventKind(kind), Delta: delta})
-	cur := d.session.curStream
-	if cur >= 0 && cur < len(tx.messages) && tx.messages[cur].streaming {
-		tx.syncStreamSnapshots(cur)
-		return
-	}
-	tx.messages = append(tx.messages, message{role: "eitri", streaming: true, thinkingRequested: d.session.thinkingEnabled})
-	d.session.curStream = len(tx.messages) - 1
-	tx.syncStreamSnapshots(d.session.curStream)
-	tx.busyPulse = 3
-}
 
 // commitTimeline attaches the live per-turn event log to the turn's assistant
 // message and resets the live log, so a completed turn owns its arrival-ordered

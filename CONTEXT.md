@@ -56,6 +56,10 @@ _Avoid_: autoscroll, pin
 The persistent Ctrl+E mode that renders every tool entry full-size. A file-changing tool entry shows an inline before→after diff; a path whose content could not be snapshotted falls back to a `[+N, −M]` count summary. Collapsed, an entry keeps only the one-line delta tag.
 _Avoid_: detail view, full view
 
+**Fold**:
+The session-owned writer for a running turn's live material: streamed deltas grow the streaming assistant message, and tool observations land in both the tool log and the arrival-ordered event log, with sequence numbers stamped by Fold alone. No code outside the session folds turn events directly.
+_Avoid_: stream handler, event appender
+
 **Thinking suppression**:
 A per-provider capability to actually stop chain-of-thought on the wire when the thinking toggle is off, negotiated with the provider at session start. A provider that cannot suppress reasoning surfaces a warning rather than silently ignoring the toggle.
 _Avoid_: reasoning off, cot off
