@@ -7,6 +7,8 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/glemsom/eitri/internal/config"
 )
 
 // Transcript is the single owner of the transcript region: the layout/scroll/follow/render concerns that used to live in the TUI Model god-object, and the only home of the transcript state.
@@ -159,6 +161,28 @@ func (t Transcript) railWidthOrDefault() int {
 		return defaultRailWidth
 	}
 	return t.railWidth
+}
+
+// SetSize stores the terminal dimensions and marks the shared layout cache dirty, so the next render pass re-wraps the history at the new transcript width; the Model's WindowSizeMsg handler routes here instead of writing the dirty flag by hand.
+func (t *Transcript) SetSize(width, height int) {
+	t.width = width
+	t.height = height
+	t.layout.dirty = true
+}
+
+// applySettings applies the Settings-save outcomes that affect the transcript — theme, and the expand/collapse render defaults (issue #432) — and marks the layout cache dirty in the same step, since the flip can re-wrap the transcript.
+func (t *Transcript) applySettings(cfg config.Config) {
+	t.theme = themeFor(cfg.Theme)
+	t.configTheme = cfg.Theme
+	t.cotExpanded = !cfg.CoTCollapsedByDefault
+	t.toolResultsExpanded = !cfg.ToolResultsCollapsedByDefault
+	t.layout.dirty = true
+}
+
+// appendUserMsg appends a user message (a slash/skill/login activation prompt) to the transcript and marks the shared layout cache dirty in the same step, so callers never invalidate by hand around the append.
+func (t *Transcript) appendUserMsg(content string) {
+	t.messages = append(t.messages, message{role: "you", content: content})
+	t.layout.dirty = true
 }
 
 // setRailWidth stores the rail width and marks the shared layout cache dirty, so the next render pass re-wraps the history at the new transcript width and re-records the row layout . scroll/follow survive because the persisted viewport keeps its position; it is only re-sized, never re-created.
@@ -502,10 +526,24 @@ func synthAnswerLog(content string) []TimelineEvent {
 	return []TimelineEvent{{Kind: EventAnswer, Delta: content}}
 }
 
-// syncStreamSnapshots re-derives the streaming message's content/reasoning text from the turn's event log: the log is the single arrival-ordered source of text, and the snapshots keep copy-to-clipboard, telemetry, and the gateway export reading identical content without touching their seams.
+// syncStreamSnapshots re-derives the streaming message's content/reasoning text from the turn's event log: the log is the single arrival-ordered source of text, and the snapshots keep copy-to-clipboard, telemetry, and the gateway export reading identical content without touching their seams. The snapshot sync is the one point where streamed text lands in the transcript, so it marks the shared layout cache dirty itself.
 func (t *Transcript) syncStreamSnapshots(i int, events []TimelineEvent) {
 	m := &t.messages[i]
 	m.content, m.reasoning = deriveSnapshots(events)
+	t.layout.dirty = true
+}
+
+// applyTool routes one tool observation into the tool log and marks the shared layout cache dirty in the same step: an entry changes the tool log's rendered rows.
+func (t *Transcript) applyTool(u ToolUpdate) {
+	t.log.Apply(u)
+	t.layout.dirty = true
+}
+
+// endTurn clears the busy state after a completed turn and marks the shared layout cache dirty, so completion-time message finalization re-wraps without caller-side invalidation.
+func (t *Transcript) endTurn() {
+	t.busy = false
+	t.spinner = 0
+	t.layout.dirty = true
 }
 
 // toggleExpandAll flips the persistent Ctrl+E expanded-view mode: Ctrl+E on the Model routes here, and it marks the shared layout dirty because showing or hiding all tool results re-wraps the log. Turning the mode on clears the collapse-all mode; turning it off returns to the defaults (issue #432).

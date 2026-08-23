@@ -52,6 +52,10 @@ _Avoid_: combined view, flow view
 The auto-scroll behavior that pins the history viewport to the newest content while a turn streams. Scrolling up to read earlier output breaks follow; reaching the newest content re-engages it.
 _Avoid_: autoscroll, pin
 
+**Transcript layout cache**:
+The lazily rebuilt row index behind the transcript's mouse hit-test and plain-text rendering. Every transcript mutation — message appends, stream deltas, tool entries, resize, settings flips, rail-width changes — routes through a Transcript-owned method that marks the cache stale itself, so no code outside the transcript implementation ever writes the dirty flag by hand.
+_Avoid_: manual invalidation, dirty-flag writes
+
 **Open-ended expand seam**:
 The persistent Ctrl+E mode that renders every tool entry full-size. A file-changing tool entry shows an inline before→after diff; a path whose content could not be snapshotted falls back to a `[+N, −M]` count summary. Collapsed, an entry keeps only the one-line delta tag.
 _Avoid_: detail view, full view
