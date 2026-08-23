@@ -42,7 +42,7 @@ func TestRunOpensWithSystemPrompt(t *testing.T) {
 	cap := &headRecorder{}
 	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
 		cap.reqs = append(cap.reqs, req)
-		return provider.StreamFunc(provider.Chunk{Content: "hi", FinishReason: "stop", Done: true}), nil
+		return provider.StreamFunc(provider.Chunk{Content: "hi"}, provider.Chunk{FinishReason: "stop", Done: true}), nil
 	}), &mockTranscript{})
 
 	if _, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "go"}, AgentOptions{}); err != nil {
@@ -67,7 +67,6 @@ func assertSystemPromptHead(t *testing.T, msgs []provider.Message) {
 		t.Fatalf("message[0].Content != embedded system prompt:\ngot =%q\nwant=%q", head.Content, SystemPromptContent())
 	}
 }
-
 
 func TestRunAgentOpensWithSystemPrompt(t *testing.T) {
 	t.Parallel()

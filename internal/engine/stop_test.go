@@ -200,4 +200,3 @@ func TestRunAgentStopPreservesPromptInTranscriptRecord(t *testing.T) {
 		t.Errorf("stopped record %q must differ from the clean record %q", stoppedLine, cleanLine)
 	}
 }
-
