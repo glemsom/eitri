@@ -767,8 +767,7 @@ func (m *Model) applyStreamDelta(u StreamUpdate) {
 	if !m.tx.busy {
 		return
 	}
-	m.appendStreamDelta(u.Kind, u.Delta)
-	m.tx.layout.dirty = true // the in-progress message grew
+	m.appendStreamDelta(u.Kind, u.Delta) // the Fold invalidates the layout itself
 }
 
 // applyToolUpdate folds one tool observation from the merged event feed through the Fold, arming the tool-start pulse for thinking-off turns along the way.
