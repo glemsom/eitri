@@ -3,7 +3,7 @@ package tui
 import (
 	"strings"
 
-	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // selectionWeaver is the seam owning the drag-select copy logic: the
@@ -51,13 +51,26 @@ func colToRuneIndex(line string, displayCol int) int {
 	if len(rs) == 0 {
 		return 0
 	}
-	cur := 0
+	// Merge variation-selector pairs into one selectable unit: the cluster
+	// (base + VS16) occupies the cells its combined width spans.
+	type cluster struct { //nolint:revive // local clarity over a named type used once
+		runeIdx int
+		width   int
+	}
+	var clusters []cluster
 	for i, r := range rs {
-		w := lipgloss.Width(string(r))
-		if displayCol < cur+w {
-			return i
+		if r == '\ufe0f' && len(clusters) > 0 {
+			clusters[len(clusters)-1].width += runeCellWidth(r)
+			continue
 		}
-		cur += w
+		clusters = append(clusters, cluster{runeIdx: i, width: runeCellWidth(r)})
+	}
+	cur := 0
+	for _, c := range clusters {
+		if displayCol < cur+c.width {
+			return c.runeIdx
+		}
+		cur += c.width
 	}
 	return len(rs) - 1
 }
@@ -125,16 +138,28 @@ func (s selectionWeaver) coveredLines(lines []string) (text string, ok bool) {
 	return b.String(), true
 }
 
+// runeCellWidth reports the display-cell contribution of one rune in a
+// terminal grid. A variation selector contributes the second cell of the
+// emoji-presentation pair it extends (the base glyph's own width comes from
+// ansi.StringWidth); every other rune's footprint is its standard cell width.
+func runeCellWidth(r rune) int {
+	if r == '\ufe0f' {
+		return 1
+	}
+	return ansi.StringWidth(string(r))
+}
+
 // highlightRange wraps the cells covered by a drag in reverse video across one
-// line of rendered content.
+// line of rendered content. from/to are rune indices (the selection store's
+// column space); they are painted at their display-cell positions, so wide
+// emoji shift the reverse-video span in cell space instead of misaligning it.
 func highlightRange(line string, from, to int) string {
 	if from < 0 || to < 0 || from > to {
 		return line
 	}
 	rs := []rune(line)
 	var b strings.Builder
-	cell := 0
-	i := 0
+	i, r := 0, 0 // raw rune index; printable-rune index (escapes excluded)
 	for i < len(rs) {
 		if rs[i] == '\x1b' {
 			n := consumeEscape(rs, i)
@@ -142,14 +167,14 @@ func highlightRange(line string, from, to int) string {
 			i += n
 			continue
 		}
-		if cell == from {
+		if r == from {
 			b.WriteString("\x1b[7m")
 		}
 		b.WriteRune(rs[i])
-		if cell == to {
+		if r == to {
 			b.WriteString("\x1b[27m")
 		}
-		cell++
+		r++
 		i++
 	}
 	return b.String()
