@@ -35,12 +35,22 @@ func TestSplashCursor_InitHidesCursor(t *testing.T) {
 	// yields the child commands, so execute them directly before asserting.
 	cmd := m.Init()
 	if cmd != nil {
-		for _, c := range any(cmd()).(tea.BatchMsg) {
-			runCmd(t, c)
-		}
+		runBatch(t, cmd)
 	}
 	if !bytes.Contains(buf.Bytes(), []byte(splashCursorHide)) {
 		t.Errorf("Init with active splash must emit cursor-hide \\x1b[?25l, got %q", buf.String())
+	}
+}
+
+// runBatch executes a tea.Cmd, recursing through tea.BatchMsg so nested
+// batches (Init nests the splash's own Start batch) reach their leaf commands.
+func runBatch(t *testing.T, cmd tea.Cmd) {
+	t.Helper()
+	switch m := cmd().(type) {
+	case tea.BatchMsg:
+		for _, c := range m {
+			runBatch(t, c)
+		}
 	}
 }
 
@@ -62,7 +72,7 @@ func TestSplashCursor_restoredWhenSplashCompletes(t *testing.T) {
 	m := splashTitleModel(t, &buf, "old title")
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = asModel(t, nm)
-	for m.splash != nil && !m.splash.done() {
+	for m.splash != nil && !m.splash.state.done() {
 		nm, cmd := m.Update(splashTickMsg{})
 		if cmd != nil {
 			cmd()

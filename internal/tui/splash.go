@@ -45,7 +45,97 @@ const (
 	splashFlashColor = "#00FFC8"
 )
 
-// splashState tracks the splash's animation progress; a nil pointer on Model means the splash is over (or never ran).
+// Splash owns the launch-splash lifecycle end to end: whether it runs, the
+// animation state, the tick cadence, the title/cursor side-effects, the
+// keypress skip, and the early end when the transcript gains content. The
+// Model tracks only whether the splash is active (a nil pointer) and routes
+// every message through the module's single Handle entry point; the hot path
+// carries no splash branch of its own.
+type Splash struct {
+	state     *splashState // nil once the splash settled, was skipped, or never ran
+	prevTitle string       // the window title to restore when the splash hands the screen back
+	titleOut  io.Writer    // where OSC 0 title sequences are written
+	tx        *Transcript  // consulted for the transcript-gained-content early end
+}
+
+// splashResult reports what the Model must do after one message lands on the
+// splash: handled marks the message consumed, ended marks the splash over
+// (settled, skipped, or transcript content arrived) so the Model drops the
+// module pointer, and cmd is any command to run next.
+type splashResult struct {
+	handled bool
+	ended   bool
+	cmd     tea.Cmd
+}
+
+// newSplash builds the launch splash when the dependency enables it and the
+// environment allows (reduced-motion and non-UTF-8 locales go straight to the
+// static welcome), mirroring the model's Kitty graphics capability into its
+// own render path and capturing the title to restore on exit. Nil when no
+// splash runs.
+func newSplash(d Dependencies, tx *Transcript, kitty bool) *Splash {
+	s := splashFor(d.Splash)
+	if s == nil {
+		return nil
+	}
+	s.kitty = kitty
+	return &Splash{
+		state:     s,
+		prevTitle: previousTerminalTitle(d),
+		titleOut:  d.titleOut(),
+		tx:        tx,
+	}
+}
+
+// Start returns the startup command batch: the first animation tick plus the
+// title/cursor takeover, both issued exactly once when the splash opens.
+func (s *Splash) Start() tea.Cmd {
+	return tea.Batch(splashTick(), splashStartCmd(s.titleOut))
+}
+
+// Handle routes one message into the splash. While the splash owns the screen
+// the animation tick advances it, any keypress skips it instantly, and a
+// transcript that gained content ends it early; all three hand the screen
+// back through the end command. Unrelated messages are ignored so the Model
+// still processes them normally (e.g. a resize during the splash).
+func (s *Splash) Handle(msg tea.Msg) splashResult {
+	switch msg.(type) {
+	case splashTickMsg:
+		if s.state == nil || s.tx.hasContent() {
+			s.state = nil
+			return s.finish()
+		}
+		s.state.advance()
+		if s.state.done() {
+			s.state = nil
+			return s.finish()
+		}
+		return splashResult{handled: true, cmd: splashTick()}
+	case tea.KeyPressMsg:
+		// Any keypress skips the launch splash instantly; the skip consumes
+		// the keypress itself, so the composer never sees the skipping key.
+		s.state = nil
+		return s.finish()
+	}
+	return splashResult{}
+}
+
+// View renders the current splash frame at the given size.
+func (s *Splash) View(w, h int) string { return renderSplash(s.state, w, h) }
+
+// finish returns the result of the splash ending right now: the message is
+// consumed, the Model should drop the module pointer, and the screen is
+// handed back through the end command.
+func (s *Splash) finish() splashResult {
+	return splashResult{handled: true, ended: true, cmd: s.end()}
+}
+
+// end returns the command that hands the screen back: it restores the
+// pre-splash title and re-shows the blinking cursor in one synchronous write.
+func (s *Splash) end() tea.Cmd { return splashEndCmd(s.titleOut, s.prevTitle) }
+
+// splashState tracks the splash's animation progress; a nil pointer on the
+// Splash module means the splash is over (or never ran).
 type splashState struct {
 	frame int
 	// kitty mirrors the model's Kitty graphics capability so the splash's own render path can gate image embedding without reaching back into the model.
