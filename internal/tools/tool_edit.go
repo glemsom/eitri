@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -18,7 +19,7 @@ func (e *editTool) Name() string {
 }
 
 func (e *editTool) Description() string {
-	return "Replace old_string with new_string in an existing file. old_string must occur exactly once; zero or multiple matches is a hard error, no silent partial application. If the exact match fails, a whitespace-tolerant fallback retries with per-line whitespace normalized and still requires a unique match. If old_string appears more than once, widen it with unique surrounding context (enclosing function signature, neighbouring line). Base old_string on a fresh read, not remembered content. The file must exist; path must be inside a writable root."
+	return "Replace old_string with new_string in an existing file. old_string must occur exactly once; zero or multiple matches is a hard error, no silent partial application. If the exact match fails, a whitespace-tolerant fallback retries with per-line whitespace normalized and still requires a unique match. If old_string appears more than once, widen it with unique surrounding context (enclosing function signature, neighbouring line). Base old_string on a fresh read, not remembered content. On a zero-match failure the error names the nearest matching region and flags CRLF files (\"file uses CRLF line endings\"). The file must exist; path must be inside a writable root."
 }
 
 func (e *editTool) Schema() map[string]any {
@@ -90,7 +91,7 @@ func (e *editTool) Run(ctx context.Context, args map[string]any) (ToolResult, er
 		u, ok := normalizedFallback(text, old, newStr)
 		if !ok {
 			if count == 0 {
-				return ToolResult{}, fmt.Errorf("edit %s: old_string not found", path)
+				return ToolResult{}, fmt.Errorf("edit %s: %s", path, notFoundDiagnostic(text, old))
 			}
 			return ToolResult{}, fmt.Errorf("edit %s: old_string matched %d times; make it unique", path, count)
 		}
@@ -128,6 +129,78 @@ func (e *editTool) Run(ctx context.Context, args map[string]any) (ToolResult, er
 		return ToolResult{}, fmt.Errorf("edit %s: %w", path, err)
 	}
 	return ToolResult{Text: fmt.Sprintf("Edit applied to %s", path)}, nil
+}
+
+// notFoundDiagnostic explains a genuine zero-match failure: it names the one
+// or two file regions closest to old_string (so the model can self-correct
+// without re-reading the file) and flags CRLF files, whose endings never
+// match an LF-based old_string exactly.
+func notFoundDiagnostic(text, old string) string {
+	diag := "old_string not found"
+	if strings.Contains(text, "\r\n") && !strings.Contains(old, "\r\n") {
+		diag += "; file uses CRLF line endings; use \\r\\n or rely on the whitespace-tolerant fallback"
+	}
+	if cands := nearestCandidates(text, old, 2); len(cands) > 0 {
+		diag += "; nearest match(es): " + strings.Join(cands, " | ")
+	}
+	return diag
+}
+
+// nearestCandidates returns up to max formatted snippets of the windows of
+// consecutive lines that share the most content with old_string. Windows are
+// scored by exact line matches first, then by any-line overlap, so a region
+// with drifted whitespace still outranks unrelated text.
+func nearestCandidates(text, old string, max int) []string {
+	crlf := strings.Contains(text, "\r\n")
+	if crlf {
+		text = strings.ReplaceAll(text, "\r\n", "\n")
+	}
+	textLines := splitLines(strings.TrimSuffix(text, "\n"))
+	oldLines := splitLines(strings.TrimSuffix(old, "\n"))
+	if len(oldLines) == 0 || len(textLines) == 0 {
+		return nil
+	}
+	window := len(oldLines)
+	if window > len(textLines) {
+		window = len(textLines)
+	}
+	oldSet := map[string]bool{}
+	for _, l := range oldLines {
+		oldSet[normalized(l)] = true
+	}
+	best := []struct{ score, overlap, line int }{}
+	for i := 0; i+window <= len(textLines); i++ {
+		score, overlap := 0, 0
+		for j := 0; j < window; j++ {
+			n := normalized(textLines[i+j])
+			if j < len(oldLines) && n == normalized(oldLines[j]) {
+				score++
+			}
+			if oldSet[n] {
+				overlap++
+			}
+		}
+		best = append(best, struct{ score, overlap, line int }{score, overlap, i})
+	}
+	sort.Slice(best, func(a, b int) bool {
+		x, y := best[a], best[b]
+		if x.score != y.score {
+			return x.score > y.score
+		}
+		if x.overlap != y.overlap {
+			return x.overlap > y.overlap
+		}
+		return x.line < y.line
+	})
+	var out []string
+	for _, b := range best[:min(max, len(best))] {
+		if b.score == 0 && b.overlap == 0 {
+			break
+		}
+		snippet := normalized(strings.Join(textLines[b.line:b.line+window], " "))
+		out = append(out, fmt.Sprintf("line %d: \"%s\"", b.line+1, snippet))
+	}
+	return out
 }
 
 // normalized collapses leading/trailing and internal whitespace runs to
