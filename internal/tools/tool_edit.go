@@ -151,12 +151,8 @@ func notFoundDiagnostic(text, old string) string {
 // scored by exact line matches first, then by any-line overlap, so a region
 // with drifted whitespace still outranks unrelated text.
 func nearestCandidates(text, old string, max int) []string {
-	crlf := strings.Contains(text, "\r\n")
-	if crlf {
-		text = strings.ReplaceAll(text, "\r\n", "\n")
-	}
-	textLines := splitLines(strings.TrimSuffix(text, "\n"))
-	oldLines := splitLines(strings.TrimSuffix(old, "\n"))
+	textLines := splitFileLines(text)
+	oldLines := splitFileLines(old)
 	if len(oldLines) == 0 || len(textLines) == 0 {
 		return nil
 	}
@@ -173,7 +169,7 @@ func nearestCandidates(text, old string, max int) []string {
 		score, overlap := 0, 0
 		for j := 0; j < window; j++ {
 			n := normalized(textLines[i+j])
-			if j < len(oldLines) && n == normalized(oldLines[j]) {
+			if n == normalized(oldLines[j]) {
 				score++
 			}
 			if oldSet[n] {
@@ -201,6 +197,12 @@ func nearestCandidates(text, old string, max int) []string {
 		out = append(out, fmt.Sprintf("line %d: \"%s\"", b.line+1, snippet))
 	}
 	return out
+}
+
+// splitFileLines converts a file's line endings to LF and splits it into
+// lines without the trailing newline, so matching logic never sees \r.
+func splitFileLines(s string) []string {
+	return splitLines(strings.TrimSuffix(strings.ReplaceAll(s, "\r\n", "\n"), "\n"))
 }
 
 // normalized collapses leading/trailing and internal whitespace runs to
