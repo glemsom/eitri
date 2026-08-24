@@ -118,3 +118,92 @@ func TestEditAtomicWriteLeavesNoTempFiles(t *testing.T) {
 		t.Fatalf("mode after edit = %v, want original 0640 preserved", info.Mode().Perm())
 	}
 }
+
+func TestEditTrimmedFallbackApplies(t *testing.T) {
+	t.Parallel()
+	r, ws := newTestRegistry(t, nil)
+	path := filepath.Join(ws, "f.txt")
+	content := "func main() {\n\treturn   value\n}\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	if _, err := r.Run(context.Background(), "edit", argMap(
+		"path", path,
+		"old_string", "func main() {\n\treturn value\n}",
+		"new_string", "func main() {\n\treturn other\n}",
+	)); err != nil {
+		t.Fatalf("trimmed fallback edit error = %v, want nil", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	want := "func main() {\n\treturn other\n}\n"
+	if string(data) != want {
+		t.Fatalf("after fallback edit = %q, want %q", data, want)
+	}
+}
+
+func TestEditTrimmedFallbackAmbiguousFails(t *testing.T) {
+	t.Parallel()
+	r, ws := newTestRegistry(t, nil)
+	path := filepath.Join(ws, "f.txt")
+	content := "\treturn  one\n\n\treturn  one\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	_, err := r.Run(context.Background(), "edit", argMap(
+		"path", path,
+		"old_string", "return one",
+		"new_string", "return X",
+	))
+	if err == nil {
+		t.Fatal("ambiguous trimmed match error = nil, want hard error")
+	}
+	data, rerr := os.ReadFile(path)
+	if rerr != nil || string(data) != content {
+		t.Fatalf("after ambiguous edit = %q err=%v, want file untouched", data, rerr)
+	}
+}
+
+func TestEditTrimmedFallbackNoMatchStillErrors(t *testing.T) {
+	t.Parallel()
+	r, ws := newTestRegistry(t, nil)
+	path := filepath.Join(ws, "f.txt")
+	if err := os.WriteFile(path, []byte("alpha\nbeta\n"), 0o600); err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	_, err := r.Run(context.Background(), "edit", argMap(
+		"path", path,
+		"old_string", "alpha\ngamma",
+		"new_string", "x",
+	))
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("no-match error = %v, want \"not found\"", err)
+	}
+}
+
+func TestEditTrimmedFallbackPreservesCRLF(t *testing.T) {
+	t.Parallel()
+	r, ws := newTestRegistry(t, nil)
+	path := filepath.Join(ws, "f.txt")
+	content := "first\r\n\tsecond   line\r\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	if _, err := r.Run(context.Background(), "edit", argMap(
+		"path", path,
+		"old_string", "first\n\tsecond line",
+		"new_string", "FIRST\nSECOND",
+	)); err != nil {
+		t.Fatalf("CRLF fallback edit error = %v, want nil", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	want := "FIRST\r\nSECOND\r\n"
+	if string(data) != want {
+		t.Fatalf("after CRLF fallback = %q, want %q", data, want)
+	}
+}
