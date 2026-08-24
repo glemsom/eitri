@@ -18,7 +18,7 @@ func (e *editTool) Name() string {
 }
 
 func (e *editTool) Description() string {
-	return "Edit an existing file by replacing old_string with new_string. old_string must match the file content EXACTLY (whitespace, indentation, and escaping included) and must occur EXACTLY once; matching zero times or more than once is a hard error, with no silent partial application. When the target text appears multiple times, widen old_string to include unique surrounding context (e.g. the enclosing function signature or a neighbouring line) so the match becomes unique. Base old_string on a FRESH read of the file, not remembered content, so drift between believed and on-disk content cannot cause a spurious not-found error. The file must already exist and the target must be inside a writable root (workspace, session temp, or extra writable path)."
+	return "Replace old_string with new_string in an existing file. old_string must match the file content EXACTLY and occur exactly once; zero or multiple matches is a hard error, no silent partial application. If it appears more than once, widen old_string with unique surrounding context (enclosing function signature, neighbouring line). Base old_string on a fresh read, not remembered content. The file must exist; path must be inside a writable root."
 }
 
 func (e *editTool) Schema() map[string]any {
