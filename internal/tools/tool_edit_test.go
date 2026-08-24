@@ -118,3 +118,51 @@ func TestEditAtomicWriteLeavesNoTempFiles(t *testing.T) {
 		t.Fatalf("mode after edit = %v, want original 0640 preserved", info.Mode().Perm())
 	}
 }
+
+func TestEditTrimmedFallbackApplies(t *testing.T) {
+	t.Parallel()
+	r, ws := newTestRegistry(t, nil)
+	path := filepath.Join(ws, "f.txt")
+	content := "func main() {\n\treturn   value\n}\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	// old_string has drifted whitespace but matches uniquely when lines are trimmed.
+	if _, err := r.Run(context.Background(), "edit", argMap(
+		"path", path,
+		"old_string", "func main() {\n\treturn value\n}",
+		"new_string", "func main() {\n\treturn other\n}",
+	)); err != nil {
+		t.Fatalf("trimmed fallback edit error = %v, want nil", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	want := "func main() {\n\treturn other\n}\n"
+	if string(data) != want {
+		t.Fatalf("after fallback edit = %q, want %q", data, want)
+	}
+}
+
+func TestEditTrimmedFallbackAmbiguousFails(t *testing.T) {
+	t.Parallel()
+	r, ws := newTestRegistry(t, nil)
+	path := filepath.Join(ws, "f.txt")
+	content := "\treturn  one\n\n\treturn  one\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	_, err := r.Run(context.Background(), "edit", argMap(
+		"path", path,
+		"old_string", "return one",
+		"new_string", "return X",
+	))
+	if err == nil {
+		t.Fatal("ambiguous trimmed match error = nil, want hard error")
+	}
+	data, rerr := os.ReadFile(path)
+	if rerr != nil || string(data) != content {
+		t.Fatalf("after ambiguous edit = %q err=%v, want file untouched", data, rerr)
+	}
+}

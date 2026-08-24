@@ -18,7 +18,7 @@ func (e *editTool) Name() string {
 }
 
 func (e *editTool) Description() string {
-	return "Replace old_string with new_string in an existing file. old_string must match the file content EXACTLY and occur exactly once; zero or multiple matches is a hard error, no silent partial application. If it appears more than once, widen old_string with unique surrounding context (enclosing function signature, neighbouring line). Base old_string on a fresh read, not remembered content. The file must exist; path must be inside a writable root."
+	return "Replace old_string with new_string in an existing file. old_string must occur exactly once; zero or multiple matches is a hard error, no silent partial application. If the exact match fails, a whitespace-tolerant fallback retries with per-line whitespace normalized and still requires a unique match. If old_string appears more than once, widen it with unique surrounding context (enclosing function signature, neighbouring line). Base old_string on a fresh read, not remembered content. The file must exist; path must be inside a writable root."
 }
 
 func (e *editTool) Schema() map[string]any {
@@ -81,15 +81,16 @@ func (e *editTool) Run(ctx context.Context, args map[string]any) (ToolResult, er
 		return ToolResult{}, fmt.Errorf("edit %s: %w", path, err)
 	}
 	text := string(data)
-	count := strings.Count(text, old)
-	switch count {
-	case 0:
-		return ToolResult{}, fmt.Errorf("edit %s: old_string not found", path)
-	case 1:
-	default:
+	updated := ""
+	if strings.Count(text, old) == 1 {
+		updated = strings.Replace(text, old, newStr, 1)
+	} else if updated = trimmedFallback(text, old, newStr); updated == "" {
+		count := strings.Count(text, old)
+		if count == 0 {
+			return ToolResult{}, fmt.Errorf("edit %s: old_string not found", path)
+		}
 		return ToolResult{}, fmt.Errorf("edit %s: old_string matched %d times; make it unique", path, count)
 	}
-	updated := strings.Replace(text, old, newStr, 1)
 	// Atomic write: stage the new content in a same-directory temp file, then
 	// rename it over the target. A crash mid-edit therefore leaves either the
 	// old or the new content, never a truncated mix. Same directory keeps the
@@ -122,4 +123,49 @@ func (e *editTool) Run(ctx context.Context, args map[string]any) (ToolResult, er
 		return ToolResult{}, fmt.Errorf("edit %s: %w", path, err)
 	}
 	return ToolResult{Text: fmt.Sprintf("Edit applied to %s", path)}, nil
+}
+
+// normalized collapses leading/trailing and internal whitespace runs to
+// single spaces so drifted indentation or alignment still matches.
+func normalized(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
+// trimmedFallback retries the match with per-line whitespace-normalized
+// sides of each line; it returns the updated file content when exactly one region matches,
+// and "" otherwise (zero or multiple matches), preserving the strict unique
+// match guarantee. The replacement keeps the file's own line endings and
+// trailing-newline state.
+func trimmedFallback(text, old, newStr string) string {
+	textLines := splitLines(text)
+	oldLines := splitLines(strings.TrimSuffix(old, "\n"))
+	if len(oldLines) == 0 || len(oldLines) > len(textLines) {
+		return ""
+	}
+	matches := []int{}
+	for i := 0; i+len(oldLines) <= len(textLines); i++ {
+		ok := true
+		for j := range oldLines {
+			if normalized(textLines[i+j]) != normalized(oldLines[j]) {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			matches = append(matches, i)
+		}
+	}
+	if len(matches) != 1 {
+		return ""
+	}
+	newLines := splitLines(strings.TrimSuffix(newStr, "\n"))
+	out := make([]string, 0, len(textLines)-len(oldLines)+len(newLines))
+	out = append(out, textLines[:matches[0]]...)
+	out = append(out, newLines...)
+	out = append(out, textLines[matches[0]+len(oldLines):]...)
+	joined := strings.Join(out, "\n")
+	if strings.HasSuffix(text, "\n") && !strings.HasSuffix(joined, "\n") {
+		joined += "\n"
+	}
+	return joined
 }
