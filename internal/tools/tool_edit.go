@@ -55,15 +55,24 @@ func (e *editTool) Run(ctx context.Context, args map[string]any) (ToolResult, er
 	if err != nil {
 		return ToolResult{}, err
 	}
+	// A rename over a symlink replaces the link itself; follow it first so
+	// edits land in the target file as before, and re-validate so following
+	// the link cannot escape the writable roots.
+	if resolved, linkErr := filepath.EvalSymlinks(host); linkErr == nil && resolved != host {
+		host, err = e.val.Resolve(resolved)
+		if err != nil {
+			return ToolResult{}, fmt.Errorf("edit %s: %w", path, err)
+		}
+	}
+	info, err := os.Stat(host)
+	if err != nil {
+		return ToolResult{}, fmt.Errorf("edit %s: %w", path, err)
+	}
 	data, err := os.ReadFile(host)
 	if err != nil {
 		return ToolResult{}, fmt.Errorf("edit %s: %w", path, err)
 	}
 	text := string(data)
-	info, err := os.Stat(host)
-	if err != nil {
-		return ToolResult{}, fmt.Errorf("edit %s: %w", path, err)
-	}
 	count := strings.Count(text, old)
 	switch count {
 	case 0:
@@ -86,6 +95,12 @@ func (e *editTool) Run(ctx context.Context, args map[string]any) (ToolResult, er
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName) // no-op after successful rename
 	if _, err := tmp.Write([]byte(updated)); err != nil {
+		tmp.Close()
+		return ToolResult{}, fmt.Errorf("edit %s: %w", path, err)
+	}
+	// Sync before the rename so the crash window closes on content, not just
+	// on the directory entry.
+	if err := tmp.Sync(); err != nil {
 		tmp.Close()
 		return ToolResult{}, fmt.Errorf("edit %s: %w", path, err)
 	}
