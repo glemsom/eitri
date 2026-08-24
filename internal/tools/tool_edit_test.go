@@ -27,6 +27,46 @@ func TestEditDescriptionGuidance(t *testing.T) {
 	}
 }
 
+func TestEditEmptyOldString(t *testing.T) {
+	t.Parallel()
+	r, ws := newTestRegistry(t, nil)
+	path := filepath.Join(ws, "f.txt")
+	if err := os.WriteFile(path, []byte("content"), 0o600); err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	_, err := r.Run(context.Background(), "edit", argMap("path", path, "old_string", "", "new_string", "x"))
+	if err == nil {
+		t.Fatal("empty old_string error = nil, want descriptive error")
+	}
+	if !strings.Contains(err.Error(), "must not be empty") {
+		t.Fatalf("empty old_string error = %v, want \"must not be empty\" message", err)
+	}
+	data, rerr := os.ReadFile(path)
+	if rerr != nil || string(data) != "content" {
+		t.Fatalf("after empty old_string edit = %q err=%v, want file untouched", data, rerr)
+	}
+}
+
+func TestEditNoOpEdit(t *testing.T) {
+	t.Parallel()
+	r, ws := newTestRegistry(t, nil)
+	path := filepath.Join(ws, "f.txt")
+	if err := os.WriteFile(path, []byte("same text"), 0o600); err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	_, err := r.Run(context.Background(), "edit", argMap("path", path, "old_string", "same text", "new_string", "same text"))
+	if err == nil {
+		t.Fatal("no-op edit error = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "no-op") {
+		t.Fatalf("no-op edit error = %v, want \"no-op\" message", err)
+	}
+	data, rerr := os.ReadFile(path)
+	if rerr != nil || string(data) != "same text" {
+		t.Fatalf("after no-op edit = %q err=%v, want file untouched", data, rerr)
+	}
+}
+
 func TestEditAtomicWrite(t *testing.T) {
 	t.Parallel()
 	r, ws := newTestRegistry(t, nil)

@@ -43,13 +43,21 @@ func (e *editTool) Run(ctx context.Context, args map[string]any) (ToolResult, er
 	if err != nil {
 		return ToolResult{}, err
 	}
-	old, err := strArg(args, "old_string")
+	old, err := optStr(args, "old_string")
 	if err != nil {
 		return ToolResult{}, err
 	}
 	newStr, err := optStr(args, "new_string")
 	if err != nil {
 		return ToolResult{}, err
+	}
+	// Guards before any file access so a degenerate call fails fast instead
+	// of surfacing as a confusing match-count or not-found error.
+	if old == "" {
+		return ToolResult{}, fmt.Errorf("edit: old_string must not be empty")
+	}
+	if old == newStr {
+		return ToolResult{}, fmt.Errorf("edit %s: old_string equals new_string; no-op edit", path)
 	}
 	host, err := e.val.Resolve(path)
 	if err != nil {
