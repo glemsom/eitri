@@ -81,15 +81,20 @@ func (e *editTool) Run(ctx context.Context, args map[string]any) (ToolResult, er
 		return ToolResult{}, fmt.Errorf("edit %s: %w", path, err)
 	}
 	text := string(data)
-	updated := ""
-	if strings.Count(text, old) == 1 {
+	count := strings.Count(text, old)
+	var updated string
+	switch {
+	case count == 1:
 		updated = strings.Replace(text, old, newStr, 1)
-	} else if updated = trimmedFallback(text, old, newStr); updated == "" {
-		count := strings.Count(text, old)
-		if count == 0 {
-			return ToolResult{}, fmt.Errorf("edit %s: old_string not found", path)
+	default:
+		u, ok := normalizedFallback(text, old, newStr)
+		if !ok {
+			if count == 0 {
+				return ToolResult{}, fmt.Errorf("edit %s: old_string not found", path)
+			}
+			return ToolResult{}, fmt.Errorf("edit %s: old_string matched %d times; make it unique", path, count)
 		}
-		return ToolResult{}, fmt.Errorf("edit %s: old_string matched %d times; make it unique", path, count)
+		updated = u
 	}
 	// Atomic write: stage the new content in a same-directory temp file, then
 	// rename it over the target. A crash mid-edit therefore leaves either the
@@ -131,16 +136,22 @@ func normalized(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
-// trimmedFallback retries the match with per-line whitespace-normalized
+// normalizedFallback retries the match with each line's whitespace normalized
 // sides of each line; it returns the updated file content when exactly one region matches,
 // and "" otherwise (zero or multiple matches), preserving the strict unique
 // match guarantee. The replacement keeps the file's own line endings and
 // trailing-newline state.
-func trimmedFallback(text, old, newStr string) string {
+func normalizedFallback(text, old, newStr string) (string, bool) {
+	crlf := strings.Contains(text, "\r\n")
+	if crlf {
+		// Work in LF space so matching and reconstruction see clean lines;
+		// converted back below before returning.
+		text = strings.ReplaceAll(text, "\r\n", "\n")
+	}
 	textLines := splitLines(text)
 	oldLines := splitLines(strings.TrimSuffix(old, "\n"))
 	if len(oldLines) == 0 || len(oldLines) > len(textLines) {
-		return ""
+		return "", false
 	}
 	matches := []int{}
 	for i := 0; i+len(oldLines) <= len(textLines); i++ {
@@ -156,7 +167,7 @@ func trimmedFallback(text, old, newStr string) string {
 		}
 	}
 	if len(matches) != 1 {
-		return ""
+		return "", false
 	}
 	newLines := splitLines(strings.TrimSuffix(newStr, "\n"))
 	out := make([]string, 0, len(textLines)-len(oldLines)+len(newLines))
@@ -167,5 +178,9 @@ func trimmedFallback(text, old, newStr string) string {
 	if strings.HasSuffix(text, "\n") && !strings.HasSuffix(joined, "\n") {
 		joined += "\n"
 	}
-	return joined
+	// Reconstruction joins on \n; a CRLF file gets its endings restored here.
+	if crlf {
+		joined = strings.ReplaceAll(joined, "\n", "\r\n")
+	}
+	return joined, true
 }
