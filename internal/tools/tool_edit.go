@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -54,6 +55,19 @@ func (e *editTool) Run(ctx context.Context, args map[string]any) (ToolResult, er
 	if err != nil {
 		return ToolResult{}, err
 	}
+	// A rename over a symlink replaces the link itself; follow it first so
+	// edits land in the target file as before, and re-validate so following
+	// the link cannot escape the writable roots.
+	if resolved, linkErr := filepath.EvalSymlinks(host); linkErr == nil && resolved != host {
+		host, err = e.val.Resolve(resolved)
+		if err != nil {
+			return ToolResult{}, fmt.Errorf("edit %s: %w", path, err)
+		}
+	}
+	info, err := os.Stat(host)
+	if err != nil {
+		return ToolResult{}, fmt.Errorf("edit %s: %w", path, err)
+	}
 	data, err := os.ReadFile(host)
 	if err != nil {
 		return ToolResult{}, fmt.Errorf("edit %s: %w", path, err)
@@ -68,7 +82,35 @@ func (e *editTool) Run(ctx context.Context, args map[string]any) (ToolResult, er
 		return ToolResult{}, fmt.Errorf("edit %s: old_string matched %d times; make it unique", path, count)
 	}
 	updated := strings.Replace(text, old, newStr, 1)
-	if err := os.WriteFile(host, []byte(updated), 0o644); err != nil {
+	// Atomic write: stage the new content in a same-directory temp file, then
+	// rename it over the target. A crash mid-edit therefore leaves either the
+	// old or the new content, never a truncated mix. Same directory keeps the
+	// rename on one filesystem; preserving the original mode avoids the mode
+	// reset a fresh temp file would cause.
+	dir := filepath.Dir(host)
+	tmp, err := os.CreateTemp(dir, ".eitri-edit-*")
+	if err != nil {
+		return ToolResult{}, fmt.Errorf("edit %s: %w", path, err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // no-op after successful rename
+	if _, err := tmp.Write([]byte(updated)); err != nil {
+		tmp.Close()
+		return ToolResult{}, fmt.Errorf("edit %s: %w", path, err)
+	}
+	// Sync before the rename so the crash window closes on content, not just
+	// on the directory entry.
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return ToolResult{}, fmt.Errorf("edit %s: %w", path, err)
+	}
+	if err := tmp.Close(); err != nil {
+		return ToolResult{}, fmt.Errorf("edit %s: %w", path, err)
+	}
+	if err := os.Chmod(tmpName, info.Mode().Perm()); err != nil {
+		return ToolResult{}, fmt.Errorf("edit %s: %w", path, err)
+	}
+	if err := os.Rename(tmpName, host); err != nil {
 		return ToolResult{}, fmt.Errorf("edit %s: %w", path, err)
 	}
 	return ToolResult{Text: fmt.Sprintf("Edit applied to %s", path)}, nil
