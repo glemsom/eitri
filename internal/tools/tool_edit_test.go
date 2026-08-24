@@ -183,6 +183,55 @@ func TestEditTrimmedFallbackNoMatchStillErrors(t *testing.T) {
 	}
 }
 
+func TestEditNotFoundNamesNearestCandidate(t *testing.T) {
+	t.Parallel()
+	r, ws := newTestRegistry(t, nil)
+	path := filepath.Join(ws, "f.txt")
+	content := "alpha one\nalpha two\nbeta\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	_, err := r.Run(context.Background(), "edit", argMap(
+		"path", path,
+		"old_string", "alpha one\nalpha too",
+		"new_string", "x",
+	))
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("no-match error = %v, want \"not found\"", err)
+	}
+	msg := err.Error()
+	// Nearest candidate names the closest matching region so the model can
+	// self-correct without re-reading the file.
+	if !strings.Contains(msg, "nearest match") || !strings.Contains(msg, "alpha two") {
+		t.Fatalf("no-match error missing nearest-candidate diagnostic = %v", err)
+	}
+	data, rerr := os.ReadFile(path)
+	if rerr != nil || string(data) != content {
+		t.Fatalf("after failed edit = %q err=%v, want file untouched", data, rerr)
+	}
+}
+
+func TestEditNotFoundCRLFHint(t *testing.T) {
+	t.Parallel()
+	r, ws := newTestRegistry(t, nil)
+	path := filepath.Join(ws, "f.txt")
+	if err := os.WriteFile(path, []byte("first line\r\nsecond line\r\n"), 0o600); err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	_, err := r.Run(context.Background(), "edit", argMap(
+		"path", path,
+		"old_string", "first line\nsecond line\nthird line",
+		"new_string", "x",
+	))
+	if err == nil || !strings.Contains(err.Error(), "file uses CRLF line endings") {
+		t.Fatalf("CRLF no-match error = %v, want CRLF line-endings hint", err)
+	}
+	data, rerr := os.ReadFile(path)
+	if rerr != nil || string(data) != "first line\r\nsecond line\r\n" {
+		t.Fatalf("after failed edit = %q err=%v, want file untouched", data, rerr)
+	}
+}
+
 func TestEditTrimmedFallbackPreservesCRLF(t *testing.T) {
 	t.Parallel()
 	r, ws := newTestRegistry(t, nil)
