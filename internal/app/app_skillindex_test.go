@@ -86,3 +86,26 @@ func TestRunAgentNoIndexWhenNoModelVisibleSkills(t *testing.T) {
 		}
 	}
 }
+
+// TestRunAgentNoIndexWhenCatalogNil guards the nil-catalog half of the nil-index
+// contract: a nil catalog must not render (RenderIndex would dereference a nil
+// receiver), so runAgent leaves the index nil and the engine omits the block.
+func TestRunAgentNoIndexWhenCatalogNil(t *testing.T) {
+	reg := tools.NewRegistry(tools.Deps{Workspace: t.TempDir(), GUID: tools.GUID("nilcat-" + t.Name())})
+
+	cap := &captureSkillRequests{}
+	e := engine.New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
+		cap.reqs = append(cap.reqs, req)
+		return provider.StreamFunc(provider.Chunk{Content: "ok"}, provider.Chunk{FinishReason: "stop", Done: true}), nil
+	}), mockTranscript{})
+
+	cfg := config.Default()
+	if _, err := runAgent(context.Background(), e, cfg, reg, "sess-"+t.Name(), "hi", nil, nil, nil); err != nil {
+		t.Fatalf("runAgent error = %v, want nil", err)
+	}
+	for _, m := range cap.reqs[0].Messages {
+		if strings.Contains(m.Content, "<available_skills>") {
+			t.Fatalf("skill-index system message present with a nil catalog:\n%s", m.Content)
+		}
+	}
+}
