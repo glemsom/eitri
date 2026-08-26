@@ -224,7 +224,7 @@ func (stderrWarner) Warnf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "eitri: "+format+"\n", args...)
 }
 
-// runAgent drives one agent turn (user prompt → assistant answer) over the shared run engine, session transcript, and tool registry that both the TUI and batch use. The model-visible index is carried as its own system message so available skills reach the model without perturbing the byte-stable system prompt; a catalog with none renders to a nil index that keeps the no-index wire bytes intact. ctx is threaded through to the engine so the TUI's per-turn cancellation (Ctrl+C/Esc) reaches an in-flight run; batch passes context.Background() (no stop binding).
+// runAgent drives one agent turn (user prompt → assistant answer) over the shared run engine, session transcript, and tool registry that both the TUI and batch use. The model-visible index and the per-run workspace directive are each carried as their own system message so they reach the model without perturbing the byte-stable system prompt; a catalog with none renders to a nil index that keeps the no-index wire bytes intact. ctx is threaded through to the engine so the TUI's per-turn cancellation (Ctrl+C/Esc) reaches an in-flight run; batch passes context.Background() (no stop binding).
 func runAgent(ctx context.Context, e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey, prompt string, catalog *tools.Catalog, skillInject *string, canContinue func() bool) (engine.Result, error) {
 	compaction := &engine.CompactionConfig{Fraction: cfg.CompactionFraction}
 	var skillIndex *string
@@ -240,6 +240,7 @@ func runAgent(ctx context.Context, e *engine.Engine, cfg config.Config, reg *too
 	return e.RunAgent(ctx, engine.RunRequest{
 		Model:           cfg.Model,
 		Prompt:          prompt,
+		Workspace:       reg.Workspace(),
 		SkillIndex:      skillIndex,
 		SkillInject:     skillInject,
 		SessionKey:      sessionKey,

@@ -63,6 +63,11 @@ type RunRequest struct {
 	SkillInject *string
 	SessionKey  string
 
+	// Workspace states the host-absolute cwd the session operates in. Unlike the
+	// byte-stable system prompt, it is per-run state, so it rides as its own
+	// system-layer message next to the persona head. Empty omits it.
+	Workspace string
+
 	// SkillIndex is an optional pre-rendered model-visible skill inventory. When
 	// set, it is carried to the provider as a dedicated system-layer message
 	// appended after the persona head so the model sees available skills without
@@ -84,6 +89,14 @@ type Result struct {
 // systemPromptHead returns the byte-stable embedded Eitri system prompt as the immutable request-head message.
 func systemPromptHead() []provider.Message {
 	return []provider.Message{{Role: provider.RoleSystem, Content: SystemPromptContent()}}
+}
+
+// workspaceDirective renders the per-run working-directory statement as its own
+// system-layer directive. It is dynamic state (unlike the byte-stable system
+// prompt), so it is generated at request-build time from the live workspace
+// path rather than baked into prompt.md.
+func workspaceDirective(workspace string) string {
+	return "## Working directory\nYou are operating in the workspace `" + workspace + "`. Resolve all relative paths against it."
 }
 
 // bindSkillToPrompt folds a slash-injected skill payload into the single
@@ -159,6 +172,9 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		return Result{}, ErrStopped
 	}
 	messages := systemPromptHead()
+	if req.Workspace != "" {
+		messages = append(messages, provider.Message{Role: provider.RoleSystem, Content: workspaceDirective(req.Workspace)})
+	}
 	if req.SkillIndex != nil {
 		messages = append(messages, provider.Message{Role: provider.RoleSystem, Content: *req.SkillIndex})
 	}
@@ -358,10 +374,14 @@ func (e *Engine) storeSessionHistory(sessionKey string, messages []provider.Mess
 	if len(messages) > 0 && messages[0].Role == provider.RoleSystem && messages[0].Content == SystemPromptContent() {
 		start = 1
 	}
-	// The persona head may be immediately followed by the model-visible skill
-	// index as a second system message. It is re-injected fresh from
-	// req.SkillIndex on every run, so it must not persist into session history
-	// (that would duplicate the message on the next turn).
+	// The persona head may be immediately followed by the per-run workspace
+	// directive and/or the model-visible skill index as extra system messages.
+	// Both are re-injected fresh every run (req.Workspace, req.SkillIndex), so
+	// they must not persist into session history (that would duplicate the
+	// message on the next turn).
+	for start < len(messages) && isWorkspaceMessage(messages[start]) {
+		start++
+	}
 	for start < len(messages) && isSkillIndexMessage(messages[start]) {
 		start++
 	}

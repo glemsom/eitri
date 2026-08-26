@@ -66,11 +66,17 @@ func (e *Engine) maybeCompact(ctx context.Context, req RunRequest, opts AgentOpt
 		stableHead = append(stableHead, messages[0])
 		start = 1
 	}
-	// The persona head may carry the model-visible skill index as a second
-	// system message; keep it in the stable head alongside the system prompt.
-	// It is normally re-injected fresh from req.SkillIndex, but preserving it
-	// through eviction keeps the compact-path wire messages identical to the
-	// non-compact path.
+	// The persona head may be followed by the per-run workspace directive and
+	// the model-visible skill index as extra system messages; keep them in the
+	// stable head alongside the system prompt so the compact-path wire messages
+	// match the non-compact path. Both are re-injected fresh (req.Workspace,
+	// req.SkillIndex) on the next run and evicted periodically, but preserving
+	// them through eviction keeps them adjacent to the persona where the model
+	// expects them.
+	for start < len(messages) && isWorkspaceMessage(messages[start]) {
+		stableHead = append(stableHead, messages[start])
+		start++
+	}
 	for start < len(messages) && isSkillIndexMessage(messages[start]) {
 		stableHead = append(stableHead, messages[start])
 		start++
@@ -222,6 +228,15 @@ func isSkillMessage(m provider.Message) bool {
 // can drop it.
 func isSkillIndexMessage(m provider.Message) bool {
 	return m.Role == provider.RoleSystem && strings.Contains(m.Content, "<available_skills>")
+}
+
+// isWorkspaceMessage reports whether a message is the injected per-run
+// working-directory system message (see RunRequest.Workspace /
+// workspaceDirective). It matches the directive's heading so history stripping
+// and compaction can drop or preserve it independently of the byte-stable
+// system prompt.
+func isWorkspaceMessage(m provider.Message) bool {
+	return m.Role == provider.RoleSystem && strings.Contains(m.Content, "## Working directory")
 }
 
 // renderBody serializes the evicted body messages into a flat transcript the summary model can consume.
