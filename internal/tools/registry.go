@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 )
 
-// Deps carries the per-session wiring the registry (and hence every tool) needs: the workspace, the session temp host root, the GUID that namespaces /tmp, configured extra writable paths, the sandbox runner, and the network and browser seams.
+// Deps carries the per-session wiring the registry (and hence every tool) needs: the workspace, the session temp host root, the GUID that namespaces /tmp, configured extra writable paths, the sandbox runner, the network and browser seams, and the skill catalog backing the human /skillname slash surface.
 type Deps struct {
 	Workspace     string
 	TempHost      string
@@ -50,13 +50,14 @@ func (r *Registry) Definitions() []Definition {
 	return out
 }
 
-// Registry is the shared tool registry: it wires the single PathTranslator plus the network and browser seams, then exposes the fixed tool surface.
+// Registry is the shared tool registry: it wires the single PathTranslator plus the network and browser seams, then exposes the fixed tool surface. It also holds the skill catalog that backs only the human /skillname slash surface.
 type Registry struct {
 	tr        *PathTranslator
 	sandbox   *Sandbox
 	browser   BrowserLauncher
 	workspace string
 	tools     map[string]Tool
+	catalog   *Catalog
 }
 
 // NewRegistry builds the registry for one session from Deps.
@@ -77,19 +78,16 @@ func NewRegistry(d Deps) *Registry {
 	r.tools["bash"] = &bashTool{sb: r.sandbox}
 	r.tools["web_fetch"] = &webFetchTool{f: d.Fetcher}
 	r.tools["open_in_browser"] = &openInBrowserTool{br: d.Browser, tr: r.tr}
-	if d.Skills != nil && len(d.Skills.Names()) > 0 {
-		r.tools["skill"] = &skillTool{c: d.Skills}
-	}
+
+	// Skills back only the human /skillname slash surface; the model has no
+	// `skill` tool and loads packs itself via `bash cat` (see the system prompt).
+	r.catalog = d.Skills
 	return r
 }
 
 // Names returns the registered tool names in stable order.
 func (r *Registry) Names() []string {
-	base := []string{"bash", "web_fetch", "open_in_browser"}
-	if _, ok := r.tools["skill"]; ok {
-		return append(base, "skill")
-	}
-	return base
+	return []string{"bash", "web_fetch", "open_in_browser"}
 }
 
 // PathTranslator returns the shared translation seam (exposed for host-side launch points like open_in_browser and for tests).
@@ -107,21 +105,19 @@ func (r *Registry) Run(ctx context.Context, name string, args map[string]any) (T
 	return tool.Run(ctx, args)
 }
 
-// ActivateSkill renders the named skill's payload through the skill tool,
-// forcing re-injection even when the skill is already active this session: the
-// TUI slash surface is an explicit human re-invoke that must always re-apply,
-// unlike the model's automatic skill tool call (see skillTool.Run) which dedupes
-// within a single agent turn-loop.
-func (r *Registry) ActivateSkill(ctx context.Context, name string) (ToolResult, error) {
-	t, ok := r.tools["skill"]
-	if !ok {
+// ActivateSkill renders the named skill's payload for the TUI's human
+// `/skillname` slash surface. Every activation re-applies the full payload: a
+// human re-invoke is an explicit command, never short-circuited. The model has
+// no `skill` tool; it loads packs itself via `bash cat` (see the system prompt).
+func (r *Registry) ActivateSkill(_ context.Context, name string) (ToolResult, error) {
+	if r.catalog == nil || len(r.catalog.Names()) == 0 {
 		return ToolResult{}, fmt.Errorf("no skills configured")
 	}
-	st, ok := t.(*skillTool)
-	if !ok {
-		return ToolResult{}, fmt.Errorf("skill tool unavailable")
+	sk := r.catalog.Skill(name)
+	if sk == nil {
+		return ToolResult{}, fmt.Errorf("unknown skill %q", name)
 	}
-	return st.activate(ctx, name, true)
+	return ToolResult{Text: renderSkillPayload(name, sk)}, nil
 }
 
 // helper: strArg extracts a required string argument, enforcing presence.
@@ -146,4 +142,3 @@ func strictSchema(properties map[string]any, required []string) map[string]any {
 		"required":             required,
 	}
 }
-

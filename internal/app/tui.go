@@ -142,7 +142,7 @@ func pushEvent(ch chan<- tui.Event, u tui.Event) {
 	}
 }
 
-// skillSurface adapts the run's skill catalog to the TUI's slash-command surface: Items lists the detected skill names for `/` completion and Activate runs the `skill` tool through the registry (a no-op registry when the tool is unregistered, i.e. no skills).
+// skillSurface adapts the run's skill catalog to the TUI's slash-command surface: Items lists the detected skill names for `/` completion and Activate renders the named skill's payload through the registry's slash-activation seam.
 func skillSurface(reg *tools.Registry, c *tools.Catalog) *tui.SkillsSurface {
 	if c == nil || len(c.Names()) == 0 {
 		return nil

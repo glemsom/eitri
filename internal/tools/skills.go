@@ -1,7 +1,6 @@
 package tools
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,15 +22,15 @@ type Skill struct {
 }
 
 // Catalog is the filtered, trust-gated set of discoverable skills for a run.
+// It backs the human `/skillname` slash surface only: the model has no `skill`
+// tool and loads packs itself via `bash cat` (see the system prompt).
 type Catalog struct {
-	skills    map[string]*Skill
-	scopes    map[string]string // skill name -> install scope ("user" or "project")
-	hidden    map[string]bool   // skill name -> hide-not-block (disable-model-invocation)
-	order     []string
-	activated map[string]bool
+	skills map[string]*Skill
+	scopes map[string]string // skill name -> install scope ("user" or "project")
+	order  []string
 }
 
-// Names returns the discovered skill names in stable (scope, then sorted) order.
+// Names returns the discovered skill names in stable (sorted) order.
 func (c *Catalog) Names() []string {
 	out := make([]string, len(c.order))
 	copy(out, c.order)
@@ -51,37 +50,11 @@ func (c *Catalog) Scope(name string) string {
 	return c.scopes[name]
 }
 
-// Enum returns the strict-schema enum values: only the names the model may invoke.
-func (c *Catalog) Enum() []any {
-	out := make([]any, 0, len(c.order))
-	for _, n := range c.order {
-		if c.hidden[n] {
-			continue
-		}
-		out = append(out, n)
-	}
-	return out
-}
-
-// IsActive reports whether name has already been injected into this session's context (used to skip re-injection on re-activation).
-func (c *Catalog) IsActive(name string) bool {
-	return c.activated[name]
-}
-
-// MarkActive records that name has been injected, so a later activation dedupes.
-func (c *Catalog) MarkActive(name string) {
-	if _, ok := c.skills[name]; ok {
-		c.activated[name] = true
-	}
-}
-
 // Discover scans the user-global root (~/.agents/skills) and the project root (.agents/skills) for skill packs (a subdir containing a parseable SKILL.md).
 func Discover(userRoot, projectRoot string, w SkillWarner) (*Catalog, error) {
 	c := &Catalog{
-		skills:    map[string]*Skill{},
-		scopes:    map[string]string{},
-		hidden:    map[string]bool{},
-		activated: map[string]bool{},
+		skills: map[string]*Skill{},
+		scopes: map[string]string{},
 	}
 
 	if err := discoverScope(userRoot, c, "user", w); err != nil {
@@ -125,7 +98,7 @@ func discoverScope(root string, c *Catalog, scope string, w SkillWarner) error {
 			continue
 		}
 		packDir := filepath.Join(root, name)
-		skill, hidden, status := parseSkill(packDir)
+		skill, status := parseSkill(packDir)
 		if status == skillUnparseable {
 			if w != nil {
 				w.Warnf("skill %q: skipping unparseable SKILL.md in scope %s", name, scope)
@@ -134,34 +107,32 @@ func discoverScope(root string, c *Catalog, scope string, w SkillWarner) error {
 		}
 		c.skills[name] = skill
 		c.scopes[name] = scope
-		c.hidden[name] = hidden
 	}
 	return nil
 }
 
 // parseSkill reads a pack's SKILL.md, strips its frontmatter leniently, and collects the packaged resources.
-func parseSkill(packDir string) (*Skill, bool, skillParseStatus) {
+func parseSkill(packDir string) (*Skill, skillParseStatus) {
 	md := filepath.Join(packDir, "SKILL.md")
 	data, err := os.ReadFile(md)
 	if err != nil {
-		return nil, false, skillUnparseable
+		return nil, skillUnparseable
 	}
 	body, front, ok := splitFrontmatter(string(data))
 	if !ok {
-		return nil, false, skillUnparseable
+		return nil, skillUnparseable
 	}
 	meta := parseFrontmatter(front)
 	name, ok := meta["name"]
 	name = strings.TrimSpace(name)
 	if !ok || name == "" {
-		return nil, false, skillUnparseable
+		return nil, skillUnparseable
 	}
 	desc := meta["description"]
 	desc = strings.TrimSpace(desc)
 	if desc == "" {
-		return nil, false, skillUnparseable
+		return nil, skillUnparseable
 	}
-	hidden := disableModelInvocation(meta["disable-model-invocation"])
 
 	res := bundledResources(packDir, md)
 	return &Skill{
@@ -169,17 +140,7 @@ func parseSkill(packDir string) (*Skill, bool, skillParseStatus) {
 		Body:        strings.TrimPrefix(body, "\n"),
 		Resources:   res,
 		Dir:         packDir,
-	}, hidden, skillCataloged
-}
-
-// disableModelInvocation reports whether the disable-model-invocation frontmatter field is truthy (true/1/yes), so the pack is hidden from the model (hide-not-block).
-func disableModelInvocation(v string) bool {
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "true", "1", "yes":
-		return true
-	default:
-		return false
-	}
+	}, skillCataloged
 }
 
 // bundledResources lists the pack's files (relative paths) excluding SKILL.md, deterministically sorted.
@@ -258,54 +219,6 @@ func parseFrontmatter(s string) map[string]string {
 		curKey = key
 	}
 	return out
-}
-
-// skillTool is the dedicated skill activation tool.
-type skillTool struct {
-	c *Catalog
-}
-
-func (s *skillTool) Name() string { return "skill" }
-
-func (s *skillTool) Description() string {
-	return "Activate an Agent Skill pack and apply its instructions. Choose the matching skill by name from the provided enum; the pack's markdown and bundled resources are returned for you to follow. Follow the skill's instructions faithfully."
-}
-
-func (s *skillTool) Schema() map[string]any {
-	return strictSchema(map[string]any{
-		"name": map[string]any{
-			"type":        "string",
-			"description": "The name of the skill to activate, chosen from the enum of available skills.",
-			"enum":        s.c.Enum(),
-		},
-	}, []string{"name"})
-}
-
-func (s *skillTool) Run(ctx context.Context, args map[string]any) (ToolResult, error) {
-	name, err := strArg(args, "name")
-	if err != nil {
-		return ToolResult{}, err
-	}
-	return s.activate(ctx, name, false)
-}
-
-// activate renders the named skill's payload, optionally forcing re-injection.
-// force=false (the model's automatic skill tool call) short-circuits with a
-// dedupe notice when the skill is already active this session, so a single
-// agent turn-loop never re-injects; force=true (the TUI's human `/skillname`
-// slash surface) always re-applies the full payload, because the model's prompt
-// messages are rebuilt fresh each turn and a repeated slash is an explicit new
-// command the dedupe is not meant to swallow.
-func (s *skillTool) activate(ctx context.Context, name string, force bool) (ToolResult, error) {
-	if !force && s.c.IsActive(name) {
-		return ToolResult{Text: fmt.Sprintf("skill %q is already active in this context; no re-injection performed.", name)}, nil
-	}
-	sk := s.c.Skill(name)
-	if sk == nil {
-		return ToolResult{}, fmt.Errorf("unknown skill %q", name)
-	}
-	s.c.MarkActive(name)
-	return ToolResult{Text: renderSkillPayload(name, sk)}, nil
 }
 
 // renderSkillPayload builds the structured agentskills-io payload: the body wrapped in <skill_content name="..."> plus a <skill_resources> listing of the bundled files.
