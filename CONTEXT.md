@@ -57,7 +57,7 @@ The lazily rebuilt row index behind the transcript's mouse hit-test and plain-te
 _Avoid_: manual invalidation, dirty-flag writes
 
 **Open-ended expand seam**:
-The persistent Ctrl+E mode that renders every tool entry full-size. A file-changing tool entry shows an inline before→after diff; a path whose content could not be snapshotted falls back to a `[+N, −M]` count summary. Collapsed, an entry keeps only the one-line delta tag.
+The persistent Ctrl+E mode that renders every tool entry full-size. An expanded tool entry shows its delivered result framed in the tool-category's hue; collapsed, it keeps the one-line head and (where the result overran) a summary of the lines/bytes retained. Bash entries render cleanly with no dead file-mutation or skill tooling left behind.
 _Avoid_: detail view, full view
 
 **Fold**:

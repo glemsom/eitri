@@ -36,7 +36,7 @@ func TestFeedEngineEventsMergedArrivalOrder(t *testing.T) {
 	e := engine.New(scriptedInterleavedTurn(), mockTranscript{})
 	merged := tui.NewEventFeed()
 	feedEngineEvents(e, tui.NewTelemetry("deepseek-v4-flash", "low", true, 250),
-		tui.NewDeltaObserver(nil), merged)
+		merged)
 
 	if _, err := e.RunAgent(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "go"},
 		engine.AgentOptions{
@@ -95,7 +95,7 @@ func TestFeedEngineEventsMergedCarriesAnswerDelta(t *testing.T) {
 	// the single FIFO feed the TUI model reads, with no legacy side channels.
 	merged := tui.NewEventFeed()
 	feedEngineEvents(e, tui.NewTelemetry("deepseek-v4-flash", "low", true, 250),
-		tui.NewDeltaObserver(nil), merged)
+		merged)
 
 	if _, err := e.RunAgent(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}, engine.AgentOptions{}); err != nil {
 		t.Fatalf("Run() error = %v", err)

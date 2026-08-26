@@ -65,35 +65,6 @@ func writeFrame(t *testing.T, out, name string, m Model) {
 	t.Logf("wrote %s", name)
 }
 
-const (
-	loginBefore = `package auth
-
-func TestLogin(t *testing.T) {
-	t.Parallel()
-	mock := newMockClock()
-	user := mustCreateUser(t)
-	tok := issueToken(user, mock.Now())
-	if tok.IssuedAt() != mock.Now() {
-		t.Fatalf("issued-at mismatch")
-	}
-}
-`
-	loginAfter = `package auth
-
-func TestLogin(t *testing.T) {
-	t.Parallel()
-	mock := newMockClock()
-	mock.Freeze()
-	defer mock.Unfreeze()
-	user := mustCreateUser(t)
-	tok := issueToken(user, mock.Now())
-	if tok.IssuedAt() != mock.Now().UTC() {
-		t.Fatalf("issued-at mismatch")
-	}
-}
-`
-)
-
 func TestSnapshot_frames(t *testing.T) {
 	t.Parallel()
 	if os.Getenv("EITRI_SNAPSHOT") != "1" {
@@ -128,15 +99,14 @@ func TestSnapshot_frames(t *testing.T) {
 		Name: "bash", Result: "ok (2.1s)\n  PASS  TestLogin\n  2 tests passed", Lines: 3,
 	})
 	m = backdateTool(m, 0, 2100*time.Millisecond)
-	m = toolStart(t, m, "edit", `{"path":"internal/auth/login_test.go"}`)
+	m = toolStart(t, m, "bash", `{"command":"go test ./internal/auth/ -run TestLogin -count=1"}`)
 	m = applyDelta(t, m, "The flake came from a racy mock clock. I froze time before minting the token so the `issued-at` claim is deterministic.")
 	m = applyDelta(t, m, "\n\n```go\nmock.Freeze()\ndefer mock.Unfreeze()\n```\n")
 	m = applyDelta(t, m, "\n\nThe suite passes consistently now — ")
 	writeFrame(t, out, "03_busy_stream", m)
 	m = toolResult(t, m, ToolResult{
-		Name: "edit", Path: "internal/auth/login_test.go",
+		Name:   "bash",
 		Result: "ok (42ms)\n  PASS  TestLogin\n  1 file changed", Lines: 4,
-		Added: 3, Removed: 1, Before: loginBefore, After: loginAfter,
 	})
 	m = upd(t, m, turnDoneMsg{
 		prompt: "Fix the flaky login test",
@@ -145,10 +115,10 @@ func TestSnapshot_frames(t *testing.T) {
 
 	m = typeText(t, m, "Add retry with exponential backoff to the HTTP client")
 	m, _ = submitBusy(t, m)
-	m = toolStart(t, m, "read", `{"path":"internal/http/client.go","start_line":40,"end_line":90}`)
+	m = toolStart(t, m, "bash", `{"command":"go test ./..."}`)
 	m = toolResult(t, m, ToolResult{
-		Name: "read", Path: "internal/http/client.go",
-		Result: "ok (1ms)\n  50 lines", Lines: 1,
+		Name:   "bash",
+		Result: "ok (1ms)\n  2 tests passed", Lines: 2,
 	})
 	m = applyReasoningDelta(t, m, "A 429-safe retry needs jittered backoff so a thundering herd never re-collides. The client already centralizes requests in send(), so the retry loop belongs there with the circuit breaker state it already tracks.")
 	m = toolStart(t, m, "web_fetch", `{"url":"https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After"}`)
@@ -165,7 +135,7 @@ func TestSnapshot_frames(t *testing.T) {
 	writeFrame(t, out, "04_chat", m)
 
 	m = keypress(t, m, "ctrl+e")
-	writeFrame(t, out, "05_expanded_diff", m)
+	writeFrame(t, out, "05_expanded", m)
 	m = keypress(t, m, "ctrl+e")
 
 	m = keypress(t, m, "ctrl+s")
@@ -238,14 +208,13 @@ func scriptedChat(t *testing.T, cfg config.Config, w, h int) Model {
 		Name: "bash", Result: "ok (2.1s)\n  PASS  TestLogin\n  2 tests passed", Lines: 3,
 	})
 	m = backdateTool(m, 0, 2100*time.Millisecond)
-	m = toolStart(t, m, "edit", `{"path":"internal/auth/login_test.go"}`)
+	m = toolStart(t, m, "bash", `{"command":"go test ./internal/auth/ -run TestLogin -count=1"}`)
 	m = applyDelta(t, m, "The flake came from a racy mock clock. I froze time before minting the token so the `issued-at` claim is deterministic.")
 	m = applyDelta(t, m, "\n\n```go\nmock.Freeze()\ndefer mock.Unfreeze()\n```\n")
 	m = applyDelta(t, m, "\n\nThe suite passes consistently now — ")
 	m = toolResult(t, m, ToolResult{
-		Name: "edit", Path: "internal/auth/login_test.go",
+		Name:   "bash",
 		Result: "ok (42ms)\n  PASS  TestLogin\n  1 file changed", Lines: 4,
-		Added: 3, Removed: 1, Before: loginBefore, After: loginAfter,
 	})
 	m = upd(t, m, turnDoneMsg{
 		prompt: "Fix the flaky login test",
@@ -254,10 +223,10 @@ func scriptedChat(t *testing.T, cfg config.Config, w, h int) Model {
 
 	m = typeText(t, m, "Add retry with exponential backoff to the HTTP client")
 	m, _ = submitBusy(t, m)
-	m = toolStart(t, m, "read", `{"path":"internal/http/client.go","start_line":40,"end_line":90}`)
+	m = toolStart(t, m, "bash", `{"command":"go test ./..."}`)
 	m = toolResult(t, m, ToolResult{
-		Name: "read", Path: "internal/http/client.go",
-		Result: "ok (1ms)\n  50 lines", Lines: 1,
+		Name:   "bash",
+		Result: "ok (1ms)\n  PASS  TestHTTPClient\n  50 lines", Lines: 2,
 	})
 	m = applyReasoningDelta(t, m, "A 429-safe retry needs jittered backoff so a thundering herd never re-collides. The client already centralizes requests in send(), so the retry loop belongs there.")
 	m = toolStart(t, m, "web_fetch", `{"url":"https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After"}`)

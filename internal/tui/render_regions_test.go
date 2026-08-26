@@ -8,42 +8,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-func TestModel_expandedViewEditCardRendersInlineDiff(t *testing.T) {
-	t.Parallel()
-	feed := NewEventFeed()
-	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
-			return TurnResult{Answer: "ok"}, nil
-		},
-		Events: feed,
-	})
-	m = resize(t, m)
-	m = typeText(t, m, "edit it")
-	m = submitAndWait(t, m)
-	m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: "edit", Args: `{"path":"internal/auth.go"}`}})
-	m = feedToolUpdate(t, &m, feed, ToolUpdate{Result: &ToolResult{
-		Name: "edit", Result: "Edit applied\n", Added: 1, Removed: 1,
-		Before: "package auth\n\nfunc Old() {}\n", After: "package auth\n\nfunc New() {}\n", Path: "internal/auth.go",
-	}})
-
-	collapsed := view(m)
-	if !strings.Contains(collapsed, "[+1, −1]") {
-		t.Errorf("collapsed card must keep the delta tag, got: %q", collapsed)
-	}
-	if strings.Contains(collapsed, "func Old") || strings.Contains(collapsed, "func New") {
-		t.Errorf("collapsed card must not leak before/after content, got: %q", collapsed)
-	}
-
-	m = mustUpdate(t, m, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
-	strip := ansiStrip(view(m))
-	if !strings.Contains(strip, "-func Old() {}") || !strings.Contains(strip, "+func New() {}") {
-		t.Errorf("expanded-view edit card must render the inline diff, got:\n%s", strip)
-	}
-	if !strings.Contains(strip, "@@ -1,3 +1,3 @@") {
-		t.Errorf("expanded-view edit card must render git-style hunk headers, got:\n%s", strip)
-	}
-}
-
 func TestRenderRegions_HistoryVsBandSeparation(t *testing.T) {
 	t.Parallel()
 	feed := NewEventFeed()
@@ -61,9 +25,9 @@ func TestRenderRegions_HistoryVsBandSeparation(t *testing.T) {
 	m = resize(t, m)
 	m = typeText(t, m, "edit it")
 	m = submitAndWait(t, m)
-	m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: "edit", Args: `{"path":"internal/main.go"}`}})
+	m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls -la"}`}})
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Result: &ToolResult{
-		Name: "edit", Result: "Edit applied\n", Added: 2, Removed: 0,
+		Name: "bash", Result: "a.go\nb.go\n", Lines: 2,
 	}})
 
 	m = typeText(t, m, "/")
@@ -73,7 +37,7 @@ func TestRenderRegions_HistoryVsBandSeparation(t *testing.T) {
 	m.renderBand(&band)
 	hs, bs := hist.String(), band.String()
 
-	for _, want := range []string{"workspace: /tmp/acme-project", "✂️ edit"} {
+	for _, want := range []string{"workspace: /tmp/acme-project", "🔧 bash", "ls -la"} {
 		if !strings.Contains(hs, want) {
 			t.Errorf("scroll region missing %q, got:\n%s", want, hs)
 		}

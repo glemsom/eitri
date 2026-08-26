@@ -54,5 +54,3 @@ func TestRenderUserPromptCard_noStrayBackgroundColors(t *testing.T) {
 		})
 	}
 }
-
-

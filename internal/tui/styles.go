@@ -13,9 +13,9 @@ type Theme struct {
 	error  color.Color // semantic color for failures (⚠ errors, ✗ tool outcomes)
 	ok     color.Color // semantic color for successful tool outcomes (✓)
 	shell  color.Color // semantic color for shell tool entries (bash, ⊕)
-	file   color.Color // semantic color for file tool entries (read/write/edit, ⊕)
+	file   color.Color // secondary hue (markdown links, ⊕ fallback)
 	web    color.Color // semantic color for web tool entries (web_fetch, ⊕)
-	skill  color.Color // semantic color for skill tool entries (skill, ⊕)
+	skill  color.Color // secondary hue (markdown images, ⊕ fallback)
 	bubble color.Color
 
 	railHues [3]color.Color
@@ -33,13 +33,9 @@ type Theme struct {
 	thinkingStyle              lipgloss.Style // the 🤔 collapsed reasoning hint
 	toolStyle                  lipgloss.Style // the ⊕ tool-entry line (uncategorized fallback)
 	toolShellStyle             lipgloss.Style // the ⊕ tool-entry line, shell category
-	toolFileStyle              lipgloss.Style // the ⊕ tool-entry line, file category
 	toolWebStyle               lipgloss.Style // the ⊕ tool-entry line, web category
-	toolSkillStyle             lipgloss.Style // the ⊕ tool-entry line, skill category
 	outcomeOKStyle             lipgloss.Style // the ✓ tool-outcome tag
 	outcomeErrStyle            lipgloss.Style // the ✗ tool-outcome tag
-	diffAddStyle               lipgloss.Style
-	diffDelStyle               lipgloss.Style
 	slashSelectStyle           lipgloss.Style // the selected slash-completion candidate
 	focusStyle                 lipgloss.Style // the focused collapsible block's head/hint marker
 	bandSeparatorStyle         lipgloss.Style // the separator row framing the bottom band
@@ -298,21 +294,13 @@ func newTheme(accent, err, ok, shell, file, web, skill, bubble color.Color, rail
 		thinkingStyle:              lipgloss.NewStyle().Faint(true).Italic(true).Foreground(accent),
 		toolStyle:                  lipgloss.NewStyle().Faint(true),
 		toolShellStyle:             lipgloss.NewStyle().Foreground(shell),
-		toolFileStyle:              lipgloss.NewStyle().Foreground(file),
 		toolWebStyle:               lipgloss.NewStyle().Foreground(web),
-		toolSkillStyle:             lipgloss.NewStyle().Foreground(skill),
 		outcomeOKStyle:             lipgloss.NewStyle().Foreground(ok),
 		outcomeErrStyle:            lipgloss.NewStyle().Foreground(err),
-		diffAddStyle: lipgloss.NewStyle().
-			Foreground(ok).
-			Background(dimmed(ok, 0.14)),
-		diffDelStyle: lipgloss.NewStyle().
-			Foreground(err).
-			Background(dimmed(err, 0.14)),
-		slashSelectStyle:   lipgloss.NewStyle().Bold(true).Foreground(accent),
-		focusStyle:         lipgloss.NewStyle().Bold(true).Foreground(accent),
-		bandSeparatorStyle: lipgloss.NewStyle().Foreground(accent),
-		bandStatusStyle:    lipgloss.NewStyle().Foreground(accent),
+		slashSelectStyle:           lipgloss.NewStyle().Bold(true).Foreground(accent),
+		focusStyle:                 lipgloss.NewStyle().Bold(true).Foreground(accent),
+		bandSeparatorStyle:         lipgloss.NewStyle().Foreground(accent),
+		bandStatusStyle:            lipgloss.NewStyle().Foreground(accent),
 	}
 	for i, c := range rail {
 		th.railHeaderStyles[i] = lipgloss.NewStyle().Bold(true).Foreground(c)
@@ -361,12 +349,8 @@ func (th Theme) toolCategoryStyle(cat toolCategory) lipgloss.Style {
 	switch cat {
 	case catShell:
 		return th.toolShellStyle
-	case catFile:
-		return th.toolFileStyle
 	case catWeb:
 		return th.toolWebStyle
-	case catSkill:
-		return th.toolSkillStyle
 	}
 	return th.toolStyle
 }

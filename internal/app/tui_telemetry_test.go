@@ -24,7 +24,7 @@ func TestFeedTelemetryBridgesUsageEvent(t *testing.T) {
 	}), mockTranscript{})
 
 	te := tui.NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	feedEngineEvents(e, te, tui.NewDeltaObserver(nil), tui.NewEventFeed())
+	feedEngineEvents(e, te, tui.NewEventFeed())
 
 	if _, err := e.RunAgent(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}, engine.AgentOptions{}); err != nil {
 		t.Fatalf("Run() error = %v", err)
@@ -54,7 +54,7 @@ func TestFeedTelemetryBridgesTurnEvent(t *testing.T) {
 	}), mockTranscript{})
 
 	te := tui.NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	feedEngineEvents(e, te, tui.NewDeltaObserver(nil), tui.NewEventFeed())
+	feedEngineEvents(e, te, tui.NewEventFeed())
 
 	for i := 0; i < 2; i++ {
 		if _, err := e.RunAgent(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}, engine.AgentOptions{}); err != nil {
@@ -82,7 +82,7 @@ func TestFeedEngineEventsBridgesAnswerDelta(t *testing.T) {
 
 	te := tui.NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	events := tui.NewEventFeed()
-	feedEngineEvents(e, te, tui.NewDeltaObserver(nil), events)
+	feedEngineEvents(e, te, events)
 
 	if _, err := e.RunAgent(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}, engine.AgentOptions{}); err != nil {
 		t.Fatalf("Run() error = %v", err)
@@ -143,7 +143,7 @@ func scriptedToolEditTurn() *provider.Scripted {
 func TestFeedEngineEventsBridgesToolEvents(t *testing.T) {
 	e := engine.New(scriptedToolEditTurn(), mockTranscript{})
 	merged := tui.NewEventFeed()
-	feedEngineEvents(e, tui.NewTelemetry("deepseek-v4-flash", "low", true, 250), tui.NewDeltaObserver(nil), merged)
+	feedEngineEvents(e, tui.NewTelemetry("deepseek-v4-flash", "low", true, 250), merged)
 
 	if _, err := e.RunAgent(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "edit"},
 		engine.AgentOptions{

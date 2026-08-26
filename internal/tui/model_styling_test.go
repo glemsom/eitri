@@ -168,21 +168,13 @@ func TestModel_stylingToolCategoryColors(t *testing.T) {
 		hue  string
 	}{
 		{"bash", "\x1b[38;2;224;175;104m"},            // shell #E0AF68
-		{"read", "\x1b[38;2;125;207;255m"},            // file #7DCFFF
-		{"write", "\x1b[38;2;125;207;255m"},           // file
-		{"edit", "\x1b[38;2;125;207;255m"},            // file
 		{"web_fetch", "\x1b[38;2;187;154;247m"},       // web #BB9AF7
 		{"open_in_browser", "\x1b[38;2;187;154;247m"}, // web
-		{"skill", "\x1b[38;2;255;135;215m"},           // skill #FF87D7
 	}
 	toolGlyphs := map[string]string{
 		"bash":            "🔧",
-		"read":            "📖",
-		"write":           "✏️",
-		"edit":            "✂️",
 		"web_fetch":       "🌐",
 		"open_in_browser": "🌍",
-		"skill":           "⚡",
 	}
 	for _, tc := range cases {
 		m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: tc.tool, Args: "{}"}})

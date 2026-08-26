@@ -350,6 +350,12 @@ func asModel(t *testing.T, tm tea.Model) Model {
 
 func view(m Model) string { return m.View().Content }
 
+func mustUpdate(t *testing.T, m Model, msg tea.Msg) Model {
+	t.Helper()
+	nm, _ := m.Update(msg)
+	return asModel(t, nm)
+}
+
 func TestModel_shiftEnterInsertsNewline(t *testing.T) {
 	t.Parallel()
 	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
