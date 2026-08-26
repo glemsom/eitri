@@ -25,7 +25,7 @@ A tool running outside the sandbox but resolving the same path namespace as `bas
 _Avoid_: local tool, external tool
 
 **Skill activation**:
-A skill invoked by the user from the TUI via `/skillname [<args>]`, distinct from the model's automatic `skill` tool call. Every activation starts an agent turn whose prompt carries the skill's content; a repeated activation re-applies the full skill rather than no-op'ing. The SkillActivation module owns this surface end to end — slash-command parsing, completion candidates and cycling, the rendered completion list and its row count, the follow-up turn prompt, and activation through the SkillsSurface — so the Model delegates and holds no slash state: slash tests hit the module seam directly rather than driving a full Model.
+A skill invoked by the user from the TUI via `/skillname [<args>]`. The model has no `skill` tool — it loads packs itself via `bash cat` — so every activation is a human slash. Each activation starts an agent turn whose prompt carries the skill's content; a repeated activation re-applies the full skill rather than no-op'ing. The SkillActivation module owns this surface end to end — slash-command parsing, completion candidates and cycling, the rendered completion list and its row count, the follow-up turn prompt, and activation through the SkillsSurface — so the Model delegates and holds no slash state: slash tests hit the module seam directly rather than driving a full Model.
 _Avoid_: slash command, skill invocation
 
 **Stopped turn**:

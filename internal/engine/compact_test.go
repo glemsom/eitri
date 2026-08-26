@@ -67,30 +67,27 @@ func TestMaybeCompactKeepsSkillInjectInUserLayer(t *testing.T) {
 
 func TestIsSkillMessageRecognizesSkillContentInUserLayer(t *testing.T) {
 	t.Parallel()
+	// The slash-injected <skill_content> directive in the user layer is what the
+	// compact ring-fence protects; the model has no `skill` tool.
 	if !isSkillMessage(provider.Message{Role: provider.RoleUser,
 		Content: "<skill_content name=\"go\">follow the guidelines</skill_content>"}) {
 		t.Fatal("isSkillMessage must recognize the slash-injected <skill_content> directive in the user layer")
 	}
-	// A model-invoked skill tool call and its SKILL-carrying tool result stay recognized.
-	if !isSkillMessage(provider.Message{Role: provider.RoleAssistant,
+	if isSkillMessage(provider.Message{Role: provider.RoleAssistant,
 		ToolCalls: []provider.ToolCall{{Name: "skill"}}}) {
-		t.Fatal("isSkillMessage must keep recognizing the assistant skill tool call")
-	}
-	if !isSkillMessage(provider.Message{Role: provider.RoleTool, Content: "SKILL activated"}) {
-		t.Fatal("isSkillMessage must keep recognizing a SKILL tool result")
+		t.Fatal("isSkillMessage must not recognize a skill tool call (no such model tool)")
 	}
 }
 
 func TestEvictPruneRingFenceProtectsSkillContent(t *testing.T) {
 	t.Parallel()
+	// The slash-injected skill directive sits in the user layer as <skill_content>
+	// and must survive pruning even as older evictable content is trimmed.
 	msgs := []provider.Message{
 		{Role: provider.RoleUser, Content: "old prompt"},
 		{Role: provider.RoleAssistant, Content: "old answer"},
-		{Role: provider.RoleUser, Content: "run the skill"},
-		{Role: provider.RoleAssistant, ReasoningContent: "skill leg",
-			ToolCalls: []provider.ToolCall{{ID: "s1", Name: "skill", Arguments: `{"name":"go"}`}}},
-		{Role: provider.RoleTool, ToolCallID: "s1", Content: "SKILL activated <go-guidelines>..."},
-		{Role: provider.RoleUser, Content: "latest prompt"},
+		{Role: provider.RoleUser, Content: "<skill_content name=\"go\">follow the guidelines</skill_content>\n\napply the go skill"},
+		{Role: provider.RoleAssistant, Content: "latest answer"},
 	}
 	cfg := compactCfg()
 	cfg.Prune = true
@@ -99,17 +96,14 @@ func TestEvictPruneRingFenceProtectsSkillContent(t *testing.T) {
 	if len(body) == 0 {
 		t.Fatal("untrimmed prune config produced no evicted body")
 	}
-	var sawSkill, sawTool bool
+	var sawSkill bool
 	for _, m := range tail {
 		if isSkillMessage(m) {
 			sawSkill = true
 		}
-		if m.Role == provider.RoleTool && m.ToolCallID == "s1" {
-			sawTool = true
-		}
 	}
-	if !sawSkill || !sawTool {
-		t.Fatalf("prune ring-fence evicted skill content: skill=%v tool=%v", sawSkill, sawTool)
+	if !sawSkill {
+		t.Fatalf("prune ring-fence evicted the injected skill user message; tail=%v", tail)
 	}
 }
 

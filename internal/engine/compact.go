@@ -196,21 +196,14 @@ func (e *Engine) generateSummary(ctx context.Context, req RunRequest, cfg *Compa
 	return text
 }
 
-// isSkillMessage reports whether a message belongs to a skill activation and so is ring-fenced from eviction when Prune is enabled: a slash-injected <skill_content> directive in the user layer, a model-invoked skill tool call, or a SKILL-carrying tool result.
+// isSkillMessage reports whether a message belongs to a skill activation and so is ring-fenced from eviction when Prune is enabled: a slash-injected <skill_content> directive in the user layer, or the tool result it delivered.
 func isSkillMessage(m provider.Message) bool {
 	if m.Role == provider.RoleUser && strings.Contains(m.Content, "<skill_content") {
 		return true
 	}
-	if m.Role == provider.RoleAssistant {
-		for _, tc := range m.ToolCalls {
-			if tc.Name == "skill" {
-				return true
-			}
-		}
-	}
-	if m.Role == provider.RoleTool && m.Content != "" && strings.Contains(m.Content, "SKILL") {
-		return true
-	}
+	// The model has no `skill` tool (it loads packs via bash cat), and the
+	// slash payload is delivered as the user-layer directive above, so only the
+	// injected user directive is ring-fenced.
 	return false
 }
 

@@ -1,9 +1,7 @@
 package app
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -18,123 +16,6 @@ import (
 	"github.com/glemsom/eitri/internal/tools"
 	"github.com/glemsom/eitri/internal/tui"
 )
-
-func scriptedSkillTurn(t testing.TB) *provider.Scripted {
-	return provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
-		var toolResults []string
-		for _, m := range req.Messages {
-			if m.Role == provider.RoleTool {
-				toolResults = append(toolResults, m.Content)
-			}
-		}
-		switch len(toolResults) {
-		case 0: // first turn: activate the skill
-			if err := assertSkillEnum(req.Tools); err != nil {
-				return nil, err
-			}
-			return provider.StreamFunc(
-				provider.Chunk{ReasoningContent: "activate the skill"},
-				provider.Chunk{FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{
-					{ID: "call_s1", Name: "skill", Arguments: `{"name":"my-skill"}`},
-				}, Done: true},
-			), nil
-		case 1: // second turn: re-activate the same skill to exercise dedupe
-			return provider.StreamFunc(
-				provider.Chunk{ReasoningContent: "activate again"},
-				provider.Chunk{FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{
-					{ID: "call_s2", Name: "skill", Arguments: `{"name":"my-skill"}`},
-				}, Done: true},
-			), nil
-		default: // third turn: report what the tool results carried
-			return provider.StreamFunc(
-				provider.Chunk{Content: "first=" + toolResults[0] + " second=" + toolResults[1]},
-				provider.Chunk{FinishReason: "stop", Done: true},
-			), nil
-		}
-	})
-}
-
-func assertSkillEnum(tools []provider.Tool) error {
-	for _, tl := range tools {
-		if tl.Function.Name != "skill" {
-			continue
-		}
-		props, _ := tl.Function.Parameters["properties"].(map[string]any)
-		nameProp, _ := props["name"].(map[string]any)
-		enum, _ := nameProp["enum"].([]any)
-		for _, e := range enum {
-			if e == "my-skill" {
-				return nil
-			}
-		}
-		return errors.New("skill tool enum does not include my-skill")
-	}
-	return errors.New("request head missing skill tool")
-}
-
-func TestBatchSkillThroughEngineSeam(t *testing.T) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatalf("home dir: %v", err)
-	}
-	ws := filepath.Join(home, ".eitri-app-skill")
-	if err := os.MkdirAll(ws, 0o700); err != nil {
-		t.Fatalf("mkdir workspace: %v", err)
-	}
-	skillDir := filepath.Join(ws, ".agents", "skills", "my-skill")
-	if err := os.MkdirAll(skillDir, 0o700); err != nil {
-		t.Fatalf("mkdir skill dir: %v", err)
-	}
-	skillMD := "---\nname: my-skill\ndescription: A demo skill for testing activation\n---\n\n# My Skill\n\nFollow these instructions carefully.\n"
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillMD), 0o600); err != nil {
-		t.Fatalf("write SKILL.md: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(skillDir, "references"), 0o700); err != nil {
-		t.Fatalf("mkdir references: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(skillDir, "references", "guide.md"), []byte("guide\n"), 0o600); err != nil {
-		t.Fatalf("write resource: %v", err)
-	}
-
-	oldWd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(ws); err != nil {
-		t.Fatalf("chdir workspace: %v", err)
-	}
-	defer func() { _ = os.Chdir(oldWd) }()
-	defer os.RemoveAll(ws)
-
-	var out bytes.Buffer
-	dir := t.TempDir()
-	err = Run(Options{
-		DataDir:  filepath.Join(dir, ".eitri"),
-		LookPath: okLookPath,
-		Provider: scriptedSkillTurn(t),
-		Prompt:   "apply the skill",
-		Stdout:   &out,
-	})
-	if err != nil {
-		t.Fatalf("Run(batch skill) error = %v, want nil", err)
-	}
-	got := out.String()
-	if !strings.Contains(got, "<skill_content name=\"my-skill\">") {
-		t.Fatalf("skill activation payload missing skill_content wrap:\n%s", got)
-	}
-	if !strings.Contains(got, "Follow these instructions carefully") {
-		t.Fatalf("skill body not injected through tool result:\n%s", got)
-	}
-	if !strings.Contains(got, "references/guide.md") {
-		t.Fatalf("skill resources not advertised:\n%s", got)
-	}
-	if strings.Count(got, "Follow these instructions carefully") != 1 {
-		t.Fatalf("skill body appeared more than once (dedupe failed):\n%s", got)
-	}
-	if !strings.Contains(got, "already active") {
-		t.Fatalf("re-activation did not produce a dedupe notice:\n%s", got)
-	}
-}
 
 func TestTUISlashSkillThroughEngineSeam(t *testing.T) {
 	ws := t.TempDir()
@@ -178,9 +59,6 @@ func TestTUISlashSkillThroughEngineSeam(t *testing.T) {
 	}
 	if !strings.Contains(payload, "<skill_content name=\"tui-skill\">") || !strings.Contains(payload, "Do the tui thing") {
 		t.Fatalf("slash activation payload wrong:\n%s", payload)
-	}
-	if !skills.IsActive("tui-skill") {
-		t.Fatalf("tui-skill not marked active after slash activation")
 	}
 }
 
@@ -246,7 +124,7 @@ func TestTUISlashListsHiddenSkill(t *testing.T) {
 	if err := os.MkdirAll(skillDir, 0o700); err != nil {
 		t.Fatalf("mkdir skill dir: %v", err)
 	}
-	skillMD := "---\nname: improve-codebase-architecture\ndescription: a command skill\ndisable-model-invocation: true\n---\n\n# Improve Codebase\n\nDo the architecture thing.\n"
+	skillMD := "---\nname: improve-codebase-architecture\ndescription: a slash-invocable command skill\n---\n\n# Improve Codebase\n\nDo the architecture thing.\n"
 	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillMD), 0o600); err != nil {
 		t.Fatalf("write SKILL.md: %v", err)
 	}
@@ -260,41 +138,24 @@ func TestTUISlashListsHiddenSkill(t *testing.T) {
 	})
 	surface := skillSurface(reg, skills)
 	if surface == nil {
-		t.Fatalf("skillSurface = nil, want non-nil (hidden command skill must back the slash surface)")
+		t.Fatalf("skillSurface = nil, want non-nil for a discovered skill backing the slash surface")
 	}
 	var names []string
 	for _, it := range surface.Items {
 		names = append(names, it.Name)
 	}
 	if !slices.Contains(names, "improve-codebase-architecture") {
-		t.Fatalf("slash completion items = %v, want the hidden command skill suggested", names)
+		t.Fatalf("slash completion items = %v, want the command skill suggested", names)
 	}
 
 	payload, err := surface.Activate(context.Background(), "improve-codebase-architecture")
 	if err != nil {
-		t.Fatalf("slash activation of hidden skill error = %v, want nil", err)
+		t.Fatalf("slash activation error = %v, want nil", err)
 	}
 	if !strings.Contains(payload, "<skill_content name=\"improve-codebase-architecture\">") || !strings.Contains(payload, "Do the architecture thing") {
 		t.Fatalf("slash activation payload wrong:\n%s", payload)
 	}
 
-	var defs []tools.Definition
-	for _, d := range reg.Definitions() {
-		if d.Name == "skill" {
-			defs = append(defs, d)
-		}
-	}
-	if len(defs) != 1 {
-		t.Fatalf("skill tool definitions = %d, want 1", len(defs))
-	}
-	props, _ := defs[0].Parameters["properties"].(map[string]any)
-	nameProp, _ := props["name"].(map[string]any)
-	enum, _ := nameProp["enum"].([]any)
-	for _, e := range enum {
-		if e == "improve-codebase-architecture" {
-			t.Fatalf("skill enum %v must exclude the hidden command skill", enum)
-		}
-	}
 }
 
 func TestDiscoverSkillsUserGlobalRoot(t *testing.T) {
@@ -331,7 +192,7 @@ func TestTUISlashHiddenSkillThroughEngineSeamWithArgs(t *testing.T) {
 	if err := os.MkdirAll(skillDir, 0o700); err != nil {
 		t.Fatalf("mkdir skill dir: %v", err)
 	}
-	skillMD := "---\nname: improve-codebase-architecture\ndescription: a command skill\ndisable-model-invocation: true\n---\n\n# Improve Codebase\n\nDo the architecture thing.\n"
+	skillMD := "---\nname: improve-codebase-architecture\ndescription: a slash-invocable command skill\n---\n\n# Improve Codebase\n\nDo the architecture thing.\n"
 	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillMD), 0o600); err != nil {
 		t.Fatalf("write SKILL.md: %v", err)
 	}
@@ -354,14 +215,14 @@ func TestTUISlashHiddenSkillThroughEngineSeamWithArgs(t *testing.T) {
 	})
 	surface := skillSurface(reg, skills)
 	if surface == nil {
-		t.Fatalf("skillSurface = nil, want non-nil (hidden command skill must back the slash surface)")
+		t.Fatalf("skillSurface = nil, want non-nil for a discovered skill backing the slash surface")
 	}
 	var names []string
 	for _, it := range surface.Items {
 		names = append(names, it.Name)
 	}
 	if !slices.Contains(names, "improve-codebase-architecture") {
-		t.Fatalf("slash completion items = %v, want the hidden command skill suggested", names)
+		t.Fatalf("slash completion items = %v, want the command skill suggested", names)
 	}
 
 	var turnPrompts []string
@@ -388,27 +249,6 @@ func TestTUISlashHiddenSkillThroughEngineSeamWithArgs(t *testing.T) {
 		t.Fatalf("args message not rendered;\n%s", content)
 	}
 
-	if !skills.IsActive("improve-codebase-architecture") {
-		t.Fatalf("improve-codebase-architecture not marked active after slash activation")
-	}
-
-	var defs []tools.Definition
-	for _, d := range reg.Definitions() {
-		if d.Name == "skill" {
-			defs = append(defs, d)
-		}
-	}
-	if len(defs) != 1 {
-		t.Fatalf("skill tool definitions = %d, want 1", len(defs))
-	}
-	props, _ := defs[0].Parameters["properties"].(map[string]any)
-	nameProp, _ := props["name"].(map[string]any)
-	enum, _ := nameProp["enum"].([]any)
-	for _, e := range enum {
-		if e == "improve-codebase-architecture" {
-			t.Fatalf("skill enum %v must exclude the hidden command skill", enum)
-		}
-	}
 }
 
 func appTestResize(t *testing.T, m tui.Model) tui.Model {
@@ -478,7 +318,7 @@ func TestTUISlashArgsPutsSkillInProviderContext(t *testing.T) {
 	if err := os.MkdirAll(skillDir, 0o700); err != nil {
 		t.Fatalf("mkdir skill dir: %v", err)
 	}
-	skillMD := "---\nname: improve-codebase-architecture\ndescription: a command skill\ndisable-model-invocation: true\n---\n\n# Improve Codebase\n\nDo the architecture thing.\n"
+	skillMD := "---\nname: improve-codebase-architecture\ndescription: a slash-invocable command skill\n---\n\n# Improve Codebase\n\nDo the architecture thing.\n"
 	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillMD), 0o600); err != nil {
 		t.Fatalf("write SKILL.md: %v", err)
 	}
@@ -543,9 +383,6 @@ func TestTUISlashArgsPutsSkillInProviderContext(t *testing.T) {
 		t.Errorf("Messages[1] lacks the user args prompt delivered adjacently:\n%s", msgs[1].Content)
 	}
 
-	if !skills.IsActive("improve-codebase-architecture") {
-		t.Fatal("skill not marked active after slash activation")
-	}
 }
 
 func TestTUISlashBarePutsSkillInProviderContext(t *testing.T) {
@@ -555,7 +392,7 @@ func TestTUISlashBarePutsSkillInProviderContext(t *testing.T) {
 	if err := os.MkdirAll(skillDir, 0o700); err != nil {
 		t.Fatalf("mkdir skill dir: %v", err)
 	}
-	skillMD := "---\nname: improve-codebase-architecture\ndescription: a command skill\ndisable-model-invocation: true\n---\n\n# Improve Codebase\n\nDo the architecture thing.\n"
+	skillMD := "---\nname: improve-codebase-architecture\ndescription: a slash-invocable command skill\n---\n\n# Improve Codebase\n\nDo the architecture thing.\n"
 	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillMD), 0o600); err != nil {
 		t.Fatalf("write SKILL.md: %v", err)
 	}
@@ -614,7 +451,4 @@ func TestTUISlashBarePutsSkillInProviderContext(t *testing.T) {
 		t.Errorf("Messages[1] lacks the bare-slash default prompt delivered adjacently:\n%s", msgs[1].Content)
 	}
 
-	if !skills.IsActive("improve-codebase-architecture") {
-		t.Fatal("skill not marked active after slash activation")
-	}
 }
