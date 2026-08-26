@@ -79,8 +79,9 @@ func NewRegistry(d Deps) *Registry {
 	r.tools["web_fetch"] = &webFetchTool{f: d.Fetcher}
 	r.tools["open_in_browser"] = &openInBrowserTool{br: d.Browser, tr: r.tr}
 
-	// Skills back only the human /skillname slash surface; the model has no
-	// `skill` tool and loads packs itself via `bash cat` (see the system prompt).
+	// Skills back the human /skillname slash surface and, via RenderIndex, feed
+	// the model a name/path/description index; the model has no `skill` tool and
+	// loads pack bodies itself via `bash cat` (see the system prompt).
 	r.catalog = d.Skills
 	return r
 }
@@ -108,7 +109,8 @@ func (r *Registry) Run(ctx context.Context, name string, args map[string]any) (T
 // ActivateSkill renders the named skill's payload for the TUI's human
 // `/skillname` slash surface. Every activation re-applies the full payload: a
 // human re-invoke is an explicit command, never short-circuited. The model has
-// no `skill` tool; it loads packs itself via `bash cat` (see the system prompt).
+// no `skill` tool; it sees a name/path/description index and loads pack bodies
+// itself via `bash cat` (see the system prompt).
 func (r *Registry) ActivateSkill(_ context.Context, name string) (ToolResult, error) {
 	if r.catalog == nil || len(r.catalog.Names()) == 0 {
 		return ToolResult{}, fmt.Errorf("no skills configured")
