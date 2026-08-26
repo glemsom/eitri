@@ -78,7 +78,7 @@ func TestBashRunsInSandbox(t *testing.T) {
 func TestBashCompressesNoisyOutputAtBoundary(t *testing.T) {
 	t.Parallel()
 	var raw strings.Builder
-	for i := 0; i < 400; i++ {
+	for i := 0; i < 600; i++ {
 		raw.WriteString("src/file_")
 		raw.WriteString(strconv.Itoa(i))
 		raw.WriteString(".go          1234 bytes\n")

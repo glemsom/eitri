@@ -12,7 +12,7 @@ import (
 func TestAgentBashTurnReturnsCompressedOutput(t *testing.T) {
 	t.Parallel()
 	var raw strings.Builder
-	for i := range 500 {
+	for i := range 600 {
 		raw.WriteString("internal/pkg_")
 		raw.WriteString(string(rune('a' + i%26)))
 		raw.WriteString(".go   some noisy listing content\n")

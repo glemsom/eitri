@@ -80,7 +80,7 @@ func TestCompressTruncatesTailWithExplicitMarker(t *testing.T) {
 
 func TestCompressHonestEconomics(t *testing.T) {
 	t.Parallel()
-	raw := buildLongListing(400) // distinct entries, the expensive shape
+	raw := buildLongListing(maxLines + 100) // distinct entries, the expensive shape
 	compressed := Compress(raw)
 	rawTokens := roughTokens(raw)
 	compressedTokens := roughTokens(compressed)
