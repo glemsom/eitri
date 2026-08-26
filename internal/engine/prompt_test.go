@@ -70,6 +70,8 @@ func TestSystemPromptDocumentsBashFileOps(t *testing.T) {
 		"read numbered nl":   "nl -ba",
 		"read range sed":     "sed -n",
 		"edit in place":      "sed -i",
+		"diff apply patch":   "git apply",
+		"multi-line edit":    "multi-line",
 		"write heredoc":      `cat <<'EOF'`,
 		"verify re-read":     "re-read",
 		"home skill pack":    "~/.agents/skills/",

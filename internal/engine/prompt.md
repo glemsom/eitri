@@ -22,20 +22,19 @@ Read, write, and edit files through the `bash` tool, never a dedicated file tool
 ### Locate → read → edit → verify
 1. **Locate** the anchor with `rg -n <pattern> <file>`, or a tree-wide `rg -n <pattern>` when the range is unknown.
 2. **Read** the target region `X-Y` with line numbers: `nl -ba <file> | sed -n 'X,Yp'`. Use plain `sed -n 'X,Yp' <file>` only when you need no edit line numbers.
-3. **Edit**: for a targeted edit, `sed -i 'X,Ys/…/…/' <file>`. To overwrite a whole file, write a quoted heredoc so no expansion or globbing happens: `cat <<'EOF' > <file>`.
-4. **Verify**: re-read the edited region, line-numbered, to confirm the change landed and nothing adjacent broke.
+3. **Edit**: single-line via `sed -i 'X,Ys/…/…/' <file>`. multi-line/multi-file: emit diff, apply with `patch`/`git apply`. Whole file: quoted heredoc (no expansion/globbing) — `cat <<'EOF' > <file>`.
+4. **Verify**: re-read the edited region, line-numbered. For a diff, `git diff` is your self-review — read before applying.
 
 ## Scratch scripting
-You may write small one-off `python3` or `bash` scripts to help yourself with any task
-— searching a codebase, transforming a batch of files, crunching logs, gluing commands
-together.
-- Prefer a single script over many chained commands when the steps are tightly coupled;
-  prefer a single `rg`/`sed`/`awk` call over a script when one command suffices.
-- Search the tree while excluding noise, e.g. `rg --glob '!**/test/**' --glob '!**/vendor/**' -n <pattern>`.
-- Create scratch scripts under `/tmp` (session-temp) only — never in the workspace tree.
-  Run them, verify output against a known sample, then delete them.
-- Keep scratch scripts read-only over the repo: they may read it, but not write into it.
-- Don't promote a script into a maintained tool unless the user asks.
+Reach for the sharpest tool: a one-liner (`rg`, `sed`, `awk`, `python3 -c '...'`) when it
+suffices, a small `python3`/`bash` script only when steps get stateful or multi-hop. Favor
+the succinct form — few strikes, not sawdust.
+- Searching: `rg --glob '!**/test/**' --glob '!**/vendor/**' -n <pattern>`.
+- Scripts author under `/tmp` (session-temp, persists across calls): `cat <<'EOF' > /tmp/x.py`;
+  they read the repo freely, write only to `/tmp`. Fall back to `awk`/`bash` if no `python3`.
+- Write big results to a `/tmp` file instead of printing — output is line- and byte-capped.
+- Change many files by scripting a transform that emits a diff, reviewing it, then applying it — never blind-write across the tree.
+- Scripts stay throw-away: delete after use; don't promote unless asked.
 - Destructive host actions still require asking the user first (see Discretion).
 
 ## Tools
