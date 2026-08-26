@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -225,16 +226,17 @@ func TestModelInvocableDefaultTrue(t *testing.T) {
 
 func TestModelInvocableParsesSynonyms(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct {
+	for i, tc := range []struct {
 		front string
 		want  bool
 	}{
 		{"model-invocable: false", false},
 		{"disable-model-invocation: true", false},
+		{"disable-model-invocation: false", true},
 		{"model-invocable: true", true},
 	} {
 		user := t.TempDir()
-		name := "s" + tc.front[:6]
+		name := fmt.Sprintf("s%d", i)
 		writeSkillMeta(t, user, name, "desc", "body", nil, []string{tc.front})
 		catalog, err := Discover(user, t.TempDir(), &warningSink{})
 		if err != nil {
