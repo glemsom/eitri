@@ -26,8 +26,9 @@ type Skill struct {
 }
 
 // Catalog is the filtered, trust-gated set of discoverable skills for a run.
-// It backs the human `/skillname` slash surface and, via RenderIndex, the
-// model-visible inventory of model-invocable skills.
+// It backs the human `/skillname` slash surface and, via RenderIndex, supplies
+// the model a name/path/description inventory of model-invocable skills. The
+// model still has no `skill` tool and loads pack bodies itself via `bash cat`.
 type Catalog struct {
 	skills map[string]*Skill
 	scopes map[string]string // skill name -> install scope ("user" or "project")
