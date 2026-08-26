@@ -108,7 +108,7 @@ func TestSystemPromptIsStatic(t *testing.T) {
 	if len(p) == 0 {
 		t.Fatal("system prompt is empty")
 	}
-	if strings.ContainsAny(p, "$(") {
+	if strings.Contains(p, "$(") { // literal command substitution, e.g. $(cmd)(not any-char match)
 		t.Fatal("system prompt must not interpolate session state")
 	}
 }
