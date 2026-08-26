@@ -44,6 +44,24 @@ func TestSystemPromptPrefersRipgrep(t *testing.T) {
 	}
 }
 
+func TestSystemPromptDocumentsBashFileOps(t *testing.T) {
+	t.Parallel()
+	p := SystemPromptContent()
+	cases := map[string]string{
+		"read range sed":     "sed -n",
+		"read numbered nl":   "nl -ba",
+		"write heredoc":      `cat <<'EOF'`,
+		"edit in place":      "sed -i",
+		"home skill pack":    "~/.agents/skills/",
+		"project skill pack": ".agents/skills/",
+	}
+	for name, want := range cases {
+		if !strings.Contains(p, want) {
+			t.Fatalf("system prompt must document %s via bash; missing %q:\n%s", name, want, p)
+		}
+	}
+}
+
 func TestSystemPromptIsStatic(t *testing.T) {
 	t.Parallel()
 	p := SystemPromptContent()
