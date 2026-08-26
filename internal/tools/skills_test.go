@@ -10,11 +10,22 @@ import (
 
 func writeSkill(t *testing.T, root, name, description, body string, files map[string]string) {
 	t.Helper()
+	writeSkillMeta(t, root, name, description, body, files, nil)
+}
+
+// writeSkillMeta writes a skill pack with optional extra frontmatter lines appended
+// after description (e.g. "model-invocable: false").
+func writeSkillMeta(t *testing.T, root, name, description, body string, files map[string]string, extraFront []string) {
+	t.Helper()
 	dir := filepath.Join(root, name)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatalf("mkdir skill dir %s: %v", dir, err)
 	}
-	content := "---\nname: " + name + "\ndescription: " + description + "\n---\n\n" + body
+	meta := "name: " + name + "\ndescription: " + description
+	for _, line := range extraFront {
+		meta += "\n" + line
+	}
+	content := "---\n" + meta + "\n---\n\n" + body
 	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o600); err != nil {
 		t.Fatalf("write SKILL.md: %v", err)
 	}
@@ -195,6 +206,114 @@ func TestSkillCatalogDoesNotExposeModelTool(t *testing.T) {
 		if d.Name == "skill" {
 			t.Fatalf("skill definition still exposed to the provider: %v", d)
 		}
+	}
+}
+
+func TestModelInvocableDefaultTrue(t *testing.T) {
+	t.Parallel()
+	user := t.TempDir()
+	writeSkill(t, user, "default-on", "visible by default", "body", nil)
+	catalog, err := Discover(user, t.TempDir(), &warningSink{})
+	if err != nil {
+		t.Fatalf("Discover error = %v, want nil", err)
+	}
+	s := catalog.Skill("default-on")
+	if s == nil || !s.ModelInvocable {
+		t.Fatalf("ModelInvocable default = %v, want true", s)
+	}
+}
+
+func TestModelInvocableParsesSynonyms(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		front string
+		want  bool
+	}{
+		{"model-invocable: false", false},
+		{"disable-model-invocation: true", false},
+		{"model-invocable: true", true},
+	} {
+		user := t.TempDir()
+		name := "s" + tc.front[:6]
+		writeSkillMeta(t, user, name, "desc", "body", nil, []string{tc.front})
+		catalog, err := Discover(user, t.TempDir(), &warningSink{})
+		if err != nil {
+			t.Fatalf("Discover error = %v, want nil", err)
+		}
+		if got := catalog.Skill(name).ModelInvocable; got != tc.want {
+			t.Fatalf("%s: ModelInvocable = %v, want %v", tc.front, got, tc.want)
+		}
+	}
+}
+
+func TestCatalogModelVisibleSkillsSortedAndFiltered(t *testing.T) {
+	t.Parallel()
+	user := t.TempDir()
+	writeSkillMeta(t, user, "b-skill", "b desc", "b", nil, []string{"model-invocable: false"})
+	writeSkill(t, user, "a-skill", "a desc", "a", nil)
+	catalog, err := Discover(user, t.TempDir(), &warningSink{})
+	if err != nil {
+		t.Fatalf("Discover error = %v, want nil", err)
+	}
+	got := catalog.ModelVisibleSkills()
+	if len(got) != 1 || got[0] != "a-skill" {
+		t.Fatalf("ModelVisibleSkills = %v, want [a-skill]", got)
+	}
+}
+
+func TestRenderIndexBlock(t *testing.T) {
+	t.Parallel()
+	user := t.TempDir()
+	proj := t.TempDir()
+	// hidden skill omitted
+	writeSkillMeta(t, user, "hidden", "h", "body", nil, []string{"model-invocable: false"})
+	writeSkill(t, user, "zeta", "z skill\nsecond line desc", "z", nil)
+	// project shadows user on name collision
+	writeSkill(t, user, "dupe", "user version", "u", nil)
+	writeSkill(t, proj, "dupe", "PROJECT version", "p", nil)
+	catalog, err := Discover(user, proj, &warningSink{})
+	if err != nil {
+		t.Fatalf("Discover error = %v, want nil", err)
+	}
+	idx := catalog.RenderIndex()
+	if !strings.HasPrefix(idx, "<available_skills>") {
+		t.Fatalf("index missing opening tag: %q", idx)
+	}
+	if strings.Contains(idx, "hidden") {
+		t.Fatalf("index includes hidden skill: %q", idx)
+	}
+	if strings.Contains(idx, "user version") {
+		t.Fatalf("index used user version instead of shadowing project: %q", idx)
+	}
+	if !strings.Contains(idx, "PROJECT version") {
+		t.Fatalf("index missing project description: %q", idx)
+	}
+}
+
+func TestRenderIndexEmpty(t *testing.T) {
+	t.Parallel()
+	catalog, err := Discover(t.TempDir(), t.TempDir(), &warningSink{})
+	if err != nil {
+		t.Fatalf("Discover error = %v, want nil", err)
+	}
+	if got := catalog.RenderIndex(); got != "" {
+		t.Fatalf("RenderIndex on empty catalog = %q, want empty", got)
+	}
+}
+
+func TestRenderIndexAllHidden(t *testing.T) {
+	t.Parallel()
+	user := t.TempDir()
+	writeSkillMeta(t, user, "s1", "desc", "body", nil, []string{"model-invocable: false"})
+	catalog, err := Discover(user, t.TempDir(), &warningSink{})
+	if err != nil {
+		t.Fatalf("Discover error = %v, want nil", err)
+	}
+	if got := catalog.RenderIndex(); got != "" {
+		t.Fatalf("RenderIndex with all hidden = %q, want empty", got)
+	}
+	if len(catalog.Names()) != 1 {
+		t.Fatalf("hidden skill should stay human-invocable; names = %v", catalog.Names())
 	}
 }
 

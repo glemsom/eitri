@@ -19,15 +19,19 @@ type Skill struct {
 	Body        string
 	Resources   []string
 	Dir         string
+	// ModelInvocable reports whether the model may discover and use this skill
+	// via the rendered skill index. Non-model-invocable skills stay reachable
+	// through the human slash surface only.
+	ModelInvocable bool
 }
 
 // Catalog is the filtered, trust-gated set of discoverable skills for a run.
-// It backs the human `/skillname` slash surface only: the model has no `skill`
-// tool and loads packs itself via `bash cat` (see the system prompt).
+// It backs the human `/skillname` slash surface and, via RenderIndex, the
+// model-visible inventory of model-invocable skills.
 type Catalog struct {
 	skills map[string]*Skill
 	scopes map[string]string // skill name -> install scope ("user" or "project")
-	order  []string
+	order  []string         // skill names, sorted, project-shadows-user by name
 }
 
 // Names returns the discovered skill names in stable (sorted) order.
@@ -43,6 +47,55 @@ func (c *Catalog) Skill(name string) *Skill {
 }
 
 // Scope returns the install scope ("user" or "project") for the named skill, or "" when the name is not in the catalog.
+// ModelVisibleSkills returns the model-visible skill names in sorted order:
+// non-model-invocable skills filtered out, project scope shadowing user scope on
+// name collision (already resolved at discovery).
+func (c *Catalog) ModelVisibleSkills() []string {
+	var out []string
+	for _, name := range c.order {
+		if c.skills[name] != nil && c.skills[name].ModelInvocable {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// RenderIndex renders the model-visible skill inventory as an XML block of the
+// form <available_skills><skill><name/><path/><description/></skill>...</available_skills>.
+// Each <path> is the absolute path to the pack's SKILL.md. Paths are escaped so
+// multi-line descriptions and &/<> characters stay well-formed. When no skill is
+// model-visible the result is empty; callers treat that as "omit the block".
+func (c *Catalog) RenderIndex() string {
+	names := c.ModelVisibleSkills()
+	if len(names) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("<available_skills>")
+	for _, name := range names {
+		sk := c.skills[name]
+		b.WriteString("<skill>")
+		b.WriteString("<name>" + xmlEscape(name) + "</name>")
+		b.WriteString("<path>" + xmlEscape(filepath.Join(sk.Dir, "SKILL.md")) + "</path>")
+		b.WriteString("<description>" + xmlEscape(sk.Description) + "</description>")
+		b.WriteString("</skill>")
+	}
+	b.WriteString("</available_skills>")
+	return b.String()
+}
+
+// xmlEscape escapes the five XML entities so text forms stay well-formed.
+func xmlEscape(s string) string {
+	r := strings.NewReplacer(
+		"&", "&amp;",
+		"<", "&lt;",
+		">", "&gt;",
+		`"`, "&quot;",
+		"'", "&apos;",
+	)
+	return r.Replace(s)
+}
+
 func (c *Catalog) Scope(name string) string {
 	if c == nil {
 		return ""
@@ -135,12 +188,19 @@ func parseSkill(packDir string) (*Skill, skillParseStatus) {
 	}
 
 	res := bundledResources(packDir, md)
-	return &Skill{
-		Description: desc,
-		Body:        strings.TrimPrefix(body, "\n"),
-		Resources:   res,
-		Dir:         packDir,
-	}, skillCataloged
+	s := &Skill{
+		Description:    desc,
+		Body:           strings.TrimPrefix(body, "\n"),
+		Resources:      res,
+		Dir:            packDir,
+		ModelInvocable: true,
+	}
+	if v, ok := meta["model-invocable"]; ok {
+		s.ModelInvocable = strings.EqualFold(strings.TrimSpace(v), "true")
+	} else if v, ok := meta["disable-model-invocation"]; ok {
+		s.ModelInvocable = !strings.EqualFold(strings.TrimSpace(v), "true")
+	}
+	return s, skillCataloged
 }
 
 // bundledResources lists the pack's files (relative paths) excluding SKILL.md, deterministically sorted.
