@@ -37,10 +37,28 @@ func TestSystemPromptNamesAgent(t *testing.T) {
 func TestSystemPromptPrefersRipgrep(t *testing.T) {
 	t.Parallel()
 	p := SystemPromptContent()
-	for _, want := range []string{"ripgrep", "rg", "grep", "over grep", "--heading", "--color=never", "non-TTY", "default to", "unless a different format is specifically needed"} {
+	for _, want := range []string{"ripgrep", "rg", "--heading", "--color=never", "files-with-matches"} {
 		if !strings.Contains(p, want) {
-			t.Fatalf("system prompt must instruct preferred ripgrep usage; missing %q:\n%s", want, p)
+			t.Fatalf("system prompt must frame ripgrep usage as intent; missing %q:\n%s", want, p)
 		}
+	}
+}
+
+func TestSystemPromptDoesNotPrescribeRgBoilerplate(t *testing.T) {
+	t.Parallel()
+	p := SystemPromptContent()
+	for _, banned := range []string{"default to", "unless a different format is specifically needed"} {
+		if strings.Contains(p, banned) {
+			t.Fatalf("system prompt must not prescribe mandatory rg flag boilerplate; found %q:\n%s", banned, p)
+		}
+	}
+}
+
+func TestSystemPromptDoesNotInstructUnsettableReasoningEffort(t *testing.T) {
+	t.Parallel()
+	p := SystemPromptContent()
+	if strings.Contains(p, "reasoning_effort") {
+		t.Fatalf("system prompt must not instruct the agent to set reasoning_effort it cannot set:\n%s", p)
 	}
 }
 
@@ -48,16 +66,38 @@ func TestSystemPromptDocumentsBashFileOps(t *testing.T) {
 	t.Parallel()
 	p := SystemPromptContent()
 	cases := map[string]string{
-		"read range sed":     "sed -n",
+		"locate with rg":     "rg -n",
 		"read numbered nl":   "nl -ba",
-		"write heredoc":      `cat <<'EOF'`,
+		"read range sed":     "sed -n",
 		"edit in place":      "sed -i",
+		"write heredoc":      `cat <<'EOF'`,
+		"verify re-read":     "re-read",
 		"home skill pack":    "~/.agents/skills/",
 		"project skill pack": ".agents/skills/",
 	}
 	for name, want := range cases {
 		if !strings.Contains(p, want) {
 			t.Fatalf("system prompt must document %s via bash; missing %q:\n%s", name, want, p)
+		}
+	}
+}
+
+func TestSystemPromptGuidesToolSelection(t *testing.T) {
+	t.Parallel()
+	p := SystemPromptContent()
+	for _, want := range []string{"web_fetch", "bash", "open_in_browser", "Markdown", "curl", "30s", "file:///tmp", "host path", "not the first that springs to mind"} {
+		if !strings.Contains(p, want) {
+			t.Fatalf("system prompt must guide tool selection; missing %q:\n%s", want, p)
+		}
+	}
+}
+
+func TestSystemPromptStatesOutputCapContract(t *testing.T) {
+	t.Parallel()
+	p := SystemPromptContent()
+	for _, want := range []string{"capped", "+N more", "bytes truncated", "partial"} {
+		if !strings.Contains(p, want) {
+			t.Fatalf("system prompt must state the output truncation contract; missing %q:\n%s", want, p)
 		}
 	}
 }
