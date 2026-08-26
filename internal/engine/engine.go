@@ -63,6 +63,13 @@ type RunRequest struct {
 	SkillInject *string
 	SessionKey  string
 
+	// SkillIndex is an optional pre-rendered model-visible skill inventory. When
+	// set, it is carried to the provider as a dedicated system-layer message
+	// appended after the persona head so the model sees available skills without
+	// perturbing the byte-stable system prompt. Nil omits the message entirely,
+	// keeping the outgoing request byte-identical to the no-index case.
+	SkillIndex *string
+
 	ThinkingEnabled bool
 	ReasoningEffort string
 }
@@ -152,6 +159,9 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		return Result{}, ErrStopped
 	}
 	messages := systemPromptHead()
+	if req.SkillIndex != nil {
+		messages = append(messages, provider.Message{Role: provider.RoleSystem, Content: *req.SkillIndex})
+	}
 	messages = append(messages, e.sessionHistory(req.SessionKey)...)
 	userContent := req.Prompt
 	if req.SkillInject != nil {
@@ -347,6 +357,13 @@ func (e *Engine) storeSessionHistory(sessionKey string, messages []provider.Mess
 	start := 0
 	if len(messages) > 0 && messages[0].Role == provider.RoleSystem && messages[0].Content == SystemPromptContent() {
 		start = 1
+	}
+	// The persona head may be immediately followed by the model-visible skill
+	// index as a second system message. It is re-injected fresh from
+	// req.SkillIndex on every run, so it must not persist into session history
+	// (that would duplicate the message on the next turn).
+	for start < len(messages) && isSkillIndexMessage(messages[start]) {
+		start++
 	}
 	persisted := append([]provider.Message(nil), messages[start:]...)
 	e.histMu.Lock()

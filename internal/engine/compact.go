@@ -66,6 +66,15 @@ func (e *Engine) maybeCompact(ctx context.Context, req RunRequest, opts AgentOpt
 		stableHead = append(stableHead, messages[0])
 		start = 1
 	}
+	// The persona head may carry the model-visible skill index as a second
+	// system message; keep it in the stable head alongside the system prompt.
+	// It is normally re-injected fresh from req.SkillIndex, but preserving it
+	// through eviction keeps the compact-path wire messages identical to the
+	// non-compact path.
+	for start < len(messages) && isSkillIndexMessage(messages[start]) {
+		stableHead = append(stableHead, messages[start])
+		start++
+	}
 	// A slash-activated skill is delivered as the user-layer directive right after
 	// the Eitri system prompt. It must survive compaction or the model forgets it
 	// is following the skill; keep any such skill payload message in the head
@@ -205,6 +214,14 @@ func isSkillMessage(m provider.Message) bool {
 	// slash payload is delivered as the user-layer directive above, so only the
 	// injected user directive is ring-fenced.
 	return false
+}
+
+// isSkillIndexMessage reports whether a message is the injected model-visible
+// skill index system message (see RunRequest.SkillIndex). It matches a system
+// message carrying the rendered <available_skills> block so history stripping
+// can drop it.
+func isSkillIndexMessage(m provider.Message) bool {
+	return m.Role == provider.RoleSystem && strings.Contains(m.Content, "<available_skills>")
 }
 
 // renderBody serializes the evicted body messages into a flat transcript the summary model can consume.
