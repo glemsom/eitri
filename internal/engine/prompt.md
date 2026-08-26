@@ -26,7 +26,4 @@ Read, write, and edit files through the `bash` tool, never a dedicated file tool
 
 ### Writing and editing
 - To overwrite a file with a full new body, write a quoted heredoc so no expansion or globbing happens: `cat <<'EOF' > <file>`.
-- For a targeted edit, re-read the region first, then apply `sed -i`. After any write or edit, re-read the file to confirm the change and check results.
-
-### Skill packs
-- Load a skill's markdown with `cat ~/.agents/skills/<name>/SKILL.md`, or the project `.agents/skills/<name>/SKILL.md` root, and follow its instructions.
+- For a targeted edit, re-read the region with line numbers first via `nl -ba | sed -n 'X,Yp'`, then apply `sed -i`. After any write or edit, re-read the file to confirm the change and check results.
