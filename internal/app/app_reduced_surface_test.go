@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,6 +21,11 @@ func reducedToolTurn() *provider.Scripted {
 		names := map[string]bool{}
 		for _, t := range req.Tools {
 			names[t.Function.Name] = true
+		}
+		if len(names) != 3 {
+			return provider.StreamFunc(
+				provider.Chunk{Content: fmt.Sprintf("tool count = %d, want exactly 3", len(names)), FinishReason: "stop", Done: true},
+			), nil
 		}
 		for _, want := range []string{"bash", "web_fetch", "open_in_browser"} {
 			if !names[want] {
@@ -82,8 +88,13 @@ func bashHeredocSedTurn(t *testing.T) *provider.Scripted {
 		// Count prior bash tool calls to sequence write → sed -i.
 		bashCalls := 0
 		for i := len(req.Messages) - 1; i >= 0; i-- {
-			if req.Messages[i].Role == provider.RoleAssistant {
-				bashCalls += len(req.Messages[i].ToolCalls)
+			m := req.Messages[i]
+			if m.Role == provider.RoleAssistant {
+				for _, tc := range m.ToolCalls {
+					if tc.Name == "bash" {
+						bashCalls++
+					}
+				}
 			}
 		}
 		if bashCalls < 2 {
