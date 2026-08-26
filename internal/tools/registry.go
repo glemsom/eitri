@@ -50,10 +50,9 @@ func (r *Registry) Definitions() []Definition {
 	return out
 }
 
-// Registry is the shared tool registry: it wires the single PathTranslator, the write-side Validator once, plus the network and browser seams, then exposes the fixed tool surface.
+// Registry is the shared tool registry: it wires the single PathTranslator plus the network and browser seams, then exposes the fixed tool surface.
 type Registry struct {
 	tr        *PathTranslator
-	val       *Validator
 	sandbox   *Sandbox
 	browser   BrowserLauncher
 	workspace string
@@ -74,12 +73,8 @@ func NewRegistry(d Deps) *Registry {
 		workspace: filepath.Clean(d.Workspace),
 		tools:     map[string]Tool{},
 	}
-	r.val = NewValidator(d.Workspace, d.ExtraWritable, r.tr)
 	r.sandbox = NewSandbox(d.Workspace, d.TempHost, d.Runner)
 	r.tools["bash"] = &bashTool{sb: r.sandbox}
-	r.tools["read"] = &readTool{tr: r.tr, workspace: r.workspace}
-	r.tools["write"] = &writeTool{val: r.val}
-	r.tools["edit"] = &editTool{val: r.val}
 	r.tools["web_fetch"] = &webFetchTool{f: d.Fetcher}
 	r.tools["open_in_browser"] = &openInBrowserTool{br: d.Browser, tr: r.tr}
 	if d.Skills != nil && len(d.Skills.Names()) > 0 {
@@ -90,7 +85,7 @@ func NewRegistry(d Deps) *Registry {
 
 // Names returns the registered tool names in stable order.
 func (r *Registry) Names() []string {
-	base := []string{"bash", "read", "write", "edit", "web_fetch", "open_in_browser"}
+	base := []string{"bash", "web_fetch", "open_in_browser"}
 	if _, ok := r.tools["skill"]; ok {
 		return append(base, "skill")
 	}
@@ -100,7 +95,7 @@ func (r *Registry) Names() []string {
 // PathTranslator returns the shared translation seam (exposed for host-side launch points like open_in_browser and for tests).
 func (r *Registry) PathTranslator() *PathTranslator { return r.tr }
 
-// Workspace returns the workspace root (host-absolute, cleaned): the writable root write/edit validate against and the resolve base for read's workspace-relative paths.
+// Workspace returns the workspace root (host-absolute, cleaned): the resolve base for sandbox-relative paths.
 func (r *Registry) Workspace() string { return r.workspace }
 
 // Run executes the named tool with the given decoded args, returning its result string plus whether the result is the line-compressor's compressed form.
@@ -152,15 +147,3 @@ func strictSchema(properties map[string]any, required []string) map[string]any {
 	}
 }
 
-// optStr extracts an optional string argument.
-func optStr(args map[string]any, key string) (string, error) {
-	v, ok := args[key]
-	if !ok {
-		return "", fmt.Errorf("missing required argument %q", key)
-	}
-	s, ok := v.(string)
-	if !ok {
-		return "", fmt.Errorf("argument %q must be a string", key)
-	}
-	return s, nil
-}

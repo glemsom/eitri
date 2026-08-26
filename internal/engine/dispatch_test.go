@@ -12,7 +12,7 @@ import (
 	"github.com/glemsom/eitri/internal/tools"
 )
 
-func scriptedBashReadTurn(t *testing.T) *provider.Scripted {
+func scriptedBashCatTurn(t *testing.T) *provider.Scripted {
 	t.Helper()
 	return provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
 		var toolResults int
@@ -31,9 +31,9 @@ func scriptedBashReadTurn(t *testing.T) *provider.Scripted {
 			), nil
 		case toolResults == 1:
 			return provider.StreamFunc(
-				provider.Chunk{Content: "", ReasoningContent: "now read it back"},
+				provider.Chunk{Content: "", ReasoningContent: "now cat it back"},
 				provider.Chunk{FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{
-					{ID: "call_read", Name: "read", Arguments: `{"path":"/tmp/probe.txt"}`},
+					{ID: "call_bash", Name: "bash", Arguments: `{"command":"cat /tmp/probe.txt"}`},
 				}, Done: true},
 			), nil
 		default:
@@ -45,7 +45,7 @@ func scriptedBashReadTurn(t *testing.T) *provider.Scripted {
 				}
 			}
 			return provider.StreamFunc(
-				provider.Chunk{Content: "read says: " + lastResult},
+				provider.Chunk{Content: "bash says: " + lastResult},
 				provider.Chunk{FinishReason: "stop", Done: true,
 					Usage: &provider.Usage{PromptTokens: 3, CompletionTokens: 4}},
 			), nil
@@ -53,7 +53,7 @@ func scriptedBashReadTurn(t *testing.T) *provider.Scripted {
 	})
 }
 
-func TestDispatchBashThenReadReturnsSandboxOutput(t *testing.T) {
+func TestDispatchBashThenCatReturnsSandboxOutput(t *testing.T) {
 	t.Parallel()
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -73,11 +73,10 @@ func TestDispatchBashThenReadReturnsSandboxOutput(t *testing.T) {
 		Runner:    tools.RealRunner,
 	})
 
-	e := New(scriptedBashReadTurn(t), &mockTranscript{})
+	e := New(scriptedBashCatTurn(t), &mockTranscript{})
 	res, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "do it"}, AgentOptions{
 		Tools: []provider.Tool{
 			{Type: "function", Function: provider.ToolFunction{Name: "bash", Description: "run shell"}},
-			{Type: "function", Function: provider.ToolFunction{Name: "read", Description: "read file"}},
 		},
 		Executor: executor(reg),
 		MaxTurns: 5,

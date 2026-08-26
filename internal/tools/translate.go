@@ -1,4 +1,4 @@
-// Package tools holds the agent's tool surface: the shared tool registry, the four core tools (bash, read, write, edit), the bwrap sandbox runner, and the single path-namespace translation seam every path-taking tool routes through.
+// Package tools holds the agent's tool surface: the shared tool registry, the core tools (bash, web_fetch, open_in_browser), the bwrap sandbox runner, and the single path-namespace translation seam every path-taking tool routes through.
 package tools
 
 import (
