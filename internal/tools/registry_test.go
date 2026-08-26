@@ -53,7 +53,7 @@ func TestRegistryExposesTools(t *testing.T) {
 			t.Fatalf("registry missing tool %q; names = %v", want, r.Names())
 		}
 	}
-	for _, banned := range []string{"read", "write", "edit"} {
+	for _, banned := range []string{"read", "write", "edit", "skill"} {
 		if got[banned] {
 			t.Fatalf("registry still exposes tool %q; names = %v", banned, r.Names())
 		}
