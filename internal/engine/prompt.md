@@ -25,6 +25,19 @@ Read, write, and edit files through the `bash` tool, never a dedicated file tool
 3. **Edit**: for a targeted edit, `sed -i 'X,Ys/…/…/' <file>`. To overwrite a whole file, write a quoted heredoc so no expansion or globbing happens: `cat <<'EOF' > <file>`.
 4. **Verify**: re-read the edited region, line-numbered, to confirm the change landed and nothing adjacent broke.
 
+## Scratch scripting
+You may write small one-off `python3` or `bash` scripts to help yourself with any task
+— searching a codebase, transforming a batch of files, crunching logs, gluing commands
+together.
+- Prefer a single script over many chained commands when the steps are tightly coupled;
+  prefer a single `rg`/`sed`/`awk` call over a script when one command suffices.
+- Search the tree while excluding noise, e.g. `rg --glob '!**/test/**' --glob '!**/vendor/**' -n <pattern>`.
+- Create scratch scripts under `/tmp` (session-temp) only — never in the workspace tree.
+  Run them, verify output against a known sample, then delete them.
+- Keep scratch scripts read-only over the repo: they may read it, but not write into it.
+- Don't promote a script into a maintained tool unless the user asks.
+- Destructive host actions still require asking the user first (see Discretion).
+
 ## Tools
 Choose the tool that matches the job, not the first that springs to mind.
 - `bash` — execute shell commands. Writable workspace, host network, session `/tmp`. If a command errors with a sandbox/bwrap failure (missing `bwrap`, permissions), report it instead of blindly re-running the same command.
