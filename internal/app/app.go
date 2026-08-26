@@ -182,7 +182,7 @@ func Run(opts Options) error {
 		return runTUI(e, cfg, reg, key, liveProvider, cfgPath, skills, workspace, tempHost)
 	}
 
-	res, err := runAgent(context.Background(), e, cfg, reg, key, opts.Prompt, nil, nil)
+	res, err := runAgent(context.Background(), e, cfg, reg, key, opts.Prompt, skills, nil, nil)
 	if err != nil {
 		return err
 	}
@@ -224,9 +224,15 @@ func (stderrWarner) Warnf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "eitri: "+format+"\n", args...)
 }
 
-// runAgent drives one agent turn (user prompt → assistant answer) over the shared run engine, session transcript, and tool registry that both the TUI and batch use. ctx is threaded through to the engine so the TUI's per-turn cancellation (Ctrl+C/Esc) reaches an in-flight run; batch passes context.Background() (no stop binding).
-func runAgent(ctx context.Context, e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey, prompt string, skillInject *string, canContinue func() bool) (engine.Result, error) {
+// runAgent drives one agent turn (user prompt → assistant answer) over the shared run engine, session transcript, and tool registry that both the TUI and batch use. It renders the discovered catalog into a model-visible index and carries it to the engine as a system-layer message when any skill is model-visible; a catalog with none yields a nil index, so the engine omits the block and the no-index wire bytes are preserved. ctx is threaded through to the engine so the TUI's per-turn cancellation (Ctrl+C/Esc) reaches an in-flight run; batch passes context.Background() (no stop binding).
+func runAgent(ctx context.Context, e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey, prompt string, catalog *tools.Catalog, skillInject *string, canContinue func() bool) (engine.Result, error) {
 	compaction := &engine.CompactionConfig{Fraction: cfg.CompactionFraction}
+	var skillIndex *string
+	if catalog != nil {
+		if idx := catalog.RenderIndex(); idx != "" {
+			skillIndex = &idx
+		}
+	}
 	effort := cfg.ReasoningEffort
 	if !cfg.ThinkingEnabled {
 		effort = ""
@@ -234,6 +240,7 @@ func runAgent(ctx context.Context, e *engine.Engine, cfg config.Config, reg *too
 	return e.RunAgent(ctx, engine.RunRequest{
 		Model:           cfg.Model,
 		Prompt:          prompt,
+		SkillIndex:      skillIndex,
 		SkillInject:     skillInject,
 		SessionKey:      sessionKey,
 		ThinkingEnabled: cfg.ThinkingEnabled,
