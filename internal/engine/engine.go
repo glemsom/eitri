@@ -352,7 +352,16 @@ func execToolCall(ctx context.Context, opts AgentOptions, tc provider.ToolCall) 
 	}
 	result, err := opts.Executor.Execute(ctx, tc.Name, tc.Arguments)
 	if err != nil {
-		return ToolExecResult{Text: "error executing tool: " + err.Error()}
+		// The executor may still have produced output worth surfacing (bash
+		// returns combined stdout+stderr even on a non-zero exit, e.g. an ls
+		// that failed for one entry after listing others). Keep the error line
+		// first so the TUI's failure tagging still matches, then append any
+		// partial output so the model sees what did run.
+		msg := "error executing tool: " + err.Error()
+		if result.Text != "" {
+			msg += "\n" + result.Text
+		}
+		return ToolExecResult{Text: msg}
 	}
 	return result
 }

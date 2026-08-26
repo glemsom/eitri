@@ -76,8 +76,9 @@ func TestAgentBashTurnReturnsCompressedOutput(t *testing.T) {
 
 type fakeBashRunner struct {
 	out string
+	err error
 }
 
 func (f *fakeBashRunner) Run(_ context.Context, _ string, _ []string) (*tools.Output, error) {
-	return &tools.Output{Stdout: f.out}, nil
+	return &tools.Output{Stdout: f.out}, f.err
 }

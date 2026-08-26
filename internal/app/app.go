@@ -256,7 +256,10 @@ func runAgent(ctx context.Context, e *engine.Engine, cfg config.Config, reg *too
 			}
 			res, err := reg.Run(ctx, name, args)
 			if err != nil {
-				return engine.ToolExecResult{}, err
+				// Preserve any output the tool produced alongside its error; bash
+				// returns combined stdout+stderr even on a non-zero exit, and
+				// dropping it would rob the model of diagnostic context.
+				return engine.ToolExecResult{Text: res.Text, Compressed: res.Compressed}, err
 			}
 			return engine.ToolExecResult{Text: res.Text, Compressed: res.Compressed}, nil
 		}),
