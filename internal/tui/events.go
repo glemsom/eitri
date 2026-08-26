@@ -28,7 +28,7 @@ type ToolStart struct {
 	Args string
 }
 
-// ToolResult is the trailing half of a tool entry: the tool's delivered result plus the deterministic compression metadata the TUI renders and the file line-delta / before-after content computed by the TUI-side delta observer from the paired tool start/result events — the source of the `⊕ edit path [+N,-M]` tag and the card diff's inline diff.
+// ToolResult is the trailing half of a tool entry: the tool's delivered result plus the deterministic compression metadata the TUI renders.
 type ToolResult struct {
 	Name         string
 	Result       string
@@ -36,11 +36,6 @@ type ToolResult struct {
 	Lines        int
 	Dropped      int
 	Compressed   bool
-	Added        int
-	Removed      int
-	Before       string
-	After        string
-	Path         string
 }
 
 // Event is one merged observation from the engine seam, carrying exactly one of

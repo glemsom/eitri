@@ -112,26 +112,6 @@ func TestRender_lineCount(t *testing.T) {
 	}
 }
 
-func TestRender_readRangeHint(t *testing.T) {
-	cases := []struct {
-		name string
-		args string
-		want string
-	}{
-		{"valid", `{"start_line":1,"end_line":40}`, "1-40"},
-		{"only-start", `{"start_line":1}`, ""},
-		{"fractional", `{"start_line":1.5,"end_line":40}`, ""},
-		{"non-positive", `{"start_line":0,"end_line":40}`, ""},
-		{"malformed", "not-json", ""},
-		{"omitted", `{}`, ""},
-	}
-	for _, c := range cases {
-		if got := readRangeHint(c.args); got != c.want {
-			t.Errorf("%s: readRangeHint(%q) = %q, want %q", c.name, c.args, got, c.want)
-		}
-	}
-}
-
 func TestRender_toolArgsHint(t *testing.T) {
 	cases := []struct {
 		name string

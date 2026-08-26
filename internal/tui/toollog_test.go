@@ -132,38 +132,15 @@ func TestToolLog_ExpansionSeamOwnsForces(t *testing.T) {
 	}
 }
 
-func TestToolLog_ReviewProjectsChangedFiles(t *testing.T) {
-	t.Parallel()
-	var l toolLog
-	l.SetAnchor(0)
-	l.Apply(ToolUpdate{Start: &ToolStart{Name: "edit", Args: `{"path":"a.go"}`}})
-	l.Apply(ToolUpdate{Result: &ToolResult{Name: "edit", Result: "added", Lines: 1,
-		Before: "", After: "package a\n", Path: "a.go", Added: 1, Removed: 0}})
-	l.Apply(ToolUpdate{Start: &ToolStart{Name: "write", Args: `{"path":"a.go"}`}})
-	l.Apply(ToolUpdate{Result: &ToolResult{Name: "write", Result: "rewritten", Lines: 1,
-		Before: "package a\n", After: "package a\n\nfunc x() {}\n", Path: "a.go", Added: 2, Removed: 0}})
-
-	rev := l.Review()
-	if len(rev) != 1 {
-		t.Fatalf("expected one reviewed file, got %d", len(rev))
-	}
-	if rev[0].path != "a.go" {
-		t.Errorf("review entry = %+v, want a.go", rev[0])
-	}
-	if !strings.Contains(rev[0].after, "func x()") {
-		t.Errorf("review should keep the most recent after-content, got: %q", rev[0].after)
-	}
-}
-
 func TestToolLog_PlainTextRendersEntry(t *testing.T) {
 	t.Parallel()
 	var l toolLog
 	l.SetAnchor(0)
-	l.Apply(ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}})
-	l.Apply(ToolUpdate{Result: &ToolResult{Name: "read", Result: "one\ntwo\n", Lines: 2}})
+	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
+	l.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "one\ntwo\n", Lines: 2}})
 
 	out := clipboardToolText(l, 0)
-	if !strings.Contains(out, "📖 read  a.txt") {
+	if !strings.Contains(out, "🔧 bash  ls") {
 		t.Errorf("PlainText must include the head, got %q", out)
 	}
 	if !strings.Contains(out, "  one") || !strings.Contains(out, "  two") {
@@ -176,45 +153,12 @@ func TestToolLog_PlainTextCollapsedAndExpanded(t *testing.T) {
 	var l toolLog
 	l.SetAnchor(0)
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
-	l.Apply(ToolUpdate{Start: &ToolStart{Name: "edit", Args: `{"path":"a.go"}`}})
-	l.Apply(ToolUpdate{Result: &ToolResult{Name: "edit", Result: "change\n", Lines: 1,
-		Before: "a", After: "b", Path: "a.go", Added: 1, Removed: 1}})
+	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"cat a.go"}`}})
+	l.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "change\n", Lines: 1}})
 
 	out := clipboardToolText(l, 0)
-	if out != "🔧 bash  ls\n✂️ edit  a.go  [+1, −1]\n  change\n" {
+	if out != "🔧 bash  ls\n🔧 bash  cat a.go\n  change\n" {
 		t.Errorf("PlainText shape mismatch, got %q", out)
-	}
-}
-
-func TestToolLog_ReviewKeepsMostRecentState(t *testing.T) {
-	t.Parallel()
-	applyFile := func(l *toolLog, name, path, before, after string) {
-		l.SetAnchor(0)
-		l.Apply(ToolUpdate{Start: &ToolStart{Name: name, Args: `{"path":"` + path + `"}`}})
-		l.Apply(ToolUpdate{Result: &ToolResult{Name: name, Result: "done", Lines: 1,
-			Before: before, After: after, Path: path}})
-	}
-
-	cases := []struct {
-		name   string
-		before string
-		after  string
-	}{
-		{name: "added-then-rewritten", before: "package a\n", after: "package a\n\nfunc x() {}\n"},
-	}
-
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			var l toolLog
-			applyFile(&l, "edit", "f.go", c.before, c.after)
-			rev := l.Review()
-			if len(rev) != 1 {
-				t.Fatalf("expected one reviewed file, got %d", len(rev))
-			}
-			if rev[0].before != c.before || rev[0].after != c.after {
-				t.Errorf("most recent state = (%q, %q), want (%q, %q)", rev[0].before, rev[0].after, c.before, c.after)
-			}
-		})
 	}
 }
 
@@ -231,14 +175,9 @@ func TestToolLog_HeadForms(t *testing.T) {
 			want:  "🔧 bash  ls",
 		},
 		{
-			name:  "read range",
-			entry: toolEntry{name: "read", args: `{"path":"a.txt","start_line":3,"end_line":7}`},
-			want:  "📖 read  a.txt:3-7",
-		},
-		{
-			name:  "edit delta",
-			entry: toolEntry{name: "edit", args: `{"path":"a.go"}`, added: 2, removed: 1},
-			want:  "✂️ edit  a.go  [+2, −1]",
+			name:  "web fetch",
+			entry: toolEntry{name: "web_fetch", args: `{"url":"https://example.com"}`},
+			want:  "🌐 web_fetch  https://example.com",
 		},
 	}
 	for _, c := range cases {

@@ -45,8 +45,7 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 	rail := tui.NewRail(cfg.Provider, cfg.Model, effort, cfg.ThinkingEnabled, sessionKey, sessionTemp)
 	rail.SetBranch(tui.GitBranch(workspace))
 	events := tui.NewEventFeed()
-	observer := tui.NewDeltaObserver(fileDeltaResolver(reg))
-	feedEngineEvents(e, te, observer, events)
+	feedEngineEvents(e, te, events)
 	currentCfg := cfg
 	m := tui.NewModelCfg(tui.Dependencies{
 		DiscoverModels: discoveredModels(cfgPath),
@@ -85,7 +84,7 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 }
 
 // feedEngineEvents wires the engine's live event stream into the TUI's status strip and onto the single merged FIFO feed in the exact order the engine emitted the events: every stream delta and tool observation lands on that one feed, so the live TUI records the model's true arrival order.
-func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, obs *tui.DeltaObserver, events *tui.EventFeed) {
+func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, events *tui.EventFeed) {
 	teCh := te.UpdateChan()
 	mCh := events.UpdateChan()
 	e.SetListener(func(evt engine.Event) {
@@ -110,16 +109,13 @@ func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, obs *tui.DeltaObserve
 		case engine.CompactedEvent:
 			pushTelemetry(teCh, tui.TelemetryUpdate{Kind: tui.TelemetryCompacted})
 		case engine.ToolCallEvent:
-			obs.Start(ev.ID, ev.Name, ev.Arguments)
 			u := tui.ToolUpdate{Start: &tui.ToolStart{Name: ev.Name, Args: ev.Arguments}}
 			pushEvent(mCh, tui.Event{Tool: &u})
 		case engine.ToolResultEvent:
-			added, removed, before, after, path := obs.Result(ev.ID, ev.Name)
 			u := tui.ToolUpdate{Result: &tui.ToolResult{
 				Name: ev.Name, Result: ev.Result, BytesDropped: ev.BytesDropped,
 				Lines: ev.Lines, Dropped: ev.Dropped,
-				Compressed: ev.Compressed, Added: added, Removed: removed,
-				Before: before, After: after, Path: path,
+				Compressed: ev.Compressed,
 			}}
 			pushEvent(mCh, tui.Event{Tool: &u})
 		}

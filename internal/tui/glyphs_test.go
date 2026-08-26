@@ -32,12 +32,8 @@ func TestToolGlyph_charter(t *testing.T) {
 		ascii string
 	}{
 		{"bash", "🔧", "$"},
-		{"read", "📖", "<"},
-		{"write", "✏️", ">"},
-		{"edit", "✂️", "~"},
 		{"web_fetch", "🌐", "w"},
 		{"open_in_browser", "🌍", "W"},
-		{"skill", "⚡", "s"},
 		{"unknown", "⊕", "+"},
 	}
 	for _, c := range cases {

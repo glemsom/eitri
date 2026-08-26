@@ -259,17 +259,6 @@ func runAgent(ctx context.Context, e *engine.Engine, cfg config.Config, reg *too
 	})
 }
 
-// fileDeltaResolver builds the TUI delta observer's path-resolution seam from the shared registry: it resolves a tool-argument path to its host form via the registry's path translator, absolutizing a workspace-relative model path against the workspace root so the observer reads the same file the tool writes (which the validator resolved against the workspace).
-func fileDeltaResolver(reg *tools.Registry) func(sandboxPath string) string {
-	return func(p string) string {
-		host, _ := reg.PathTranslator().SandboxToHost(p)
-		if !filepath.IsAbs(host) {
-			host = filepath.Join(reg.Workspace(), host)
-		}
-		return host
-	}
-}
-
 // providerTools maps the registry's definitions to provider Chat-Completions Tool objects via the single per-dialect serializer (provider.ReExpress): one canonical JSON-Schema per tool is re-expressed per dialect, never hand-copied per provider.
 func providerTools(defs []tools.Definition) []provider.Tool {
 	canonical := make([]provider.DialectDefinition, 0, len(defs))

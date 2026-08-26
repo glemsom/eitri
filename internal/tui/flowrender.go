@@ -3,13 +3,10 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
 	"charm.land/lipgloss/v2"
-
-	"github.com/glemsom/eitri/internal/diff"
 )
 
 // flowInput is one turn's complete rendering context for the flow renderer:
@@ -315,52 +312,18 @@ func toolEntryLabel(te toolEntry) string {
 	return glyph + " " + te.name
 }
 
-// toolEntryArgs renders the dimmed detail part of the entry head: the display args hint, the invoked line range for range-limited reads (`⊕ read path:start-end`), and the line-delta tag for file-edit tools (`[+N, −M]`).
+// toolEntryArgs renders the dimmed detail part of the entry head: the display args hint.
 func toolEntryArgs(te toolEntry) string {
 	s := ""
 	if arg := toolArgsHint(te.args); arg != "" {
 		s += "  " + arg
-		if te.name == "read" {
-			if r := readRangeHint(te.args); r != "" {
-				s += ":" + r
-			}
-		}
-	}
-	if te.name == "edit" || te.name == "write" {
-		s += "  " + deltaTag(te.added, te.removed)
 	}
 	return s
 }
 
-// toolEntryHead renders the compact one-line `⊕ tool args` head shared by the transcript entry and the clipboard copy: the tool name and display args, plus the [+N, −M] line-delta tag for file-edit tools.
+// toolEntryHead renders the compact one-line `⊕ tool args` head shared by the transcript entry and the clipboard copy: the tool name and display args.
 func toolEntryHead(te toolEntry) string {
 	return toolEntryLabel(te) + toolEntryArgs(te)
-}
-
-// readRangeHint extracts the explicit 1-based line range a `read` call was invoked with from its raw JSON args.
-func readRangeHint(argsJSON string) string {
-	var args map[string]any
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-		return ""
-	}
-	start, ok := lineArg(args, "start_line")
-	if !ok {
-		return ""
-	}
-	end, ok := lineArg(args, "end_line")
-	if !ok {
-		return ""
-	}
-	return fmt.Sprintf("%d-%d", start, end)
-}
-
-// lineArg reads a 1-based integer tool argument from raw JSON args.
-func lineArg(args map[string]any, key string) (int, bool) {
-	v, ok := args[key].(float64)
-	if !ok || v != math.Trunc(v) || v < 1 {
-		return 0, false
-	}
-	return int(v), true
 }
 
 // toolArgsHint extracts a short display hint from a tool call's raw JSON args: the `path` for file tools, the `command` for bash, else the raw string trimmed to a single line.
@@ -441,17 +404,6 @@ func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width
 		return b.String()
 	}
 
-	if te.name == "edit" || te.name == "write" {
-		frame := cardFrame(th, te)
-		entry := reviewEntryFromTool(te)
-		if te.before == "" && te.after == "" {
-			b.WriteString(frame.Render(strings.TrimRight(renderCountSummary(entry, th), "\n")))
-		} else {
-			b.WriteString(frame.Render(strings.TrimRight(renderToolCardDiff(entry, th), "\n")))
-		}
-		b.WriteString("\n")
-		return b.String()
-	}
 	if te.result != "" {
 		frame := cardFrame(th, te)
 		b.WriteString(frame.Render(strings.TrimSuffix(te.result, "\n")))
@@ -460,7 +412,7 @@ func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width
 	return b.String()
 }
 
-// cardFrame is the expanded tool card's frame: a left border in the entry's category hue, shared by the result-dump and inline-diff content paths so both render with the same designed block look.
+// cardFrame is the expanded tool card's frame: a left border in the entry's category hue, shared by the result-dump content.
 func cardFrame(th Theme, te toolEntry) lipgloss.Style {
 	return lipgloss.NewStyle().
 		Border(lipgloss.Border{Left: g("│", "|")}).
@@ -469,35 +421,19 @@ func cardFrame(th Theme, te toolEntry) lipgloss.Style {
 		BorderForeground(th.toolCategoryStyle(toolCategoryOf(te.name)).GetForeground())
 }
 
-// renderToolCardDiff renders a file-mutating entry's before→after content as an inline diff — the git-style @@ hunk headers plus +/-/context lines with word-level emphasis on modified pairs — so the expanded tool card shows the change instead of the raw result dump.
-func renderToolCardDiff(f reviewEntry, th Theme) string {
-	if h := diff.Diff(f.before, f.after); len(h) > 0 {
-		f.hunks = h
-		return renderDiff(f, th)
-	}
-	return renderCountSummary(f, th)
-}
-
-// deltaTag renders the conventional [+N, −M] add/delete vocabulary shared by the card diff body, the no-diff fallback, and the transcript's file-edit head.
-func deltaTag(added, removed int) string {
-	return fmt.Sprintf("[+%d, "+g("−", "-")+"%d]", added, removed)
-}
-
 // isToolFailure reports whether a delivered tool result is error-shaped: the engine surfaces tool failures as plain-text result strings with these prefixes (internal/engine/engine.go), so the TUI can tag them ✗ without coupling to the engine package's error types.
 func isToolFailure(result string) bool {
 	return strings.HasPrefix(result, "error executing tool:") ||
 		strings.HasPrefix(result, "invalid tool arguments:")
 }
 
-// toolCategory groups tool entries by the work the tool does so the transcript can colorize a long session by category: shell commands, file reads/writes/edits, web fetches and browser opens, and skill activations.
+// toolCategory groups tool entries by the work the tool does so the transcript can colorize a long session by category: shell commands, web fetches and browser opens.
 type toolCategory int
 
 const (
 	catOther toolCategory = iota
 	catShell
-	catFile
 	catWeb
-	catSkill
 )
 
 // toolCategoryOf maps a tool name to its transcript category.
@@ -505,12 +441,8 @@ func toolCategoryOf(name string) toolCategory {
 	switch name {
 	case "bash":
 		return catShell
-	case "read", "write", "edit":
-		return catFile
 	case "web_fetch", "open_in_browser":
 		return catWeb
-	case "skill":
-		return catSkill
 	}
 	return catOther
 }

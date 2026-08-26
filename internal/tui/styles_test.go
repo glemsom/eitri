@@ -435,20 +435,14 @@ func TestTheme_toolCategoryStyles(t *testing.T) {
 	th := defaultTheme
 	for cat, want := range map[string]color.Color{
 		"shell": th.shell,
-		"file":  th.file,
 		"web":   th.web,
-		"skill": th.skill,
 	} {
 		var got color.Color
 		switch cat {
 		case "shell":
 			got = th.toolShellStyle.GetForeground()
-		case "file":
-			got = th.toolFileStyle.GetForeground()
 		case "web":
 			got = th.toolWebStyle.GetForeground()
-		case "skill":
-			got = th.toolSkillStyle.GetForeground()
 		}
 		if got != want {
 			t.Errorf("tool %s style foreground = %v, want %v", cat, got, want)

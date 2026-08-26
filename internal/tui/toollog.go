@@ -2,7 +2,7 @@ package tui
 
 import "time"
 
-// toolEntry is one rendered tool call in the transcript: the tool name + args, plus the delivered result and its deterministic compression and file line-delta metadata.
+// toolEntry is one rendered tool call in the transcript: the tool name + args, plus the delivered result and its deterministic compression metadata.
 type toolEntry struct {
 	name         string
 	args         string
@@ -11,15 +11,10 @@ type toolEntry struct {
 	lines        int
 	dropped      int
 	compressed   bool
-	added        int
-	removed      int
 	anchor       int // index of the triggering "you" message in messages
 	complete     bool
 	startedAt    time.Time
 	doneAt       time.Time
-	before       string
-	after        string
-	path         string
 }
 
 // toolLog is the deep value type that owns the transcript's tool-call entries end to end.
@@ -83,11 +78,6 @@ func (l *toolLog) Apply(u ToolUpdate) {
 				l.entries[i].lines = u.Result.Lines
 				l.entries[i].dropped = u.Result.Dropped
 				l.entries[i].compressed = u.Result.Compressed
-				l.entries[i].added = u.Result.Added
-				l.entries[i].removed = u.Result.Removed
-				l.entries[i].before = u.Result.Before
-				l.entries[i].after = u.Result.After
-				l.entries[i].path = u.Result.Path
 				l.entries[i].doneAt = time.Now()
 				l.entries[i].complete = true
 				return
@@ -125,32 +115,6 @@ func (l toolLog) expandedFor(i int, cfg expansionConfig) bool {
 		return false
 	}
 	return l.expansion.expanded(blockTool, i, cfg)
-}
-
-// Review projects the changed-file review from the log's file-mutating (edit/write) entries: it consolidates by path, keeping the most recent state per path.
-func (l toolLog) Review() []reviewEntry {
-	var files []reviewEntry
-	byPath := map[string]int{}
-	for _, te := range l.entries {
-		if te.name != "edit" && te.name != "write" {
-			continue
-		}
-		if te.path == "" {
-			continue
-		}
-		entry := reviewEntryFromTool(te)
-		idx, ok := byPath[te.path]
-		if !ok {
-			byPath[te.path] = len(files)
-			files = append(files, entry)
-			continue
-		}
-		files[idx].before = entry.before
-		files[idx].after = entry.after
-		files[idx].added = entry.added
-		files[idx].removed = entry.removed
-	}
-	return files
 }
 
 // AtLine maps a content-line coordinate to the tool entry that owns it via the shared layout pass. rows is the row-account already produced by Render (the log never re-derives layout separately), so the hit-test cannot drift from what the transcript renders.

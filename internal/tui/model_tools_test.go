@@ -34,23 +34,20 @@ func TestModel_toolEditEntryRenders(t *testing.T) {
 		Events: feed,
 	})
 	m = resize(t, m)
-	m = typeText(t, m, "edit it")
+	m = typeText(t, m, "run it")
 	m = submitAndWait(t, m)
 
-	m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: "edit", Args: `{"path":"internal/main.go"}`}})
+	m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Result: &ToolResult{
-		Name: "edit", Result: "Edit applied to internal/main.go\n", Added: 2, Removed: 0,
+		Name: "bash", Result: "a.go\nb.go\n", Lines: 2,
 	}})
 
 	content := view(m)
-	if !strings.Contains(content, "✂️ edit") {
-		t.Errorf("expected a one-line edit entry, got: %q", content)
+	if !strings.Contains(content, "🔧 bash") {
+		t.Errorf("expected a one-line bash entry, got: %q", content)
 	}
-	if !strings.Contains(content, "internal/main.go") {
-		t.Errorf("expected the edited path in the entry args, got: %q", content)
-	}
-	if !strings.Contains(content, "+2, −0") {
-		t.Errorf("expected [+N,−M] delta tag, got: %q", content)
+	if !strings.Contains(content, "ls") {
+		t.Errorf("expected the command in the entry args, got: %q", content)
 	}
 }
 
@@ -102,8 +99,8 @@ func TestModel_eventFeedDrainsLiveToolUpdates(t *testing.T) {
 	})
 	m = resize(t, m)
 
-	m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}})
-	m = feedToolUpdate(t, &m, feed, ToolUpdate{Result: &ToolResult{Name: "read", Result: "contents", Lines: 1}})
+	m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
+	m = feedToolUpdate(t, &m, feed, ToolUpdate{Result: &ToolResult{Name: "bash", Result: "contents", Lines: 1}})
 
 	if m.tx.log.Len() != 1 {
 		t.Fatalf("expected one tool entry after start+result, got %d", m.tx.log.Len())
@@ -111,8 +108,8 @@ func TestModel_eventFeedDrainsLiveToolUpdates(t *testing.T) {
 	if !m.tx.log.Entry(0).complete {
 		t.Errorf("tool entry should be complete after its result arrives")
 	}
-	if e := m.tx.log.Entry(0); e.name != "read" || e.result != "contents" {
-		t.Errorf("tool entry = %+v, want read/contents", e)
+	if e := m.tx.log.Entry(0); e.name != "bash" || e.result != "contents" {
+		t.Errorf("tool entry = %+v, want bash/contents", e)
 	}
 }
 
