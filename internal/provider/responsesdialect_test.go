@@ -90,9 +90,7 @@ func TestResponsesDialectStreamReassemblesToolCallsAndText(t *testing.T) {
 		`data: {"type":"response.output_text.delta","delta":"Hello "}`,
 		`data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","call_id":"call_1","name":"read"}}`,
 		`data: {"type":"response.function_call_arguments.delta","output_index":0,"delta":"{\"path\":\"x\"}"}`,
-		`data: {"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","call_id":"call_1","name":"read","arguments":"{\"path\":\"x\"}"}}`,
-		`data: {"type":"response.completed","response":{"id":"resp_tool","model":"gpt-5.4-mini","created_at":2,"usage":{"input_tokens":5,"output_tokens":1},"output":[{"type":"function_call","call_id":"call_1","name":"read","arguments":"{\"path\":\"x\"}"}]}}`,
-		`data: [DONE]`,
+		`data: {"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","call_id":"call_1","name":"read"}}`,
 		`data: {"type":"response.completed","response":{"id":"resp_tool","model":"gpt-5.4-mini","created_at":2,"usage":{"input_tokens":5,"output_tokens":1},"output":[{"type":"function_call","call_id":"call_1","name":"read","arguments":"{\"path\":\"x\"}"}]}}`,
 		`data: [DONE]`,
 	}, "\n\n\n")

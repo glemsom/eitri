@@ -55,12 +55,12 @@ func NewResponsesDialect() *ResponsesDialect {
 	return &ResponsesDialect{}
 }
 
-// Build implements WireDialect.
+// Build marshals req as the Responses wire request body.
 func (d *ResponsesDialect) Build(req Request) ([]byte, error) {
 	return marshalResponsesBody(req)
 }
 
-// Capabilities implements WireDialect.
+// Capabilities reports the generation controls the Responses wire honors.
 func (d *ResponsesDialect) Capabilities() []GenerationControl {
 	return []GenerationControl{
 		GenerationControlGenerationBudget,
@@ -69,7 +69,7 @@ func (d *ResponsesDialect) Capabilities() []GenerationControl {
 	}
 }
 
-// Stream implements WireDialect, returning a stream that parses Responses SSE events.
+// Stream returns a stream that parses Responses SSE events.
 func (d *ResponsesDialect) Stream(r io.Reader) Stream {
 	return newResponsesStream(r)
 }
