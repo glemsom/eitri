@@ -156,7 +156,8 @@ type Model struct {
 	continueResp chan bool
 	prompting    bool
 
-	slash *SkillActivation
+	slash   *SkillActivation
+	mention *Mention
 
 	telemetry *Telemetry
 
@@ -220,6 +221,7 @@ func NewModelCfg(d Dependencies) Model {
 		continueReq:  make(chan struct{}, 1),
 		continueResp: make(chan bool, 1),
 		slash:        NewSkillActivation(d),
+		mention:      NewMention(d.WorkspacePath),
 		telemetry:    d.Telemetry,
 		events:       d.Events,
 		clipboard:    newClipboard(d),
@@ -351,10 +353,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 		case "esc":
+			if m.mention.isOpen() {
+				m.mention.Reset()
+				return m, nil
+			}
 			if m.tx.busy {
 				m.stopTurn()
 			}
 			return m, nil
+		case "up":
+			if m.mention.isOpen() {
+				m.mention.Move(-1)
+				return m, nil
+			}
+		case "down":
+			if m.mention.isOpen() {
+				m.mention.Move(1)
+				return m, nil
+			}
 		case "ctrl+s":
 			return m.startSettings()
 		case "pgup", "home":
@@ -391,9 +407,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.composer.InsertString("\n")
+			m.trackComposer()
 			m.syncComposerHeight()
 			return m, nil
 		case "enter":
+			if m.mention.isOpen() {
+				return m.selectMention()
+			}
+			// slash completion selection happens on Tab; Enter submits
 			return m.submitPrompt()
 		case "tab":
 			if m.composer.Value() != "" && strings.HasPrefix(m.composer.Value(), "/") && len(m.slash.Candidates(m.composer.Value())) > 0 {
@@ -424,7 +445,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		nm, cmd := m.composer.Update(msg)
 		m.composer = nm
-		m.slash.TrackComposer(m.composer.Value())
+		m.trackComposer()
 		m.syncComposerHeight()
 		cmds = append(cmds, cmd)
 		return m, tea.Batch(cmds...)
@@ -519,6 +540,7 @@ func (m Model) submitPrompt() (tea.Model, tea.Cmd) {
 	m.composer.Reset()
 	m.syncComposerHeight()
 	m.slash.Reset()
+	m.mention.Reset()
 	if prompt == "/settings" {
 		return m.startSettings()
 	}
@@ -573,6 +595,26 @@ func (m *Model) applyToolUpdate(u ToolUpdate) {
 	if u.Start != nil && !m.session.ThinkingEnabled() && motionEnabled() {
 		m.tx.busyPulse = 3
 	}
+}
+
+// trackComposer updates both completion surfaces after a composer mutation: the
+// slash surface from the value, and the @ mention surface from the caret position.
+func (m *Model) trackComposer() {
+	m.slash.TrackComposer(m.composer.Value())
+	m.mention.Track(m.composer.Value(), m.composerByteOffset())
+}
+
+// selectMention replaces the tracked @partial with the chosen candidate and
+// closes the dropdown; the resulting composer state is re-tracked.
+func (m Model) selectMention() (tea.Model, tea.Cmd) {
+	value := m.composer.Value()
+	next, ok := m.mention.Select(value)
+	if ok {
+		m.composer.SetValue(next)
+		m.composer.SetCursorColumn(len(next))
+		m.syncComposerHeight()
+	}
+	return m, nil
 }
 
 // completeSlashCommand delegates the completion cycle to the SkillActivation module, applying the chosen candidate to the composer.

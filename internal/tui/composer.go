@@ -27,6 +27,31 @@ const minComposerRows = 2
 // maxComposerRows is how tall the composer may grow inside the fixed bottom band before it scrolls internally: a long draft never spills into the transcript — the textarea's own viewport scrolls past this bound, and the band stays pinned while the history viewport yields rows.
 const maxComposerRows = 8
 
+// composerByteOffset computes the byte offset of the textarea's caret in its
+// value, so mention parsing can map the cursor position into the string.
+func (m Model) composerByteOffset() int {
+	value := m.composer.Value()
+	row := m.composer.Line()
+	col := m.composer.Column()
+	off := 0
+	for i := 0; i < row && i < strings.Count(value, "\n")+1; i++ {
+		idx := strings.IndexByte(value[off:], '\n')
+		if idx < 0 {
+			break
+		}
+		off += idx + 1
+	}
+	line := value[off:]
+	if eol := strings.IndexByte(line, '\n'); eol >= 0 {
+		line = line[:eol]
+	}
+	runes := []rune(line)
+	if col > len(runes) {
+		col = len(runes)
+	}
+	return off + len(string(runes[:col]))
+}
+
 // syncComposerHeight grows the composer with its draft up to maxComposerRows, then lets the textarea scroll internally: an empty draft rests at minComposerRows, each new line adds a row up to the bound, and beyond it the composer's internal viewport scrolls so the band never grows past the bound.
 func (m *Model) syncComposerHeight() {
 	rows := composerContentRows(m.composer)
@@ -111,6 +136,7 @@ func (m Model) renderBand(b *strings.Builder) {
 		inner.WriteString("\n")
 	}
 	m.slash.RenderCompletion(&inner, m.tx.theme, m.composer.Value())
+	m.mention.RenderCompletion(&inner, m.tx.theme, m.composer.Value(), m.composerByteOffset())
 	inner.WriteString(m.composer.View())
 	if m.savedMsg != "" {
 		inner.WriteString("\n" + m.tx.theme.statusStyle.Render(m.savedMsg))
@@ -147,5 +173,6 @@ func (m Model) composerPreRows() int {
 		n++
 	}
 	n += m.slash.CandidateCount(m.composer.Value())
+	n += m.mention.CandidateCount(m.composer.Value(), m.composerByteOffset())
 	return n
 }
