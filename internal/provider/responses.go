@@ -46,6 +46,34 @@ type responsesContentPart struct {
 	Text string `json:"text"`
 }
 
+// ResponsesDialect is the WireDialect implementation for the OpenAI Responses wire.
+// It owns the Responses request-body marshaling and the Responses SSE stream parsing.
+type ResponsesDialect struct{}
+
+// NewResponsesDialect returns a Responses dialect.
+func NewResponsesDialect() *ResponsesDialect {
+	return &ResponsesDialect{}
+}
+
+// Build marshals req as the Responses wire request body.
+func (d *ResponsesDialect) Build(req Request) ([]byte, error) {
+	return marshalResponsesBody(req)
+}
+
+// Capabilities reports the generation controls the Responses wire honors.
+func (d *ResponsesDialect) Capabilities() []GenerationControl {
+	return []GenerationControl{
+		GenerationControlGenerationBudget,
+		GenerationControlToolSchemaEnforcement,
+		GenerationControlThinkingSuppression,
+	}
+}
+
+// Stream returns a stream that parses Responses SSE events.
+func (d *ResponsesDialect) Stream(r io.Reader) Stream {
+	return newResponsesStream(r)
+}
+
 func marshalResponsesBody(req Request) ([]byte, error) {
 	body := responsesBody{
 		Model:           req.Model,
