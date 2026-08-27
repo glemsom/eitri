@@ -29,32 +29,35 @@ func TestSelectionWeaver_selsRangeNormalizes(t *testing.T) {
 }
 
 // TestSelectionWeaver_highlightWrapsRange verifies the seam's highlight runs in
-// rune space: it wraps exactly the selected cells across the covered rows in
-// reverse video, never touching the rows outside the range or the row's own
-// escape sequences.
+// rune space: it marks exactly the selected cells across the covered rows with
+// the selection background, never touching the rows outside the range or the
+// row's own escape sequences.
 func TestSelectionWeaver_highlightWrapsRange(t *testing.T) {
 	t.Parallel()
 	var s selectionWeaver
 	s.start(0, 0)
 	s.move(1, 2)
 	content := "abcdef\n\x1b[31mgh\x1b[0mijkl\nzz"
-	got := s.highlight(content)
+	got := s.highlight(content, testSel)
 	lines := strings.Split(got, "\n")
-	if spans := reverseVideoSpans(lines[0]); strings.Join(spans, "") != "abcdef" {
+	if spans := selectionSpans(lines[0], testSel); strings.Join(spans, "") != "abcdef" {
 		t.Errorf("row 0 highlight spans = %q, want %q", spans, "abcdef")
 	}
-	if spans := reverseVideoSpans(lines[1]); strings.Join(spans, "") != "ghi" {
+	if spans := selectionSpans(lines[1], testSel); strings.Join(spans, "") != "ghi" {
 		t.Errorf("row 1 highlight spans = %q, want %q (rune-space, display-width(gh)=2)", spans, "ghi")
 	}
 	if !strings.Contains(lines[1], "\x1b[31m") {
 		t.Errorf("row 1 must keep its own escape sequences, got %q", lines[1])
+	}
+	if !strings.Contains(lines[1], "\x1b[49m") {
+		t.Errorf("row 1 must restore the default background after the range, got %q", lines[1])
 	}
 	if plain := ansiStrip(lines[2]); plain != "zz" {
 		t.Errorf("row outside the range must be untouched, got %q", lines[2])
 	}
 	// An inactive weaver is a no-op.
 	var idle selectionWeaver
-	if got := idle.highlight(content); got != content {
+	if got := idle.highlight(content, testSel); got != content {
 		t.Errorf("inactive highlight must return content unchanged, got %q", got)
 	}
 }

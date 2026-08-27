@@ -9,14 +9,15 @@ import (
 
 // Theme is the styling surface for the TUI chrome: a palette registry of named colors plus the derived styles that draw from them.
 type Theme struct {
-	accent color.Color // the single agent accent used across the surface
-	error  color.Color // semantic color for failures (⚠ errors, ✗ tool outcomes)
-	ok     color.Color // semantic color for successful tool outcomes (✓)
-	shell  color.Color // semantic color for shell tool entries (bash, ⊕)
-	file   color.Color // secondary hue (markdown links, ⊕ fallback)
-	web    color.Color // semantic color for web tool entries (web_fetch, ⊕)
-	skill  color.Color // secondary hue (markdown images, ⊕ fallback)
-	bubble color.Color
+	accent      color.Color // the single agent accent used across the surface
+	error       color.Color // semantic color for failures (⚠ errors, ✗ tool outcomes)
+	ok          color.Color // semantic color for successful tool outcomes (✓)
+	shell       color.Color // semantic color for shell tool entries (bash, ⊕)
+	file        color.Color // secondary hue (markdown links, ⊕ fallback)
+	web         color.Color // semantic color for web tool entries (web_fetch, ⊕)
+	skill       color.Color // secondary hue (markdown images, ⊕ fallback)
+	bubble      color.Color
+	selectionBg color.Color // the fill marking a drag selection (indicated by background color change)
 
 	railHues [3]color.Color
 
@@ -59,6 +60,7 @@ func newDefaultTheme() Theme {
 		lipgloss.Color("#BB9AF7"), // web
 		lipgloss.Color("#FF87D7"), // skill
 		lipgloss.Color("#2A2F3A"), // bubble tint (near-background gray-blue)
+		lipgloss.Color("#3B4261"), // selectionBackground (dim blue-gray)
 		[3]color.Color{
 			lipgloss.Color("#E0AF68"),
 			lipgloss.Color("#7DCFFF"),
@@ -78,6 +80,7 @@ func newDraculaTheme() Theme {
 		lipgloss.Color("#FF79C6"), // web
 		lipgloss.Color("#F1FA8C"), // skill
 		lipgloss.Color("#3D3F51"), // bubble tint (dracula comment family)
+		lipgloss.Color("#44475A"), // selectionBackground (dracula current-line)
 		[3]color.Color{
 			lipgloss.Color("#FFB86C"),
 			lipgloss.Color("#8BE9FD"),
@@ -97,6 +100,7 @@ func newTokyoNightTheme() Theme {
 		lipgloss.Color("#2AC3DE"), // web
 		lipgloss.Color("#73DACA"), // skill
 		lipgloss.Color("#292E42"), // bubble tint (tokyo-night bg-adjacent)
+		lipgloss.Color("#33467C"), // selectionBackground (tokyo-night selection)
 		[3]color.Color{
 			lipgloss.Color("#FF9E64"),
 			lipgloss.Color("#7DCFFF"),
@@ -116,6 +120,7 @@ func newPinkTheme() Theme {
 		lipgloss.Color("#A78BFA"), // web
 		lipgloss.Color("#60A5FA"), // skill
 		lipgloss.Color("#33202E"), // bubble tint (pink-family dark)
+		lipgloss.Color("#4A2F3F"), // selectionBackground (pink-family taupe)
 		[3]color.Color{
 			lipgloss.Color("#FFB224"),
 			lipgloss.Color("#39C0ED"),
@@ -135,6 +140,7 @@ func newLightTheme() Theme {
 		lipgloss.Color("#6D28D9"), // web
 		lipgloss.Color("#A21CAF"), // skill
 		lipgloss.Color("#EAEAEF"), // bubble tint (near-white gray)
+		lipgloss.Color("#C7D8F7"), // selectionBackground (light blue highlight)
 		[3]color.Color{
 			lipgloss.Color("#B45309"),
 			lipgloss.Color("#0E7490"),
@@ -154,6 +160,7 @@ func newNordTheme() Theme {
 		lipgloss.Color("#B48EAD"), // web (aurora purple)
 		lipgloss.Color("#D08770"), // skill (aurora orange)
 		lipgloss.Color("#2E3440"), // bubble tint (polar-night bg)
+		lipgloss.Color("#434C5E"), // selectionBackground (nord dark4)
 		[3]color.Color{
 			lipgloss.Color("#EBCB8B"),
 			lipgloss.Color("#81A1C1"),
@@ -173,6 +180,7 @@ func newGruvboxTheme() Theme {
 		lipgloss.Color("#D3869B"), // web (purple)
 		lipgloss.Color("#FE8019"), // skill (orange)
 		lipgloss.Color("#3C3836"), // bubble tint (bg1)
+		lipgloss.Color("#504945"), // selectionBackground (gruvbox selection gray)
 		[3]color.Color{
 			lipgloss.Color("#FABD2F"),
 			lipgloss.Color("#8EC07C"),
@@ -192,6 +200,7 @@ func newSolarizedTheme() Theme {
 		lipgloss.Color("#6C71C4"), // web (violet)
 		lipgloss.Color("#D33682"), // skill (magenta)
 		lipgloss.Color("#073642"), // bubble tint (bg)
+		lipgloss.Color("#465B70"), // selectionBackground (solarized selection)
 		[3]color.Color{
 			lipgloss.Color("#B58900"),
 			lipgloss.Color("#2AA198"),
@@ -211,6 +220,7 @@ func newDarkDaltonizedTheme() Theme {
 		lipgloss.Color("#CC79A7"), // web (reddish purple)
 		lipgloss.Color("#E69F00"), // skill (golden orange)
 		lipgloss.Color("#232A36"), // bubble tint (neutral blue-gray)
+		lipgloss.Color("#2F3A4C"), // selectionBackground (neutral blue-gray)
 		[3]color.Color{
 			lipgloss.Color("#F0E442"),
 			lipgloss.Color("#5796D8"),
@@ -230,6 +240,7 @@ func newLightDaltonizedTheme() Theme {
 		lipgloss.Color("#6D28D9"), // web (violet)
 		lipgloss.Color("#A21CAF"), // skill (magenta)
 		lipgloss.Color("#E9E9EF"), // bubble tint (near-white)
+		lipgloss.Color("#C9D4E8"), // selectionBackground (light blue highlight)
 		[3]color.Color{
 			lipgloss.Color("#B58900"),
 			lipgloss.Color("#0E7490"),
@@ -267,17 +278,18 @@ func themeFor(name string) Theme {
 }
 
 // newTheme builds a Theme from its seven palette entries; the derived styles draw from them.
-func newTheme(accent, err, ok, shell, file, web, skill, bubble color.Color, rail [3]color.Color) Theme {
+func newTheme(accent, err, ok, shell, file, web, skill, bubble, selectionBg color.Color, rail [3]color.Color) Theme {
 	th := Theme{
-		accent:   accent,
-		error:    err,
-		ok:       ok,
-		shell:    shell,
-		file:     file,
-		web:      web,
-		skill:    skill,
-		bubble:   bubble,
-		railHues: rail,
+		accent:      accent,
+		error:       err,
+		ok:          ok,
+		shell:       shell,
+		file:        file,
+		web:         web,
+		skill:       skill,
+		bubble:      bubble,
+		selectionBg: selectionBg,
+		railHues:    rail,
 
 		headerStyle: lipgloss.NewStyle().Bold(true).Foreground(accent),
 		statusStyle: lipgloss.NewStyle().Faint(true),
@@ -326,6 +338,14 @@ func (th Theme) railHeader(s railSection, text string) string {
 // railBody renders a rail section's body lines in its section's hue.
 func (th Theme) railBody(s railSection, text string) string {
 	return th.railBodyStyles[s].Render(text)
+}
+
+// selectionBgSGR returns the marking background as a `48;2;r;g;b` SGR for a
+// drag selection, so highlighted cells change background color instead of
+// relying on reverse video.
+func (th Theme) selectionBgSGR() string {
+	r, g, b, _ := th.selectionBg.RGBA() // 16-bit channels per image/color
+	return fmt.Sprintf("\x1b[48;2;%d;%d;%dm", r>>8, g>>8, b>>8)
 }
 
 // dimmed scales a color's RGB toward black by the given factor, for use as a same-hue background fill (diff lines, subtle cards).

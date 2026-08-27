@@ -11,6 +11,9 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
+// testSel is a fixed selection-background SGR for unit tests of highlightRange.
+const testSel = "\x1b[48;2;90;90;90m"
+
 func TestAnsiStrip_RemovesEscapeSequences(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -46,18 +49,18 @@ func TestHighlightRange_WrapsOnlySelectedCells(t *testing.T) {
 		{"abcdef", 0, 5, "abcdef", "", true},
 	}
 	for _, c := range cases {
-		got := highlightRange(c.line, c.from, c.to)
+		got := highlightRange(c.line, c.from, c.to, testSel)
 		if plain := ansiStrip(got); plain != c.wantPlain {
 			t.Errorf("highlightRange(%q, %d, %d) plain = %q, want %q", c.line, c.from, c.to, plain, c.wantPlain)
 		}
 		if !c.wantHasRev {
 			continue
 		}
-		if !strings.Contains(got, "\x1b[7m") {
-			t.Errorf("highlightRange(%q, %d, %d) missing reverse-video on, got %q", c.line, c.from, c.to, got)
+		if !strings.Contains(got, testSel) {
+			t.Errorf("highlightRange(%q, %d, %d) missing selection background on, got %q", c.line, c.from, c.to, got)
 		}
-		if !strings.Contains(got, "\x1b[27m") {
-			t.Errorf("highlightRange(%q, %d, %d) missing reverse-video off, got %q", c.line, c.from, c.to, got)
+		if !strings.Contains(got, "\x1b[49m") {
+			t.Errorf("highlightRange(%q, %d, %d) missing default-background restore, got %q", c.line, c.from, c.to, got)
 		}
 		if c.wantKeep != "" && !strings.Contains(got, c.wantKeep) {
 			t.Errorf("highlightRange(%q, %d, %d) must keep the line's own escape sequences, got %q", c.line, c.from, c.to, got)
@@ -65,19 +68,39 @@ func TestHighlightRange_WrapsOnlySelectedCells(t *testing.T) {
 	}
 }
 
+// TestHighlightRange_survivesInternalResets is the regression for the original
+// bug: rendered content intersperses per-token SGR resets (\x1b[m / \x1b[0m),
+// and a reverse-video marking was silently dropped at the first reset inside
+// the range — only the prefix before it rendered marked. The selection
+// background must be re-asserted across every internal reset, so the whole
+// range stays marked no matter how the content styles itself.
+func TestHighlightRange_survivesInternalResets(t *testing.T) {
+	t.Parallel()
+	// styled content; every token is followed by a reset, and one token carries
+	// a background (inline-code chip) that must not un-mark the selection
+	content := "ab\x1b[0mcd\x1b[48;5;236me\x1b[0mf"
+	got := highlightRange(content, 0, 5, testSel)
+	if spans := selectionSpans(got, testSel); strings.Join(spans, "") != "abcdef" {
+		t.Errorf("full range must stay marked across internal resets, got spans %q", spans)
+	}
+	if plain := ansiStrip(got); plain != "abcdef" {
+		t.Errorf("highlight must preserve the plain text, got %q", plain)
+	}
+}
+
 func TestHighlightRange_SingleCellAndOutOfRange(t *testing.T) {
 	t.Parallel()
-	got := highlightRange("ab", 1, 1)
+	got := highlightRange("ab", 1, 1, testSel)
 	if plain := ansiStrip(got); plain != "ab" {
 		t.Errorf("single-cell highlight plain = %q, want \"ab\"", plain)
 	}
-	if !strings.Contains(got, "\x1b[7m") || !strings.Contains(got, "\x1b[27m") {
-		t.Errorf("single-cell highlight missing reverse markers, got %q", got)
+	if !strings.Contains(got, testSel) || !strings.Contains(got, "\x1b[49m") {
+		t.Errorf("single-cell highlight missing background markers, got %q", got)
 	}
-	if got := highlightRange("ab", 5, 9); got != "ab" {
+	if got := highlightRange("ab", 5, 9, testSel); got != "ab" {
 		t.Errorf("out-of-range highlight must be a no-op, got %q", got)
 	}
-	if got := highlightRange("ab", 2, 1); got != "ab" {
+	if got := highlightRange("ab", 2, 1, testSel); got != "ab" {
 		t.Errorf("inverted range highlight must be a no-op, got %q", got)
 	}
 }
@@ -260,7 +283,11 @@ func runeRangeFromDisplay(row string, fromDisp, toDisp int) string {
 	return string(rs[s : e+1])
 }
 
-func reverseVideoSpans(s string) []string {
+// selectionSpans returns the printable-rune runs painted by the given
+// selection-background SGR, closed by a `\x1b[49m` restore. It matches sel
+// exactly so a content background (the user-bubble fill, inline-code chips)
+// is not mistaken for the marking.
+func selectionSpans(s string, sel string) []string {
 	rs := []rune(s)
 	var spans []string
 	var b strings.Builder
@@ -270,10 +297,10 @@ func reverseVideoSpans(s string) []string {
 		if rs[i] == '\x1b' {
 			n := consumeEscape(rs, i)
 			seq := string(rs[i : i+n])
-			if seq == "\x1b[7m" {
+			if !in && seq == sel {
 				in = true
 				b.Reset()
-			} else if seq == "\x1b[27m" {
+			} else if in && seq == "\x1b[49m" {
 				spans = append(spans, b.String())
 				in = false
 			}
@@ -325,7 +352,7 @@ func TestDragSelect_wideCharCopyMatchesHighlight(t *testing.T) {
 
 	m = mustUpdate(t, m, dragMsg("press", 4, answerRow))
 	m = mustUpdate(t, m, dragMsg("motion", 9, answerRow))
-	if spans := reverseVideoSpans(view(m)); strings.Join(spans, "") != "ab你de" {
+	if spans := selectionSpans(view(m), defaultTheme.selectionBgSGR()); strings.Join(spans, "") != "ab你de" {
 		t.Errorf("during-drag highlight spans = %q, want %q", spans, "ab你de")
 	}
 
@@ -441,8 +468,9 @@ func TestDragSelect_highlightsDuringDrag(t *testing.T) {
 	m = mustUpdate(t, m, dragMsg("motion", col+5, 0))
 
 	content := view(m)
-	if !strings.Contains(content, "\x1b[7m") {
-		t.Errorf("drag in progress must highlight the range in reverse video, got content:\n%s", content)
+	sel := defaultTheme.selectionBgSGR()
+	if !strings.Contains(content, sel) {
+		t.Errorf("drag in progress must mark the range with the selection background, got content:\n%s", content)
 	}
 	plain := ansiStrip(content)
 	if !strings.Contains(plain, "workspace: /tmp/acme") {
@@ -450,7 +478,7 @@ func TestDragSelect_highlightsDuringDrag(t *testing.T) {
 	}
 
 	m = mustUpdate(t, m, dragMsg("release", col+5, 0))
-	if strings.Contains(view(m), "\x1b[7m") {
+	if strings.Contains(view(m), sel) {
 		t.Errorf("highlight must clear after release, got content:\n%s", view(m))
 	}
 }

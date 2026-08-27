@@ -9,7 +9,7 @@ import (
 // VS16 pairs = 2 cells) and reports the [start,end) cell range painted inside
 // reverse video, or ok=false if no reverse span exists.
 func cellSpans(s string) (start, end int, ok bool) {
-	inRev := false
+	in := false
 	cell := 0
 	i := 0
 	rs := []rune(s)
@@ -17,12 +17,11 @@ func cellSpans(s string) (start, end int, ok bool) {
 		if rs[i] == '\x1b' {
 			n := consumeEscape(rs, i)
 			seq := string(rs[i : i+n])
-			switch seq {
-			case "\x1b[7m":
-				inRev = true
+			if !in && strings.HasPrefix(seq, "\x1b[48;") {
+				in = true
 				start = cell
-			case "\x1b[27m":
-				inRev = false
+			} else if in && seq == "\x1b[49m" {
+				in = false
 				end = cell
 				return start, end, true
 			}
@@ -33,7 +32,7 @@ func cellSpans(s string) (start, end int, ok bool) {
 		cell += w
 		i++
 	}
-	_ = inRev
+	_ = in
 	return 0, 0, false
 }
 
@@ -59,7 +58,7 @@ func TestHighlightRange_cellSpaceWithEmoji(t *testing.T) {
 			const wantCells = 10 // mouse drag over display cells [0,10)
 			from := colToRuneIndex(tc.line, 0)
 			to := colToRuneIndex(tc.line, wantCells-1)
-			hl := highlightRange(tc.line, from, to)
+			hl := highlightRange(tc.line, from, to, testSel)
 			start, end, ok := cellSpans(hl)
 			if !ok {
 				t.Fatalf("no reverse-video span found in %q", hl)

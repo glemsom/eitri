@@ -75,10 +75,13 @@ func colToRuneIndex(line string, displayCol int) int {
 	return len(rs) - 1
 }
 
-// highlight wraps the cells covered by an in-progress drag in reverse video
-// across the full rendered content; the persisted viewport clips it to the
-// visible window. It is a no-op for an inactive selection.
-func (s selectionWeaver) highlight(content string) string {
+// highlight wraps the cells covered by an in-progress drag in the theme's
+// selection background across the full rendered content; the persisted
+// viewport clips it to the visible window. sel is the `48;...` background SGR
+// to paint, so marking reads as a background-color change rather than the
+// fg/bg swap of reverse video (which content resets would silently drop). It
+// is a no-op for an inactive selection.
+func (s selectionWeaver) highlight(content string, sel string) string {
 	if !s.active {
 		return content
 	}
@@ -95,7 +98,7 @@ func (s selectionWeaver) highlight(content string) string {
 		if i < endLine {
 			to = len([]rune(ansiStrip(lines[i]))) - 1
 		}
-		lines[i] = highlightRange(lines[i], from, to)
+		lines[i] = highlightRange(lines[i], from, to, sel)
 	}
 	return strings.Join(lines, "\n")
 }
@@ -149,35 +152,106 @@ func runeCellWidth(r rune) int {
 	return ansi.StringWidth(string(r))
 }
 
-// highlightRange wraps the cells covered by a drag in reverse video across one
-// line of rendered content. from/to are rune indices (the selection store's
-// column space); they are painted at their display-cell positions, so wide
-// emoji shift the reverse-video span in cell space instead of misaligning it.
-func highlightRange(line string, from, to int) string {
+// highlightRange paints the cells covered by a drag in the selection
+// background sel across one line of rendered content. from/to are rune indices
+// (the selection store's column space); they are painted at their display-cell
+// positions, so wide emoji shift the marked span in cell space instead of
+// misaligning it. Rendered content intersperses SGR resets (\x1b[m / \x1b[0m)
+// per styled token; a bare reverse-video wrap would be dropped at the first
+// reset, so the selection background is re-asserted after every escape inside
+// the range and the content's own background (bubble fill, inline-code chip)
+// is restored just past the range end.
+func highlightRange(line string, from, to int, sel string) string {
 	if from < 0 || to < 0 || from > to {
 		return line
 	}
 	rs := []rune(line)
 	var b strings.Builder
+	var contentBG string // content's own bg SGR payload at the cursor ("" = default)
+	in := false
 	i, r := 0, 0 // raw rune index; printable-rune index (escapes excluded)
 	for i < len(rs) {
 		if rs[i] == '\x1b' {
 			n := consumeEscape(rs, i)
-			b.WriteString(string(rs[i : i+n]))
+			seq := string(rs[i : i+n])
+			b.WriteString(seq)
+			if len(seq) > 2 && seq[:2] == "\x1b[" && seq[len(seq)-1] == 'm' {
+				if payload, changed := sgrBackground(seq); changed {
+					contentBG = payload
+				}
+			}
+			if in {
+				// Re-assert the selection background so a content reset or
+				// color change never unwrites the marking mid-range.
+				b.WriteString(sel)
+			}
 			i += n
 			continue
 		}
 		if r == from {
-			b.WriteString("\x1b[7m")
+			in = true
+			b.WriteString(sel)
 		}
 		b.WriteRune(rs[i])
-		if r == to {
-			b.WriteString("\x1b[27m")
+		if r == to && in {
+			// Restore the content's own background active at the end of the
+			// range, so a styled region (bubble fill, inline-code chip) keeps
+			// its fill once the marking stops.
+			if contentBG == "" {
+				b.WriteString("\x1b[49m") // back to the terminal default background
+			} else {
+				b.WriteString("\x1b[" + contentBG + "m")
+			}
+			in = false
 		}
 		r++
 		i++
 	}
 	return b.String()
+}
+
+// sgrBackground computes the background state an SGR sequence leaves active:
+// payload is the `48;...` payload of any background it sets ("" when it clears
+// the background to default), and changed reports whether the sequence touched
+// the background at all. A bare \x1b[m or a 0/49 parameter resets the
+// background to default; a 48;5;n or 48;2;r;g;b (or legacy 48;n) sets one; any
+// other SGR leaves the background untouched.
+func sgrBackground(seq string) (payload string, changed bool) {
+	p := seq
+	if len(p) > 0 && p[len(p)-1] == 'm' {
+		p = p[:len(p)-1]
+	}
+	if len(p) > 2 {
+		p = p[2:] // drop "\x1b["
+	}
+	params := strings.Split(p, ";")
+	if len(params) == 1 && params[0] == "" {
+		return "", true // bare \x1b[m resets all attributes
+	}
+	for i := 0; i < len(params); i++ {
+		switch params[i] {
+		case "0", "49":
+			return "", true // full reset / explicit default background
+		case "48":
+			if i+1 >= len(params) {
+				return "", true
+			}
+			switch params[i+1] {
+			case "2": // 48;2;r;g;b truecolor
+				if i+4 < len(params) {
+					return "48;2;" + params[i+2] + ";" + params[i+3] + ";" + params[i+4], true
+				}
+			case "5": // 48;5;n indexed
+				if i+2 < len(params) {
+					return "48;5;" + params[i+2], true
+				}
+			default: // 48;n legacy palette
+				return "48;" + params[i+1], true
+			}
+			return "", true
+		}
+	}
+	return "", false
 }
 
 // ansiStrip removes ANSI escape sequences from s, returning the plain text —

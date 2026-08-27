@@ -393,7 +393,7 @@ func (t *Transcript) renderHistoryViewport(content string, reserved int) string 
 	t.histViewport.SetWidth(t.transcriptWidth())
 	t.histViewport.SetHeight(vh)
 	if t.weaver.active {
-		content = t.weaver.highlight(content)
+		content = t.weaver.highlight(content, t.theme.selectionBgSGR())
 	}
 	t.histViewport.SetContent(content)
 	if t.histFollow {
