@@ -6,10 +6,6 @@ import (
 	"time"
 )
 
-func toolEntryFor(name, args string) toolEntry {
-	return toolEntry{name: name, args: args}
-}
-
 // renderViaFlow renders the log's anchored entries through the FlowRenderer —
 // the only tool-entry renderer since the legacy tool-log render path was
 // deleted (issue #493). It mirrors the Transcript's flowInput assembly: one

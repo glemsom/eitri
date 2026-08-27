@@ -32,7 +32,7 @@ type Skill struct {
 type Catalog struct {
 	skills map[string]*Skill
 	scopes map[string]string // skill name -> install scope ("user" or "project")
-	order  []string         // skill names, sorted, project-shadows-user by name
+	order  []string          // skill names, sorted, project-shadows-user by name
 }
 
 // Names returns the discovered skill names in stable (sorted) order.

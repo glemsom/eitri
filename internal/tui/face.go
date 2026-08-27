@@ -44,7 +44,6 @@ const (
 var (
 	facePNGOnce sync.Once
 	facePNGData []byte
-	facePNGB64  string // pre-encoded so per-frame work is only alpha scaling
 )
 
 // facePNG decodes the embedded WebP and downscales it to at most

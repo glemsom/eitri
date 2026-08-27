@@ -246,7 +246,7 @@ func runAgent(ctx context.Context, e *engine.Engine, cfg config.Config, reg *too
 		SessionKey:      sessionKey,
 		ThinkingEnabled: cfg.ThinkingEnabled,
 		ReasoningEffort: effort,
-		ProviderID:     provider.ProviderID(cfg.Provider),
+		ProviderID:      provider.ProviderID(cfg.Provider),
 	}, engine.AgentOptions{
 		Tools:      providerTools(reg.Definitions()),
 		ToolChoice: "auto",
