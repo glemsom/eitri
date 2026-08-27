@@ -64,7 +64,7 @@ const (
 	RoleTool      Role = "tool"
 )
 
-// CacheControl is an Anthropic-style cache breakpoint marker that may sit on a Message or Tool, telling an OpenCode Go-style gateway where to place a cache breakpoint.
+// CacheControl is an Anthropic-style cache breakpoint marker serialized onto a Message or Tool.
 type CacheControl struct {
 	Type string `json:"type"`
 	TTL  string `json:"ttl,omitempty"`
@@ -168,7 +168,6 @@ type Request struct {
 	SetCacheKey bool
 	SessionKey  string
 	ProviderID  ProviderID
-
 
 	ThinkingEnabled bool
 	ReasoningEffort string
