@@ -224,13 +224,16 @@ type Usage struct {
 	cacheMissAssigned bool
 }
 
-// UnmarshalJSON decodes a Usage blob while tracking which prompt_cache_* keys were present, so finalize can tell an absent cache shape from an explicit hit=miss=0 one.
+// UnmarshalJSON decodes a Usage blob from either cache shape the OpenCode/DeepSeek gateway emits: the DeepSeek prompt_cache_* keys, or the OpenAI prompt_tokens_details.cached_tokens shape. It records which cache key was present so finalize can tell an absent cache shape from an explicit hit=miss=0 one.
 func (u *Usage) UnmarshalJSON(data []byte) error {
 	type usageWire struct {
 		PromptTokens          int `json:"prompt_tokens"`
 		CompletionTokens      int `json:"completion_tokens"`
 		PromptCacheHitTokens  int `json:"prompt_cache_hit_tokens"`
 		PromptCacheMissTokens int `json:"prompt_cache_miss_tokens"`
+		PromptTokensDetails   *struct {
+			CachedTokens int `json:"cached_tokens"`
+		} `json:"prompt_tokens_details"`
 	}
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -246,10 +249,14 @@ func (u *Usage) UnmarshalJSON(data []byte) error {
 	u.PromptCacheMissTokens = w.PromptCacheMissTokens
 	_, u.cacheHitAssigned = raw["prompt_cache_hit_tokens"]
 	_, u.cacheMissAssigned = raw["prompt_cache_miss_tokens"]
+	if w.PromptTokensDetails != nil && w.PromptTokensDetails.CachedTokens > 0 {
+		u.PromptCacheHitTokens = w.PromptTokensDetails.CachedTokens
+		u.cacheHitAssigned = true
+	}
 	return nil
 }
 
-// finalize applies the absent-key safe-parse fallback so an OpenCode proxy that omits the DeepSeek-native prompt_cache_* shape still produces honest telemetry: - neither prompt_cache_* key present: every input token is a cold miss (Hit=0, Miss=PromptTokens).
+// finalize reconciles the parsed blob into honest hit/miss totals: when either cache shape was present it is kept (a hit-only blob has its miss inferred as PromptTokens - Hit), and when no cache shape arrived at all every input token is a cold miss (Hit=0, Miss=PromptTokens).
 func (u *Usage) finalize() {
 	if u == nil {
 		return

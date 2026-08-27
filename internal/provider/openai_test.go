@@ -462,6 +462,7 @@ func TestOpenAIUsagePartialCacheKeys(t *testing.T) {
 	}{
 		{name: "hit-only", fixture: "testdata/usage-cache-hitonly.sse", wantHit: 80, wantMiss: 20},
 		{name: "miss-only", fixture: "testdata/usage-cache-missonly.sse", wantHit: 0, wantMiss: 30},
+		{name: "openaishape", fixture: "testdata/usage-openaishape.sse", wantHit: 80, wantMiss: 20},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
