@@ -219,11 +219,11 @@ func promptCacheKey(req Request) string {
 // cacheMarker is the Anthropic-style breakpoint stamped on OpenCode Go turns so
 // long sessions stay cheap: the stable system prefix and earlier turns keep
 // hitting the cache while the newest message changes every turn.
-var cacheMarker = &CacheControl{Type: "ephemeral", TTL: "1h"}
+var cacheMarker = &CacheControl{Type: "ephemeral", TTL: promptCacheRetention24h}
 
 // stampCacheBreakpoints returns req.Messages with OpenCode Go cache breakpoints
-// stamped on up to two leading system messages, the last user/assistant message
-// pair, and the last tool message, on a fresh copy so the caller's slice is
+// stamped on up to two leading system messages, the last two user/assistant
+// messages, and the last tool message, on a fresh copy so the caller's slice is
 // untouched. It returns the slice unchanged when OpenCode Go stamping does not
 // apply: custom-openai turns, GLM/Zhipu models (whose API rejects Anthropic-style
 // markers), or a request that already carries a marker anywhere (no double-stamp).
