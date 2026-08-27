@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -116,25 +115,9 @@ func normalizeEndpoint(s string) EndpointKind {
 	}
 }
 
-// Stream implements Provider with an HTTP Chat-Completions request.
+// Stream implements Provider with an HTTP Chat-Completions request shaped and parsed by the Chat-Completions dialect.
 func (o *OpenAICompatible) Stream(ctx context.Context, req Request) (Stream, error) {
-	body, err := json.Marshal(chatCompletionBody{
-		Model:      req.Model,
-		Messages:   req.Messages,
-		Tools:      toolsForWire(req),
-		ToolChoice: req.ToolChoice,
-		Stream:     true,
-		StreamOptions: &streamOptions{
-			IncludeUsage: true, // opencode force-sets include_usage
-		},
-		PromptCacheKey:  promptCacheKey(req),
-		Thinking:        thinkingControl(req),
-		ReasoningEffort: reasoningEffortControl(req),
-		MaxOutputTokens: maxOutputTokens(req),
-		ResponseFormat:  jsonObjectModeControl(req),
-		Temperature:     samplingTemperatureControl(req),
-		TopP:            samplingTopPControl(req),
-	})
+	body, err := chatDialect.Build(req)
 	if err != nil {
 		return nil, err
 	}
@@ -156,115 +139,12 @@ func (o *OpenAICompatible) Stream(ctx context.Context, req Request) (Stream, err
 		resp.Body.Close()
 		return nil, &HTTPError{Code: resp.StatusCode, Body: string(body)}
 	}
-	return &openAIStream{ev: newSSE(resp.Body), acc: newToolAccumulator()}, nil
+	return chatDialect.Stream(resp.Body), nil
 }
 
-// chatCompletionBody is the OpenAI Chat-Completions request shape.
-type chatCompletionBody struct {
-	Model           string           `json:"model"`
-	Messages        []Message        `json:"messages"`
-	Tools           []Tool           `json:"tools,omitempty"`
-	ToolChoice      any              `json:"tool_choice,omitempty"`
-	Stream          bool             `json:"stream"`
-	StreamOptions   *streamOptions   `json:"stream_options,omitempty"`
-	PromptCacheKey  string           `json:"prompt_cache_key,omitempty"`
-	Thinking        *thinkingEnabler `json:"thinking,omitempty"`
-	ReasoningEffort string           `json:"reasoning_effort,omitempty"`
-	MaxOutputTokens int              `json:"max_completion_tokens,omitempty"`
-	ResponseFormat  *jsonObjectMode  `json:"response_format,omitempty"`
-	Temperature     *float64         `json:"temperature,omitempty"`
-	TopP            *float64         `json:"top_p,omitempty"`
-}
-
-// thinkingEnabler is DeepSeek's thinking-mode toggle; the enabled form keeps thinking default-on for agent loops.
-type thinkingEnabler struct {
-	Type string `json:"type"`
-}
-
-// thinkingControl returns the enabled thinking toggle when req opts in, else nil so the field is omitted.
-func thinkingControl(req Request) *thinkingEnabler {
-	if !req.ThinkingEnabled {
-		return nil
-	}
-	return &thinkingEnabler{Type: "enabled"}
-}
-
-// reasoningEffortControl returns the normalized reasoning_effort for a thinking-enabled run, else empty so the field is omitted.
-func reasoningEffortControl(req Request) string {
-	if !req.ThinkingEnabled {
-		return ""
-	}
-	return NormalizeReasoningEffort(req.ReasoningEffort)
-}
-
-// jsonObjectMode is OpenAI's constrained-output response_format; its enabled form asks the provider to return a valid JSON object.
-type jsonObjectMode struct {
-	Type string `json:"type"`
-}
-
-// SupportedGenerationControls declares that this Chat-Completions client can honor the Generation Budget, JSON Object Mode, Sampling Policy, Tool Schema Enforcement, and Thinking Suppression controls (it wire-emits max_completion_tokens, response_format, temperature/top_p, strict tool manifests, and the thinking-off omission on the relevant special turns).
+// SupportedGenerationControls delegates to the Chat-Completions dialect's declared capabilities.
 func (o *OpenAICompatible) SupportedGenerationControls(context.Context) ([]GenerationControl, error) {
-	return []GenerationControl{GenerationControlGenerationBudget, GenerationControlJSONObjectMode, GenerationControlSamplingPolicy, GenerationControlToolSchemaEnforcement, GenerationControlThinkingSuppression}, nil
-}
-
-// maxOutputTokens returns the Generation Budget for req as an int usable as a wire max_completion_tokens: it is 0 when no budget was requested so the field is omitted.
-func maxOutputTokens(req Request) int {
-	if req.MaxOutputTokens <= 0 {
-		return 0
-	}
-	return req.MaxOutputTokens
-}
-
-// jsonObjectModeControl returns the JSON Object Mode response_format for req when the caller opted into it, else nil so the field is omitted.
-func jsonObjectModeControl(req Request) *jsonObjectMode {
-	if !req.JSONObjectMode {
-		return nil
-	}
-	return &jsonObjectMode{Type: "json_object"}
-}
-
-// samplingTemperatureControl returns the pointer to emit as the wire `temperature` when req requests temperature-based sampling, else nil so the field is omitted.
-func samplingTemperatureControl(req Request) *float64 {
-	if req.Sampling == nil || req.Sampling.Mode != SamplingTemperature {
-		return nil
-	}
-	v := req.Sampling.Value
-	return &v
-}
-
-// samplingTopPControl returns the pointer to emit as the wire `top_p` when req requests nucleus (top-p) sampling, else nil so the field is omitted.
-func samplingTopPControl(req Request) *float64 {
-	if req.Sampling == nil || req.Sampling.Mode != SamplingNucleus {
-		return nil
-	}
-	v := req.Sampling.Value
-	return &v
-}
-
-// toolsForWire returns the tool manifest to serialize for req.
-func toolsForWire(req Request) []Tool {
-	if !req.ToolSchemaEnforcement || len(req.Tools) == 0 {
-		return req.Tools
-	}
-	out := make([]Tool, 0, len(req.Tools))
-	for _, t := range req.Tools {
-		fn := t.Function
-		fn.Strict = true
-		out = append(out, Tool{Type: t.Type, Function: fn})
-	}
-	return out
-}
-
-// promptCacheKey returns the session-scoped prompt cache key for req when the caller opted into deepseek's session cache, else empty so the field is omitted from the body.
-func promptCacheKey(req Request) string {
-	if req.SetCacheKey {
-		return req.SessionKey
-	}
-	return ""
-}
-
-type streamOptions struct {
-	IncludeUsage bool `json:"include_usage"`
+	return chatDialect.Capabilities(), nil
 }
 
 // HTTPError reports a non-2xx provider response.
@@ -279,22 +159,4 @@ func (e *HTTPError) Error() string {
 		return fmt.Sprintf("provider returned HTTP %d", e.Code)
 	}
 	return fmt.Sprintf("provider returned HTTP %d: %s", e.Code, e.Body)
-}
-
-// openAIStream adapts parsed SSE events into the Stream seam, mapping [DONE] to a Done chunk and io.EOF to io.EOF, accumulating tool_call fragments.
-type openAIStream struct {
-	ev  *sse
-	acc *toolAccumulator
-}
-
-// Next implements Stream.
-func (os *openAIStream) Next() (Chunk, error) {
-	e, err := os.ev.Next()
-	if errors.Is(err, io.EOF) {
-		return Chunk{}, io.EOF
-	}
-	if err != nil {
-		return Chunk{}, err
-	}
-	return parseEvent(e.data, os.acc)
 }
