@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -84,6 +85,63 @@ func TestMentionCandidates_FiltersByPartial(t *testing.T) {
 			t.Errorf("candidates %q missing %q", got, want)
 		}
 	}
+}
+
+func TestMentionCandidates_FolderNotExpanded(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	mustMakeDir(t, filepath.Join(dir, "src"))
+	mustWriteFile(t, filepath.Join(dir, "src", "util.go"), "x\n")
+	mustWriteFile(t, filepath.Join(dir, "src", "deep.go"), "x\n")
+
+	got := mentionCandidates(dir, "src")
+	join := strings.Join(got, ",")
+	if !strings.Contains(join, "src/") {
+		t.Errorf("candidates %q should keep the src/ folder as a candidate", got)
+	}
+	if strings.Contains(join, "util.go") || strings.Contains(join, "deep.go") {
+		t.Errorf("candidates %q must not expand a folder into its contents (deep completion is out of scope)", got)
+	}
+}
+
+func TestMention_WindowCapsAndScrolls(t *testing.T) {
+	t.Parallel()
+	mn := NewMention("/tmp/ws")
+	mn.open = true
+	mn.cands = make([]string, 12)
+	for i := range mn.cands {
+		mn.cands[i] = fmt.Sprintf("f%02d.go", i)
+	}
+	mn.idx = 0
+	mn.recomputeView()
+	if n := mn.CandidateCount(); n > mentionCapRows {
+		t.Errorf("visible window = %d rows, want at most %d", n, mentionCapRows)
+	}
+	if got := mn.SelectedCandidate(); got != mn.cands[0] {
+		t.Errorf("leading selection = %q, want %q", got, mn.cands[0])
+	}
+	// move far enough that the window scrolls to keep the selection visible
+	for range 10 {
+		mn.Move(1)
+	}
+	if got := mn.SelectedCandidate(); got != mn.cands[10] {
+		t.Errorf("selection after moving = %q, want %q", got, mn.cands[10])
+	}
+	if n := mn.CandidateCount(); n > mentionCapRows {
+		t.Errorf("scrolled window = %d rows, want at most %d", n, mentionCapRows)
+	}
+	if !containsStr(mn.view, mn.SelectedCandidate()) {
+		t.Errorf("selection %q not visible in window %q", mn.SelectedCandidate(), mn.view)
+	}
+}
+
+func containsStr(ss []string, s string) bool {
+	for _, v := range ss {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }
 
 func mustWriteFile(t *testing.T, path, content string) {

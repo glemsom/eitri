@@ -2,12 +2,16 @@ package tui
 
 import (
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 )
+
+// mentionCapRows caps how many mention candidates render above the composer so
+// a dense workspace never pushes the band past a visible bound. The list scrolls
+// within this window as the selection moves (see Move/Select).
+const mentionCapRows = 8
 
 type Mention struct {
 	workspace string
@@ -15,7 +19,9 @@ type Mention struct {
 	start     int
 	partial   string
 	cands     []string
-	idx       int
+	view      []string // the visible window into cands, capped at mentionCapRows
+	offset    int      // cands index of view[0]
+	idx       int      // absolute cands index of the selection
 }
 
 func NewMention(workspace string) *Mention {
@@ -38,9 +44,10 @@ func (mn *Mention) Track(value string, cursor int) {
 		mn.cands = mentionCandidates(mn.workspace, partial)
 		mn.idx = 0
 	}
-	if mn.idx >= len(mn.cands) {
-		mn.idx = 0
+	if len(mn.cands) > 0 && mn.idx >= len(mn.cands) {
+		mn.idx = len(mn.cands) - 1
 	}
+	mn.recomputeView()
 }
 
 func (mn *Mention) Candidates() []string { return mn.cands }
@@ -54,6 +61,27 @@ func (mn *Mention) SelectedCandidate() string {
 	return mn.cands[mn.idx]
 }
 
+// recomputeView derives the visible window (offset..offset+len) that keeps the
+// selection on screen, so the dropdown scrolls past the cap as the highlight moves.
+func (mn *Mention) recomputeView() {
+	if !mn.open || len(mn.cands) == 0 {
+		mn.view = nil
+		mn.offset = 0
+		return
+	}
+	if mn.idx < mn.offset {
+		mn.offset = mn.idx
+	}
+	if mn.idx >= mn.offset+mentionCapRows {
+		mn.offset = mn.idx - mentionCapRows + 1
+	}
+	end := mn.offset + mentionCapRows
+	if end > len(mn.cands) {
+		end = len(mn.cands)
+	}
+	mn.view = mn.cands[mn.offset:end]
+}
+
 func (mn *Mention) Move(delta int) {
 	if len(mn.cands) == 0 {
 		return
@@ -64,36 +92,34 @@ func (mn *Mention) Move(delta int) {
 	} else if mn.idx >= len(mn.cands) {
 		mn.idx = 0
 	}
+	mn.recomputeView()
 }
 
 // Reset closes the dropdown and drops cached state, e.g. after a selection or submit.
 func (mn *Mention) Reset() {
 	mn.open = false
 	mn.cands = nil
+	mn.view = nil
 	mn.partial = ""
 	mn.start = 0
 	mn.idx = 0
+	mn.offset = 0
 }
 
-// CandidateCount returns how many mention rows the composer value renders above the composer.
-func (mn *Mention) CandidateCount(value string, cursor int) int {
-	// count only while the dropdown is tracked open for the current caret position
-	if !mn.open {
-		return 0
-	}
-	return len(mn.cands)
+// CandidateCount returns how many mention rows render above the composer for the
+// current dropdown window.
+func (mn *Mention) CandidateCount() int {
+	return len(mn.view)
 }
 
-// RenderCompletion appends the mention candidate list to the band, highlighting the selection.
-func (mn *Mention) RenderCompletion(b *strings.Builder, th Theme, value string, cursor int) {
+// RenderCompletion appends the visible mention candidate window to the band,
+// highlighting the selection.
+func (mn *Mention) RenderCompletion(b *strings.Builder, th Theme) {
 	if !mn.open {
 		return
 	}
-	if len(mn.cands) == 0 {
-		return
-	}
-	for i, c := range mn.cands {
-		if i == mn.idx {
+	for i, c := range mn.view {
+		if mn.offset+i == mn.idx {
 			b.WriteString(th.slashSelectStyle.Render(g("▸ ", "> ") + c))
 		} else {
 			b.WriteString(th.statusStyle.Render("  " + c))
@@ -177,23 +203,10 @@ func isMentionBoundaryRune(r rune) bool {
 
 // mentionCandidates returns the workspace-relative path candidates under dir
 // that share the given @partial prefix: top-level files and folders, folders
-// rendered with a trailing slash. It descends into a directory named by the
-// partial so `@src/fi` surfaces paths under `src/`. Candidates are sorted.
+// rendered with a trailing slash. Deep completion into a subpath is out of
+// scope for this ticket. Candidates are sorted.
 func mentionCandidates(dir, partial string) []string {
-	base := dir
-	// a partial naming a subpath (contains a separator) that resolves to a
-	// directory surfaces the paths under it; a bare partial matches siblings at
-	// the current level, so `@src` offers the `src/` folder itself rather than
-	// stepping into it.
-	if partial != "" && strings.Contains(partial, "/") {
-		p := filepath.Join(dir, partial)
-		if st, err := os.Stat(p); err == nil && st.IsDir() {
-			base = p
-			partial = ""
-		}
-	}
-	var out []string
-	entries, err := os.ReadDir(base)
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
 	}
@@ -212,8 +225,5 @@ func mentionCandidates(dir, partial string) []string {
 		}
 	}
 	sort.Strings(cands)
-	for _, c := range cands {
-		out = append(out, filepath.ToSlash(c))
-	}
-	return out
+	return cands
 }

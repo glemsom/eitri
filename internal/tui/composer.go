@@ -136,7 +136,7 @@ func (m Model) renderBand(b *strings.Builder) {
 		inner.WriteString("\n")
 	}
 	m.slash.RenderCompletion(&inner, m.tx.theme, m.composer.Value())
-	m.mention.RenderCompletion(&inner, m.tx.theme, m.composer.Value(), m.composerByteOffset())
+	m.mention.RenderCompletion(&inner, m.tx.theme)
 	inner.WriteString(m.composer.View())
 	if m.savedMsg != "" {
 		inner.WriteString("\n" + m.tx.theme.statusStyle.Render(m.savedMsg))
@@ -173,6 +173,6 @@ func (m Model) composerPreRows() int {
 		n++
 	}
 	n += m.slash.CandidateCount(m.composer.Value())
-	n += m.mention.CandidateCount(m.composer.Value(), m.composerByteOffset())
+	n += m.mention.CandidateCount()
 	return n
 }
