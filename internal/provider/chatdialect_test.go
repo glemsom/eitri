@@ -107,8 +107,8 @@ func TestChatCompletionsDialectBuildSetsRetentionForOpenCodeGo(t *testing.T) {
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		t.Fatalf("body not JSON: %v", err)
 	}
-	if got, ok := parsed["prompt_cache_retention"]; !ok || got != "24h" {
-		t.Errorf("prompt_cache_retention = %#v, want %q", parsed["prompt_cache_retention"], "24h")
+	if got, ok := parsed["prompt_cache_retention"]; !ok || got != promptCacheRetention24h {
+		t.Errorf("prompt_cache_retention = %#v, want %q", parsed["prompt_cache_retention"], promptCacheRetention24h)
 	}
 }
 

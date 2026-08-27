@@ -196,12 +196,14 @@ func toolsForWire(req Request) []Tool {
 	return out
 }
 
-// promptCacheRetention returns the top-level prompt-cache retention knob for the OpenCode Go provider: "24h" so the gateway keeps the session cache alive for a day, else empty so the field is omitted and unrelated endpoints stay untouched.
+// promptCacheRetention returns the OpenCode Go prompt-cache retention duration so the gateway keeps the session cache alive for a day, else empty so the field is omitted and unrelated endpoints stay untouched.
+const promptCacheRetention24h = "24h"
+
 func promptCacheRetention(req Request) string {
 	if req.ProviderID != ProviderOpenCodeGo {
 		return ""
 	}
-	return "24h"
+	return promptCacheRetention24h
 }
 
 // promptCacheKey returns the session-scoped prompt cache key for req when the caller opted into deepseek's session cache, else empty so the field is omitted from the body.
