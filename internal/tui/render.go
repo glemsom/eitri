@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 // busyLine renders the in-progress working indicator: the animated braille spinner with the stage verb of the derived Phase (issues #363/#365) — Reasoning / Working / Answering — when motion is enabled, the static "… thinking" line otherwise.
@@ -43,11 +45,11 @@ func truncateWidth(s string, w int) string {
 	var sb strings.Builder
 	cw := 0
 	for _, r := range s {
-		if cw+1 > w {
+		cw += ansi.StringWidth(string(r))
+		if cw > w {
 			break
 		}
 		sb.WriteRune(r)
-		cw++
 	}
 	return sb.String()
 }

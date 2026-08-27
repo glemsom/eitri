@@ -575,3 +575,24 @@ func TestRailWideValuesFuller(t *testing.T) {
 		t.Errorf("wide tokens line shorter than default: %d vs %d\n  default: %q\n  wide:    %q", len(widePlain), len(defPlain), defPlain, widePlain)
 	}
 }
+
+func TestRail_truncateCellWidthWideRunes(t *testing.T) {
+	r := &Rail{}
+	contentWidth := func(rail int) int { return rail - 2 }
+	cases := []struct {
+		key, val string
+		rail     int
+	}{
+		{"branch", "汉字汉字汉字汉字", 10}, // plain path with all-wide value
+		{"汉", "汉字汉字汉字汉字", 10},      // wide key + wide value
+		{"stats", "a汉字b", 10},      // mixed narrow/wide value
+	}
+	for _, c := range cases {
+		var b strings.Builder
+		r.line(&b, c.key, c.val, c.rail)
+		row := strings.TrimSuffix(b.String(), "\n")
+		if got := lipgloss.Width(plain(row)); got > contentWidth(c.rail) {
+			t.Errorf("line(%q,%q,%d) display width %d overflows content width %d: %q", c.key, c.val, c.rail, got, contentWidth(c.rail), row)
+		}
+	}
+}

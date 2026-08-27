@@ -69,6 +69,11 @@ func TestRender_truncateWidth(t *testing.T) {
 		{"abc", 5, "abc"},
 		{"abcdef", 3, "abc"},
 		{"héllo", 3, "hél"},
+		// Wide (2-cell) runes must count as two display cells each.
+		{"汉字cat", 3, "汉"},  // 汉字 = 4 cells, exceeds 3; only 汉 (2 cells) fits
+		{"汉字cat", 4, "汉字"}, // exactly 4 cells
+		{"a汉字", 3, "a汉"},   // 1 + 2 = 3 cells
+		{"🚀x", 2, "🚀"},
 	}
 	for _, c := range cases {
 		if got := truncateWidth(c.s, c.w); got != c.want {

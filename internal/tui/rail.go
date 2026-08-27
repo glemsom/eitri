@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/glemsom/eitri/internal/constants"
 )
@@ -44,18 +45,24 @@ func (r *Rail) line(b *strings.Builder, key, val string, railWidth int) {
 	}
 	contentWidth := railWidth - 2
 	if lipgloss.Width(s) > contentWidth {
-		var sb strings.Builder
-		w := 0
-		for _, ru := range s {
-			if w+1 > contentWidth-1 {
-				break
-			}
-			sb.WriteRune(ru)
-			w++
-		}
-		s = sb.String() + g("…", "...")
+		s = r.truncateCellWidth(s, contentWidth-1) + g("…", "...")
 	}
 	b.WriteString(s + "\n")
+}
+
+// truncateCellWidth keeps the longest rune prefix of s whose display-cell width
+// fits the budget; the caller appends the trailing ellipsis.
+func (r *Rail) truncateCellWidth(s string, budget int) string {
+	var sb strings.Builder
+	w := 0
+	for _, ru := range s {
+		w += ansi.StringWidth(string(ru))
+		if w > budget {
+			break
+		}
+		sb.WriteRune(ru)
+	}
+	return sb.String()
 }
 
 // railKeyWidth returns the key column width for aligned rail rows at a given rail width.
@@ -93,16 +100,7 @@ func (r *Rail) lineAligned(b *strings.Builder, key, val string, keyWidth, railWi
 	}
 	contentWidth := railWidth - 2
 	if lipgloss.Width(s) > contentWidth {
-		var sb strings.Builder
-		w := 0
-		for _, ru := range s {
-			if w+1 > contentWidth-1 {
-				break
-			}
-			sb.WriteRune(ru)
-			w++
-		}
-		s = sb.String() + g("…", "...")
+		s = r.truncateCellWidth(s, contentWidth-1) + g("…", "...")
 	}
 	b.WriteString(s + "\n")
 }
