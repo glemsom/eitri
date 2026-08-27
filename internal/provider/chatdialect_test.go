@@ -127,6 +127,48 @@ func TestChatCompletionsDialectBuildOmitsRetentionForCustomOpenAI(t *testing.T) 
 	}
 }
 
+func TestChatCompletionsDialectBuildSetsCacheControlOnMessageAndTool(t *testing.T) {
+	t.Parallel()
+	marker := &CacheControl{Type: "ephemeral", TTL: "1h"}
+	body, err := NewChatCompletionsDialect().Build(Request{
+		Model:    "deepseek-v4-flash",
+		Messages: []Message{{Role: RoleSystem, Content: "prefix", CacheControl: marker}},
+		Tools:    []Tool{{Type: "function", Function: ToolFunction{Name: "bash"}, CacheControl: marker}},
+	})
+	if err != nil {
+		t.Fatalf("Build() error = %v, want nil", err)
+	}
+	var parsed struct {
+		Messages []map[string]any `json:"messages"`
+		Tools    []map[string]any `json:"tools"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		t.Fatalf("body not JSON: %v", err)
+	}
+	want := map[string]any{"type": "ephemeral", "ttl": "1h"}
+	if got, ok := parsed.Messages[0]["cache_control"]; !ok || !jsonEqual(got, want) {
+		t.Errorf("message cache_control = %#v, want %#v", parsed.Messages[0]["cache_control"], want)
+	}
+	if got, ok := parsed.Tools[0]["cache_control"]; !ok || !jsonEqual(got, want) {
+		t.Errorf("tool cache_control = %#v, want %#v", parsed.Tools[0]["cache_control"], want)
+	}
+}
+
+func TestChatCompletionsDialectBuildOmitsCacheControlByDefault(t *testing.T) {
+	t.Parallel()
+	body, err := NewChatCompletionsDialect().Build(Request{
+		Model:    "deepseek-v4-flash",
+		Messages: []Message{{Role: RoleSystem, Content: "prefix"}},
+		Tools:    []Tool{{Type: "function", Function: ToolFunction{Name: "bash"}}},
+	})
+	if err != nil {
+		t.Fatalf("Build() error = %v, want nil", err)
+	}
+	if strings.Contains(string(body), "cache_control") {
+		t.Errorf("unset cache_control leaked into body: %s", body)
+	}
+}
+
 func TestChatCompletionsDialectBuildOmitsRetentionByDefault(t *testing.T) {
 	t.Parallel()
 	body, err := NewChatCompletionsDialect().Build(Request{

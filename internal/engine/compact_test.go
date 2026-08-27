@@ -61,7 +61,7 @@ func TestMaybeCompactKeepsSkillInjectInUserLayer(t *testing.T) {
 		}
 	}
 	if !saw {
-		t.Fatalf("injected skill user message dropped by compaction:\n%s", got)
+		t.Fatalf("injected skill user message dropped by compaction:\n%v", got)
 	}
 }
 

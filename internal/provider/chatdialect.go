@@ -191,7 +191,7 @@ func toolsForWire(req Request) []Tool {
 	for _, t := range req.Tools {
 		fn := t.Function
 		fn.Strict = true
-		out = append(out, Tool{Type: t.Type, Function: fn})
+		out = append(out, Tool{Type: t.Type, Function: fn, CacheControl: t.CacheControl})
 	}
 	return out
 }

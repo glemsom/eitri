@@ -64,6 +64,12 @@ const (
 	RoleTool      Role = "tool"
 )
 
+// CacheControl is an Anthropic-style cache breakpoint marker serialized onto a Message or Tool.
+type CacheControl struct {
+	Type string `json:"type"`
+	TTL  string `json:"ttl,omitempty"`
+}
+
 // Message is a single conversation turn sent to the provider.
 type Message struct {
 	Role             Role
@@ -71,6 +77,7 @@ type Message struct {
 	ToolCallID       string
 	ToolCalls        []ToolCall
 	ReasoningContent string
+	CacheControl     *CacheControl
 }
 
 // MarshalJSON serializes a Message with role-aware reasoning handling: the `reasoning_content` field is emitted unconditionally on assistant messages (even when empty — DeepSeek's hard 400-avoidance) and omitted on every other role.
@@ -85,16 +92,20 @@ func (m Message) MarshalJSON() ([]byte, error) {
 		rc := m.ReasoningContent
 		wire.ReasoningContent = &rc
 	}
+	if m.CacheControl != nil {
+		wire.CacheControl = m.CacheControl
+	}
 	return json.Marshal(wire)
 }
 
 // messageWire is the deterministic field-ordered serialization shape for a Message.
 type messageWire struct {
-	Role             Role       `json:"role"`
-	Content          string     `json:"content,omitempty"`
-	ToolCallID       string     `json:"tool_call_id,omitempty"`
-	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
-	ReasoningContent *string    `json:"reasoning_content,omitempty"`
+	Role             Role          `json:"role"`
+	Content          string        `json:"content,omitempty"`
+	ToolCallID       string        `json:"tool_call_id,omitempty"`
+	ToolCalls        []ToolCall    `json:"tool_calls,omitempty"`
+	ReasoningContent *string       `json:"reasoning_content,omitempty"`
+	CacheControl     *CacheControl `json:"cache_control,omitempty"`
 }
 
 // ToolFunction is one tool's reusable definition: a name, description, and a JSON-Schema parameters object.
@@ -107,8 +118,9 @@ type ToolFunction struct {
 
 // Tool is the outer Chat-Completions tool wrapper (type: function).
 type Tool struct {
-	Type     string       `json:"type"`
-	Function ToolFunction `json:"function"`
+	Type         string        `json:"type"`
+	Function     ToolFunction  `json:"function"`
+	CacheControl *CacheControl `json:"cache_control,omitempty"`
 }
 
 // ToolCall is one assistant-invoked function call, streamed as fragments and assembled into this complete form.
@@ -156,7 +168,6 @@ type Request struct {
 	SetCacheKey bool
 	SessionKey  string
 	ProviderID  ProviderID
-
 
 	ThinkingEnabled bool
 	ReasoningEffort string
