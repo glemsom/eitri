@@ -77,6 +77,10 @@ type RunRequest struct {
 
 	ThinkingEnabled bool
 	ReasoningEffort string
+
+	// ProviderID is the provider family this run targets, chosen by config, so
+	// the shared dialect can apply provider-specific wire fields.
+	ProviderID provider.ProviderID
 }
 
 // Result is the outcome of one Run.
@@ -234,6 +238,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 			SessionKey:            req.SessionKey,
 			ThinkingEnabled:       req.ThinkingEnabled,
 			ReasoningEffort:       req.ReasoningEffort,
+			ProviderID:            req.ProviderID,
 		})
 		if err != nil {
 			if opts.Compaction != nil && provider.IsContextOverflow(err) {

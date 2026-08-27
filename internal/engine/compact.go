@@ -185,6 +185,7 @@ func (e *Engine) generateSummary(ctx context.Context, req RunRequest, cfg *Compa
 		SessionKey:      req.SessionKey,
 		SetCacheKey:     req.SessionKey != "",
 		MaxOutputTokens: cfg.SummaryMaxTokens,
+		ProviderID:      req.ProviderID,
 	})
 	if err != nil {
 		return "" // fail-safe skip
