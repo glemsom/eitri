@@ -7,23 +7,27 @@ import (
 	"io"
 )
 
-// WireDialect is the seam for a single OpenAI-style wire dialect: it owns both
-// request shaping (building the wire body with the generation-control fields)
+// Dialect is the seam for a single wire dialect: it owns both request shaping
+// (building the wire body with the generation-control fields), tool-mapping
+// (re-expressing canonical tool definitions into the dialect's tool manifest),
 // and wire parsing (decoding the SSE stream back into chunks). Adapters speak
-// through this interface instead of building bodies or composing stream
-// parsers inline.
-type WireDialect interface {
+// through this interface instead of building bodies, mapping tools, or
+// composing stream parsers inline.
+type Dialect interface {
 	// Build shapes req into the dialect's serialized wire request body.
 	Build(req Request) ([]byte, error)
 	// Capabilities reports the generation controls this dialect honors on the wire.
 	Capabilities() []GenerationControl
+	// Manifest re-expresses canonical tool definitions into this dialect's tool wire form.
+	Manifest(defs []DialectDefinition) any
 	// Stream wraps an SSE body stream, parsing it into provider chunks.
 	Stream(r io.Reader) Stream
 }
 
-// ChatCompletionsDialect is the WireDialect implementation for the OpenAI
-// Chat-Completions wire: it builds the /chat/completions request body and
-// reassembles streamed tool-call fragments.
+// ChatCompletionsDialect is the Dialect implementation for the OpenAI
+// Chat-Completions wire: it builds the /chat/completions request body, maps
+// canonical tools to its function manifest, and reassembles streamed tool-call
+// fragments.
 type ChatCompletionsDialect struct{}
 
 // NewChatCompletionsDialect returns a Chat-Completions dialect.
@@ -35,7 +39,7 @@ func NewChatCompletionsDialect() *ChatCompletionsDialect {
 // It is stateless, so the single shared instance is safe.
 var chatDialect = NewChatCompletionsDialect()
 
-// Build implements WireDialect.
+// Build implements Dialect.
 func (d *ChatCompletionsDialect) Build(req Request) ([]byte, error) {
 	return json.Marshal(chatCompletionBody{
 		Model:           req.Model,
@@ -54,7 +58,7 @@ func (d *ChatCompletionsDialect) Build(req Request) ([]byte, error) {
 	})
 }
 
-// Capabilities implements WireDialect.
+// Capabilities implements Dialect.
 func (d *ChatCompletionsDialect) Capabilities() []GenerationControl {
 	return []GenerationControl{
 		GenerationControlGenerationBudget,
@@ -65,7 +69,13 @@ func (d *ChatCompletionsDialect) Capabilities() []GenerationControl {
 	}
 }
 
-// Stream implements WireDialect, returning a stream that parses Chat-Completions
+// Manifest implements Dialect, re-expressing canonical tool definitions into
+// the Chat-Completions function manifest.
+func (d *ChatCompletionsDialect) Manifest(defs []DialectDefinition) any {
+	return chatToolManifest(defs)
+}
+
+// Stream implements Dialect, returning a stream that parses Chat-Completions
 // SSE events and folds streamed tool_call fragments into complete calls.
 func (d *ChatCompletionsDialect) Stream(r io.Reader) Stream {
 	return &openAIStream{ev: newSSE(r), acc: newToolAccumulator()}
@@ -151,6 +161,23 @@ func samplingTopPControl(req Request) *float64 {
 	}
 	v := req.Sampling.Value
 	return &v
+}
+
+// chatToolManifest re-expresses canonical tool definitions into the
+// Chat-Completions function manifest.
+func chatToolManifest(defs []DialectDefinition) []Tool {
+	out := make([]Tool, 0, len(defs))
+	for _, def := range defs {
+		out = append(out, Tool{
+			Type: "function",
+			Function: ToolFunction{
+				Name:        def.Name,
+				Description: def.Description,
+				Parameters:  def.Schema,
+			},
+		})
+	}
+	return out
 }
 
 // toolsForWire returns the tool manifest to serialize for req.

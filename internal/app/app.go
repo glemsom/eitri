@@ -270,7 +270,7 @@ func runAgent(ctx context.Context, e *engine.Engine, cfg config.Config, reg *too
 	})
 }
 
-// providerTools maps the registry's definitions to provider Chat-Completions Tool objects via the single per-dialect serializer (provider.ReExpress): one canonical JSON-Schema per tool is re-expressed per dialect, never hand-copied per provider.
+// providerTools maps the registry's definitions to provider Chat-Completions Tool objects via the dialect's tool-schema re-expression (provider.NewChatCompletionsDialect().Manifest): one canonical JSON-Schema per tool is re-expressed per dialect, never hand-copied per provider.
 func providerTools(defs []tools.Definition) []provider.Tool {
 	canonical := make([]provider.DialectDefinition, 0, len(defs))
 	for _, d := range defs {
@@ -280,7 +280,7 @@ func providerTools(defs []tools.Definition) []provider.Tool {
 			Schema:      d.Parameters,
 		})
 	}
-	return provider.ReExpress(canonical, provider.DialectChat).([]provider.Tool)
+	return provider.NewChatCompletionsDialect().Manifest(canonical).([]provider.Tool)
 }
 
 // ProviderKeyEnv is the environment variable holding the OpenCode Go API key.

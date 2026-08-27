@@ -19,11 +19,14 @@ func canonicalDefs() []DialectDefinition {
 	}
 }
 
-func TestReExpressChatWrapsParameters(t *testing.T) {
+// TestDialectManifestChatReExpressesCanonicalTools verifies the Chat-Completions
+// dialect folds canonical tool definitions into its function manifest through
+// the shared Dialect seam.
+func TestDialectManifestChatReExpressesCanonicalTools(t *testing.T) {
 	t.Parallel()
-	tools := ReExpress(canonicalDefs(), DialectChat).([]Tool)
+	tools := NewChatCompletionsDialect().Manifest(canonicalDefs()).([]Tool)
 	if len(tools) != 1 {
-		t.Fatalf("Chat tools = %d, want 1", len(tools))
+		t.Fatalf("Chat manifest = %d tools, want 1", len(tools))
 	}
 	got := tools[0]
 	want := canonicalDefs()[0].Schema
@@ -35,22 +38,33 @@ func TestReExpressChatWrapsParameters(t *testing.T) {
 	}
 }
 
-func TestReExpressAnthropicWrapsInputSchema(t *testing.T) {
+// TestDialectManifestChatConsistForCopilot verifies the Copilot chat dialect
+// yields the same Chat-Completions function manifest as the shared chat dialect.
+func TestDialectManifestChatConsistForCopilot(t *testing.T) {
 	t.Parallel()
-	tools := ReExpress(canonicalDefs(), DialectAnthropic).([]AnthropicTool)
-	if len(tools) != 1 {
-		t.Fatalf("Anthropic tools = %d, want 1", len(tools))
+	chat := NewChatCompletionsDialect().Manifest(canonicalDefs()).([]Tool)
+	copilot := NewCopilotChatDialect().Manifest(canonicalDefs()).([]Tool)
+	if !reflect.DeepEqual(chat, copilot) {
+		t.Fatalf("copilot manifest = %#v, want shared %#v", copilot, chat)
+	}
+}
+
+// TestDialectManifestResponsesReExpressesCanonicalTools verifies the Responses
+// dialect folds canonical tool definitions into its own tool manifest through
+// the shared Dialect seam.
+func TestDialectManifestResponsesReExpressesCanonicalTools(t *testing.T) {
+	t.Parallel()
+	manifest := NewResponsesDialect().Manifest(canonicalDefs())
+	tools, ok := manifest.([]responsesTool)
+	if !ok || len(tools) != 1 {
+		t.Fatalf("Responses manifest = %#v, want one responsesTool", manifest)
 	}
 	got := tools[0]
 	want := canonicalDefs()[0].Schema
-	if got.Name != "read" || got.Description != "read a file" {
-		t.Fatalf("anthropic tool = %+v", got)
+	if got.Name != "read" || got.Description != "read a file" || got.Type != "function" {
+		t.Fatalf("responses tool = %+v", got)
 	}
-	if !reflect.DeepEqual(got.InputSchema, want) {
-		t.Fatalf("anthropic input_schema = %#v, want canonical schema %#v", got.InputSchema, want)
-	}
-	chat := ReExpress(canonicalDefs(), DialectChat).([]Tool)[0].Function.Parameters
-	if !reflect.DeepEqual(chat, got.InputSchema) {
-		t.Fatalf("dialect schemas diverged: chat %#v vs anthropic %#v", chat, got.InputSchema)
+	if !reflect.DeepEqual(got.Parameters, want) {
+		t.Fatalf("responses parameters = %#v, want canonical schema %#v", got.Parameters, want)
 	}
 }

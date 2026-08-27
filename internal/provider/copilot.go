@@ -33,8 +33,8 @@ type CopilotProvider struct {
 	mu              sync.RWMutex
 	responsesModels map[string]bool
 
-	chat      WireDialect
-	responses WireDialect
+	chat      Dialect
+	responses Dialect
 }
 
 // NewCopilot returns a Copilot provider talking to the Chat-Completions url (e.g. https://api.githubcopilot.com/chat/completions) with the stored credential cfg. refresh provides the non-interactive renewal path (nil means no refresh is available); persist saves renewed tokens to config (nil skips).

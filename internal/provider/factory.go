@@ -38,7 +38,7 @@ type ProviderEnv struct {
 	CopilotPersist func(config.CopilotConfig) error
 }
 
-// FromConfig builds the Provider the saved config selects — opencode-go, github-copilot, or custom-openai — routing through the shared Chat-Completions dialect seam (one canonical per-dialect serializer, no per-provider copies).
+// FromConfig builds the Provider the saved config selects — opencode-go, github-copilot, or custom-openai — routing through the shared Chat-Completions dialect seam (canonical tool re-expression and request shaping behind one interface, no per-provider copies).
 func FromConfig(cfg config.Config, env ProviderEnv) (Provider, error) {
 	switch cfg.Provider {
 	case ProviderOpenCodeGo:
