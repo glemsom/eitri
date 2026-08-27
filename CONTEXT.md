@@ -25,7 +25,7 @@ A tool running outside the sandbox while resolving the same path namespace as `b
 _Avoid_: local tool, external tool
 
 **Skill activation**:
-A skill invoked by the user from the TUI via `/skillname [<args>]`. The model holds no slash state or skill tool; it sees a name/path/description index and loads packs itself, while each activation through this surface is a human slash. `model-invocable: false` (`disable-model-invocation: true`) gates model discovery only; the human slash surface is untouched.
+A skill invoked by the user from the TUI via `/skillname [<args>]`. The model holds no slash state or skill tool; it sees a name/path/description index and loads packs itself; every activation through this surface is a human slash. `model-invocable: false` (`disable-model-invocation: true`) gates model discovery only; the human slash surface is untouched.
 _Avoid_: slash command, skill invocation
 
 **Stopped turn**:
@@ -65,7 +65,7 @@ The session-owned writer for a running turn's live material: streamed deltas gro
 _Avoid_: stream handler, event appender
 
 **TurnSession**:
-The owner of a turn's whole life: Begin arms a new turn, Stop cancels the in-flight one, and Commit reconciles completion (success, error, stopped) into the transcript. It also owns the live-turn state — timeline, sequence counter, streaming cursor, busy flag — that the transcript reads through a read-only accessor.
+The owner of a turn's whole life: Begin arms a new turn, Stop cancels the in-flight one, and Commit reconciles completion (success, error, stopped) into the transcript. It owns the in-turn event log (timeline), its sequence counter, and the streaming cursor, which the transcript reads through a read-only accessor. The busy flag lives on the transcript, not the session.
 _Avoid_: dispatch, turn state machine
 
 **Settings overlay**:
