@@ -93,6 +93,54 @@ func TestChatCompletionsDialectBuildOmitsUnsetControls(t *testing.T) {
 	}
 }
 
+func TestChatCompletionsDialectBuildSetsRetentionForOpenCodeGo(t *testing.T) {
+	t.Parallel()
+	body, err := NewChatCompletionsDialect().Build(Request{
+		Model:      "deepseek-v4-flash",
+		Messages:   []Message{{Role: RoleUser, Content: "hi"}},
+		ProviderID: ProviderOpenCodeGo,
+	})
+	if err != nil {
+		t.Fatalf("Build() error = %v, want nil", err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		t.Fatalf("body not JSON: %v", err)
+	}
+	if got, ok := parsed["prompt_cache_retention"]; !ok || got != promptCacheRetention24h {
+		t.Errorf("prompt_cache_retention = %#v, want %q", parsed["prompt_cache_retention"], promptCacheRetention24h)
+	}
+}
+
+func TestChatCompletionsDialectBuildOmitsRetentionForCustomOpenAI(t *testing.T) {
+	t.Parallel()
+	body, err := NewChatCompletionsDialect().Build(Request{
+		Model:      "some-model",
+		Messages:   []Message{{Role: RoleUser, Content: "hi"}},
+		ProviderID: ProviderCustomOpenAI,
+	})
+	if err != nil {
+		t.Fatalf("Build() error = %v, want nil", err)
+	}
+	if strings.Contains(string(body), "prompt_cache_retention") {
+		t.Errorf("custom-openai request leaked prompt_cache_retention: %s", body)
+	}
+}
+
+func TestChatCompletionsDialectBuildOmitsRetentionByDefault(t *testing.T) {
+	t.Parallel()
+	body, err := NewChatCompletionsDialect().Build(Request{
+		Model:    "deepseek-v4-flash",
+		Messages: []Message{{Role: RoleUser, Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Build() error = %v, want nil", err)
+	}
+	if strings.Contains(string(body), "prompt_cache_retention") {
+		t.Errorf("default request leaked prompt_cache_retention: %s", body)
+	}
+}
+
 func TestChatCompletionsDialectStreamAccumulatesToolCalls(t *testing.T) {
 	t.Parallel()
 	fixture, err := os.ReadFile("testdata/proxy-turn1.sse")

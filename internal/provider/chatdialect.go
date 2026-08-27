@@ -42,19 +42,20 @@ var chatDialect = NewChatCompletionsDialect()
 // Build implements Dialect.
 func (d *ChatCompletionsDialect) Build(req Request) ([]byte, error) {
 	return json.Marshal(chatCompletionBody{
-		Model:           req.Model,
-		Messages:        req.Messages,
-		Tools:           toolsForWire(req),
-		ToolChoice:      req.ToolChoice,
-		Stream:          true,
-		StreamOptions:   &streamOptions{IncludeUsage: true}, // opencode force-sets include_usage
-		PromptCacheKey:  promptCacheKey(req),
-		Thinking:        thinkingControl(req),
-		ReasoningEffort: reasoningEffortControl(req),
-		MaxOutputTokens: maxOutputTokens(req),
-		ResponseFormat:  jsonObjectModeControl(req),
-		Temperature:     samplingTemperatureControl(req),
-		TopP:            samplingTopPControl(req),
+		Model:                req.Model,
+		Messages:             req.Messages,
+		Tools:                toolsForWire(req),
+		ToolChoice:           req.ToolChoice,
+		Stream:               true,
+		StreamOptions:        &streamOptions{IncludeUsage: true}, // opencode force-sets include_usage
+		PromptCacheKey:       promptCacheKey(req),
+		PromptCacheRetention: promptCacheRetention(req),
+		Thinking:             thinkingControl(req),
+		ReasoningEffort:      reasoningEffortControl(req),
+		MaxOutputTokens:      maxOutputTokens(req),
+		ResponseFormat:       jsonObjectModeControl(req),
+		Temperature:          samplingTemperatureControl(req),
+		TopP:                 samplingTopPControl(req),
 	})
 }
 
@@ -83,19 +84,20 @@ func (d *ChatCompletionsDialect) Stream(r io.Reader) Stream {
 
 // chatCompletionBody is the OpenAI Chat-Completions request shape.
 type chatCompletionBody struct {
-	Model           string           `json:"model"`
-	Messages        []Message        `json:"messages"`
-	Tools           []Tool           `json:"tools,omitempty"`
-	ToolChoice      any              `json:"tool_choice,omitempty"`
-	Stream          bool             `json:"stream"`
-	StreamOptions   *streamOptions   `json:"stream_options,omitempty"`
-	PromptCacheKey  string           `json:"prompt_cache_key,omitempty"`
-	Thinking        *thinkingEnabler `json:"thinking,omitempty"`
-	ReasoningEffort string           `json:"reasoning_effort,omitempty"`
-	MaxOutputTokens int              `json:"max_completion_tokens,omitempty"`
-	ResponseFormat  *jsonObjectMode  `json:"response_format,omitempty"`
-	Temperature     *float64         `json:"temperature,omitempty"`
-	TopP            *float64         `json:"top_p,omitempty"`
+	Model                string           `json:"model"`
+	Messages             []Message        `json:"messages"`
+	Tools                []Tool           `json:"tools,omitempty"`
+	ToolChoice           any              `json:"tool_choice,omitempty"`
+	Stream               bool             `json:"stream"`
+	StreamOptions        *streamOptions   `json:"stream_options,omitempty"`
+	PromptCacheKey       string           `json:"prompt_cache_key,omitempty"`
+	PromptCacheRetention string           `json:"prompt_cache_retention,omitempty"`
+	Thinking             *thinkingEnabler `json:"thinking,omitempty"`
+	ReasoningEffort      string           `json:"reasoning_effort,omitempty"`
+	MaxOutputTokens      int              `json:"max_completion_tokens,omitempty"`
+	ResponseFormat       *jsonObjectMode  `json:"response_format,omitempty"`
+	Temperature          *float64         `json:"temperature,omitempty"`
+	TopP                 *float64         `json:"top_p,omitempty"`
 }
 
 // thinkingEnabler is DeepSeek's thinking-mode toggle; the enabled form keeps thinking default-on for agent loops.
@@ -192,6 +194,16 @@ func toolsForWire(req Request) []Tool {
 		out = append(out, Tool{Type: t.Type, Function: fn})
 	}
 	return out
+}
+
+// promptCacheRetention returns the OpenCode Go prompt-cache retention duration so the gateway keeps the session cache alive for a day, else empty so the field is omitted and unrelated endpoints stay untouched.
+const promptCacheRetention24h = "24h"
+
+func promptCacheRetention(req Request) string {
+	if req.ProviderID != ProviderOpenCodeGo {
+		return ""
+	}
+	return promptCacheRetention24h
 }
 
 // promptCacheKey returns the session-scoped prompt cache key for req when the caller opted into deepseek's session cache, else empty so the field is omitted from the body.
