@@ -333,6 +333,37 @@ func TestCopilotResponsesStreamToolCalls(t *testing.T) {
 	}
 }
 
+func TestCopilotChatDialectBuildExplicitThinkingToggle(t *testing.T) {
+	t.Parallel()
+	build := func(thinking bool) map[string]any {
+		body, err := NewCopilotChatDialect().Build(Request{Model: "gpt-4o", ThinkingEnabled: thinking})
+		if err != nil {
+			t.Fatalf("Build() error = %v, want nil", err)
+		}
+		var parsed map[string]any
+		if err := json.Unmarshal(body, &parsed); err != nil {
+			t.Fatalf("body not JSON: %v", err)
+		}
+		return parsed
+	}
+
+	on := build(true)
+	if th, ok := on["thinking"].(map[string]any); !ok || th["type"] != "enabled" {
+		t.Errorf("thinking-on body = %#v, want thinking.type enabled", on)
+	}
+	if on["reasoning_effort"] != nil {
+		t.Errorf("thinking-on body carried reasoning_effort without an effort, want omitted: %#v", on)
+	}
+
+	off := build(false)
+	if th, ok := off["thinking"].(map[string]any); !ok || th["type"] != "disabled" {
+		t.Errorf("thinking-off body = %#v, want thinking.type disabled", off)
+	}
+	if off["reasoning_effort"] != nil {
+		t.Errorf("thinking-off body carried reasoning_effort, want omitted: %#v", off)
+	}
+}
+
 func drainOne(s Stream) (string, error) {
 	var content string
 	for {
