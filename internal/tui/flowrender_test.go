@@ -300,3 +300,26 @@ func TestRenderFlow_toolEntryExpansionDrivesBodyAndRows(t *testing.T) {
 		t.Errorf("expanded tool entry row range must span multiple rows for idx 0, got %+v", rows)
 	}
 }
+
+// TestRenderFlow_committedSnapshotTailSurvivesDroppedDeltas locks the lost-final-
+// answer shape: an answer fragment streamed before a tool boundary, then the
+// turn's remaining answer deltas never landed in the committed timeline (the
+// tail raced past busy=false and was dropped). The authoritative snapshot must
+// still render the full answer instead of vanishing behind the early fragment.
+func TestRenderFlow_committedSnapshotTailSurvivesDroppedDeltas(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	in := renderFlowInput(
+		[]TimelineEvent{
+			{Kind: EventAnswer, Delta: "Let me run tests."},
+			{Kind: EventToolStart, Start: &ToolStart{Name: "bash", Args: "echo"}},
+			{Kind: EventToolResult, Result: &ToolResult{Name: "bash", Result: "out"}},
+		},
+		message{content: "Let me run tests. THE COMPLETE ANALYSIS final result.", thinkingRequested: true},
+		[]flowTool{{entry: toolEntry{name: "bash", args: "echo", anchor: 0, complete: true, result: "out", lines: 1}, logIdx: 0, expanded: false}},
+	)
+	out, _ := RenderFlow(in)
+	plain := ansiStrip(out)
+	if !strings.Contains(plain, "THE COMPLETE ANALYSIS final result") {
+		t.Fatalf("snapshot tail lost when final deltas were dropped:\n%s", plain)
+	}
+}

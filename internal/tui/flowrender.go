@@ -117,6 +117,7 @@ func (r flowRenderer) fold(events []TimelineEvent, msg message) []flowItem {
 	anyStreamedAnswer := false
 	emittedAnswerBeforeTail := false
 	snapshotAnswerEmitted := false
+	emittedAnswerLen := 0 // answer text already flushed as delta fragments this turn
 
 	flushReasoning := func() {
 		var txt string
@@ -150,6 +151,14 @@ func (r flowRenderer) fold(events []TimelineEvent, msg message) []flowItem {
 	flushAnswer := func(final bool) {
 		txt := answer.String()
 		answer.Reset()
+		// Committed turns own an authoritative snapshot. When this is the tail
+		// and the turn is done, whatever of the snapshot has not yet been
+		// flushed wins: the full answer must survive even if its bytes never
+		// streamed as deltas (e.g. the tail raced past busy=false and was
+		// dropped), rather than vanishing behind an early tool-boundary frag.
+		if final && !msg.streaming && msg.content != "" && emittedAnswerLen < len(msg.content) && len(txt) < len(msg.content[emittedAnswerLen:]) {
+			txt = msg.content[emittedAnswerLen:]
+		}
 		switch {
 		case txt != "":
 			// An interleaved answer fragment sits before this boundary. A turn
@@ -165,9 +174,13 @@ func (r flowRenderer) fold(events []TimelineEvent, msg message) []flowItem {
 			snapshotAnswerEmitted = true
 			txt = msg.content
 		default:
-			return // nothing to show at this boundary
+			return // nothing to stream at this boundary
+		}
+		if txt == "" {
+			return
 		}
 		items = append(items, flowItem{kind: flowBlockAnswer, text: txt, final: final})
+		emittedAnswerLen += len(txt)
 		if !final && !emittedAnswerBeforeTail {
 			emittedAnswerBeforeTail = true
 		}
