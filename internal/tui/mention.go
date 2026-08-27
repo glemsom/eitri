@@ -1,11 +1,14 @@
 package tui
 
 import (
-	"os"
+	"io/fs"
+	"path/filepath"
 	"sort"
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 // mentionCapRows caps how many mention candidates render above the composer so
@@ -22,6 +25,13 @@ type Mention struct {
 	view      []string // the visible window into cands, capped at mentionCapRows
 	offset    int      // cands index of view[0]
 	idx       int      // absolute cands index of the selection
+
+	// manifest caches the workspace's full path tree (dirs with a trailing "/")
+	// for the current mention session. It is populated once, asynchronously off
+	// the main loop, and reused while the dropdown stays open so each keystroke
+	// only re-filters in memory instead of hitting disk.
+	manifest []string
+	walking  bool // a background manifest walk is in flight
 }
 
 func NewMention(workspace string) *Mention {
@@ -31,19 +41,48 @@ func NewMention(workspace string) *Mention {
 // Track rescans the mention state from the composer's current value and byte
 // cursor: it opens the dropdown and rebuilds candidates when the caret sits at
 // the tail of an `@` at a word boundary, otherwise it closes the dropdown.
-func (mn *Mention) Track(value string, cursor int) {
+// When the workspace manifest isn't cached yet it returns a background walk
+// command that delivers candidates asynchronously so the UI never blocks.
+func (mn *Mention) Track(value string, cursor int) tea.Cmd {
 	start, partial, ok := atMentionAt(value, cursor)
 	if !ok {
 		mn.open = false
-		return
+		return nil
 	}
 	if !mn.open || mn.partial != partial || mn.start != start {
 		mn.open = true
 		mn.start = start
 		mn.partial = partial
-		mn.cands = mentionCandidates(mn.workspace, partial)
 		mn.idx = 0
+		if len(mn.manifest) == 0 {
+			if !mn.walking {
+				mn.walking = true
+				mn.cands = nil
+				mn.recomputeView()
+				return mentionWalkCmd(mn.workspace)
+			}
+			mn.recomputeView()
+			return nil
+		}
+		mn.cands = candidatesForPartial(mn.manifest, partial)
 	}
+	if len(mn.cands) > 0 && mn.idx >= len(mn.cands) {
+		mn.idx = len(mn.cands) - 1
+	}
+	mn.recomputeView()
+	return nil
+}
+
+// setManifest installs the freshly walked workspace tree and re-filters the
+// current partial in place, so the previously shown list swaps to the new
+// results without a loading state or flicker.
+func (mn *Mention) setManifest(paths []string) {
+	mn.walking = false
+	mn.manifest = paths
+	if !mn.open {
+		return
+	}
+	mn.cands = candidatesForPartial(mn.manifest, mn.partial)
 	if len(mn.cands) > 0 && mn.idx >= len(mn.cands) {
 		mn.idx = len(mn.cands) - 1
 	}
@@ -104,6 +143,8 @@ func (mn *Mention) Reset() {
 	mn.start = 0
 	mn.idx = 0
 	mn.offset = 0
+	mn.manifest = nil
+	mn.walking = false
 }
 
 // CandidateCount returns how many mention rows render above the composer for the
@@ -148,6 +189,139 @@ func (mn *Mention) Select(value string) (string, bool) {
 	}
 	mn.Reset()
 	return out, true
+}
+
+// mentionWalkMsg carries a freshly walked workspace manifest back from the
+// background worker into the UI loop.
+type mentionWalkMsg struct{ paths []string }
+
+// mentionWalkCmd reads the workspace tree off the main loop and delivers the
+// resulting manifest as a mentionWalkMsg, so a large workspace never blocks UI
+// updates while candidates are gathered.
+func mentionWalkCmd(dir string) tea.Cmd {
+	return func() tea.Msg {
+		return mentionWalkMsg{paths: walkWorkspace(dir)}
+	}
+}
+
+// walkWorkspace returns the workspace-relative path tree in sorted order, dirs
+// rendered with a trailing slash, skipping hidden entries and unreadable subtrees.
+func walkWorkspace(dir string) []string {
+	var paths []string
+	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if p == dir {
+			return nil
+		}
+		if strings.HasPrefix(d.Name(), ".") {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		rel, err := filepath.Rel(dir, p)
+		if err != nil {
+			return nil
+		}
+		s := filepath.ToSlash(rel)
+		if d.IsDir() {
+			s += "/"
+		}
+		paths = append(paths, s)
+		return nil
+	})
+	sort.Strings(paths)
+	return paths
+}
+
+// candidatesForPartial filters the cached workspace manifest down to the paths
+// matching an `@partial`: a partial naming an existing directory surfaces the
+// paths under it, otherwise it matches sibling basenames within the parent
+// directory. Folders keep their trailing slash so they read as directories.
+// Candidates are sorted.
+func candidatesForPartial(manifest []string, partial string) []string {
+	dir, base := splitPath(partial)
+	out := map[string]bool{}
+	// match siblings under dir whose basename has the base prefix
+	for _, e := range manifest {
+		if !strings.HasPrefix(e, dir) {
+			continue
+		}
+		rest := e[len(dir):]
+		if rest == "" {
+			continue
+		}
+		seg, isDir := firstSegment(rest)
+		if strings.HasPrefix(seg, ".") {
+			continue
+		}
+		if strings.HasPrefix(seg, base) {
+			cand := dir + seg
+			if isDir {
+				cand += "/"
+			}
+			out[cand] = true
+		}
+	}
+	// a partial that ends in a slash and names an existing directory surfaces its
+	// children; a bare partial keeps matching siblings only until the slash is typed.
+	if strings.HasSuffix(partial, "/") {
+		if indent := strings.TrimSuffix(partial, "/") + "/"; containsPath(manifest, indent) {
+			for _, e := range manifest {
+				if !strings.HasPrefix(e, indent) {
+					continue
+				}
+				rest := e[len(indent):]
+				if rest == "" {
+					continue
+				}
+				seg, isDir := firstSegment(rest)
+				if strings.HasPrefix(seg, ".") {
+					continue
+				}
+				cand := indent + seg
+				if isDir {
+					cand += "/"
+				}
+				out[cand] = true
+			}
+		}
+	}
+	res := make([]string, 0, len(out))
+	for c := range out {
+		res = append(res, c)
+	}
+	sort.Strings(res)
+	return res
+}
+
+// splitPath splits a partial into its leading directory (including a trailing
+// slash, or "" at the root) and the remaining basename prefix.
+func splitPath(partial string) (dir, base string) {
+	if i := strings.LastIndex(partial, "/"); i >= 0 {
+		return partial[:i+1], partial[i+1:]
+	}
+	return "", partial
+}
+
+// firstSegment returns the first path segment of s and whether it is a directory.
+func firstSegment(s string) (string, bool) {
+	if i := strings.IndexByte(s, '/'); i >= 0 {
+		return s[:i], true
+	}
+	return s, false
+}
+
+// containsPath reports whether manifest holds the exact path entry.
+func containsPath(manifest []string, p string) bool {
+	for _, e := range manifest {
+		if e == p {
+			return true
+		}
+	}
+	return false
 }
 
 // atMentionAt inspects the composer value at a byte offset and reports whether
@@ -199,31 +373,4 @@ func isMentionBoundaryByte(value string, i int) bool {
 // whitespace or a delimiter that announces the start of a new token.
 func isMentionBoundaryRune(r rune) bool {
 	return unicode.IsSpace(r) || r == '(' || r == '[' || r == '{' || r == '"' || r == '\''
-}
-
-// mentionCandidates returns the workspace-relative path candidates under dir
-// that share the given @partial prefix: top-level files and folders, folders
-// rendered with a trailing slash. Deep completion into a subpath is out of
-// scope for this ticket. Candidates are sorted.
-func mentionCandidates(dir, partial string) []string {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil
-	}
-	var cands []string
-	for _, e := range entries {
-		name := e.Name()
-		if strings.HasPrefix(name, ".") {
-			continue
-		}
-		s := name
-		if e.IsDir() {
-			s += "/"
-		}
-		if strings.HasPrefix(s, partial) {
-			cands = append(cands, s)
-		}
-	}
-	sort.Strings(cands)
-	return cands
 }

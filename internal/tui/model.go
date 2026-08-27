@@ -407,9 +407,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.composer.InsertString("\n")
-			m.trackComposer()
+			cmd := m.trackComposer()
 			m.syncComposerHeight()
-			return m, nil
+			return m, cmd
 		case "enter":
 			if m.mention.isOpen() {
 				return m.selectMention()
@@ -445,13 +445,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		nm, cmd := m.composer.Update(msg)
 		m.composer = nm
-		m.trackComposer()
-		m.syncComposerHeight()
 		cmds = append(cmds, cmd)
+		cmds = append(cmds, m.trackComposer())
+		m.syncComposerHeight()
 		return m, tea.Batch(cmds...)
 
 	case tea.MouseMsg:
 		m.updateMouse(msgi)
+		return m, nil
+
+	case mentionWalkMsg:
+		m.mention.setManifest(msgi.paths)
 		return m, nil
 
 	case turnDoneMsg:
@@ -599,9 +603,12 @@ func (m *Model) applyToolUpdate(u ToolUpdate) {
 
 // trackComposer updates both completion surfaces after a composer mutation: the
 // slash surface from the value, and the @ mention surface from the caret position.
-func (m *Model) trackComposer() {
+// It returns any background command the mention walk requested (e.g. the first
+// async workspace manifest read), so the UI loop pages in candidates off the
+// main thread.
+func (m *Model) trackComposer() tea.Cmd {
 	m.slash.TrackComposer(m.composer.Value())
-	m.mention.Track(m.composer.Value(), m.composerByteOffset())
+	return m.mention.Track(m.composer.Value(), m.composerByteOffset())
 }
 
 // selectMention replaces the tracked @partial with the chosen candidate and

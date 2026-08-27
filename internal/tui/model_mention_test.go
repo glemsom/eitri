@@ -29,10 +29,20 @@ func mentionModel(t *testing.T, workspace string) Model {
 	return resize(t, m)
 }
 
+// feedMentionWalk simulates the async workspace walk completing and delivering its
+// manifest into the mention dropdown, mirroring the real mentionWalkMsg path.
+func feedMentionWalk(t *testing.T, m Model, workspace string) Model {
+	t.Helper()
+	nm, _ := m.Update(mentionWalkMsg{paths: walkWorkspace(workspace)})
+	return asModel(t, nm)
+}
+
 func TestModel_mentionOpenListsRootCandidates(t *testing.T) {
 	t.Parallel()
-	m := mentionModel(t, mentionWorkspace(t))
+	ws := mentionWorkspace(t)
+	m := mentionModel(t, ws)
 	m = typeText(t, m, "@")
+	m = feedMentionWalk(t, m, ws)
 	if !m.mention.isOpen() {
 		t.Fatalf("typing @ at a word boundary should open the mention dropdown")
 	}
@@ -46,8 +56,10 @@ func TestModel_mentionOpenListsRootCandidates(t *testing.T) {
 
 func TestModel_mentionNavigateAndSelect(t *testing.T) {
 	t.Parallel()
-	m := mentionModel(t, mentionWorkspace(t))
+	ws := mentionWorkspace(t)
+	m := mentionModel(t, ws)
 	m = typeText(t, m, "@")
+	m = feedMentionWalk(t, m, ws)
 	first := m.mention.SelectedCandidate()
 	m = keypress(t, m, "down")
 	second := m.mention.SelectedCandidate()
@@ -69,8 +81,10 @@ func TestModel_mentionNavigateAndSelect(t *testing.T) {
 
 func TestModel_mentionSelectPreservesRest(t *testing.T) {
 	t.Parallel()
-	m := mentionModel(t, mentionWorkspace(t))
+	ws := mentionWorkspace(t)
+	m := mentionModel(t, ws)
 	m = typeText(t, m, "go @src")
+	m = feedMentionWalk(t, m, ws)
 	if !m.mention.isOpen() {
 		t.Fatalf("caret on @src should keep the dropdown open")
 	}
@@ -119,6 +133,20 @@ func TestModel_mentionMidWordStaysLiteral(t *testing.T) {
 	m = typeText(t, m, "foo@bar.com")
 	if m.mention.isOpen() {
 		t.Error("a mid-word @ (email) must not open the dropdown")
+	}
+}
+
+func TestModel_mentionReFiltersInPlaceOnEdit(t *testing.T) {
+	t.Parallel()
+	ws := mentionWorkspace(t)
+	m := mentionModel(t, ws)
+	m = typeText(t, m, "@src/")
+	m = feedMentionWalk(t, m, ws)
+	if got := m.mention.SelectedCandidate(); got != "src/util.go" {
+		t.Errorf("descendant candidate = %q, want src/util.go", got)
+	}
+	if !strings.Contains(view(m), "▸ src/util.go") {
+		t.Errorf("view should highlight src/util.go, got: %q", view(m))
 	}
 }
 
