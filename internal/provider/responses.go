@@ -149,7 +149,7 @@ func responsesToolManifest(defs []DialectDefinition) []responsesTool {
 }
 
 // responsesToolManifestFromTools folds Chat-Completions tools into their
-// Responses wire equivalents for req, returning nil when no tools are present.
+// Responses wire equivalents, returning nil when no tools are present.
 func responsesToolManifestFromTools(tools []Tool) []responsesTool {
 	if len(tools) == 0 {
 		return nil
