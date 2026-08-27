@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 )
 
 // Dialect is the seam for a single wire dialect: it owns both request shaping
@@ -41,9 +42,9 @@ var chatDialect = NewChatCompletionsDialect()
 
 // Build implements Dialect.
 func (d *ChatCompletionsDialect) Build(req Request) ([]byte, error) {
-	return json.Marshal(chatCompletionBody{
+	body := chatCompletionBody{
 		Model:                req.Model,
-		Messages:             req.Messages,
+		Messages:             stampCacheBreakpoints(req),
 		Tools:                toolsForWire(req),
 		ToolChoice:           req.ToolChoice,
 		Stream:               true,
@@ -56,7 +57,8 @@ func (d *ChatCompletionsDialect) Build(req Request) ([]byte, error) {
 		ResponseFormat:       jsonObjectModeControl(req),
 		Temperature:          samplingTemperatureControl(req),
 		TopP:                 samplingTopPControl(req),
-	})
+	}
+	return json.Marshal(body)
 }
 
 // Capabilities implements Dialect.
@@ -212,6 +214,79 @@ func promptCacheKey(req Request) string {
 		return req.SessionKey
 	}
 	return ""
+}
+
+// cacheMarker is the Anthropic-style breakpoint stamped on OpenCode Go turns so
+// long sessions stay cheap: the stable system prefix and earlier turns keep
+// hitting the cache while the newest message changes every turn.
+var cacheMarker = &CacheControl{Type: "ephemeral", TTL: promptCacheRetention24h}
+
+// stampCacheBreakpoints returns req.Messages with OpenCode Go cache breakpoints
+// stamped on up to two leading system messages, the last two user/assistant
+// messages, and the last tool message, on a fresh copy so the caller's slice is
+// untouched. It returns the slice unchanged when OpenCode Go stamping does not
+// apply: custom-openai turns, GLM/Zhipu models (whose API rejects Anthropic-style
+// markers), or a request that already carries a marker anywhere (no double-stamp).
+func stampCacheBreakpoints(req Request) []Message {
+	if req.ProviderID != ProviderOpenCodeGo || isGLMModel(req.Model) || carriesCacheMarker(req) {
+		return req.Messages
+	}
+	out := make([]Message, len(req.Messages))
+	copy(out, req.Messages)
+
+	systems := 0
+	for i := range out {
+		if out[i].Role != RoleSystem || systems >= 2 {
+			break
+		}
+		out[i].CacheControl = cacheMarker
+		systems++
+	}
+
+	// moving tail: last tool message plus the last two user/assistant messages
+	lastTool := -1
+	lastTwoTurns := []int{}
+	for i := len(out) - 1; i >= 0; i-- {
+		switch out[i].Role {
+		case RoleTool:
+			if lastTool < 0 {
+				lastTool = i
+			}
+		case RoleUser, RoleAssistant:
+			if len(lastTwoTurns) < 2 {
+				lastTwoTurns = append([]int{i}, lastTwoTurns...)
+			}
+		}
+	}
+	if lastTool >= 0 {
+		out[lastTool].CacheControl = cacheMarker
+	}
+	for _, i := range lastTwoTurns {
+		out[i].CacheControl = cacheMarker
+	}
+	return out
+}
+
+// isGLMModel reports whether req.Model is a Zhipu GLM variant, whose downstream
+// API rejects Anthropic-style cache_control markers.
+func isGLMModel(model string) bool {
+	return strings.Contains(model, "glm-") || strings.Contains(model, "zhipu-")
+}
+
+// carriesCacheMarker reports whether any message or tool already carries a cache_control
+// marker, which forbids the dialect from stamping another one.
+func carriesCacheMarker(req Request) bool {
+	for i := range req.Messages {
+		if req.Messages[i].CacheControl != nil {
+			return true
+		}
+	}
+	for i := range req.Tools {
+		if req.Tools[i].CacheControl != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // openAIStream adapts parsed SSE events into the Stream seam, mapping [DONE] to a Done chunk and io.EOF to io.EOF, accumulating tool_call fragments.

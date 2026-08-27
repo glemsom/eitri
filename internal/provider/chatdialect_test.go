@@ -222,3 +222,130 @@ func jsonEqual(a, b any) bool {
 	bb, berr := json.Marshal(b)
 	return aerr == nil && berr == nil && string(ab) == string(bb)
 }
+
+func TestChatCompletionsDialectBuildStampsBreakpointsForOpenCodeGo(t *testing.T) {
+	t.Parallel()
+	body, err := NewChatCompletionsDialect().Build(Request{
+		Model:      "deepseek-v4-flash",
+		ProviderID: ProviderOpenCodeGo,
+		Messages: []Message{
+			{Role: RoleSystem, Content: "s1"},
+			{Role: RoleSystem, Content: "s2"},
+			{Role: RoleSystem, Content: "s3"},
+			{Role: RoleUser, Content: "u1"},
+			{Role: RoleAssistant, Content: "a1"},
+			{Role: RoleTool, ToolCallID: "t1", Content: "tool result"},
+			{Role: RoleAssistant, Content: "a2"},
+			{Role: RoleUser, Content: "u3"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Build() error = %v, want nil", err)
+	}
+	var parsed struct {
+		Messages []map[string]any `json:"messages"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		t.Fatalf("body not JSON: %v", err)
+	}
+	if len(parsed.Messages) != 8 {
+		t.Fatalf("got %d messages, want 8", len(parsed.Messages))
+	}
+	// up to two leading system messages get breakpoints, the third does not
+	for _, idx := range []int{0, 1} {
+		if _, ok := parsed.Messages[idx]["cache_control"]; !ok {
+			t.Errorf("leading system message[%d] missing cache_control", idx)
+		}
+	}
+	if _, ok := parsed.Messages[2]["cache_control"]; ok {
+		t.Errorf("third system message[2] should not carry cache_control")
+	}
+	// the last tool message and the last two user/assistant messages get breakpoints
+	for _, idx := range []int{5, 6, 7} {
+		if _, ok := parsed.Messages[idx]["cache_control"]; !ok {
+			t.Errorf("moving-tail message[%d] missing cache_control", idx)
+		}
+	}
+	// earlier user/assistant messages do not
+	for _, idx := range []int{3, 4} {
+		if _, ok := parsed.Messages[idx]["cache_control"]; ok {
+			t.Errorf("earlier message[%d] should not carry cache_control", idx)
+		}
+	}
+}
+
+func TestChatCompletionsDialectBuildNoBreakpointsForCustomOpenAI(t *testing.T) {
+	t.Parallel()
+	body, err := NewChatCompletionsDialect().Build(Request{
+		Model:      "some-model",
+		ProviderID: ProviderCustomOpenAI,
+		Messages: []Message{
+			{Role: RoleSystem, Content: "s1"},
+			{Role: RoleSystem, Content: "s2"},
+			{Role: RoleUser, Content: "u1"},
+			{Role: RoleAssistant, Content: "a1"},
+			{Role: RoleUser, Content: "u2"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Build() error = %v, want nil", err)
+	}
+	if strings.Contains(string(body), "cache_control") {
+		t.Errorf("custom-openai request leaked cache_control markers: %s", body)
+	}
+}
+
+func TestChatCompletionsDialectBuildSkipsBreakpointsForGLM(t *testing.T) {
+	t.Parallel()
+	for _, model := range []string{"glm-4.5", "zhipu-glm-4.6", "glm-4.5-flash"} {
+		body, err := NewChatCompletionsDialect().Build(Request{
+			Model:      model,
+			ProviderID: ProviderOpenCodeGo,
+			Messages: []Message{
+				{Role: RoleSystem, Content: "s1"},
+				{Role: RoleSystem, Content: "s2"},
+				{Role: RoleUser, Content: "u1"},
+				{Role: RoleAssistant, Content: "a1"},
+				{Role: RoleUser, Content: "u2"},
+			},
+		})
+		if err != nil {
+			t.Fatalf("Build() error = %v, want nil", err)
+		}
+		if strings.Contains(string(body), "cache_control") {
+			t.Errorf("GLM model %q leaked cache_control markers: %s", model, body)
+		}
+	}
+}
+
+func TestChatCompletionsDialectBuildNoDoubleStamp(t *testing.T) {
+	t.Parallel()
+	marker := &CacheControl{Type: "ephemeral", TTL: "1h"}
+	// user message pre-stamped; the dialect must not add markers anywhere
+	body, err := NewChatCompletionsDialect().Build(Request{
+		Model:      "deepseek-v4-flash",
+		ProviderID: ProviderOpenCodeGo,
+		Messages: []Message{
+			{Role: RoleSystem, Content: "prefix", CacheControl: marker},
+			{Role: RoleUser, Content: "question"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Build() error = %v, want nil", err)
+	}
+	var parsed struct {
+		Messages []map[string]any `json:"messages"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		t.Fatalf("body not JSON: %v", err)
+	}
+	count := 0
+	for _, m := range parsed.Messages {
+		if _, ok := m["cache_control"]; ok {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("got %d cache_control markers, want exactly 1 (the pre-stamped one)", count)
+	}
+}
