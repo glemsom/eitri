@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -164,6 +165,59 @@ func TestMentionCandidates_HiddenEntriesSkipped(t *testing.T) {
 	gotJoin := strings.Join(got, ",")
 	if !strings.Contains(gotJoin, "main.go") {
 		t.Errorf("candidates %q missing main.go", got)
+	}
+}
+
+func TestWalkWorkspace_RespectsGitIgnore(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	mustWriteFile(t, filepath.Join(dir, ".gitignore"), "vendor/\n*.log\nnode_modules/\n")
+	mustWriteFile(t, filepath.Join(dir, "main.go"), "x\n")
+	mustWriteFile(t, filepath.Join(dir, "app.go"), "x\n")
+	mustMakeDir(t, filepath.Join(dir, "vendor"))
+	mustWriteFile(t, filepath.Join(dir, "vendor", "x.go"), "x\n")
+	mustMakeDir(t, filepath.Join(dir, "node_modules"))
+	mustWriteFile(t, filepath.Join(dir, "node_modules", "m.js"), "x\n")
+	mustMakeDir(t, filepath.Join(dir, "src"))
+	mustWriteFile(t, filepath.Join(dir, "src", "util.go"), "x\n")
+
+	manifest := walkWorkspace(dir)
+	join := strings.Join(manifest, ",")
+	for _, want := range []string{"main.go", "app.go", "src/", "src/util.go"} {
+		if !strings.Contains(join, want) {
+			t.Errorf("manifest %q missing %q", manifest, want)
+		}
+	}
+	if strings.Contains(join, "vendor") || strings.Contains(join, "node_modules") {
+		t.Errorf("gitignored entries leaked into manifest %q", manifest)
+	}
+}
+
+func TestWalkWorkspace_GitIgnoreInSubdir(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+	mustMakeDir(t, filepath.Join(dir, "pkg"))
+	mustWriteFile(t, filepath.Join(dir, "pkg", ".gitignore"), "generated.go\n")
+	mustWriteFile(t, filepath.Join(dir, "pkg", "keep.go"), "x\n")
+	mustWriteFile(t, filepath.Join(dir, "pkg", "generated.go"), "x\n")
+	mustWriteFile(t, filepath.Join(dir, "top.go"), "x\n")
+
+	manifest := walkWorkspace(dir)
+	join := strings.Join(manifest, ",")
+	if !strings.Contains(join, "pkg/keep.go") || !strings.Contains(join, "top.go") {
+		t.Errorf("manifest %q missing unignored paths", manifest)
+	}
+	if strings.Contains(join, "generated.go") {
+		t.Errorf("subdir-ignored entry leaked into manifest %q", manifest)
+	}
+}
+
+func initGitRepo(t *testing.T, dir string) {
+	t.Helper()
+	if out, err := exec.Command("git", "-C", dir, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("git init failed: %v (%s)", err, out)
 	}
 }
 

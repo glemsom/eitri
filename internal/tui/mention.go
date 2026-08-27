@@ -2,6 +2,7 @@ package tui
 
 import (
 	"io/fs"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -205,7 +206,8 @@ func mentionWalkCmd(dir string) tea.Cmd {
 }
 
 // walkWorkspace returns the workspace-relative path tree in sorted order, dirs
-// rendered with a trailing slash, skipping hidden entries and unreadable subtrees.
+// rendered with a trailing slash, skipping hidden entries, unreadable subtrees,
+// and paths the workspace's git ignore rules exclude.
 func walkWorkspace(dir string) []string {
 	var paths []string
 	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
@@ -232,8 +234,67 @@ func walkWorkspace(dir string) []string {
 		paths = append(paths, s)
 		return nil
 	})
+	paths = filterIgnored(dir, paths)
 	sort.Strings(paths)
 	return paths
+}
+
+// filterIgnored drops workspace-relative paths that the git worktree's ignore
+// rules exclude, matching the same semantics `git status` uses. Ignore files
+// anywhere above themselves in the worktree still apply because it asks git
+// directly. When the workspace is not inside a git worktree, or git cannot run,
+// every path is kept, so non-workspace behavior is unchanged: filtering only
+// kicks in when a real repository governs the workspace.
+func filterIgnored(dir string, paths []string) []string {
+	root := gitRoot(dir)
+	if root == "" {
+		return paths
+	}
+	var in strings.Builder
+	for _, p := range paths {
+		// feed absolute paths so ignore patterns rooted at the worktree top match
+		// the same way they do in git's own traversal; the trailing slash dirs
+		// carry in the manifest is stripped so git sees canonical paths
+		base := strings.TrimSuffix(p, "/")
+		in.WriteString(filepath.Join(root, filepath.FromSlash(base)))
+		in.WriteByte('\n')
+	}
+	cmd := exec.Command("git", "-C", root, "check-ignore", "--stdin")
+	cmd.Stdin = strings.NewReader(in.String())
+	out, err := cmd.Output()
+	if err != nil {
+		// exit 1 means no paths matched; a real failure without usable rules is
+		// also treated as "nothing ignored" rather than dropping the workspace
+		return paths
+	}
+	ignored := map[string]bool{}
+	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		rel, err := filepath.Rel(root, filepath.FromSlash(line))
+		if err != nil {
+			continue
+		}
+		ignored[filepath.ToSlash(rel)] = true
+	}
+	kept := paths[:0]
+	for _, p := range paths {
+		if !ignored[strings.TrimSuffix(p, "/")] {
+			kept = append(kept, p)
+		}
+	}
+	return kept
+}
+
+// gitRoot returns the top-level worktree directory containing dir, or "" when
+// dir is not inside a git worktree.
+func gitRoot(dir string) string {
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // candidatesForPartial filters the cached workspace manifest down to the paths
