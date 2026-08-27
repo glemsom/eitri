@@ -88,11 +88,11 @@ func TestFromConfigThinkingSuppressionMatchesWireBehavior(t *testing.T) {
 	}{
 		{
 			name: "opencode-go",
-			cfg:  config.Config{Provider: ProviderOpenCodeGo},
+			cfg:  config.Config{Provider: string(ProviderOpenCodeGo)},
 			env:  ProviderEnv{OpenCodeKey: "k"},
 			wireThrough: func(t *testing.T, url string) Provider {
 				t.Helper()
-				p, err := FromConfig(config.Config{Provider: ProviderOpenCodeGo}, ProviderEnv{OpenCodeKey: "k", OpenCodeURL: url})
+				p, err := FromConfig(config.Config{Provider: string(ProviderOpenCodeGo)}, ProviderEnv{OpenCodeKey: "k", OpenCodeURL: url})
 				if err != nil {
 					t.Fatalf("FromConfig() error = %v, want nil", err)
 				}
@@ -101,11 +101,11 @@ func TestFromConfigThinkingSuppressionMatchesWireBehavior(t *testing.T) {
 		},
 		{
 			name: "custom-openai",
-			cfg: config.Config{Provider: ProviderCustomOpenAI,
+			cfg: config.Config{Provider: string(ProviderCustomOpenAI),
 				CustomOpenAI: config.OpenAIConfig{BaseURL: "http://example.invalid/v1/chat/completions", Key: "k"}},
 			wireThrough: func(t *testing.T, url string) Provider {
 				t.Helper()
-				p, err := FromConfig(config.Config{Provider: ProviderCustomOpenAI,
+				p, err := FromConfig(config.Config{Provider: string(ProviderCustomOpenAI),
 					CustomOpenAI: config.OpenAIConfig{BaseURL: url, Key: "k"}}, ProviderEnv{})
 				if err != nil {
 					t.Fatalf("FromConfig() error = %v, want nil", err)
@@ -115,7 +115,7 @@ func TestFromConfigThinkingSuppressionMatchesWireBehavior(t *testing.T) {
 		},
 		{
 			name:        "github-copilot",
-			cfg:         config.Config{Provider: ProviderCopilot, Copilot: config.CopilotConfig{AccessToken: "x"}},
+			cfg:         config.Config{Provider: string(ProviderCopilot), Copilot: config.CopilotConfig{AccessToken: "x"}},
 			env:         ProviderEnv{},
 			wireThrough: nil,
 		},

@@ -102,7 +102,7 @@ func CopilotConnect(ctx context.Context, cfgPath string, httpc *http.Client, onC
 	if err != nil {
 		return config.Config{}, err
 	}
-	cfg.Provider = provider.ProviderCopilot
+	cfg.Provider = string(provider.ProviderCopilot)
 	cfg.Copilot = tok
 	if err := config.Save(cfg, cfgPath); err != nil {
 		return config.Config{}, err

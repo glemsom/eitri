@@ -43,7 +43,7 @@ func TestCopilotConnectPersistsFreshToken(t *testing.T) {
 	if sawCode != "ZZ-AA" {
 		t.Fatalf("onCode() saw user code %q, want ZZ-AA", sawCode)
 	}
-	if cfg.Provider != provider.ProviderCopilot {
+	if cfg.Provider != string(provider.ProviderCopilot) {
 		t.Fatalf("copilot config Provider = %q, want github-copilot", cfg.Provider)
 	}
 	if cfg.Copilot.AccessToken != "tui-fresh-access" || cfg.Copilot.RefreshToken != "tui-fresh-refresh" {

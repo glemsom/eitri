@@ -137,6 +137,16 @@ func (t ToolCall) MarshalJSON() ([]byte, error) {
 	return json.Marshal(w)
 }
 
+// ProviderID names the provider family a turn targets, so a shared dialect can apply provider-specific caching fields without affecting another provider.
+type ProviderID string
+
+// Provider family identifiers, matching the documented families surfaced in the Settings surface.
+const (
+	ProviderOpenCodeGo   ProviderID = "opencode-go"
+	ProviderCopilot      ProviderID = "github-copilot"
+	ProviderCustomOpenAI ProviderID = "custom-openai"
+)
+
 // Request is one Chat-Completions turn.
 type Request struct {
 	Model       string
@@ -145,6 +155,8 @@ type Request struct {
 	ToolChoice  any
 	SetCacheKey bool
 	SessionKey  string
+	ProviderID  ProviderID
+
 
 	ThinkingEnabled bool
 	ReasoningEffort string

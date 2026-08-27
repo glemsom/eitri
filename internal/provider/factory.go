@@ -7,13 +7,6 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// Provider family identifiers, matching the documented families surfaced in the Settings surface.
-const (
-	ProviderOpenCodeGo   = "opencode-go"
-	ProviderCopilot      = "github-copilot"
-	ProviderCustomOpenAI = "custom-openai"
-)
-
 // Default endpoints for the non-default provider families.
 const (
 	DefaultCopilotURL  = "https://api.githubcopilot.com/chat/completions"
@@ -40,7 +33,7 @@ type ProviderEnv struct {
 
 // FromConfig builds the Provider the saved config selects — opencode-go, github-copilot, or custom-openai — routing through the shared Chat-Completions dialect seam (canonical tool re-expression and request shaping behind one interface, no per-provider copies).
 func FromConfig(cfg config.Config, env ProviderEnv) (Provider, error) {
-	switch cfg.Provider {
+	switch ProviderID(cfg.Provider) {
 	case ProviderOpenCodeGo:
 		url := env.OpenCodeURL
 		if url == "" {
