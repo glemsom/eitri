@@ -117,7 +117,7 @@ func normalizeEndpoint(s string) EndpointKind {
 
 // Stream implements Provider with an HTTP Chat-Completions request shaped and parsed by the Chat-Completions dialect.
 func (o *OpenAICompatible) Stream(ctx context.Context, req Request) (Stream, error) {
-	body, err := chatDialect().Build(req)
+	body, err := chatDialect.Build(req)
 	if err != nil {
 		return nil, err
 	}
@@ -139,12 +139,12 @@ func (o *OpenAICompatible) Stream(ctx context.Context, req Request) (Stream, err
 		resp.Body.Close()
 		return nil, &HTTPError{Code: resp.StatusCode, Body: string(body)}
 	}
-	return chatDialect().Stream(resp.Body), nil
+	return chatDialect.Stream(resp.Body), nil
 }
 
 // SupportedGenerationControls delegates to the Chat-Completions dialect's declared capabilities.
 func (o *OpenAICompatible) SupportedGenerationControls(context.Context) ([]GenerationControl, error) {
-	return chatDialect().Capabilities(), nil
+	return chatDialect.Capabilities(), nil
 }
 
 // HTTPError reports a non-2xx provider response.

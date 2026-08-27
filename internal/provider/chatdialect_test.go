@@ -20,13 +20,19 @@ func TestChatCompletionsDialectCapabilities(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SupportedGenerationControls() error = %v, want nil", err)
 	}
-	dialect := NewChatCompletionsDialect().Capabilities()
-	if len(declared) != len(dialect) {
-		t.Fatalf("SupportedGenerationControls() = %v, want dialect capabilities %v", declared, dialect)
+	want := []GenerationControl{
+		GenerationControlGenerationBudget,
+		GenerationControlJSONObjectMode,
+		GenerationControlSamplingPolicy,
+		GenerationControlToolSchemaEnforcement,
+		GenerationControlThinkingSuppression,
+	}
+	if len(declared) != len(want) {
+		t.Fatalf("SupportedGenerationControls() = %v, want %v", declared, want)
 	}
 	for i := range declared {
-		if declared[i] != dialect[i] {
-			t.Fatalf("SupportedGenerationControls() = %v, want dialect capabilities %v", declared, dialect)
+		if declared[i] != want[i] {
+			t.Fatalf("SupportedGenerationControls() = %v, want %v", declared, want)
 		}
 	}
 }

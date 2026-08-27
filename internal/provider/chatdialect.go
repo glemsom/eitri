@@ -31,10 +31,9 @@ func NewChatCompletionsDialect() *ChatCompletionsDialect {
 	return &ChatCompletionsDialect{}
 }
 
-// chatDialect returns the shared Chat-Completions dialect instance used by the adapters in this package.
-func chatDialect() *ChatCompletionsDialect {
-	return &ChatCompletionsDialect{}
-}
+// chatDialect is the package-wide Chat-Completions dialect the adapters speak through.
+// It is stateless, so the single shared instance is safe.
+var chatDialect = NewChatCompletionsDialect()
 
 // Build implements WireDialect.
 func (d *ChatCompletionsDialect) Build(req Request) ([]byte, error) {
@@ -44,7 +43,7 @@ func (d *ChatCompletionsDialect) Build(req Request) ([]byte, error) {
 		Tools:           toolsForWire(req),
 		ToolChoice:      req.ToolChoice,
 		Stream:          true,
-		StreamOptions:   &streamOptions{IncludeUsage: true},
+		StreamOptions:   &streamOptions{IncludeUsage: true}, // opencode force-sets include_usage
 		PromptCacheKey:  promptCacheKey(req),
 		Thinking:        thinkingControl(req),
 		ReasoningEffort: reasoningEffortControl(req),
