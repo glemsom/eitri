@@ -245,48 +245,12 @@ func candidatesForPartial(manifest []string, partial string) []string {
 	dir, base := splitPath(partial)
 	out := map[string]bool{}
 	// match siblings under dir whose basename has the base prefix
-	for _, e := range manifest {
-		if !strings.HasPrefix(e, dir) {
-			continue
-		}
-		rest := e[len(dir):]
-		if rest == "" {
-			continue
-		}
-		seg, isDir := firstSegment(rest)
-		if strings.HasPrefix(seg, ".") {
-			continue
-		}
-		if strings.HasPrefix(seg, base) {
-			cand := dir + seg
-			if isDir {
-				cand += "/"
-			}
-			out[cand] = true
-		}
-	}
+	collectUnder(manifest, dir, base, out)
 	// a partial that ends in a slash and names an existing directory surfaces its
 	// children; a bare partial keeps matching siblings only until the slash is typed.
 	if strings.HasSuffix(partial, "/") {
 		if indent := strings.TrimSuffix(partial, "/") + "/"; containsPath(manifest, indent) {
-			for _, e := range manifest {
-				if !strings.HasPrefix(e, indent) {
-					continue
-				}
-				rest := e[len(indent):]
-				if rest == "" {
-					continue
-				}
-				seg, isDir := firstSegment(rest)
-				if strings.HasPrefix(seg, ".") {
-					continue
-				}
-				cand := indent + seg
-				if isDir {
-					cand += "/"
-				}
-				out[cand] = true
-			}
+			collectUnder(manifest, indent, "", out)
 		}
 	}
 	res := make([]string, 0, len(out))
@@ -295,6 +259,33 @@ func candidatesForPartial(manifest []string, partial string) []string {
 	}
 	sort.Strings(res)
 	return res
+}
+
+// collectUnder adds to out the immediate children of the manifest under prefix,
+// its first segment surfaced literally (with a trailing slash when it is a
+// directory). Segments whose compiled candidate starts with base are kept, so an
+// empty base collects every child. Hidden segments are excluded.
+func collectUnder(manifest []string, prefix, base string, out map[string]bool) {
+	for _, e := range manifest {
+		if !strings.HasPrefix(e, prefix) {
+			continue
+		}
+		rest := e[len(prefix):]
+		if rest == "" {
+			continue
+		}
+		seg, isDir := firstSegment(rest)
+		if strings.HasPrefix(seg, ".") {
+			continue
+		}
+		if strings.HasPrefix(seg, base) {
+			cand := prefix + seg
+			if isDir {
+				cand += "/"
+			}
+			out[cand] = true
+		}
+	}
 }
 
 // splitPath splits a partial into its leading directory (including a trailing
