@@ -32,25 +32,28 @@ type CopilotProvider struct {
 
 	mu              sync.RWMutex
 	responsesModels map[string]bool
+
+	chat      WireDialect
+	responses WireDialect
 }
 
 // NewCopilot returns a Copilot provider talking to the Chat-Completions url (e.g. https://api.githubcopilot.com/chat/completions) with the stored credential cfg. refresh provides the non-interactive renewal path (nil means no refresh is available); persist saves renewed tokens to config (nil skips).
 func NewCopilot(cfg config.CopilotConfig, url string, httpc *http.Client, refresh RefreshFunc, persist func(config.CopilotConfig) error) *CopilotProvider {
-	return &CopilotProvider{url: url, http: httpc, cfg: cfg, refresh: refresh, persist: persist, responsesModels: map[string]bool{}}
-}
-
-// copilotThinkingControl returns the DeepSeek thinking-mode toggle in its explicit form for the Copilot wire: enabled when the caller keeps thinking on, and disabled when thinking is off.
-func copilotThinkingControl(req Request) *thinkingEnabler {
-	t := "enabled"
-	if !req.ThinkingEnabled {
-		t = "disabled"
+	return &CopilotProvider{
+		url:             url,
+		http:            httpc,
+		cfg:             cfg,
+		refresh:         refresh,
+		persist:         persist,
+		responsesModels: map[string]bool{},
+		chat:            NewCopilotChatDialect(),
+		responses:       NewResponsesDialect(),
 	}
-	return &thinkingEnabler{Type: t}
 }
 
-// SupportedGenerationControls declares that Copilot can honor the Generation Budget control, since it streams through the same Chat-Completions wire as the primary provider and emits max_completion_tokens on special turns, plus Thinking Suppression, carried as an explicit thinking:{type:disabled} toggle when thinking is off.
+// SupportedGenerationControls delegates to the Copilot chat dialect's declared capabilities: the Generation Budget control (streamed through the same Chat-Completions wire as the primary provider and emitted as max_completion_tokens on special turns) plus Thinking Suppression, carried as an explicit thinking:{type:disabled} toggle when thinking is off.
 func (cp *CopilotProvider) SupportedGenerationControls(context.Context) ([]GenerationControl, error) {
-	return []GenerationControl{GenerationControlGenerationBudget, GenerationControlThinkingSuppression}, nil
+	return cp.chat.Capabilities(), nil
 }
 
 // bearer resolves the bearer token for a run.
@@ -98,17 +101,7 @@ func (cp *CopilotProvider) Stream(ctx context.Context, req Request) (Stream, err
 }
 
 func (cp *CopilotProvider) streamChatCompletions(ctx context.Context, tok string, req Request) (Stream, error) {
-	body, err := json.Marshal(chatCompletionBody{
-		Model:           req.Model,
-		Messages:        req.Messages,
-		Tools:           req.Tools,
-		ToolChoice:      req.ToolChoice,
-		Stream:          true,
-		StreamOptions:   &streamOptions{IncludeUsage: true},
-		Thinking:        copilotThinkingControl(req),
-		ReasoningEffort: reasoningEffortControl(req),
-		MaxOutputTokens: maxOutputTokens(req),
-	})
+	body, err := cp.chat.Build(req)
 	if err != nil {
 		return nil, err
 	}
@@ -116,11 +109,11 @@ func (cp *CopilotProvider) streamChatCompletions(ctx context.Context, tok string
 	if err != nil {
 		return nil, err
 	}
-	return &openAIStream{ev: newSSE(resp.Body), acc: newToolAccumulator()}, nil
+	return cp.chat.Stream(resp.Body), nil
 }
 
 func (cp *CopilotProvider) streamResponses(ctx context.Context, tok string, req Request) (Stream, error) {
-	body, err := marshalResponsesBody(req)
+	body, err := cp.responses.Build(req)
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +121,7 @@ func (cp *CopilotProvider) streamResponses(ctx context.Context, tok string, req 
 	if err != nil {
 		return nil, err
 	}
-	return newResponsesStream(resp.Body), nil
+	return cp.responses.Stream(resp.Body), nil
 }
 
 func (cp *CopilotProvider) do(ctx context.Context, tok, url string, body []byte) (*http.Response, error) {
