@@ -46,8 +46,9 @@ type responsesContentPart struct {
 	Text string `json:"text"`
 }
 
-// ResponsesDialect is the WireDialect implementation for the OpenAI Responses wire.
-// It owns the Responses request-body marshaling and the Responses SSE stream parsing.
+// ResponsesDialect is the Dialect implementation for the OpenAI Responses wire.
+// It owns the Responses request-body marshaling, canonical-tool mapping, and
+// the Responses SSE stream parsing.
 type ResponsesDialect struct{}
 
 // NewResponsesDialect returns a Responses dialect.
@@ -67,6 +68,11 @@ func (d *ResponsesDialect) Capabilities() []GenerationControl {
 		GenerationControlToolSchemaEnforcement,
 		GenerationControlThinkingSuppression,
 	}
+}
+
+// Manifest re-expresses canonical tool definitions into the Responses tool manifest.
+func (d *ResponsesDialect) Manifest(defs []DialectDefinition) any {
+	return responsesToolManifest(defs)
 }
 
 // Stream returns a stream that parses Responses SSE events.
@@ -132,6 +138,19 @@ func responsesTextParts(kind, text string) []responsesContentPart {
 
 func responsesTools(req Request) []responsesTool {
 	tools := toolsForWire(req)
+	return responsesToolManifestFromTools(tools)
+}
+
+// responsesToolManifest re-expresses canonical tool definitions into the
+// Responses tool manifest.
+func responsesToolManifest(defs []DialectDefinition) []responsesTool {
+	tools := chatToolManifest(defs)
+	return responsesToolManifestFromTools(tools)
+}
+
+// responsesToolManifestFromTools folds Chat-Completions tools into their
+// Responses wire equivalents for req, returning nil when no tools are present.
+func responsesToolManifestFromTools(tools []Tool) []responsesTool {
 	if len(tools) == 0 {
 		return nil
 	}

@@ -10,8 +10,8 @@ import (
 	"testing"
 )
 
-// compile-time proof that the Chat-Completions dialect implements the WireDialect seam.
-var _ WireDialect = (*ChatCompletionsDialect)(nil)
+// compile-time proof that the Chat-Completions dialect implements the Dialect seam.
+var _ Dialect = (*ChatCompletionsDialect)(nil)
 
 func TestChatCompletionsDialectCapabilities(t *testing.T) {
 	t.Parallel()
