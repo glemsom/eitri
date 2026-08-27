@@ -5,13 +5,13 @@ import (
 	"io"
 )
 
+// compile-time proof that the Copilot chat dialect implements the WireDialect seam.
+var _ WireDialect = (*CopilotChatDialect)(nil)
+
 // CopilotChatDialect is the WireDialect implementation for the Copilot chat
 // wire: a Chat-Completions shape that, unlike the shared chat dialect, carries
 // the DeepSeek thinking toggle explicitly in both directions — enabled while
 // the caller keeps thinking on and disabled when thinking is off.
-// compile-time proof that the Copilot chat dialect implements the WireDialect seam.
-var _ WireDialect = (*CopilotChatDialect)(nil)
-
 type CopilotChatDialect struct{}
 
 // NewCopilotChatDialect returns the Copilot chat dialect.
