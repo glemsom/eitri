@@ -33,14 +33,15 @@ func TestSkillActivation_renderCompletionListsCandidates(t *testing.T) {
 	var b strings.Builder
 	s.RenderCompletion(&b, plainTestTheme())
 	out := b.String()
-	for _, want := range []string{"/settings", "/copy", "/login", "/help", "/review", "/plan"} {
+	for _, want := range []string{"/settings", "/copy", "/login", "/help", "/new", "/review", "/plan"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("completion output %q missing %q", out, want)
 		}
 	}
-	if n := s.CandidateCount(); n != 6 {
-		t.Errorf("CandidateCount() = %d, want 6", n)
+	if n := s.CandidateCount(); n != 7 {
+		t.Errorf("CandidateCount() = %d, want 7", n)
 	}
+
 	s.TrackComposer("hello")
 	if n := s.CandidateCount(); n != 0 {
 		t.Errorf("CandidateCount() after plain text = %d, want 0", n)

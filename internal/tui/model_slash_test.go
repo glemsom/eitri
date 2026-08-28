@@ -51,7 +51,7 @@ func TestModel_slashCompletionListsCommands(t *testing.T) {
 
 	m = typeText(t, m, "/")
 	content := view(m)
-	if !strings.Contains(content, "/settings") || !strings.Contains(content, "/copy") || !strings.Contains(content, "/login") {
+	if !strings.Contains(content, "/settings") || !strings.Contains(content, "/copy") || !strings.Contains(content, "/login") || !strings.Contains(content, "/new") {
 		t.Errorf("bare `/` completion should list built-in commands, got: %q", content)
 	}
 	if !strings.Contains(content, "/review") || !strings.Contains(content, "/plan") {
