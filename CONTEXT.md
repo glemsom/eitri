@@ -96,6 +96,10 @@ _Avoid_: history list, submitted-log.
 The readline-style navigation of the prompt history ring from the composer: `up`/`down` pull a prior/following prompt into the draft while the caret rests on the top/bottom line, and `down` past the newest restores the draft that recall displaced. It only fires at the caret edge, never for `shift+up`/`shift+down`, while a turn streams, or while a completion menu is open; a recalled `/skill ...` line stays inert until Enter submits it through the slash path.
 _Avoid_: history browsing, prompt cycling.
 
+**`/new` (fresh session)**
+A control slash command that starts a fresh session: it never records into the prompt-history ring. It opens a confirmation overlay (the existing continuation-prompt surface, re-worded) and is blocked while a turn streams, a skill is pending, or the Settings overlay is open. On confirm it re-mints the live session key to a fresh GUID — the engine's session history for the new key begins empty — and resets the transcript to the empty welcome state, while the old GUID's on-disk session dir and engine history are orphaned (auditable, no pruning). It preserves config, Settings, provider, and the prompt-history ring, all of which live outside the transcript.
+_Avoid_: reset, wipe, clear history.
+
 **Kitty graphics capability**:
 The terminal's support for the Kitty graphics protocol, resolved once at TUI startup from `TERM_PROGRAM` with a graphics-query + DA1 probe fallback. Non-Kitty terminals receive zero Kitty escape sequences and fall back to text-only rendering.
 _Avoid_: image support, graphics mode

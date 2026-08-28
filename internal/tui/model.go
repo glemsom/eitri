@@ -15,6 +15,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/glemsom/eitri/internal/config"
+	"github.com/glemsom/eitri/internal/session"
 )
 
 // defaultPromptHistoryCap is how many submitted prompts the Model's in-memory
@@ -133,6 +134,14 @@ type Dependencies struct {
 	// prompts to (a sibling of config.json in the data directory, issue #612,
 	// part of #608). Empty leaves the ring in-memory only.
 	HistoryPath string
+	// LiveKey is the shared mutable session key the engine-turn seam and the rail
+	// read per turn (issue #609). `/new` mints a fresh GUID onto it so the next
+	// turn opens a clean engine session history while the old GUID's on-disk
+	// session stays orphaned and auditable.
+	LiveKey *LiveSessionKey
+	// NewGUID mints a fresh session GUID string for `/new`; nil falls back to the
+	// session package's random hex mint.
+	NewGUID func() string
 }
 
 // titleOut is where OSC 0 window-title escapes are written: the injected Dependencies.TitleOut when set, else os.Stdout.
@@ -157,8 +166,11 @@ type Model struct {
 	session  *TurnSession
 	fold     *Fold
 	deps     Dependencies
+	tx       *Transcript
 
-	tx *Transcript
+	// liveKey is the shared mutable session key wired via Dependencies (issue
+	// #609); `/new` re-mints it to a fresh GUID on confirm.
+	liveKey *LiveSessionKey
 
 	settings *SettingsOverlay
 	savedMsg string
@@ -166,6 +178,9 @@ type Model struct {
 	continueReq  chan struct{}
 	continueResp chan bool
 	prompting    bool
+	// confirmNew distinguishes a `/new` confirmation from the max-turns
+	// continuation prompt so updatePrompt routes the decision separately.
+	confirmNew bool
 
 	slash        *SkillActivation
 	mention      *Mention
@@ -264,12 +279,14 @@ func NewModelCfg(d Dependencies) Model {
 		telemetry:    d.Telemetry,
 		events:       d.Events,
 		liveRunID:    -1,
+		liveKey:      d.LiveKey,
 		clipboard:    newClipboard(d),
 		splash:       newSplash(d, transcript, kittyCap),
 		kittyCap:     kittyCap,
 		history:      newModelHistory(d.HistoryPath),
 		histIdx:      -1,
 	}
+
 	m.fold = NewFold(m.session)
 	m.session.SetThinkingEnabled(d.Config.ThinkingEnabled)
 	if !isSupportedTheme(d.Config.Theme) {
@@ -607,8 +624,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// updatePrompt handles a keypress while a continuation prompt is pending.
+// updatePrompt handles a keypress while a confirmation prompt is pending. A
+// `/new` confirmation is routed separately from the engine's max-turns
+// continuation prompt (issue #613): confirming mints a fresh session key onto
+// the live key and clears the transcript, while cancelling leaves everything
+// intact.
 func (m Model) updatePrompt(msgi tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if m.confirmNew {
+		switch msgi.String() {
+		case "y", "Y", "enter":
+			m.prompting = false
+			m.confirmNew = false
+			m.mintNewSession()
+		case "n", "N", "esc", "ctrl+c":
+			m.prompting = false
+			m.confirmNew = false
+		}
+		return m, nil
+	}
 	switch msgi.String() {
 	case "y", "Y", "enter":
 		m.prompting = false
@@ -618,6 +651,37 @@ func (m Model) updatePrompt(msgi tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.continueResp <- false
 	}
 	return m, nil
+}
+
+// mintNewSession re-keys the live session to a fresh GUID and resets the
+// transcript, so the next turn starts with empty engine session history while
+// the older GUID's on-disk session and engine history stay orphaned (auditable,
+// no pruning).
+func (m *Model) mintNewSession() {
+	if m.liveKey == nil {
+		m.liveKey = NewLiveSessionKey(m.newGUID())
+	} else {
+		m.liveKey.Set(m.newGUID())
+	}
+	m.tx.Reset()
+}
+
+// newGUID returns a fresh session GUID for `/new`: the injected Dependencies
+// mint when present, else the session package's random hex mint.
+func (m Model) newGUID() string {
+	if m.deps.NewGUID != nil {
+		return m.deps.NewGUID()
+	}
+	guid, err := session.NewGUID()
+	if err != nil {
+		// Fall back so `/new` can never wedge the session on a random-source
+		// failure; the transcript reset still gives a fresh view.
+		if m.liveKey != nil {
+			guid = m.liveKey.Get()
+		}
+	}
+
+	return guid
 }
 
 // submitPrompt handles Enter on the composer: an empty draft toggles the focused
@@ -655,11 +719,18 @@ func (m Model) submitPrompt() (tea.Model, tea.Cmd) {
 	}
 	if prompt == "/new" {
 		// `/new` is a control slash command: never recorded into the history
-		// ring (issue #610), though it still runs as a normal turn until the
-		// fresh-session behaviour lands with the /new work (T5).
-		cmd := m.startTurn(prompt, "")
-		return m, cmd
+		// ring. It opens a confirmation overlay (issue #613); confirming mints a
+		// fresh live session key and clears the transcript, cancelling leaves
+		// everything intact. It is blocked while a turn streams, a skill is
+		// pending, or the settings overlay is open.
+		if m.tx.busy || m.skillPending || m.settings != nil || m.prompting {
+			return m, nil
+		}
+		m.prompting = true
+		m.confirmNew = true
+		return m, nil
 	}
+
 	if name, args, ok := m.slash.Command(prompt); ok {
 		m.history.Push(prompt) // a `/skill ...` activation is recorded as its full line
 		return m.startSkillActivation(name, args)
@@ -892,6 +963,9 @@ func (m Model) viewString() string {
 		return m.settings.View()
 	}
 	if m.prompting {
+		if m.confirmNew {
+			return newConfirmView(m.tx.theme)
+		}
 		return promptView(m.tx.theme)
 	}
 

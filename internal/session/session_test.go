@@ -7,6 +7,27 @@ import (
 	"testing"
 )
 
+func TestNewGUIDMintsUniqueHexID(t *testing.T) {
+	t.Parallel()
+	a, err := NewGUID()
+	if err != nil {
+		t.Fatalf("NewGUID() error = %v, want nil", err)
+	}
+	b, err := NewGUID()
+	if err != nil {
+		t.Fatalf("NewGUID() error = %v, want nil", err)
+	}
+	if a == "" {
+		t.Fatal("NewGUID() returned empty ID")
+	}
+	if a == b {
+		t.Fatalf("NewGUID() collisions: %q == %q", a, b)
+	}
+	if len(a) != 32 {
+		t.Fatalf("NewGUID() length = %d, want 32 hex chars", len(a))
+	}
+}
+
 func TestNewCreatesGUIDTranscriptDir(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

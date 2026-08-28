@@ -65,6 +65,18 @@ func TestRender_promptView(t *testing.T) {
 			}
 		})
 	}
+
+}
+
+func TestRender_newConfirmView(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	th := renderSurfaceTestTheme()
+	want := "start a fresh session\n\n" +
+		"  Clear this conversation and start fresh?\n" +
+		"  y new session . n keep . esc cancel\n"
+	if got := newConfirmView(th); got != want {
+		t.Errorf("newConfirmView() =\n%q\nwant\n%q", got, want)
+	}
 }
 
 func TestRender_thinkingHeader(t *testing.T) {

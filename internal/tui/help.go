@@ -19,6 +19,7 @@ func helpView() string {
 	writeHelpRows(&b, []helpRow{
 		{"`/settings`", "open settings panel"},
 		{"`/copy`", "copy transcript to clipboard"},
+		{"`/new`", "start a fresh session (clears this conversation)"},
 		{"`/login`", "interactive provider login"},
 		{"`/help`", "show this help message"},
 	})

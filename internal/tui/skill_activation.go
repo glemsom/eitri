@@ -144,7 +144,7 @@ func slashCandidates(value string, skills []SkillItem) []string {
 		return nil
 	}
 	partial := strings.TrimSpace(strings.TrimPrefix(value, "/"))
-	cands := make([]string, 0, len(skills)+4)
+	cands := make([]string, 0, len(skills)+5)
 	if partial == "" || strings.HasPrefix("settings", partial) {
 		cands = append(cands, "/settings")
 	}
@@ -157,6 +157,10 @@ func slashCandidates(value string, skills []SkillItem) []string {
 	if partial == "" || strings.HasPrefix("help", partial) {
 		cands = append(cands, "/help")
 	}
+	if partial == "" || strings.HasPrefix("new", partial) {
+		cands = append(cands, "/new")
+	}
+
 	for _, it := range skills {
 		if it.Name == "settings" {
 			continue
