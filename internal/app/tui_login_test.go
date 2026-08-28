@@ -8,6 +8,7 @@ import (
 	"github.com/glemsom/eitri/internal/engine"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/tools"
+	"github.com/glemsom/eitri/internal/tui"
 )
 
 func TestRunEngineTurnReadsCurrentConfig(t *testing.T) {
@@ -22,7 +23,7 @@ func TestRunEngineTurnReadsCurrentConfig(t *testing.T) {
 	reg := tools.NewRegistry(tools.Deps{Workspace: t.TempDir()})
 	cfg := config.Config{Model: "first", ThinkingEnabled: true, ReasoningEffort: "low", CompactionFraction: 0.8}
 
-	turn := runEngineTurn(e, func() config.Config { return cfg }, reg, "sess-"+t.Name(), nil, nil)
+	turn := runEngineTurn(e, func() config.Config { return cfg }, reg, tui.NewLiveSessionKey("sess-"+t.Name()), nil, nil)
 	if _, err := turn(context.Background(), "one", ""); err != nil {
 		t.Fatalf("first turn error = %v, want nil", err)
 	}
