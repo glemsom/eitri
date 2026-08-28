@@ -88,6 +88,10 @@ _Avoid_: reasoning off, cot off
 The JSONL record (`messages.jsonl` in a session dir) of every provider request/response cycle at the wire level — full messages, tool names, finish reason, usage, errors. Ground truth for debugging; navigated via `eitri session list/show/grep`.
 _Avoid_: debug log, http trace
 
+**Prompt history ring**:
+A Model-owned in-memory ring of submitted user prompts, capped at 100 entries and deduplicating consecutive repeats. It records real user prompts and `/skill ...` activations but never control slash commands or empty drafts; it is the data source the arrow-key recall reads from and survives a `/new` because it lives on the Model, not the transcript or session.
+_Avoid_: history list, submitted-log.
+
 **Kitty graphics capability**:
 The terminal's support for the Kitty graphics protocol, resolved once at TUI startup from `TERM_PROGRAM` with a graphics-query + DA1 probe fallback. Non-Kitty terminals receive zero Kitty escape sequences and fall back to text-only rendering.
 _Avoid_: image support, graphics mode

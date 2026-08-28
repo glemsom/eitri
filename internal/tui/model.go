@@ -17,6 +17,10 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
+// defaultPromptHistoryCap is how many submitted prompts the Model's in-memory
+// history ring retains at most (issue #610, part of #608).
+const defaultPromptHistoryCap = 100
+
 // Turn runs one agent conversation turn (user prompt -> assistant answer) over the shared engine seam.
 type Turn func(ctx context.Context, prompt string, payload string) (TurnResult, error)
 
@@ -175,6 +179,12 @@ type Model struct {
 	splash *Splash // non-nil while the launch splash is playing; nil once it settled or was skipped
 
 	kittyCap bool // the terminal supports the Kitty graphics protocol (see kitty.go)
+
+	// history is the Model-owned in-memory ring of submitted user prompts
+	// (issue #610, part of #608); it is the data source the arrow-key recall
+	// reads from and survives a `/new` because it lives on the Model, not the
+	// transcript or session.
+	history *PromptHistory
 }
 
 // NewModel builds a bare chat-only model (no Settings surface), the historical default signature.
@@ -235,6 +245,7 @@ func NewModelCfg(d Dependencies) Model {
 		clipboard:    newClipboard(d),
 		splash:       newSplash(d, transcript, kittyCap),
 		kittyCap:     kittyCap,
+		history:      NewPromptHistory(defaultPromptHistoryCap),
 	}
 	m.fold = NewFold(m.session)
 	m.session.SetThinkingEnabled(d.Config.ThinkingEnabled)
@@ -604,9 +615,18 @@ func (m Model) submitPrompt() (tea.Model, tea.Cmd) {
 		m.tx.appendMsg(helpView())
 		return m, nil
 	}
+	if prompt == "/new" {
+		// `/new` is a control slash command: never recorded into the history
+		// ring (issue #610), though it still runs as a normal turn until the
+		// fresh-session behaviour lands with the /new work (T5).
+		cmd := m.startTurn(prompt, "")
+		return m, cmd
+	}
 	if name, args, ok := m.slash.Command(prompt); ok {
+		m.history.Push(prompt) // a `/skill ...` activation is recorded as its full line
 		return m.startSkillActivation(name, args)
 	}
+	m.history.Push(prompt)
 	cmd := m.startTurn(prompt, "")
 	return m, cmd
 }
