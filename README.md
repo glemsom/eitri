@@ -19,14 +19,9 @@
 #   Fedora:        sudo dnf install bubblewrap
 #   Arch:          sudo pacman -S bubblewrap
 
-make build          # build ./bin/eitri
-./bin/eitri         # launch the interactive TUI
-```
-
-On first launch you'll be asked to log in to your provider. A single command handles the whole flow:
-
-```sh
-eitri              # interactive TUI (recommended for first-time setup)
+make build          # 1. build ./bin/eitri
+./bin/eitri         # 2. launch the interactive TUI
+# 3. on first launch you'll be asked to log in to your provider
 ```
 
 ## Usage
@@ -104,6 +99,15 @@ Full detail lives in [`docs/sessions.md`](docs/sessions.md).
 | `/new` | Start a fresh session (clears this conversation) |
 | `/login` | Interactive provider login |
 | `/help` | Show this help message |
+
+#### Concepts
+
+| Term | Meaning |
+| --- | --- |
+| `expanded mode` | `e`/`E` or `ctrl+e` expand or collapse all blocks |
+| `block focus` | `tab` to focus, `enter` to expand one block |
+| `drag-select` | Click and drag to select text |
+| `right rail` | Stats, context, and model info |
 
 > The in-TUI `/help` is always available as the live reference and is the authoritative source for keybindings.
 
