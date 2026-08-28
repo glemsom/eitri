@@ -37,7 +37,7 @@ func TestRunEngineTurnCancelsStreamedTurn(t *testing.T) {
 	reg := tools.NewRegistry(tools.Deps{Workspace: t.TempDir()})
 	cfg := config.Config{Model: "deepseek-v4-flash", ThinkingEnabled: true, ReasoningEffort: "low", CompactionFraction: 0.8}
 
-	turn := runEngineTurn(e, func() config.Config { return cfg }, reg, tui.NewLiveSessionKey("sess"), nil, nil, false)
+	turn := runEngineTurn(e, func() config.Config { return cfg }, reg, tui.NewLiveSessionKey("sess"), nil, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

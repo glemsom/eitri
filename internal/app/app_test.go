@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/tui"
 )
 
@@ -17,39 +16,6 @@ func stubTUI(t *testing.T) {
 	orig := runProgram
 	runProgram = func(m tui.Model) error { return nil }
 	t.Cleanup(func() { runProgram = orig })
-}
-
-// TestRunBootProbesLynxOnce guards the boot sequence: after the bwrap
-// presence check, Run must probe lynx exactly once (no mid-session
-// re-detection) via the injected LookPath seam.
-func TestRunBootProbesLynxOnce(t *testing.T) {
-	stubTUI(t)
-	var probed []string
-	lp := func(name string) (string, error) {
-		probed = append(probed, name)
-		if name == "bwrap" {
-			return "/usr/bin/bwrap", nil
-		}
-		return "", errors.New("executable not found")
-	}
-
-	if err := Run(Options{
-		DataDir:  filepath.Join(t.TempDir(), ".eitri"),
-		LookPath: lp,
-		Provider: provider.NewFake("../provider/testdata/hello.sse"),
-	}); err != nil {
-		t.Fatalf("Run() error = %v, want nil", err)
-	}
-
-	var lynxProbes int
-	for _, n := range probed {
-		if n == "lynx" {
-			lynxProbes++
-		}
-	}
-	if lynxProbes != 1 {
-		t.Fatalf("boot probed 'lynx' %d time(s), want exactly 1 (once at startup): probed=%v", lynxProbes, probed)
-	}
 }
 
 func TestRunCreatesDataDir(t *testing.T) {
