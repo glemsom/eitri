@@ -8,13 +8,13 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// SkillActivation owns the TUI's slash-command surface: slash-command parsing,
-// candidate listing, completion cycling, and skill activation. The Model
-// delegates to it and carries no slash state of its own.
+// SkillActivation owns leading-slash parsing, candidate discovery, and skill
+// activation while completionMenu supplies shared dropdown interaction.
 type SkillActivation struct {
+	completionMenu
 	skills      []SkillItem
-	slashIdx    int
 	slashPrefix string
+	lastValue   string
 }
 
 // NewSkillActivation captures the detected skills at construction so the
@@ -32,45 +32,45 @@ func (s *SkillActivation) Command(prompt string) (name, args string, ok bool) {
 	return slashCommand(prompt, s.skills)
 }
 
-// Candidates returns the ordered slash-command completion candidates for the current composer value: the built-in commands first, then every detected skill whose name starts with the `/...` partial.
-func (s *SkillActivation) Candidates(value string) []string {
-	return slashCandidates(value, s.skills)
-}
-
-// Prefix returns the current slash prefix tracked from the composer.
-func (s *SkillActivation) Prefix() string { return s.slashPrefix }
-
-// Reset clears the tracked prefix and the completion cycle index, e.g. after a submitted prompt.
+// Reset clears tracked slash completion state, e.g. after submission.
 func (s *SkillActivation) Reset() {
-	s.slashIdx = 0
+	s.Dismiss()
 	s.slashPrefix = ""
+	s.lastValue = ""
 }
 
-// TrackComposer records the composer value after a composer update: a leading
-// slash becomes the completion prefix with a fresh cycle index; anything else
-// clears both.
+// TrackComposer opens and filters slash completion after draft edits. Slash
+// completion applies only to a leading command token; arguments never reopen it.
 func (s *SkillActivation) TrackComposer(value string) {
-	if strings.HasPrefix(value, "/") {
-		s.slashPrefix = value
-		s.slashIdx = 0
-	} else {
-		s.slashPrefix = ""
-		s.slashIdx = 0
-	}
-}
-
-// Complete fills the composer through apply with the next completion candidate,
-// cycling deterministicly through the built-in commands and matching detected skills.
-func (s *SkillActivation) Complete(apply func(candidate string)) {
-	cands := slashCandidates(s.slashPrefix, s.skills)
-	if len(cands) == 0 {
+	if value == s.lastValue {
 		return
 	}
-	if s.slashIdx < 0 || s.slashIdx >= len(cands) {
-		s.slashIdx = 0
+	s.lastValue = value
+	if !strings.HasPrefix(value, "/") || strings.ContainsAny(strings.TrimPrefix(value, "/"), " \t\n") {
+		s.slashPrefix = ""
+		s.Dismiss()
+		return
 	}
-	apply(cands[s.slashIdx])
-	s.slashIdx = (s.slashIdx + 1) % len(cands)
+	s.slashPrefix = value
+	cands := slashCandidates(value, s.skills)
+	if len(cands) == 0 {
+		s.Dismiss()
+		return
+	}
+	s.Open(cands)
+}
+
+// Complete accepts highlighted slash completion into composer without
+// submitting it, leaving room for activation arguments.
+func (s *SkillActivation) Complete(apply func(candidate string)) bool {
+	candidate, ok := s.Accept()
+	if !ok {
+		return false
+	}
+	s.slashPrefix = candidate
+	s.lastValue = candidate
+	apply(candidate)
+	return true
 }
 
 // Activate runs one slash-command activation through the SkillsSurface activation seam on a detached command; it appends the invocation to the transcript and reports a failure note when no activation seam is wired. The resulting payload is injected into the follow-up agent turn's context so the model acts on the skill instructions.
@@ -81,37 +81,6 @@ func (s *SkillActivation) Activate(tx *Transcript, surface *SkillsSurface, name,
 		return nil
 	}
 	return skillCmd(surface.Activate, name, args)
-}
-
-// CandidateCount returns how many slash-completion rows the composer value renders above the composer.
-func (s *SkillActivation) CandidateCount(value string) int {
-	return len(slashCandidates(value, s.skills))
-}
-
-// RenderCompletion appends the slash-command completion list to the view: the built-in slash commands plus any matching detected skills, with the current cycle selection highlighted. The composer value selects the highlight when it matches a candidate exactly.
-func (s *SkillActivation) RenderCompletion(b *strings.Builder, th Theme, value string) {
-	cands := slashCandidates(value, s.skills)
-	if len(cands) == 0 {
-		return
-	}
-	sel := s.slashIdx
-	for i, c := range cands {
-		if c == value {
-			sel = i
-			break
-		}
-	}
-	if sel < 0 || sel >= len(cands) {
-		sel = 0
-	}
-	for i, c := range cands {
-		if i == sel {
-			b.WriteString(th.slashSelectStyle.Render(g("▸ ", "> ") + c))
-		} else {
-			b.WriteString(th.statusStyle.Render("  " + c))
-		}
-		b.WriteString("\n")
-	}
 }
 
 // TurnPrompt returns the agent-turn prompt for a completed activation: the trailing args when present, otherwise a default apply-skill prompt so a bare `/skillname` still starts a turn.

@@ -198,13 +198,10 @@ func TestModel_copySlashShowsInCompletion(t *testing.T) {
 		t.Errorf("bare `/` completion should list /copy, got: %q", view(m))
 	}
 
-	m = keypress(t, m, "tab")
-	if got := m.composer.Value(); got != "/settings" {
-		t.Fatalf("first tab completion = %q, want /settings", got)
-	}
+	m = keypress(t, m, "down")
 	m = keypress(t, m, "tab")
 	if got := m.composer.Value(); got != "/copy" {
-		t.Errorf("second tab completion = %q, want /copy", got)
+		t.Errorf("selected tab completion = %q, want /copy", got)
 	}
 }
 

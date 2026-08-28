@@ -79,7 +79,7 @@ func TestModel_slashCompletionListsCommands(t *testing.T) {
 	}
 }
 
-func TestModel_slashTabCyclesSettingsAndSkills(t *testing.T) {
+func TestModel_slashNavigateAndAcceptWithTab(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
@@ -90,28 +90,44 @@ func TestModel_slashTabCyclesSettingsAndSkills(t *testing.T) {
 	m = resize(t, m)
 	m = typeText(t, m, "/")
 
-	m = keypress(t, m, "tab")
-	if got := m.composer.Value(); got != "/settings" {
-		t.Fatalf("first tab completion = %q, want /settings", got)
+	m = keypress(t, m, "down")
+	if !strings.Contains(view(m), "▸ /copy") {
+		t.Fatalf("arrow navigation did not highlight /copy, got: %q", view(m))
 	}
 	m = keypress(t, m, "tab")
 	if got := m.composer.Value(); got != "/copy" {
-		t.Fatalf("second tab completion = %q, want /copy", got)
+		t.Fatalf("tab completion = %q, want /copy", got)
 	}
-	m = keypress(t, m, "tab")
-	if got := m.composer.Value(); got != "/login" {
-		t.Fatalf("third tab completion = %q, want /login", got)
+	if m.slash.isOpen() {
+		t.Fatal("tab completion should close slash dropdown")
 	}
-	m = keypress(t, m, "tab")
-	if got := m.composer.Value(); got != "/help" {
-		t.Fatalf("fourth tab completion = %q, want /help", got)
-	}
-	m = keypress(t, m, "tab")
+}
+
+func TestModel_slashAcceptWithEnterThenSubmit(t *testing.T) {
+	t.Parallel()
+	var prompted string
+	m := NewModelCfg(Dependencies{
+		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
+			prompted = prompt
+			return TurnResult{Answer: "ok"}, nil
+		},
+		Skills: &SkillsSurface{
+			Items:    []SkillItem{{Name: "review"}},
+			Activate: func(context.Context, string) (string, error) { return "payload", nil },
+		},
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "/r")
+	m = keypress(t, m, "enter")
 	if got := m.composer.Value(); got != "/review" {
-		t.Fatalf("fifth tab completion = %q, want /review", got)
+		t.Fatalf("enter completion = %q, want /review", got)
 	}
-	if !strings.Contains(view(m), "▸ /review") {
-		t.Fatalf("completion selection marker missing, got: %q", view(m))
+	if prompted != "" {
+		t.Fatalf("first enter submitted prompt %q", prompted)
+	}
+	m = submitAndWait(t, m)
+	if prompted != "apply the review skill" {
+		t.Fatalf("second enter turn prompt = %q, want skill activation prompt", prompted)
 	}
 }
 
@@ -150,6 +166,19 @@ func TestModel_slashLoginRunsLoginFlow(t *testing.T) {
 	}
 	if !strings.Contains(content, "login") || !strings.Contains(content, "saved") {
 		t.Fatalf("login success note missing, got: %q", content)
+	}
+}
+
+func TestModel_slashCompletionDismissedByEscape(t *testing.T) {
+	t.Parallel()
+	m := resize(t, NewModelCfg(Dependencies{Skills: &SkillsSurface{Items: []SkillItem{{Name: "review"}}}}))
+	m = typeText(t, m, "/")
+	m = keypress(t, m, "esc")
+	if m.slash.isOpen() {
+		t.Fatal("esc should close slash dropdown")
+	}
+	if got := m.composer.Value(); got != "/" {
+		t.Fatalf("esc changed draft to %q", got)
 	}
 }
 

@@ -12,20 +12,15 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// mentionCapRows caps how many mention candidates render above the composer so
-// a dense workspace never pushes the band past a visible bound. The list scrolls
-// within this window as the selection moves (see Move/Select).
-const mentionCapRows = 8
+// Kept as mention vocabulary for tests and documentation; all composer
+// completion surfaces share this bound.
+const mentionCapRows = completionCapRows
 
 type Mention struct {
+	completionMenu
 	workspace string
-	open      bool
 	start     int
 	partial   string
-	cands     []string
-	view      []string // the visible window into cands, capped at mentionCapRows
-	offset    int      // cands index of view[0]
-	idx       int      // absolute cands index of the selection
 
 	// manifest caches the workspace's full path tree (dirs with a trailing "/")
 	// for the current mention session. It is populated once, asynchronously off
@@ -47,30 +42,22 @@ func NewMention(workspace string) *Mention {
 func (mn *Mention) Track(value string, cursor int) tea.Cmd {
 	start, partial, ok := atMentionAt(value, cursor)
 	if !ok {
-		mn.open = false
+		mn.Dismiss()
 		return nil
 	}
 	if !mn.open || mn.partial != partial || mn.start != start {
-		mn.open = true
 		mn.start = start
 		mn.partial = partial
-		mn.idx = 0
+		mn.Open(nil)
 		if len(mn.manifest) == 0 {
 			if !mn.walking {
 				mn.walking = true
-				mn.cands = nil
-				mn.recomputeView()
 				return mentionWalkCmd(mn.workspace)
 			}
-			mn.recomputeView()
 			return nil
 		}
-		mn.cands = candidatesForPartial(mn.manifest, partial)
+		mn.SetCandidates(candidatesForPartial(mn.manifest, partial))
 	}
-	if len(mn.cands) > 0 && mn.idx >= len(mn.cands) {
-		mn.idx = len(mn.cands) - 1
-	}
-	mn.recomputeView()
 	return nil
 }
 
@@ -83,91 +70,16 @@ func (mn *Mention) setManifest(paths []string) {
 	if !mn.open {
 		return
 	}
-	mn.cands = candidatesForPartial(mn.manifest, mn.partial)
-	if len(mn.cands) > 0 && mn.idx >= len(mn.cands) {
-		mn.idx = len(mn.cands) - 1
-	}
-	mn.recomputeView()
-}
-
-func (mn *Mention) Candidates() []string { return mn.cands }
-
-func (mn *Mention) isOpen() bool { return mn.open }
-
-func (mn *Mention) SelectedCandidate() string {
-	if len(mn.cands) == 0 {
-		return ""
-	}
-	return mn.cands[mn.idx]
-}
-
-// recomputeView derives the visible window (offset..offset+len) that keeps the
-// selection on screen, so the dropdown scrolls past the cap as the highlight moves.
-func (mn *Mention) recomputeView() {
-	if !mn.open || len(mn.cands) == 0 {
-		mn.view = nil
-		mn.offset = 0
-		return
-	}
-	if mn.idx < mn.offset {
-		mn.offset = mn.idx
-	}
-	if mn.idx >= mn.offset+mentionCapRows {
-		mn.offset = mn.idx - mentionCapRows + 1
-	}
-	end := mn.offset + mentionCapRows
-	if end > len(mn.cands) {
-		end = len(mn.cands)
-	}
-	mn.view = mn.cands[mn.offset:end]
-}
-
-func (mn *Mention) Move(delta int) {
-	if len(mn.cands) == 0 {
-		return
-	}
-	mn.idx += delta
-	if mn.idx < 0 {
-		mn.idx = len(mn.cands) - 1
-	} else if mn.idx >= len(mn.cands) {
-		mn.idx = 0
-	}
-	mn.recomputeView()
+	mn.SetCandidates(candidatesForPartial(mn.manifest, mn.partial))
 }
 
 // Reset closes the dropdown and drops cached state, e.g. after a selection or submit.
 func (mn *Mention) Reset() {
-	mn.open = false
-	mn.cands = nil
-	mn.view = nil
+	mn.Dismiss()
 	mn.partial = ""
 	mn.start = 0
-	mn.idx = 0
-	mn.offset = 0
 	mn.manifest = nil
 	mn.walking = false
-}
-
-// CandidateCount returns how many mention rows render above the composer for the
-// current dropdown window.
-func (mn *Mention) CandidateCount() int {
-	return len(mn.view)
-}
-
-// RenderCompletion appends the visible mention candidate window to the band,
-// highlighting the selection.
-func (mn *Mention) RenderCompletion(b *strings.Builder, th Theme) {
-	if !mn.open {
-		return
-	}
-	for i, c := range mn.view {
-		if mn.offset+i == mn.idx {
-			b.WriteString(th.slashSelectStyle.Render(g("▸ ", "> ") + c))
-		} else {
-			b.WriteString(th.statusStyle.Render("  " + c))
-		}
-		b.WriteString("\n")
-	}
 }
 
 // Select applies the candidate: it replaces only the tracked `@partial` span in

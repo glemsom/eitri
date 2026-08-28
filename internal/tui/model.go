@@ -371,6 +371,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.mention.Reset()
 				return m, nil
 			}
+			if m.slash.isOpen() {
+				m.slash.Dismiss()
+				return m, nil
+			}
 			if m.tx.busy {
 				m.stopTurn()
 			}
@@ -380,9 +384,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.mention.Move(-1)
 				return m, nil
 			}
+			if m.slash.isOpen() {
+				m.slash.Move(-1)
+				return m, nil
+			}
 		case "down":
 			if m.mention.isOpen() {
 				m.mention.Move(1)
+				return m, nil
+			}
+			if m.slash.isOpen() {
+				m.slash.Move(1)
 				return m, nil
 			}
 		case "ctrl+s":
@@ -428,10 +440,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.mention.isOpen() {
 				return m.selectMention()
 			}
-			// slash completion selection happens on Tab; Enter submits
+			if m.slash.isOpen() && m.slash.SelectedCandidate() != m.composer.Value() {
+				m.completeSlashCommand()
+				return m, nil
+			}
 			return m.submitPrompt()
 		case "tab":
-			if m.composer.Value() != "" && strings.HasPrefix(m.composer.Value(), "/") && len(m.slash.Candidates(m.composer.Value())) > 0 {
+			if m.mention.isOpen() {
+				return m.selectMention()
+			}
+			if m.slash.isOpen() {
 				m.completeSlashCommand()
 				return m, nil
 			}
@@ -690,7 +708,7 @@ func (m Model) selectMention() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// completeSlashCommand delegates the completion cycle to the SkillActivation module, applying the chosen candidate to the composer.
+// completeSlashCommand accepts highlighted slash completion into composer.
 func (m *Model) completeSlashCommand() {
 	m.slash.Complete(func(candidate string) {
 		m.composer.SetValue(candidate)

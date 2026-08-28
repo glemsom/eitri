@@ -29,19 +29,21 @@ func TestSkillActivation_renderCompletionListsCandidates(t *testing.T) {
 	t.Parallel()
 	s := NewSkillActivation(Dependencies{Skills: &SkillsSurface{Items: []SkillItem{{Name: "review"}, {Name: "plan"}}}})
 
+	s.TrackComposer("/")
 	var b strings.Builder
-	s.RenderCompletion(&b, plainTestTheme(), "/")
+	s.RenderCompletion(&b, plainTestTheme())
 	out := b.String()
 	for _, want := range []string{"/settings", "/copy", "/login", "/help", "/review", "/plan"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("completion output %q missing %q", out, want)
 		}
 	}
-	if n := s.CandidateCount("/"); n != 6 {
-		t.Errorf("CandidateCount(/) = %d, want 6", n)
+	if n := s.CandidateCount(); n != 6 {
+		t.Errorf("CandidateCount() = %d, want 6", n)
 	}
-	if n := s.CandidateCount("hello"); n != 0 {
-		t.Errorf("CandidateCount(hello) = %d, want 0", n)
+	s.TrackComposer("hello")
+	if n := s.CandidateCount(); n != 0 {
+		t.Errorf("CandidateCount() after plain text = %d, want 0", n)
 	}
 }
 
@@ -49,16 +51,18 @@ func TestSkillActivation_renderCompletionHighlightsSelected(t *testing.T) {
 	t.Parallel()
 	s := NewSkillActivation(Dependencies{Skills: &SkillsSurface{Items: []SkillItem{{Name: "review"}}}})
 	s.TrackComposer("/")
-	s.Complete(func(string) {}) // select /settings
-	s.Complete(func(candidate string) {
-		if candidate != "/copy" {
-			t.Fatalf("second cycle candidate = %q, want /copy", candidate)
-		}
-	})
+	s.Move(1)
 
 	var b strings.Builder
-	s.RenderCompletion(&b, plainTestTheme(), "/copy")
+	s.RenderCompletion(&b, plainTestTheme())
 	if !strings.Contains(b.String(), "▸ /copy") {
 		t.Errorf("selected candidate not highlighted: %q", b.String())
+	}
+	var accepted string
+	if !s.Complete(func(candidate string) { accepted = candidate }) || accepted != "/copy" {
+		t.Errorf("accepted candidate = %q, want /copy", accepted)
+	}
+	if s.isOpen() {
+		t.Error("accepted completion should close menu")
 	}
 }

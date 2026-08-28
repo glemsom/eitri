@@ -135,7 +135,11 @@ func (m Model) renderBand(b *strings.Builder) {
 		inner.WriteString(statusRow)
 		inner.WriteString("\n")
 	}
-	m.slash.RenderCompletion(&inner, m.tx.theme, m.composer.Value())
+	if m.slash.isOpen() || m.mention.isOpen() {
+		inner.WriteString(m.tx.theme.statusStyle.Render(g("↑/↓", "up/down") + " navigate" + g(" · ", " . ") + "tab/enter select" + g(" · ", " . ") + "esc close"))
+		inner.WriteByte('\n')
+	}
+	m.slash.RenderCompletion(&inner, m.tx.theme)
 	m.mention.RenderCompletion(&inner, m.tx.theme)
 	inner.WriteString(m.composer.View())
 	if m.savedMsg != "" {
@@ -172,7 +176,10 @@ func (m Model) composerPreRows() int {
 	if m.telemetry != nil {
 		n++
 	}
-	n += m.slash.CandidateCount(m.composer.Value())
+	if m.slash.isOpen() || m.mention.isOpen() {
+		n++
+	}
+	n += m.slash.CandidateCount()
 	n += m.mention.CandidateCount()
 	return n
 }

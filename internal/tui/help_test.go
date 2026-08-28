@@ -148,7 +148,14 @@ func TestHelpView_alignedColumns(t *testing.T) {
 		name  string
 		descs []string
 	}{
-		{"COMPOSER", []string{"cycle block focus", "toggle focused block", "insert newline"}},
+		{"COMPOSER", []string{
+			"navigate completion candidates",
+			"accept highlighted completion",
+			"close completion list",
+			"cycle block focus when composer is empty",
+			"submit draft or toggle focused block when empty",
+			"insert newline",
+		}},
 		{"NAVIGATION", []string{"show help", "scroll history"}},
 		{"PANES", []string{"expand all blocks", "collapse all blocks", "toggle expanded view", "narrow pane", "widen pane"}},
 		{"ACTIONS", []string{"open settings", "copy transcript"}},

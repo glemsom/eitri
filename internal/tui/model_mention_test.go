@@ -79,6 +79,21 @@ func TestModel_mentionNavigateAndSelect(t *testing.T) {
 	}
 }
 
+func TestModel_mentionAcceptsWithTab(t *testing.T) {
+	t.Parallel()
+	ws := mentionWorkspace(t)
+	m := mentionModel(t, ws)
+	m = typeText(t, m, "@read")
+	m = feedMentionWalk(t, m, ws)
+	m = keypress(t, m, "tab")
+	if got := m.composer.Value(); got != "readme.md" {
+		t.Fatalf("tab completion = %q, want readme.md", got)
+	}
+	if m.mention.isOpen() {
+		t.Fatal("tab completion should close mention dropdown")
+	}
+}
+
 func TestModel_mentionSelectPreservesRest(t *testing.T) {
 	t.Parallel()
 	ws := mentionWorkspace(t)
