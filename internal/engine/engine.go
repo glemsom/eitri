@@ -299,12 +299,18 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 			if c.Usage != nil {
 				final.Usage = c.Usage
 				opts.lastUsage = c.Usage
-				e.emit(UsageEvent{RunID: runID, Turn: turn, Usage: *c.Usage})
 			}
 			done = c
 			if c.Done {
 				break
 			}
+		}
+		// Report token usage once per provider cycle (the final/last usage chunk), matching the
+		// message-layer transcript's last-wins record. Streaming gateways attach a cumulative
+		// usage object to every SSE chunk, so summing a UsageEvent per chunk would heavily
+		// over-count: telemetry must see one event per cycle, not one per chunk.
+		if final.Usage != nil {
+			e.emit(UsageEvent{RunID: runID, Turn: turn, Usage: *final.Usage})
 		}
 		e.emit(TurnEvent{RunID: runID, Turn: turn, EndReason: done.FinishReason})
 

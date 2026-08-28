@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/glemsom/eitri/internal/engine"
 	"github.com/glemsom/eitri/internal/provider"
@@ -183,5 +184,88 @@ func TestFeedEngineEventsBridgesToolEvents(t *testing.T) {
 	}
 	if res.Result == "" {
 		t.Error("tool result must carry the full delivered result (expand path)")
+	}
+}
+
+// TestFeedTelemetryUsageOncePerCycle guards against over-counting when a streaming gateway
+// attaches a (cumulative) usage object to every SSE chunk: telemetry must receive exactly one
+// UsageEvent per provider cycle, carrying the final/last usage — not one per chunk (see engine
+// RunAgent, which emits the UsageEvent once after the stream loop).
+func TestFeedTelemetryUsageOncePerCycle(t *testing.T) {
+	mkUsage := func(prompt, hit, miss, out int) *provider.Usage {
+		return &provider.Usage{
+			PromptTokens:          prompt,
+			PromptCacheHitTokens:  hit,
+			PromptCacheMissTokens: miss,
+			CompletionTokens:      out,
+		}
+	}
+	// Each cycle streams several chunks, every one carrying a growing cumulative usage (last
+	// chunk wins). cycle 1 is a tool call, cycle 2 the tool-result resubmission.
+	e := engine.New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
+		toolTurn := false
+		for _, m := range req.Messages {
+			if m.Role == provider.RoleTool {
+				toolTurn = true
+				break
+			}
+		}
+		if toolTurn {
+			return provider.StreamFunc(
+				provider.Chunk{Content: "final", Usage: mkUsage(4000, 3072, 928, 300)},
+				provider.Chunk{Usage: mkUsage(4609, 3072, 1537, 435)},
+				provider.Chunk{Done: true, FinishReason: "stop"},
+			), nil
+		}
+		return provider.StreamFunc(
+			provider.Chunk{Content: "one", Usage: mkUsage(1000, 900, 100, 20)},
+			provider.Chunk{Content: "two", Usage: mkUsage(2000, 1800, 200, 55)},
+			provider.Chunk{Content: "three", Usage: mkUsage(3132, 3072, 60, 92)},
+			provider.Chunk{Done: true, FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{
+				{ID: "c", Name: "bash", Arguments: `{}`},
+			}},
+		), nil
+	}), mockTranscript{})
+
+	te := tui.NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	feedEngineEvents(e, te, tui.NewEventFeed())
+
+	if _, err := e.RunAgent(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "go"},
+		engine.AgentOptions{
+			Tools: []provider.Tool{{Type: "function", Function: provider.ToolFunction{Name: "bash"}}},
+			Executor: engine.ExecutorFunc(func(_ context.Context, _, _ string) (engine.ToolExecResult, error) {
+				return engine.ToolExecResult{Text: "ok"}, nil
+			}),
+			MaxTurns: 5,
+		}); err != nil {
+		t.Fatalf("RunAgent() error = %v", err)
+	}
+
+	var usage []tui.TelemetryUpdate
+	timeout := time.After(5 * time.Second)
+	for len(usage) < 2 {
+		select {
+		case u, ok := <-te.Updates():
+			if !ok {
+				t.Fatal("telemetry channel closed")
+			}
+			if u.Kind == tui.TelemetryUsage {
+				usage = append(usage, u)
+			}
+		case <-timeout:
+			t.Fatalf("timed out collecting telemetry; got %d UsageEvents", len(usage))
+		}
+	}
+	if len(usage) != 2 {
+		t.Fatalf("telemetry received %d UsageEvents, want exactly 2 (one per cycle); got: %+v", len(usage), usage)
+	}
+	for i, want := range []struct{ hit, miss, out, ctx int }{
+		{3072, 60, 92, 3132},
+		{3072, 1537, 435, 4609},
+	} {
+		if u := usage[i]; u.Hit != want.hit || u.Miss != want.miss || u.Output != want.out || u.Ctx != want.ctx {
+			t.Errorf("usage %d = hit=%d miss=%d out=%d ctx=%d, want hit=%d miss=%d out=%d ctx=%d",
+				i, u.Hit, u.Miss, u.Output, u.Ctx, want.hit, want.miss, want.out, want.ctx)
+		}
 	}
 }
