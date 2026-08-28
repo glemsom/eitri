@@ -149,7 +149,7 @@ func TestHelpView_alignedColumns(t *testing.T) {
 		descs []string
 	}{
 		{"COMPOSER", []string{
-			"navigate completion candidates",
+			"navigate completion candidates; recall a prior/next prompt when the completion list is closed",
 			"accept highlighted completion",
 			"close completion list",
 			"cycle block focus when composer is empty",
