@@ -89,7 +89,7 @@ The JSONL record (`messages.jsonl` in a session dir) of every provider request/r
 _Avoid_: debug log, http trace
 
 **Prompt history ring**:
-A Model-owned in-memory ring of submitted user prompts, capped at 100 entries and deduplicating consecutive repeats. It records real user prompts and `/skill ...` activations but never control slash commands or empty drafts; it is the data source the arrow-key recall reads from and survives a `/new` because it lives on the Model, not the transcript or session.
+A Model-owned ring of submitted user prompts, capped at 100 entries and deduplicating consecutive repeats. It records real user prompts and `/skill ...` activations but never control slash commands or empty drafts; it is the data source the arrow-key recall reads from and survives a `/new` because it lives on the Model, not the transcript or session. When a persisted path is wired (a `prompt_history.json` sibling of `config.json` in the data directory), the ring loads at boot and rewrites on every change, so recall survives a full program restart; a missing or corrupt file falls back to an empty ring.
 _Avoid_: history list, submitted-log.
 
 **Arrow-key recall**:

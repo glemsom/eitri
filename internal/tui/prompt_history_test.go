@@ -2,6 +2,9 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/glemsom/eitri/internal/config"
@@ -174,4 +177,106 @@ func equalStrings(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+func TestNewPersistedPromptHistoryLoads(t *testing.T) {
+	dir := t.TempDir()
+	path := PromptHistoryPath(dir)
+	if err := os.WriteFile(path, []byte(`["one","two","three"]`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := NewPersistedPromptHistory(10, path)
+	if got, want := h.Entries(), []string{"one", "two", "three"}; !equalStrings(got, want) {
+		t.Fatalf("restored entries = %v, want %v", got, want)
+	}
+}
+
+func TestNewPersistedPromptHistoryMissingFileEmpty(t *testing.T) {
+	h := NewPersistedPromptHistory(10, filepath.Join(t.TempDir(), "prompt_history.json"))
+	if h.Len() != 0 {
+		t.Fatalf("Len = %d, want 0 for a missing file", h.Len())
+	}
+}
+
+func TestNewPersistedPromptHistoryCorruptFileEmpty(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "prompt_history.json")
+	if err := os.WriteFile(path, []byte("not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := NewPersistedPromptHistory(10, path)
+	if h.Len() != 0 {
+		t.Fatalf("Len = %d, want 0 (corrupt file must fall back to empty)", h.Len())
+	}
+}
+
+func TestNewPersistedPromptHistoryTruncatesToCap(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "prompt_history.json")
+	// Entries beyond the ring capacity must be dropped (oldest first), keeping
+	// the most recent prompts.
+	if err := os.WriteFile(path, []byte(`["a","b","c"]`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := NewPersistedPromptHistory(2, path)
+	if got, want := h.Entries(), []string{"b", "c"}; !equalStrings(got, want) {
+		t.Fatalf("entries = %v, want %v (capacity applied on restore)", got, want)
+	}
+}
+
+func TestPersistedPushWritesFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "prompt_history.json")
+	h := NewPersistedPromptHistory(10, path)
+	h.Push("hello")
+	h.Push("world")
+	got := readPromptHistoryFile(t, path)
+	if want := []string{"hello", "world"}; !equalStrings(got, want) {
+		t.Fatalf("persisted = %v, want %v", got, want)
+	}
+}
+
+func TestPersistedHistorySurvivesReopen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "prompt_history.json")
+	h := NewPersistedPromptHistory(10, path)
+	h.Push("first")
+	h.Push("second")
+
+	reopened := NewPersistedPromptHistory(10, path)
+	if got, want := reopened.Entries(), []string{"first", "second"}; !equalStrings(got, want) {
+		t.Fatalf("reopened entries = %v, want %v (history must survive a restart)", got, want)
+	}
+}
+
+func readPromptHistoryFile(t *testing.T, path string) []string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read history file: %v", err)
+	}
+	var entries []string
+	if err := json.Unmarshal(data, &entries); err != nil {
+		t.Fatalf("unmarshal history file: %v", err)
+	}
+	return entries
+}
+
+func TestModelPersistsHistoryAcrossNewModel(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "prompt_history.json")
+	newModel := func() Model {
+		m := NewModelCfg(Dependencies{
+			Turn: func(_ context.Context, _ string, _ string) (TurnResult, error) {
+				return TurnResult{Answer: "ok"}, nil
+			},
+			Config:      cfgFixture(),
+			HistoryPath: path,
+		})
+		m = resize(t, m)
+		return m
+	}
+	m := newModel()
+	m = typeText(t, m, "persisted prompt")
+	m = submitAndWait(t, m)
+
+	reopened := newModel()
+	if got := reopened.history.Entries(); !equalStrings(got, []string{"persisted prompt"}) {
+		t.Fatalf("reopened history = %v, want [persisted prompt] (must survive a restart)", got)
+	}
 }

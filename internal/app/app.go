@@ -179,7 +179,7 @@ func Run(opts Options) error {
 		if err := tuiBootError(currentTUIEnv()); err != nil {
 			return err
 		}
-		return runTUI(e, cfg, reg, key, liveProvider, cfgPath, skills, workspace, tempHost)
+		return runTUI(e, cfg, reg, key, liveProvider, cfgPath, dir, skills, workspace, tempHost)
 	}
 
 	res, err := runAgent(context.Background(), e, cfg, reg, key, opts.Prompt, skills, nil, nil)

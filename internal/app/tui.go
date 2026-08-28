@@ -36,7 +36,7 @@ func runEngineTurn(e *engine.Engine, cfg func() config.Config, reg *tools.Regist
 }
 
 // runTUI launches the interactive fullscreen TUI on the shared engine and blocks until the user quits.
-func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey string, p provider.Provider, cfgPath string, skills *tools.Catalog, workspace string, sessionTemp string) error {
+func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey string, p provider.Provider, cfgPath string, dataDir string, skills *tools.Catalog, workspace string, sessionTemp string) error {
 	effort := cfg.ReasoningEffort
 	if !cfg.ThinkingEnabled {
 		effort = ""
@@ -68,6 +68,7 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 		ThinkingSuppression: thinkingSuppression(p),
 		Splash:              true,
 		Skills:              skillSurface(reg, skills),
+		HistoryPath:         tui.PromptHistoryPath(dataDir),
 		Login: func(ctx context.Context, onCode func(tui.LoginCode)) (config.Config, error) {
 			if currentCfg.Provider != string(provider.ProviderCopilot) {
 				return config.Config{}, fmt.Errorf("login is only available for provider %q", provider.ProviderCopilot)
