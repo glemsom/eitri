@@ -84,7 +84,6 @@ const (
 // hasContent reports whether any turn material (committed messages or a live timeline) exists, i.e. the transcript is no longer showing the empty welcome state.
 func (t Transcript) hasContent() bool {
 	return len(t.messages) > 0 || t.LiveTimeline() != nil || t.busy
-
 }
 
 // Reset clears all turn material so the transcript returns to the empty
