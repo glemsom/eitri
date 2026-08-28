@@ -97,7 +97,7 @@ func TestSystemPromptGuidesBashChains(t *testing.T) {
 func TestSystemPromptGuidesToolSelection(t *testing.T) {
 	t.Parallel()
 	p := SystemPromptContent()
-	for _, want := range []string{"web_fetch", "bash", "open_in_browser", "Markdown", "curl", "30s", "$TMPDIR", "host path", "not the first that springs to mind"} {
+	for _, want := range []string{"curl", "bash", "open_in_browser", "--fail", "--max-time", "$TMPDIR", "host path", "not the first that springs to mind"} {
 		if !strings.Contains(p, want) {
 			t.Fatalf("system prompt must guide tool selection; missing %q:\n%s", want, p)
 		}

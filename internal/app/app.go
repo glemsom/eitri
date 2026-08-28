@@ -100,8 +100,6 @@ type Options struct {
 
 	LookPath func(name string) (string, error)
 
-	Fetcher tools.Fetcher
-
 	Browser tools.BrowserLauncher
 }
 
@@ -155,7 +153,6 @@ func Run(opts Options) error {
 		GUID:          guid,
 		ExtraWritable: cfg.ExtraWritablePaths,
 		Runner:        tools.RealRunner,
-		Fetcher:       opts.Fetcher,
 		Browser:       opts.Browser,
 		Skills:        skills,
 	})

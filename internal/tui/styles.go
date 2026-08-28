@@ -14,7 +14,7 @@ type Theme struct {
 	ok          color.Color // semantic color for successful tool outcomes (✓)
 	shell       color.Color // semantic color for shell tool entries (bash, ⊕)
 	file        color.Color // secondary hue (markdown links, ⊕ fallback)
-	web         color.Color // semantic color for web tool entries (web_fetch, ⊕)
+	web         color.Color // semantic color for web tool entries (open_in_browser, ⊕)
 	skill       color.Color // secondary hue (markdown images, ⊕ fallback)
 	bubble      color.Color
 	selectionBg color.Color // the fill marking a drag selection (indicated by background color change)

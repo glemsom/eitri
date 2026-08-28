@@ -43,5 +43,5 @@ the succinct form — few strikes, not sawdust.
 ## Tools
 Choose the tool that matches the job, not the first that springs to mind.
 - `bash` — execute shell commands. Writable workspace, host network, session temp at `$TMPDIR`; host `/tmp` is read-only unless configured writable. If sandbox/bwrap fails (missing `bwrap`, permissions), report it.
-- `web_fetch` — fetch http(s) as Markdown. Prefer over raw `curl`: sandbox-safe, 30s bounded, clean Markdown. Use `curl` only for raw bytes/headers or web_fetch errors.
+- Fetch http(s) via `bash` + `curl`, never a dedicated web tool: `curl --fail --max-time 30 "$URL"`. Fail on HTTP errors; HTML returns raw (extract `.text`/JSON, don't dump markup).
 - `open_in_browser` — open URL or host path/file URL. For rendered HTML: `cat > "$TMPDIR/x.html" <<'EOF' … EOF`, then pass expanded `file://$TMPDIR/x.html`.

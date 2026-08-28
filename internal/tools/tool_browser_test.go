@@ -18,9 +18,32 @@ func (b *recordingBrowser) Open(_ context.Context, target string) error {
 	return nil
 }
 
+// newBrowserTestRegistry builds a workspace-backed registry wired to a recordingBrowser, mirroring the scaffold other tools' tests use. top is the removable host root the workspace and session temp live under.
+func newBrowserTestRegistry(t *testing.T) (r *Registry, top string) {
+	t.Helper()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("home dir: %v", err)
+	}
+	top = filepath.Join(home, ".eitri-test-br-"+strings.ReplaceAll(t.Name(), "/", "_"))
+	ws := filepath.Join(top, "proj")
+	if err := os.MkdirAll(ws, 0o700); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(top) })
+	r = NewRegistry(Deps{
+		Workspace: ws,
+		TempHost:  filepath.Join(top, "sessions", "g", "tmp"),
+		GUID:      GUID("g"),
+		Runner:    &recordingRunner{},
+		Browser:   &recordingBrowser{},
+	})
+	return r, top
+}
+
 func TestOpenInBrowserLaunchesHostSideTarget(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebFetchRegistry(t, &stubFetcher{body: "<html><body></body></html>"})
+	r, _ := newBrowserTestRegistry(t)
 	br := r.browser.(*recordingBrowser)
 	res, err := r.Run(context.Background(), "open_in_browser", argMap("path", "https://example.com"))
 	out := res.Text
@@ -37,24 +60,7 @@ func TestOpenInBrowserLaunchesHostSideTarget(t *testing.T) {
 
 func TestOpenInBrowserTranslatesSessionTempToHost(t *testing.T) {
 	t.Parallel()
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatalf("home dir: %v", err)
-	}
-	top := filepath.Join(home, ".eitri-test-br-"+strings.ReplaceAll(t.Name(), "/", "_"))
-	ws := filepath.Join(top, "proj")
-	if err := os.MkdirAll(ws, 0o700); err != nil {
-		t.Fatalf("mkdir workspace: %v", err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(top) })
-	r := NewRegistry(Deps{
-		Workspace: ws,
-		TempHost:  filepath.Join(top, "sessions", "g", "tmp"),
-		GUID:      GUID("g"),
-		Runner:    &recordingRunner{},
-		Fetcher:   &stubFetcher{body: "<html><body></body></html>"},
-		Browser:   &recordingBrowser{},
-	})
+	r, top := newBrowserTestRegistry(t)
 	br := r.browser.(*recordingBrowser)
 	res, err := r.Run(context.Background(), "open_in_browser", argMap("path", "file://"+filepath.Join(top, "sessions", "g", "tmp", "report.html")))
 	out := res.Text

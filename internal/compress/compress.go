@@ -12,7 +12,7 @@ import (
 // maxLines caps the number of kept lines before the tail is truncated with an explicit "+N more" marker.
 const maxLines = 500
 
-// DefaultByteCap is the shared byte budget every tool result is measured against at the tool-result boundary before it enters message history: the bytes the provider sees and that land in the session-cache head are bounded, so one oversized web_fetch or whole-file read cannot exhaust the context window. 64 KiB fits comfortably inside deepseek's economics — a prompt token is ~3.5 bytes, so a capped result is ~18K tokens, small next to the ~1M-token context — while staying far under the session-cache head that must remain byte-stable.
+// DefaultByteCap is the shared byte budget every tool result is measured against at the tool-result boundary before it enters message history: the bytes the provider sees and that land in the session-cache head are bounded, so one oversized fetch (via curl) or whole-file read cannot exhaust the context window. 64 KiB fits comfortably inside deepseek's economics — a prompt token is ~3.5 bytes, so a capped result is ~18K tokens, small next to the ~1M-token context — while staying far under the session-cache head that must remain byte-stable.
 const DefaultByteCap = constants.DefaultByteCap
 
 // ansiRE matches ANSI/CSI escape sequences that noisy CLI tools emit for color and progress (e.g. `\x1b[31m`, `\x1b[2K`).

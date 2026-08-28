@@ -23,8 +23,6 @@ func toolGlyph(name string) string {
 	switch name {
 	case "bash":
 		return g("🔧", "$")
-	case "web_fetch":
-		return g("🌐", "w")
 	case "open_in_browser":
 		return g("🌍", "W")
 	}

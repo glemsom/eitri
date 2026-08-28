@@ -167,13 +167,11 @@ func TestModel_stylingToolCategoryColors(t *testing.T) {
 		tool string
 		hue  string
 	}{
-		{"bash", "\x1b[38;2;224;175;104m"},            // shell #E0AF68
-		{"web_fetch", "\x1b[38;2;187;154;247m"},       // web #BB9AF7
+		{"bash", "\x1b[38;2;224;175;104m"},                 // shell #E0AF68
 		{"open_in_browser", "\x1b[38;2;187;154;247m"}, // web
 	}
 	toolGlyphs := map[string]string{
 		"bash":            "🔧",
-		"web_fetch":       "🌐",
 		"open_in_browser": "🌍",
 	}
 	for _, tc := range cases {
