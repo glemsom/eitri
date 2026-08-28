@@ -88,6 +88,13 @@ type RunRequest struct {
 	ThinkingEnabled bool
 	ReasoningEffort string
 
+	// Lynx marks that a boot-time probe found `lynx` installed. When set, the run
+	// carries a dynamic system-layer HTML-rendering directive teaching the model
+	// `curl "$u" | lynx -dump -nolist -stdin`, appended after the workspace
+	// directive so the cached prompt.md stays byte-stable. It is per-run state and
+	// is never baked into the persistence layer.
+	Lynx bool
+
 	// ProviderID is the provider family this run targets, chosen by config, so
 	// the shared dialect can apply provider-specific wire fields.
 	ProviderID provider.ProviderID
@@ -111,6 +118,14 @@ func systemPromptHead() []provider.Message {
 // path rather than baked into prompt.md.
 func workspaceDirective(workspace string) string {
 	return "## Working directory\nYou are operating in the workspace `" + workspace + "`. Resolve all relative paths against it."
+}
+
+// lynxDirective is the dynamic system-layer HTML-rendering guidance added when
+// the boot probe finds lynx installed. It parallels workspaceDirective: per-run
+// state emitted from the live probe rather than baked into the byte-stable
+// cached prompt.md.
+func lynxDirective() string {
+	return "## HTML rendering\n`lynx` is installed. To read a web page, fetch with curl and render with lynx: `curl \"$u\" | lynx -dump -nolist -stdin`."
 }
 
 // bindSkillToPrompt folds a slash-injected skill payload into the single
@@ -189,6 +204,9 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 	messages := systemPromptHead()
 	if req.Workspace != "" {
 		messages = append(messages, provider.Message{Role: provider.RoleSystem, Content: workspaceDirective(req.Workspace)})
+	}
+	if req.Lynx {
+		messages = append(messages, provider.Message{Role: provider.RoleSystem, Content: lynxDirective()})
 	}
 	if req.SkillIndex != nil {
 		messages = append(messages, provider.Message{Role: provider.RoleSystem, Content: *req.SkillIndex})
@@ -422,6 +440,9 @@ func (e *Engine) storeSessionHistory(sessionKey string, messages []provider.Mess
 	// they must not persist into session history (that would duplicate the
 	// message on the next turn).
 	for start < len(messages) && isWorkspaceMessage(messages[start]) {
+		start++
+	}
+	for start < len(messages) && isLynxMessage(messages[start]) {
 		start++
 	}
 	for start < len(messages) && isSkillIndexMessage(messages[start]) {

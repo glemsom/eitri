@@ -39,7 +39,7 @@ func TestRunAgentInjectsSkillIndex(t *testing.T) {
 	}), mockTranscript{})
 
 	cfg := config.Default()
-	if _, err := runAgent(context.Background(), e, cfg, reg, "sess-"+t.Name(), "hi", skills, nil, nil); err != nil {
+	if _, err := runAgent(context.Background(), e, cfg, reg, "sess-"+t.Name(), "hi", skills, nil, nil, false); err != nil {
 		t.Fatalf("runAgent error = %v, want nil", err)
 	}
 	if len(cap.reqs) == 0 {
@@ -77,7 +77,7 @@ func TestRunAgentNoIndexWhenNoModelVisibleSkills(t *testing.T) {
 	}), mockTranscript{})
 
 	cfg := config.Default()
-	if _, err := runAgent(context.Background(), e, cfg, reg, "sess-"+t.Name(), "hi", skills, nil, nil); err != nil {
+	if _, err := runAgent(context.Background(), e, cfg, reg, "sess-"+t.Name(), "hi", skills, nil, nil, false); err != nil {
 		t.Fatalf("runAgent error = %v, want nil", err)
 	}
 	for _, m := range cap.reqs[0].Messages {
@@ -100,7 +100,7 @@ func TestRunAgentNoIndexWhenCatalogNil(t *testing.T) {
 	}), mockTranscript{})
 
 	cfg := config.Default()
-	if _, err := runAgent(context.Background(), e, cfg, reg, "sess-"+t.Name(), "hi", nil, nil, nil); err != nil {
+	if _, err := runAgent(context.Background(), e, cfg, reg, "sess-"+t.Name(), "hi", nil, nil, nil, false); err != nil {
 		t.Fatalf("runAgent error = %v, want nil", err)
 	}
 	for _, m := range cap.reqs[0].Messages {
