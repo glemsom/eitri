@@ -129,6 +129,10 @@ type Dependencies struct {
 	TitleOut io.Writer
 	// TerminalTitle reports the terminal title current before the splash starts, so the splash can restore it on exit. Nil means the title was empty.
 	TerminalTitle func() string
+	// HistoryPath is the path of the prompt-history file to persist submitted
+	// prompts to (a sibling of config.json in the data directory, issue #612,
+	// part of #608). Empty leaves the ring in-memory only.
+	HistoryPath string
 }
 
 // titleOut is where OSC 0 window-title escapes are written: the injected Dependencies.TitleOut when set, else os.Stdout.
@@ -196,6 +200,16 @@ type Model struct {
 }
 
 // NewModel builds a bare chat-only model (no Settings surface), the historical default signature.
+// newModelHistory builds the Model's prompt-history ring: file-backed when a
+// HistoryPath is wired (loading any persisted entries, issue #612), else a plain
+// in-memory ring.
+func newModelHistory(path string) *PromptHistory {
+	if path == "" {
+		return NewPromptHistory(defaultPromptHistoryCap)
+	}
+	return NewPersistedPromptHistory(defaultPromptHistoryCap, path)
+}
+
 func NewModel(t Turn) Model {
 	return NewModelCfg(Dependencies{Turn: t})
 }
@@ -253,7 +267,7 @@ func NewModelCfg(d Dependencies) Model {
 		clipboard:    newClipboard(d),
 		splash:       newSplash(d, transcript, kittyCap),
 		kittyCap:     kittyCap,
-		history:      NewPromptHistory(defaultPromptHistoryCap),
+		history:      newModelHistory(d.HistoryPath),
 		histIdx:      -1,
 	}
 	m.fold = NewFold(m.session)
