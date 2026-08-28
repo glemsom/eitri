@@ -20,6 +20,7 @@ type Rail struct {
 	sessionID   string
 	sessionTemp string
 	branch      string
+	sessionKey  *LiveSessionKey
 }
 
 // NewRail builds the right-context rail seeded with the run's static session state (provider, model, effort, thinking, session id, session temp path).
@@ -166,13 +167,22 @@ func (r *Rail) renderStats(te *Telemetry, th Theme, railWidth int) string {
 // SetBranch records the workspace's checked-out git branch for the CONTEXT section.
 func (r *Rail) SetBranch(branch string) { r.branch = branch }
 
+// SetLiveKey wires the shared mutable session key into the rail, so the
+// CONTEXT session id stays live across a `/new` re-mint. Nil keeps the static
+// sessionID seeded at construction.
+func (r *Rail) SetLiveKey(l *LiveSessionKey) { r.sessionKey = l }
+
 // renderContext renders the CONTEXT section: the active session surface.
 func (r *Rail) renderContext(th Theme, railWidth int) string {
 	var b strings.Builder
 	b.WriteString(th.railHeader(railContext, "CONTEXT") + "\n")
 	var body strings.Builder
 	kw := railKeyWidth(railWidth)
-	r.lineAligned(&body, "session", r.sessionID, kw, railWidth)
+	ts := r.sessionID
+	if r.sessionKey != nil {
+		ts = r.sessionKey.Get()
+	}
+	r.lineAligned(&body, "session", ts, kw, railWidth)
 	r.lineAligned(&body, "temp", r.sessionTemp, kw, railWidth)
 	if r.branch != "" {
 		r.lineAligned(&body, "branch", r.branch, kw, railWidth)

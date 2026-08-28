@@ -16,7 +16,7 @@ import (
 )
 
 // runEngineTurn adapts the shared runAgent turn to the tui.Turn seam.
-func runEngineTurn(e *engine.Engine, cfg func() config.Config, reg *tools.Registry, sessionKey string, catalog *tools.Catalog, canContinue func() bool) tui.Turn {
+func runEngineTurn(e *engine.Engine, cfg func() config.Config, reg *tools.Registry, sessionKey *tui.LiveSessionKey, catalog *tools.Catalog, canContinue func() bool) tui.Turn {
 	return func(ctx context.Context, prompt string, payload string) (tui.TurnResult, error) {
 		cur := cfg()
 		// Thread a plain payload from the Turn seam into the engine as a *string: an empty payload stays nil at the runAgent boundary (no injection).
@@ -24,7 +24,7 @@ func runEngineTurn(e *engine.Engine, cfg func() config.Config, reg *tools.Regist
 		if payload != "" {
 			skillInject = &payload
 		}
-		res, err := runAgent(ctx, e, cur, reg, sessionKey, prompt, catalog, skillInject, canContinue)
+		res, err := runAgent(ctx, e, cur, reg, sessionKey.Get(), prompt, catalog, skillInject, canContinue)
 		if err != nil {
 			if errors.Is(err, engine.ErrStopped) {
 				return tui.TurnResult{Answer: res.Answer, Reasoning: res.Reasoning, Stopped: true}, nil
@@ -42,7 +42,9 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 		effort = ""
 	}
 	te := tui.NewTelemetry(cfg.Model, effort, cfg.ThinkingEnabled, cfg.MaxTurns)
+	live := tui.NewLiveSessionKey(sessionKey)
 	rail := tui.NewRail(cfg.Provider, cfg.Model, effort, cfg.ThinkingEnabled, sessionKey, sessionTemp)
+	rail.SetLiveKey(live)
 	rail.SetBranch(tui.GitBranch(workspace))
 	events := tui.NewEventFeed()
 	feedEngineEvents(e, te, events)
@@ -77,7 +79,7 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 			})
 		},
 	})
-	ts := tui.NewTurnSession(runEngineTurn(e, func() config.Config { return currentCfg }, reg, sessionKey, skills, m.ContinueHook()))
+	ts := tui.NewTurnSession(runEngineTurn(e, func() config.Config { return currentCfg }, reg, live, skills, m.ContinueHook()))
 	ts.SetThinkingEnabled(cfg.ThinkingEnabled)
 	m.SetTurnSession(ts)
 	return runProgram(m)
