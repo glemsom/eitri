@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -65,6 +66,8 @@ type skillDoneMsg struct {
 	name    string
 	payload string
 	args    string
+	err     error
+	seq     int
 }
 
 // loginCodeMsg reports the human-visible device-flow code for an in-flight `/login` command, plus the channel waiter should block on for the next login event.
@@ -156,8 +159,11 @@ type Model struct {
 	continueResp chan bool
 	prompting    bool
 
-	slash   *SkillActivation
-	mention *Mention
+	slash        *SkillActivation
+	mention      *Mention
+	skillPending bool
+	skillCancel  context.CancelFunc
+	skillSeq     int
 
 	telemetry *Telemetry
 
@@ -495,6 +501,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case skillDoneMsg:
+		if msgi.seq != 0 && (!m.skillPending || msgi.seq != m.skillSeq) {
+			return m, nil
+		}
+		m.skillPending = false
+		m.skillCancel = nil
+		if msgi.err != nil {
+			m.tx.endTurn()
+			if !errors.Is(msgi.err, context.Canceled) {
+				m.tx.appendMsg(failurePrefix() + fmt.Errorf("activate skill %q: %w", msgi.name, msgi.err).Error())
+			}
+			m.syncComposerRail()
+			return m, nil
+		}
 		// The skill payload is injected into the turn's context (single delivery) instead of being
 		// echoed as an assistant note, and every slash activation starts an agent turn.
 		cmd := m.startTurn(m.slash.TurnPrompt(msgi.name, msgi.args), msgi.payload)
@@ -568,7 +587,7 @@ func (m Model) submitPrompt() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if name, args, ok := m.slash.Command(prompt); ok {
-		return m, m.slash.Activate(m.tx, m.deps.Skills, name, args)
+		return m.startSkillActivation(name, args)
 	}
 	cmd := m.startTurn(prompt, "")
 	return m, cmd
@@ -588,6 +607,21 @@ func (m *Model) startTurn(prompt string, payload string) tea.Cmd {
 	return cmd
 }
 
+func (m Model) startSkillActivation(name, args string) (tea.Model, tea.Cmd) {
+	m.tx.appendUserMsg("/" + name)
+	if m.deps.Skills == nil || m.deps.Skills.Activate == nil {
+		m.tx.appendMsg(failurePrefix() + "no skill activation available")
+		return m, nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	m.skillSeq++
+	m.skillPending = true
+	m.skillCancel = cancel
+	m.tx.busy = true
+	m.syncComposerRail()
+	return m, skillCmdWithContext(ctx, m.deps.Skills.Activate, name, args, m.skillSeq)
+}
+
 func (m Model) acceptEvent(u Event) bool {
 	if u.RunID == 0 {
 		return true // tests and package-local callers can deliver direct events.
@@ -596,7 +630,20 @@ func (m Model) acceptEvent(u Event) bool {
 }
 
 // stopTurn cancels the in-flight turn through the session.
-func (m *Model) stopTurn() { m.session.Stop() }
+func (m *Model) stopTurn() {
+	if m.skillPending {
+		if m.skillCancel != nil {
+			m.skillCancel()
+		}
+		m.skillPending = false
+		m.skillCancel = nil
+		m.tx.endTurn()
+		m.tx.appendMsg("[stopped]")
+		m.syncComposerRail()
+		return
+	}
+	m.session.Stop()
+}
 
 // appendStreamDelta folds one streamed delta through the Fold, the sole
 // writer of the streaming assistant message and live timeline.

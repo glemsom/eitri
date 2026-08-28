@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -95,6 +96,45 @@ func TestCopilotStreamsWithValidStoredToken(t *testing.T) {
 	}
 	if lastToken() != "Bearer stored-access" {
 		t.Fatalf("request Authorization = %q, want Bearer stored-access", lastToken())
+	}
+}
+
+func TestCopilotBearerConcurrentRefreshIsRaceFree(t *testing.T) {
+	t.Parallel()
+	refresh := func(_ context.Context, refreshToken string) (config.CopilotConfig, error) {
+		if refreshToken != "the-refresh" {
+			return config.CopilotConfig{}, errors.New("wrong refresh token")
+		}
+		return config.CopilotConfig{
+			AccessToken:  "renewed-access",
+			RefreshToken: "the-refresh",
+			ExpiresAt:    time.Now().Unix() + 3600,
+		}, nil
+	}
+	cp := NewCopilot(config.CopilotConfig{RefreshToken: "the-refresh"}, "http://example.invalid/chat/completions", nil, refresh, nil)
+
+	var wg sync.WaitGroup
+	errs := make(chan error, 16)
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			tok, err := cp.bearer(context.Background())
+			if err != nil {
+				errs <- err
+				return
+			}
+			if tok != "renewed-access" {
+				errs <- errors.New("unexpected token " + tok)
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

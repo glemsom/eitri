@@ -27,14 +27,14 @@ func scriptedBashCatTurn(t *testing.T) *provider.Scripted {
 			return provider.StreamFunc(
 				provider.Chunk{Content: "", ReasoningContent: "I'll write a probe"},
 				provider.Chunk{FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{
-					{ID: "call_bash", Name: "bash", Arguments: `{"command":"echo sandbox-ok > /tmp/probe.txt"}`},
+					{ID: "call_bash", Name: "bash", Arguments: `{"command":"echo sandbox-ok > \"$TMPDIR/probe.txt\""}`},
 				}, Done: true},
 			), nil
 		case toolResults == 1:
 			return provider.StreamFunc(
 				provider.Chunk{Content: "", ReasoningContent: "now cat it back"},
 				provider.Chunk{FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{
-					{ID: "call_bash", Name: "bash", Arguments: `{"command":"cat /tmp/probe.txt"}`},
+					{ID: "call_bash", Name: "bash", Arguments: `{"command":"cat \"$TMPDIR/probe.txt\""}`},
 				}, Done: true},
 			), nil
 		default:
@@ -65,11 +65,10 @@ func TestDispatchBashThenCatReturnsSandboxOutput(t *testing.T) {
 		t.Fatalf("mkdir workspace: %v", err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(workspace) })
-	th := tools.HostTempFor(tools.GUID("engine"))
-	t.Cleanup(func() { _ = os.RemoveAll(th) })
+	tempHost := filepath.Join(t.TempDir(), "tmp")
 	reg := tools.NewRegistry(tools.Deps{
 		Workspace: workspace,
-		TempHost:  tools.HostTempFor(tools.GUID("engine")),
+		TempHost:  tempHost,
 		GUID:      tools.GUID("engine"),
 		Runner:    tools.RealRunner,
 	})

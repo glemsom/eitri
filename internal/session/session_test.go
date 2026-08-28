@@ -27,6 +27,9 @@ func TestNewCreatesGUIDTranscriptDir(t *testing.T) {
 	if rel != want {
 		t.Fatalf("session dir rel = %q, want %q", rel, want)
 	}
+	if got, want := s.TempDir(), filepath.Join(s.Dir(), "tmp"); got != want {
+		t.Fatalf("TempDir() = %q, want %q", got, want)
+	}
 }
 
 func TestWriteTranscriptPersistsContent(t *testing.T) {

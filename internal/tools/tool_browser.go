@@ -18,14 +18,14 @@ func (o *openInBrowserTool) Name() string {
 }
 
 func (o *openInBrowserTool) Description() string {
-	return "Open a URL or file:// target in the host browser. A file in the session temp (/tmp) is opened at its host path."
+	return "Open a URL or file:// target in the host browser. A file in the session temp is opened at its host path."
 }
 
 func (o *openInBrowserTool) Schema() map[string]any {
 	return strictSchema(map[string]any{
 		"path": map[string]any{
 			"type":        "string",
-			"description": "A URL (e.g. https://…), or a file:// URL (e.g. file:///tmp/report.html).",
+			"description": "A URL (e.g. https://…), a file:// URL, or a filesystem path. For session-temp files, pass the concrete path written under $TMPDIR.",
 		},
 	}, []string{"path"})
 }
@@ -45,7 +45,7 @@ func (o *openInBrowserTool) Run(ctx context.Context, args map[string]any) (ToolR
 	return ToolResult{Text: fmt.Sprintf("Opened %s in the host browser", host)}, nil
 }
 
-// translate maps the model-facing target to the host launch form: a plain URL passes through; a file URL or filesystem path resolves through the shared PathTranslator so a session-temp (/tmp) file opens at its host /tmp/eitri-<GUID> location.
+// translate maps the model-facing target to the host launch form: a plain URL passes through; a file URL or filesystem path resolves through the shared PathTranslator.
 func (o *openInBrowserTool) translate(target string) (string, error) {
 	if u, err := url.Parse(target); err == nil && u.Scheme != "" && u.Scheme != "file" {
 		return target, nil

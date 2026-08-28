@@ -61,6 +61,11 @@ func (s *Session) Dir() string {
 	return s.dir
 }
 
+// TempDir returns this run's session temp directory.
+func (s *Session) TempDir() string {
+	return filepath.Join(s.dir, "tmp")
+}
+
 // WriteTranscript appends a line to the session transcript file, creating it on first write.
 func (s *Session) WriteTranscript(line []byte) error {
 	if s.data == nil {

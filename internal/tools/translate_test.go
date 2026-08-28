@@ -1,71 +1,35 @@
 package tools
 
-import (
-	"testing"
-)
+import "testing"
 
-func TestPathTranslatorIsBidirectional(t *testing.T) {
+func TestPathTranslatorPreservesAbsolutePaths(t *testing.T) {
 	t.Parallel()
-	g := GUID("abc123")
-	tr := NewPathTranslator(g)
+	tr := NewPathTranslator()
 
-	cases := []struct {
-		name      string
-		sandbox   string
-		host      string
-		rewritten bool
-	}{
-		{"session temp file", "/tmp/foo.txt", "/tmp/eitri-abc123/foo.txt", true},
-		{"session temp nested", "/tmp/a/b/c", "/tmp/eitri-abc123/a/b/c", true},
-		{"session temp root", "/tmp", "/tmp/eitri-abc123", true},
-		{"workspace path untouched", "/home/user/proj/main.go", "/home/user/proj/main.go", false},
-		{"temp prefix only", "/tmpetc/x", "/tmpetc/x", false},
+	cases := []string{
+		"/tmp/kubeconfig",
+		"/home/user/.eitri/sessions/abc/tmp/report.html",
+		"/home/user/proj/main.go",
 	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			gotHost, rewritten := tr.SandboxToHost(tc.sandbox)
-			if gotHost != tc.host {
-				t.Fatalf("SandboxToHost(%q) host = %q, want %q", tc.sandbox, gotHost, tc.host)
-			}
-			if rewritten != tc.rewritten {
-				t.Fatalf("SandboxToHost(%q) rewritten = %v, want %v", tc.sandbox, rewritten, tc.rewritten)
-			}
-			gotSandbox, rev := tr.HostToSandbox(tc.host)
-			if gotSandbox != tc.sandbox {
-				t.Fatalf("HostToSandbox(%q) sandbox = %q, want %q", tc.host, gotSandbox, tc.sandbox)
-			}
-			if rev != tc.rewritten {
-				t.Fatalf("HostToSandbox(%q) rewritten = %v, want %v", tc.host, rev, tc.rewritten)
-			}
-		})
+	for _, p := range cases {
+		gotHost, rewritten := tr.SandboxToHost(p)
+		if gotHost != p || rewritten {
+			t.Fatalf("SandboxToHost(%q) = %q, %v; want identity", p, gotHost, rewritten)
+		}
+		gotSandbox, rev := tr.HostToSandbox(p)
+		if gotSandbox != p || rev {
+			t.Fatalf("HostToSandbox(%q) = %q, %v; want identity", p, gotSandbox, rev)
+		}
 	}
 }
 
-func TestPathTranslatorIsIdempotent(t *testing.T) {
+func TestPathTranslatorResolveUsesWorkspaceForRelativePaths(t *testing.T) {
 	t.Parallel()
-	g := GUID("xyz99")
-	tr := NewPathTranslator(g)
-
-	if host, _ := tr.SandboxToHost("/tmp/a"); host != "/tmp/eitri-xyz99/a" {
-		t.Fatalf("first host = %q", host)
+	tr := NewPathTranslator()
+	if got := tr.Resolve("docs/readme.md", "/home/user/ws"); got != "/home/user/ws/docs/readme.md" {
+		t.Fatalf("Resolve(relative) = %q", got)
 	}
-	if host, _ := tr.SandboxToHost("/tmp/eitri-xyz99/a"); host != "/tmp/eitri-xyz99/a" {
-		t.Fatalf("idempotent host = %q, want unchanged", host)
-	}
-	if h, _ := tr.SandboxToHost("/tmp"); h != "/tmp/eitri-xyz99" {
-		t.Fatalf("sandbox->host /tmp = %q, want %q", h, "/tmp/eitri-xyz99")
-	}
-}
-
-func TestPathTranslatorTempIdentityDefinesGuestRoot(t *testing.T) {
-	t.Parallel()
-	tr := NewPathTranslator(GUID("aaa"))
-	host, rewritten := tr.SandboxToHost("/tmp")
-	if rewritten != true {
-		t.Fatalf("/tmp should rewrite, got rewritten=%v", rewritten)
-	}
-	if host != "/tmp/eitri-aaa" {
-		t.Fatalf("host temp root = %q, want %q", host, "/tmp/eitri-aaa")
+	if got := tr.Resolve("/tmp/kubeconfig", "/home/user/ws"); got != "/tmp/kubeconfig" {
+		t.Fatalf("Resolve(absolute) = %q", got)
 	}
 }

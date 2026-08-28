@@ -143,6 +143,7 @@ func Run(opts Options) error {
 	}
 
 	guid := tools.GUID(sess.GUID())
+	tempHost := sess.TempDir()
 	workspace, err := os.Getwd()
 	if err != nil {
 		return err
@@ -150,7 +151,7 @@ func Run(opts Options) error {
 	skills := discoverSkills(workspace)
 	reg := tools.NewRegistry(tools.Deps{
 		Workspace:     workspace,
-		TempHost:      tools.HostTempFor(guid),
+		TempHost:      tempHost,
 		GUID:          guid,
 		ExtraWritable: cfg.ExtraWritablePaths,
 		Runner:        tools.RealRunner,
@@ -158,7 +159,6 @@ func Run(opts Options) error {
 		Browser:       opts.Browser,
 		Skills:        skills,
 	})
-	tempHost := tools.HostTempFor(guid)
 	defer func() { _ = os.RemoveAll(tempHost) }()
 
 	p := opts.Provider

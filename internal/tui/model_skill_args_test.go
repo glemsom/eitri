@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 func TestModel_slashSkillWithArgs(t *testing.T) {
@@ -97,6 +99,55 @@ func TestModel_slashSkillNoArgs(t *testing.T) {
 	}
 	if strings.Contains(view(m), "payload-note") {
 		t.Errorf("skill payload must be delivered once via injection, not echoed as an assistant note, got: %q", view(m))
+	}
+}
+
+func TestModel_slashSkillActivationBlocksConcurrentSubmit(t *testing.T) {
+	t.Parallel()
+	release := make(chan struct{})
+	var turnPrompts []string
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			turnPrompts = append(turnPrompts, prompt)
+			return TurnResult{Answer: "ok"}, nil
+		},
+		Skills: &SkillsSurface{
+			Items: []SkillItem{{Name: "my-skill"}},
+			Activate: func(ctx context.Context, name string) (string, error) {
+				select {
+				case <-release:
+					return "payload", nil
+				case <-ctx.Done():
+					return "", ctx.Err()
+				}
+			},
+		},
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "/my-skill improve this")
+	nm, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = asModel(t, nm)
+	if cmd == nil {
+		t.Fatal("skill activation command = nil, want pending command")
+	}
+	if !m.tx.busy {
+		t.Fatal("skill activation must mark transcript busy while payload loads")
+	}
+
+	m = typeText(t, m, "normal prompt")
+	nm, blocked := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = asModel(t, nm)
+	if blocked != nil {
+		t.Fatalf("busy skill activation accepted concurrent prompt command %#v", blocked)
+	}
+	if len(turnPrompts) != 0 {
+		t.Fatalf("turn prompts while skill pending = %v, want none", turnPrompts)
+	}
+
+	close(release)
+	m = runSubmitted(t, m, cmd)
+	if len(turnPrompts) != 1 || turnPrompts[0] != "improve this" {
+		t.Fatalf("turn prompts = %v, want [improve this]", turnPrompts)
 	}
 }
 

@@ -24,7 +24,8 @@ func (r *recordingRunner) Run(_ context.Context, name string, args []string) (*O
 func TestSandboxBuildsBwrapArgv(t *testing.T) {
 	t.Parallel()
 	rr := &recordingRunner{out: &Output{Stdout: "ok"}}
-	sb := NewSandbox("/home/u/proj", "/tmp/eitri-abc", rr)
+	tempHost := filepath.Join(t.TempDir(), "tmp")
+	sb := NewSandbox("/home/u/proj", tempHost, rr, "/tmp/kubeconfig")
 	_, err := sb.Run(context.Background(), "echo hi")
 	if err != nil {
 		t.Fatalf("Run() error = %v, want nil", err)
@@ -41,12 +42,16 @@ func TestSandboxBuildsBwrapArgv(t *testing.T) {
 		"--share-net", // host network
 		"--unshare-pid",
 		"--ro-bind", "/", "/",
-		"--ro-bind", "/tmp/eitri-abc/etc-ssh-config.d", "/etc/ssh/ssh_config.d",
+		"--ro-bind", filepath.Join(tempHost, sshConfigDirName), "/etc/ssh/ssh_config.d",
 		"--proc", "/proc",
 		"--dev", "/dev",
 		"--tmpfs", "/dev/shm",
 		"--bind", "/home/u/proj", "/home/u/proj",
-		"--bind", "/tmp/eitri-abc", "/tmp",
+		"--bind", tempHost, tempHost,
+		"--bind", "/tmp/kubeconfig", "/tmp/kubeconfig",
+		"--setenv", "TMPDIR", tempHost,
+		"--setenv", "TEMP", tempHost,
+		"--setenv", "TMP", tempHost,
 		"--chdir", "/home/u/proj",
 		"/bin/bash", "-c",
 	}
@@ -133,11 +138,53 @@ func TestSandboxRealBwrapIntegration(t *testing.T) {
 	if _, err := os.Stat(ws + "/probe.txt"); err != nil {
 		t.Fatalf("workspace write did not land host-side: %v", err)
 	}
-	if _, err := sb.Run(context.Background(), "echo tmp-data > /tmp/inside.tmp"); err != nil {
-		t.Fatalf("tmp write error = %v", err)
+	if _, err := sb.Run(context.Background(), "test \"$TMPDIR\" = "+shellQuote(tempHost)+" && test \"$TEMP\" = \"$TMPDIR\" && test \"$TMP\" = \"$TMPDIR\""); err != nil {
+		t.Fatalf("session temp env not set: %v", err)
+	}
+	if _, err := sb.Run(context.Background(), "echo tmp-data > \"$TMPDIR/inside.tmp\""); err != nil {
+		t.Fatalf("session temp write error = %v", err)
 	}
 	if _, err := os.Stat(tempHost + "/inside.tmp"); err != nil {
-		t.Fatalf("sandbox /tmp write did not land in session temp host dir: %v", err)
+		t.Fatalf("sandbox $TMPDIR write did not land in session temp host dir: %v", err)
+	}
+	hostTmp, err := os.CreateTemp("", "eitri-host-tmp-*.txt")
+	if err != nil {
+		t.Fatalf("create host tmp probe: %v", err)
+	}
+	hostTmpPath := hostTmp.Name()
+	if _, err := hostTmp.WriteString("host-tmp-visible\n"); err != nil {
+		t.Fatalf("write host tmp probe: %v", err)
+	}
+	if err := hostTmp.Close(); err != nil {
+		t.Fatalf("close host tmp probe: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(hostTmpPath) })
+	if o, err := sb.Run(context.Background(), "cat "+shellQuote(hostTmpPath)); err != nil || o == nil || strings.TrimSpace(o.Stdout) != "host-tmp-visible" {
+		out := ""
+		if o != nil {
+			out = o.Combined()
+		}
+		t.Fatalf("host /tmp file not readable in sandbox: out=%q err=%v", out, err)
+	}
+	if _, err := sb.Run(context.Background(), "echo denied > /tmp/eitri-should-not-write"); err == nil {
+		t.Fatal("sandbox wrote host /tmp without extra writable path; want read-only failure")
+	}
+	extraTmp, err := os.CreateTemp("", "eitri-extra-writable-*.txt")
+	if err != nil {
+		t.Fatalf("create extra writable probe: %v", err)
+	}
+	extraTmpPath := extraTmp.Name()
+	if err := extraTmp.Close(); err != nil {
+		t.Fatalf("close extra writable probe: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(extraTmpPath) })
+	sbWithExtra := NewSandbox(ws, tempHost, defaultRunner{}, extraTmpPath)
+	if _, err := sbWithExtra.Run(context.Background(), "echo allowed > "+shellQuote(extraTmpPath)); err != nil {
+		t.Fatalf("extra writable /tmp file was not writable: %v", err)
+	}
+	data, err := os.ReadFile(extraTmpPath)
+	if err != nil || strings.TrimSpace(string(data)) != "allowed" {
+		t.Fatalf("extra writable file content = %q err=%v, want allowed", string(data), err)
 	}
 	if _, err := sb.Run(context.Background(), "test \"$(cat /proc/1/comm)\" = bwrap || exit 1"); err != nil {
 		t.Fatalf("sandbox /proc is not pid-namespace-scoped: %v", err)
@@ -189,6 +236,10 @@ func newNonRemappedWorkspace(t *testing.T) string {
 func bwrapAvailable() bool {
 	_, err := exec.LookPath("bwrap")
 	return err == nil
+}
+
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
 var _ = os.Getenv

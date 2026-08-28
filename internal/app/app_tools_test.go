@@ -220,7 +220,7 @@ func TestBatchOpenInBrowserThroughEngineSeam(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run(batch open_in_browser) error = %v, want nil", err)
 	}
-	if len(br.targets) != 1 || !strings.HasPrefix(br.targets[0], "file:///tmp/eitri-") || !strings.HasSuffix(br.targets[0], "/report.html") {
-		t.Fatalf("browser targets = %v, want one host-translated file:///tmp/eitri-*/report.html", br.targets)
+	if len(br.targets) != 1 || br.targets[0] != "file:///tmp/report.html" {
+		t.Fatalf("browser targets = %v, want file:///tmp/report.html passed through", br.targets)
 	}
 }

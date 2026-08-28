@@ -439,15 +439,23 @@ func (t *Transcript) navigateMouse(msg tea.MouseWheelMsg) bool {
 		if t.histViewport.AtTop() {
 			return t.histFollow
 		}
-		t.histViewport.ScrollUp(3)
+		t.histViewport.ScrollUp(t.mouseWheelRows())
 		t.histFollow = false
 	case tea.MouseWheelDown:
-		t.histViewport.ScrollDown(3)
+		t.histViewport.ScrollDown(t.mouseWheelRows())
 		if t.histViewport.AtBottom() {
 			t.histFollow = true
 		}
 	}
 	return t.histFollow
+}
+
+func (t *Transcript) mouseWheelRows() int {
+	rows := t.histViewport.Height() / 2
+	if rows < 1 {
+		return 1
+	}
+	return rows
 }
 
 // scrollRegion assembles the history-region seam from the persisted viewport's

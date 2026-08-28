@@ -374,6 +374,9 @@ func execToolCall(ctx context.Context, opts AgentOptions, tc provider.ToolCall) 
 		}
 		return ToolExecResult{Text: "invalid tool arguments: " + err.Error()}
 	}
+	if opts.Executor == nil {
+		return ToolExecResult{Text: "error executing tool: no tool executor configured"}
+	}
 	result, err := opts.Executor.Execute(ctx, tc.Name, tc.Arguments)
 	if err != nil {
 		// The executor may still have produced output worth surfacing (bash

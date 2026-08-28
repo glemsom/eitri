@@ -9,7 +9,7 @@ The user's working directory in which Eitri reads, writes, and executes, mounted
 _Avoid_: project, root, cwd
 
 **Path namespace**:
-The view of the filesystem a component operates in; host paths are canonical, with the session temp the only remapped region.
+The view of the filesystem a component operates in; host paths are canonical, including session temp.
 _Avoid_: filesystem, mount namespace
 
 **Session temp**:
@@ -17,7 +17,7 @@ Per-run ephemeral storage shared by `bash` and host-side tools, removed at run e
 _Avoid_: tmp, scratch
 
 **Sandbox / bwrap cage**:
-The isolation boundary for shell commands: root read-only, workspace and session temp writable, separate PID namespace, private `/dev` and `/proc`.
+The isolation boundary for shell commands: root read-only (including host `/tmp` unless configured writable), workspace and session temp writable, separate PID namespace, private `/dev` and `/proc`.
 _Avoid_: container, jail
 
 **Host-side tool**:

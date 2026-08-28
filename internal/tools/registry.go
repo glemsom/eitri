@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 )
 
-// Deps carries the per-session wiring the registry (and hence every tool) needs: the workspace, the session temp host root, the GUID that namespaces /tmp, configured extra writable paths, the sandbox runner, the network and browser seams, and the skill catalog backing the human /skillname slash surface.
+// Deps carries the per-session wiring the registry (and hence every tool) needs: the workspace, the session temp host root, configured extra writable paths, the sandbox runner, the network and browser seams, and the skill catalog backing the human /skillname slash surface.
 type Deps struct {
 	Workspace     string
 	TempHost      string
@@ -69,12 +69,12 @@ func NewRegistry(d Deps) *Registry {
 		d.Browser = xdgBrowser{}
 	}
 	r := &Registry{
-		tr:        NewPathTranslator(d.GUID),
+		tr:        NewPathTranslator(),
 		browser:   d.Browser,
 		workspace: filepath.Clean(d.Workspace),
 		tools:     map[string]Tool{},
 	}
-	r.sandbox = NewSandbox(d.Workspace, d.TempHost, d.Runner)
+	r.sandbox = NewSandbox(d.Workspace, d.TempHost, d.Runner, d.ExtraWritable...)
 	r.tools["bash"] = &bashTool{sb: r.sandbox}
 	r.tools["web_fetch"] = &webFetchTool{f: d.Fetcher}
 	r.tools["open_in_browser"] = &openInBrowserTool{br: d.Browser, tr: r.tr}

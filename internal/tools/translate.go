@@ -1,50 +1,25 @@
 // Package tools holds the agent's tool surface: the shared tool registry, the core tools (bash, web_fetch, open_in_browser), the bwrap sandbox runner, and the single path-namespace translation seam every path-taking tool routes through.
 package tools
 
-import (
-	"path/filepath"
-	"strings"
-)
+import "path/filepath"
 
-// GUID identifies one run's session temp namespace.
+// GUID identifies one run.
 type GUID string
 
-// hostTempPrefix returns the host-form temp root for g, e.g. /tmp/eitri-<GUID>.
-func hostTempPrefix(g GUID) string {
-	return "/tmp/eitri-" + string(g)
-}
+// PathTranslator is the shared seam for path-taking host-side tools. Session temp now lives at the same absolute path inside and outside the sandbox, so translation is identity; Resolve still applies bash's workspace-relative base.
+type PathTranslator struct{}
 
-// PathTranslator is the single, shared seam that maps the two halves of the path namespace: sandbox /tmp <=> host /tmp/eitri-<GUID>.
-type PathTranslator struct {
-	g GUID
-}
-
-// HostTempFor returns the host-form session temp root for g (e.g. /tmp/eitri-<GUID>).
-func HostTempFor(g GUID) string {
-	return hostTempPrefix(g)
-}
-
-// NewPathTranslator returns a translator for the session temp namespace g.
-func NewPathTranslator(g GUID) *PathTranslator {
-	return &PathTranslator{g: g}
+// NewPathTranslator returns a translator for the current path namespace.
+func NewPathTranslator() *PathTranslator {
+	return &PathTranslator{}
 }
 
 // SandboxToHost translates a model-facing sandbox path to its host form.
 func (t *PathTranslator) SandboxToHost(p string) (string, bool) {
-	ht := hostTempPrefix(t.g)
-	if p == ht || strings.HasPrefix(p, ht+"/") {
-		return p, false
-	}
-	if p == "/tmp" {
-		return ht, true
-	}
-	if strings.HasPrefix(p, "/tmp/") {
-		return ht + p[len("/tmp"):], true
-	}
 	return p, false
 }
 
-// Resolve translates a model-supplied path to its host form: sandbox /tmp maps to the session temp host root and a workspace-relative path resolves against the workspace root (bash's cwd).
+// Resolve translates a model-supplied path to its host form; workspace-relative paths resolve against the workspace root (bash's cwd).
 func (t *PathTranslator) Resolve(p, workspace string) string {
 	host, _ := t.SandboxToHost(p)
 	if !filepath.IsAbs(host) {
@@ -53,17 +28,7 @@ func (t *PathTranslator) Resolve(p, workspace string) string {
 	return host
 }
 
-// HostToSandbox is the reverse of SandboxToHost: it maps a host temp path back to the sandbox /tmp form the model sees.
+// HostToSandbox is the reverse of SandboxToHost.
 func (t *PathTranslator) HostToSandbox(p string) (string, bool) {
-	ht := hostTempPrefix(t.g)
-	if p == "/tmp" {
-		return p, false
-	}
-	if p == ht {
-		return "/tmp", true
-	}
-	if strings.HasPrefix(p, ht+"/") {
-		return "/tmp" + p[len(ht):], true
-	}
 	return p, false
 }

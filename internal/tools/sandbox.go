@@ -40,18 +40,25 @@ func (defaultRunner) Run(ctx context.Context, name string, args []string) (*Outp
 const sshConfigDirName = "etc-ssh-config.d"
 
 type Sandbox struct {
-	workspace string
-	tempHost  string
-	run       Runner
+	workspace     string
+	tempHost      string
+	extraWritable []string
+	run           Runner
 }
 
-// NewSandbox builds a sandbox for workspace (host path, RW) with the session temp at tempHost (host /tmp/eitri-<GUID>). run is the command runner seam.
-func NewSandbox(workspace, tempHost string, run Runner) *Sandbox {
-	return &Sandbox{workspace: workspace, tempHost: tempHost, run: run}
+// NewSandbox builds a sandbox for workspace (host path, RW) with the session temp at tempHost (same absolute path inside and outside the cage). run is the command runner seam.
+func NewSandbox(workspace, tempHost string, run Runner, extraWritable ...string) *Sandbox {
+	if tempHost != "" {
+		tempHost = filepath.Clean(tempHost)
+	}
+	return &Sandbox{workspace: workspace, tempHost: tempHost, extraWritable: cleanPaths(extraWritable), run: run}
 }
 
 // Run executes the shell command cmd inside the bwrap cage and returns its output. cmd is a shell string executed by /bin/bash -c.
 func (s *Sandbox) Run(ctx context.Context, cmd string) (*Output, error) {
+	if s.tempHost == "" {
+		return nil, errors.New("session temp path is empty")
+	}
 	if err := os.MkdirAll(s.tempHost, 0o700); err != nil {
 		return nil, err
 	}
@@ -68,11 +75,31 @@ func (s *Sandbox) Run(ctx context.Context, cmd string) (*Output, error) {
 		"--dev", "/dev", // devtmpfs replaces the ro-bind host /dev
 		"--tmpfs", "/dev/shm", // devtmpfs has no /dev/shm; private writable shm
 		"--bind", s.workspace, s.workspace,
-		"--bind", s.tempHost, "/tmp",
+		"--bind", s.tempHost, s.tempHost,
+	}
+	for _, p := range s.extraWritable {
+		args = append(args, "--bind", p, p)
+	}
+	args = append(args,
+		"--setenv", "TMPDIR", s.tempHost,
+		"--setenv", "TEMP", s.tempHost,
+		"--setenv", "TMP", s.tempHost,
 		"--chdir", s.workspace,
 		"/bin/bash", "-c", cmd,
-	}
+	)
 	return s.run.Run(ctx, "bwrap", args)
+}
+
+// cleanPaths returns cleaned bind paths, dropping empties.
+func cleanPaths(paths []string) []string {
+	out := make([]string, 0, len(paths))
+	for _, p := range paths {
+		if p == "" {
+			continue
+		}
+		out = append(out, filepath.Clean(p))
+	}
+	return out
 }
 
 // prepareSshConfig materializes a user-owned copy of /etc/ssh/ssh_config.d into the session temp (idempotently), dereferencing symlinks so referenced include files (e.g. /usr/lib/systemd/ssh_config.d/20-systemd-ssh-proxy.conf) become real files owned by the caller instead of host-root targets that read as nobody inside the user namespace.

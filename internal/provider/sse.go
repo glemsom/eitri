@@ -61,7 +61,7 @@ func (s *sse) Next() (sseEvent, error) {
 func readLine(r *bufio.Reader) (string, error) {
 	line, err := r.ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
-		return "", io.EOF
+		return "", err
 	}
 	if errors.Is(err, io.EOF) && line == "" {
 		return "", io.EOF

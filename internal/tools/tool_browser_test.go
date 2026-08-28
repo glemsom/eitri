@@ -49,14 +49,14 @@ func TestOpenInBrowserTranslatesSessionTempToHost(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(top) })
 	r := NewRegistry(Deps{
 		Workspace: ws,
-		TempHost:  "/tmp/eitri-g",
+		TempHost:  filepath.Join(top, "sessions", "g", "tmp"),
 		GUID:      GUID("g"),
 		Runner:    &recordingRunner{},
 		Fetcher:   &stubFetcher{body: "<html><body></body></html>"},
 		Browser:   &recordingBrowser{},
 	})
 	br := r.browser.(*recordingBrowser)
-	res, err := r.Run(context.Background(), "open_in_browser", argMap("path", "file:///tmp/report.html"))
+	res, err := r.Run(context.Background(), "open_in_browser", argMap("path", "file://"+filepath.Join(top, "sessions", "g", "tmp", "report.html")))
 	out := res.Text
 	if err != nil {
 		t.Fatalf("open_in_browser error = %v, want nil", err)
@@ -64,14 +64,14 @@ func TestOpenInBrowserTranslatesSessionTempToHost(t *testing.T) {
 	if out == "" {
 		t.Fatal("open_in_browser returned no confirmation")
 	}
-	if len(br.targets) != 1 || br.targets[0] != "file:///tmp/eitri-g/report.html" {
-		t.Fatalf("browser targets = %v, want translated host path file:///tmp/eitri-g/report.html", br.targets)
+	if len(br.targets) != 1 || br.targets[0] != "file://"+filepath.Join(top, "sessions", "g", "tmp", "report.html") {
+		t.Fatalf("browser targets = %v, want session temp path unchanged", br.targets)
 	}
 }
 
 func TestOpenInBrowserTranslateErrorsOnMalformedFileURL(t *testing.T) {
 	t.Parallel()
-	o := &openInBrowserTool{br: &recordingBrowser{}, tr: NewPathTranslator(GUID("g"))}
+	o := &openInBrowserTool{br: &recordingBrowser{}, tr: NewPathTranslator()}
 	host, err := o.translate("file://%zz")
 	if err == nil {
 		t.Fatalf("translate(file://%%zz) error = nil, want error; host = %q", host)
@@ -89,7 +89,7 @@ func (b *failingBrowser) Open(_ context.Context, _ string) error { return b.err 
 
 func TestOpenInBrowserStableMeta(t *testing.T) {
 	t.Parallel()
-	o := &openInBrowserTool{br: &recordingBrowser{}, tr: NewPathTranslator(GUID("g"))}
+	o := &openInBrowserTool{br: &recordingBrowser{}, tr: NewPathTranslator()}
 	if got := o.Name(); got != "open_in_browser" {
 		t.Fatalf("Name() = %q, want open_in_browser", got)
 	}
@@ -101,7 +101,7 @@ func TestOpenInBrowserStableMeta(t *testing.T) {
 func TestOpenInBrowserRunRejectsMissingPath(t *testing.T) {
 	t.Parallel()
 	br := &recordingBrowser{}
-	o := &openInBrowserTool{br: br, tr: NewPathTranslator(GUID("g"))}
+	o := &openInBrowserTool{br: br, tr: NewPathTranslator()}
 	if _, err := o.Run(context.Background(), map[string]any{}); err == nil {
 		t.Fatal("Run() without path = nil error, want error")
 	}
@@ -113,7 +113,7 @@ func TestOpenInBrowserRunRejectsMissingPath(t *testing.T) {
 func TestOpenInBrowserRunSurfacesLauncherError(t *testing.T) {
 	t.Parallel()
 	br := &failingBrowser{err: errors.New("xdg-open: no app found")}
-	o := &openInBrowserTool{br: br, tr: NewPathTranslator(GUID("g"))}
+	o := &openInBrowserTool{br: br, tr: NewPathTranslator()}
 	_, err := o.Run(context.Background(), argMap("path", "https://example.com"))
 	if err == nil {
 		t.Fatal("Run() = nil error, want the launcher error wrapped")
@@ -129,7 +129,7 @@ func TestOpenInBrowserRunSurfacesLauncherError(t *testing.T) {
 func TestOpenInBrowserRunSurfacesTranslateError(t *testing.T) {
 	t.Parallel()
 	br := &recordingBrowser{}
-	o := &openInBrowserTool{br: br, tr: NewPathTranslator(GUID("g"))}
+	o := &openInBrowserTool{br: br, tr: NewPathTranslator()}
 	if _, err := o.Run(context.Background(), argMap("path", "file://%zz")); err == nil {
 		t.Fatal("Run(file://%%zz) = nil error, want a translate error")
 	}
@@ -140,7 +140,7 @@ func TestOpenInBrowserRunSurfacesTranslateError(t *testing.T) {
 
 func TestOpenInBrowserTranslateSchemeURLPassesThrough(t *testing.T) {
 	t.Parallel()
-	o := &openInBrowserTool{br: &recordingBrowser{}, tr: NewPathTranslator(GUID("g"))}
+	o := &openInBrowserTool{br: &recordingBrowser{}, tr: NewPathTranslator()}
 	host, err := o.translate("https://example.com/page")
 	if err != nil {
 		t.Fatalf("translate(https URL) error = %v, want nil", err)
@@ -152,19 +152,19 @@ func TestOpenInBrowserTranslateSchemeURLPassesThrough(t *testing.T) {
 
 func TestOpenInBrowserTranslateBareTempPath(t *testing.T) {
 	t.Parallel()
-	o := &openInBrowserTool{br: &recordingBrowser{}, tr: NewPathTranslator(GUID("g"))}
+	o := &openInBrowserTool{br: &recordingBrowser{}, tr: NewPathTranslator()}
 	host, err := o.translate("/tmp/report.html")
 	if err != nil {
 		t.Fatalf("translate(/tmp path) error = %v, want nil", err)
 	}
-	if host != "/tmp/eitri-g/report.html" {
-		t.Fatalf("translate(/tmp path) = %q, want /tmp/eitri-g/report.html", host)
+	if host != "/tmp/report.html" {
+		t.Fatalf("translate(/tmp path) = %q, want /tmp/report.html", host)
 	}
 }
 
 func TestOpenInBrowserTranslateFileNonTempPath(t *testing.T) {
 	t.Parallel()
-	o := &openInBrowserTool{br: &recordingBrowser{}, tr: NewPathTranslator(GUID("g"))}
+	o := &openInBrowserTool{br: &recordingBrowser{}, tr: NewPathTranslator()}
 	host, err := o.translate("file:///etc/hosts")
 	if err != nil {
 		t.Fatalf("translate(file:// non-temp) error = %v, want nil", err)
@@ -176,7 +176,7 @@ func TestOpenInBrowserTranslateFileNonTempPath(t *testing.T) {
 
 func TestOpenInBrowserTranslateAlreadyHostPath(t *testing.T) {
 	t.Parallel()
-	o := &openInBrowserTool{br: &recordingBrowser{}, tr: NewPathTranslator(GUID("g"))}
+	o := &openInBrowserTool{br: &recordingBrowser{}, tr: NewPathTranslator()}
 	host, err := o.translate("/tmp/eitri-g/report.html")
 	if err != nil {
 		t.Fatalf("translate(already-host path) error = %v, want nil", err)

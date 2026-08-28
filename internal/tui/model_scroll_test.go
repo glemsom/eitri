@@ -116,6 +116,21 @@ func TestScroll_mouseWheelNavigatesTranscript(t *testing.T) {
 	}
 }
 
+func TestScroll_mouseWheelMovesByVisibleChunk(t *testing.T) {
+	t.Parallel()
+	m := scrollOverflowModel(t)
+	start := scrollOffset(m)
+	wantMin := mustVpHeight(m) / 2
+	if wantMin < 1 {
+		wantMin = 1
+	}
+
+	m = mustUpdate(t, m, wheelMsg(true))
+	if got := start - scrollOffset(m); got < wantMin {
+		t.Fatalf("one wheel tick moved %d rows, want at least half the visible transcript (%d rows)", got, wantMin)
+	}
+}
+
 func TestScroll_mouseWheelRoutesThroughRegionSeam(t *testing.T) {
 	t.Parallel()
 	m := scrollOverflowModel(t)

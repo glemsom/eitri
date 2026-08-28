@@ -7,6 +7,12 @@ import (
 	"testing"
 )
 
+var errSSEReaderBoom = errors.New("reader boom")
+
+type errReader struct{}
+
+func (errReader) Read([]byte) (int, error) { return 0, errSSEReaderBoom }
+
 func TestSSEParserSplitsEvents(t *testing.T) {
 	t.Parallel()
 	in := `data: {"a":1}
@@ -56,5 +62,13 @@ func TestSSEParserEndsAtEOF(t *testing.T) {
 	}
 	if _, err := r.Next(); !errors.Is(err, io.EOF) {
 		t.Fatalf("second Next() error = %v, want io.EOF", err)
+	}
+}
+
+func TestSSEParserPreservesReadErrors(t *testing.T) {
+	t.Parallel()
+	r := newSSE(errReader{})
+	if _, err := r.Next(); !errors.Is(err, errSSEReaderBoom) {
+		t.Fatalf("Next() error = %v, want reader boom", err)
 	}
 }

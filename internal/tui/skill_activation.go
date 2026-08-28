@@ -148,15 +148,25 @@ func slashCommand(prompt string, skills []SkillItem) (name, args string, ok bool
 // on skillDoneMsg so the handler can start the agent turn (args as the prompt, or a default prompt for
 // a bare `/skillname`) with the payload injected into context.
 func skillCmd(activate func(ctx context.Context, name string) (string, error), name, args string) tea.Cmd {
+	ctx, cancel := context.WithCancel(context.Background())
 	return tea.Cmd(func() tea.Msg {
-		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		payload, err := activate(ctx, name)
-		if err != nil {
-			return turnDoneMsg{err: fmt.Errorf("activate skill %q: %w", name, err)}
-		}
-		return skillDoneMsg{name: name, payload: payload, args: args}
+		return runSkillActivation(ctx, activate, name, args, 0)
 	})
+}
+
+func skillCmdWithContext(ctx context.Context, activate func(ctx context.Context, name string) (string, error), name, args string, seq int) tea.Cmd {
+	return tea.Cmd(func() tea.Msg {
+		return runSkillActivation(ctx, activate, name, args, seq)
+	})
+}
+
+func runSkillActivation(ctx context.Context, activate func(ctx context.Context, name string) (string, error), name, args string, seq int) tea.Msg {
+	payload, err := activate(ctx, name)
+	if err != nil {
+		return skillDoneMsg{name: name, args: args, err: err, seq: seq}
+	}
+	return skillDoneMsg{name: name, payload: payload, args: args, seq: seq}
 }
 
 // slashCandidates returns the ordered slash-command completion candidates for the current composer value: the built-in `/settings`, `/copy`, `/login`, and `/help` commands first, then every detected skill whose name starts with the `/...` partial.

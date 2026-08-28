@@ -58,6 +58,8 @@ func (cp *CopilotProvider) SupportedGenerationControls(context.Context) ([]Gener
 
 // bearer resolves the bearer token for a run.
 func (cp *CopilotProvider) bearer(ctx context.Context) (string, error) {
+	cp.mu.Lock()
+	defer cp.mu.Unlock()
 	cfg := cp.cfg
 	switch {
 	case cfg.AccessToken != "" && (cfg.ExpiresAt == 0 || time.Now().Unix() < cfg.ExpiresAt):
