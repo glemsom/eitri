@@ -23,6 +23,7 @@ const (
 
 // StreamEvent is one streamed delta of a turn: a reasoning or answer chunk.
 type StreamEvent struct {
+	RunID int
 	Turn  int
 	Kind  StreamKind
 	Delta string
@@ -30,6 +31,7 @@ type StreamEvent struct {
 
 // TurnEvent marks a turn boundary: Start fires when a turn begins streaming and the matching non-start fires when it completes.
 type TurnEvent struct {
+	RunID     int
 	Turn      int
 	Start     bool
 	EndReason string
@@ -37,6 +39,7 @@ type TurnEvent struct {
 
 // ToolCallEvent fires when the engine begins to execute a tool call — before the call runs, so the TUI can show a "running tool" indicator as the tool executes.
 type ToolCallEvent struct {
+	RunID     int
 	Turn      int
 	ID        string
 	Name      string
@@ -45,6 +48,7 @@ type ToolCallEvent struct {
 
 // ToolResultEvent fires when a tool call's result is available, carrying the deterministic compression metadata the TUI needs to render terse tool output: whether the result is the compressed form, how many lines it spans, and how many lines were hidden behind the explicit "+N more" tail marker.
 type ToolResultEvent struct {
+	RunID        int
 	Turn         int
 	ID           string
 	Name         string
@@ -57,20 +61,22 @@ type ToolResultEvent struct {
 
 // UsageEvent carries per-turn token telemetry: input/output tokens and the deepseek prompt-cache hit/miss split that powers the cache hit-ratio gauge.
 type UsageEvent struct {
+	RunID int
 	Turn  int
 	Usage provider.Usage
 }
 
 // CompactedEvent fires when the session is compacted: the eviction-and-summary happened between two turns, and the TUI surfaces a read-only "[compacted]" marker without blocking the run.
 type CompactedEvent struct {
-	Turn int
+	RunID int
+	Turn  int
 }
 
 // markerRe matches an explicit truncation tail marker Eitri emits when it truncates a heavy tool result — never silent, always an explicit count of what was hidden.
 var markerRe = regexp.MustCompile(`\+([0-9]+) more(?:, \+[0-9]+ bytes truncated)?\n?$`)
 
 // newToolResultEvent builds a ToolResultEvent from a tool's full (pre-cap) result, deriving the compression metadata deterministically from the result string (without re-parsing raw stream or internal history downstream): a result carrying the explicit "+N more" tail marker is the compressed form, and the marker's count is the number of lines hidden behind it. bytesDropped is the byte-cap split: the bytes the cap dropped (the capped form lives only in the provider Message; the event carries Result full).
-func newToolResultEvent(turn int, id, name, result string, bytesDropped int) ToolResultEvent {
+func newToolResultEvent(runID, turn int, id, name, result string, bytesDropped int) ToolResultEvent {
 	dropped, lines := 0, 0
 	if result != "" {
 		lines = strings.Count(result, "\n")
@@ -82,6 +88,7 @@ func newToolResultEvent(turn int, id, name, result string, bytesDropped int) Too
 		}
 	}
 	return ToolResultEvent{
+		RunID:        runID,
 		Turn:         turn,
 		ID:           id,
 		Name:         name,

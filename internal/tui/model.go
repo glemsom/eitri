@@ -161,7 +161,8 @@ type Model struct {
 
 	telemetry *Telemetry
 
-	events *EventFeed
+	events    *EventFeed
+	liveRunID int
 
 	clipboard func(text string) error
 
@@ -224,6 +225,7 @@ func NewModelCfg(d Dependencies) Model {
 		mention:      NewMention(d.WorkspacePath),
 		telemetry:    d.Telemetry,
 		events:       d.Events,
+		liveRunID:    -1,
 		clipboard:    newClipboard(d),
 		splash:       newSplash(d, transcript, kittyCap),
 		kittyCap:     kittyCap,
@@ -325,11 +327,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.events == nil {
 			return m, nil
 		}
-		if msgi.update.Stream != nil {
-			m.applyStreamDelta(*msgi.update.Stream)
+		if msgi.update.TurnStart {
+			m.liveRunID = msgi.update.RunID
+			return m, eventWait(m.events)
 		}
-		if msgi.update.Tool != nil {
-			m.applyToolUpdate(*msgi.update.Tool)
+		if m.acceptEvent(msgi.update) {
+			if msgi.update.Stream != nil {
+				m.applyStreamDelta(*msgi.update.Stream)
+			}
+			if msgi.update.Tool != nil {
+				m.applyToolUpdate(*msgi.update.Tool)
+			}
 		}
 		return m, eventWait(m.events)
 
@@ -568,12 +576,23 @@ func (m Model) submitPrompt() (tea.Model, tea.Cmd) {
 
 // startTurn begins the turn through the session, which owns all of turn start. The live merged event feed is re-armed here, and the spinner tick starts so the busy indicator animates.
 func (m *Model) startTurn(prompt string, payload string) tea.Cmd {
+	m.liveRunID = -1
+	if m.events != nil {
+		m.events.Drain()
+	}
 	cmd := m.session.Begin(m.tx, prompt, payload)
 	m.syncComposerRail()
 	if m.events != nil {
-		return tea.Batch(cmd, eventWait(m.events), spinnerTick())
+		return tea.Batch(cmd, spinnerTick())
 	}
 	return cmd
+}
+
+func (m Model) acceptEvent(u Event) bool {
+	if u.RunID == 0 {
+		return true // tests and package-local callers can deliver direct events.
+	}
+	return m.liveRunID == u.RunID
 }
 
 // stopTurn cancels the in-flight turn through the session.

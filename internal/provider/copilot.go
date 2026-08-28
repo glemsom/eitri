@@ -109,7 +109,7 @@ func (cp *CopilotProvider) streamChatCompletions(ctx context.Context, tok string
 	if err != nil {
 		return nil, err
 	}
-	return cp.chat.Stream(resp.Body), nil
+	return closeBodyOnDone(cp.chat.Stream(resp.Body), resp.Body), nil
 }
 
 func (cp *CopilotProvider) streamResponses(ctx context.Context, tok string, req Request) (Stream, error) {
@@ -121,7 +121,7 @@ func (cp *CopilotProvider) streamResponses(ctx context.Context, tok string, req 
 	if err != nil {
 		return nil, err
 	}
-	return cp.responses.Stream(resp.Body), nil
+	return closeBodyOnDone(cp.responses.Stream(resp.Body), resp.Body), nil
 }
 
 func (cp *CopilotProvider) do(ctx context.Context, tok, url string, body []byte) (*http.Response, error) {

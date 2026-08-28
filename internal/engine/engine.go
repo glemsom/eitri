@@ -33,6 +33,9 @@ type Engine struct {
 
 	histMu    sync.Mutex
 	histories map[string][]provider.Message
+
+	runMu   sync.Mutex
+	nextRun int
 }
 
 // New returns an Engine that talks to p and appends run records to tr.
@@ -53,6 +56,13 @@ func (e *Engine) emit(evt Event) {
 	if e.listener != nil {
 		e.listener(evt)
 	}
+}
+
+func (e *Engine) claimRunID() int {
+	e.runMu.Lock()
+	defer e.runMu.Unlock()
+	e.nextRun++
+	return e.nextRun
 }
 
 // RunRequest is a single non-tool turn of work.
@@ -124,8 +134,8 @@ func (e *Engine) stopped(ctx context.Context) bool {
 }
 
 // finishStopped emits the turn-ending event and the stopped transcript record for a run aborted by cancellation.
-func (e *Engine) finishStopped(res Result, prompt string, turn int) {
-	e.emit(TurnEvent{Turn: turn, EndReason: "stopped"})
+func (e *Engine) finishStopped(res Result, prompt string, runID, turn int) {
+	e.emit(TurnEvent{RunID: runID, Turn: turn, EndReason: "stopped"})
 	if e.transcript != nil {
 		_ = e.transcript.WriteTranscript(fmt.Appendf(nil, "=== %s ===\n%s\n[stopped]\n", prompt, res.Answer))
 	}
@@ -172,6 +182,7 @@ func (e *Engine) NegotiateGenerationControls(ctx context.Context, reqs []provide
 
 // RunAgent drives a tool-capable agent run: it maintains one mutable messages list, executes any returned tool_calls (single-call path is the floor here; hardening is T5), appends a matching role:"tool" result per call, and resubmits until the model stops calling tools.
 func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions) (Result, error) {
+	runID := e.claimRunID()
 	if ctx.Err() != nil {
 		return Result{}, ErrStopped
 	}
@@ -214,7 +225,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		if ctx.Err() != nil {
 			final.Answer = stopContent
 			final.Reasoning = stopReasoning
-			e.finishStopped(final, req.Prompt, turn)
+			e.finishStopped(final, req.Prompt, runID, turn)
 			return final, ErrStopped
 		}
 		if opts.MaxTurns > 0 && turn >= opts.MaxTurns {
@@ -247,11 +258,11 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 					continue
 				}
 			}
-			e.emit(TurnEvent{Turn: turn, EndReason: err.Error()})
+			e.emit(TurnEvent{RunID: runID, Turn: turn, EndReason: err.Error()})
 			return final, err
 		}
 
-		e.emit(TurnEvent{Turn: turn, Start: true})
+		e.emit(TurnEvent{RunID: runID, Turn: turn, Start: true})
 		var done provider.Chunk
 		for {
 			c, err := s.Next()
@@ -264,30 +275,30 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 					stopReasoning += reasoning
 					final.Answer = stopContent
 					final.Reasoning = stopReasoning
-					e.finishStopped(final, req.Prompt, turn)
+					e.finishStopped(final, req.Prompt, runID, turn)
 					return final, ErrStopped
 				}
 				return final, err
 			}
 			if c.Content != "" {
 				content += c.Content
-				e.emit(StreamEvent{Turn: turn, Kind: AnswerStream, Delta: c.Content})
+				e.emit(StreamEvent{RunID: runID, Turn: turn, Kind: AnswerStream, Delta: c.Content})
 			}
 			if c.ReasoningContent != "" {
 				reasoning += c.ReasoningContent
-				e.emit(StreamEvent{Turn: turn, Kind: ReasoningStream, Delta: c.ReasoningContent})
+				e.emit(StreamEvent{RunID: runID, Turn: turn, Kind: ReasoningStream, Delta: c.ReasoningContent})
 			}
 			if c.Usage != nil {
 				final.Usage = c.Usage
 				opts.lastUsage = c.Usage
-				e.emit(UsageEvent{Turn: turn, Usage: *c.Usage})
+				e.emit(UsageEvent{RunID: runID, Turn: turn, Usage: *c.Usage})
 			}
 			done = c
 			if c.Done {
 				break
 			}
 		}
-		e.emit(TurnEvent{Turn: turn, EndReason: done.FinishReason})
+		e.emit(TurnEvent{RunID: runID, Turn: turn, EndReason: done.FinishReason})
 
 		assistant := provider.Message{
 			Role:             provider.RoleAssistant,
@@ -314,13 +325,13 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 				stopReasoning += reasoning
 				final.Answer = stopContent
 				final.Reasoning = stopReasoning
-				e.finishStopped(final, req.Prompt, turn)
+				e.finishStopped(final, req.Prompt, runID, turn)
 				return final, ErrStopped
 			}
-			e.emit(ToolCallEvent{Turn: turn, ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments})
+			e.emit(ToolCallEvent{RunID: runID, Turn: turn, ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments})
 			result := execToolCall(ctx, opts, tc)
 			delivered, dropped := compress.CapBytes(result.Text, compress.DefaultByteCap, result.Compressed)
-			e.emit(newToolResultEvent(turn, tc.ID, tc.Name, result.Text, dropped))
+			e.emit(newToolResultEvent(runID, turn, tc.ID, tc.Name, result.Text, dropped))
 			messages = append(messages, provider.Message{
 				Role:       provider.RoleTool,
 				ToolCallID: tc.ID,

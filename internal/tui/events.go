@@ -45,8 +45,10 @@ type ToolResult struct {
 // the completion order of Bubble Tea's parallel wait commands (tea.Batch makes
 // no ordering guarantee).
 type Event struct {
-	Stream *StreamUpdate
-	Tool   *ToolUpdate
+	RunID     int
+	TurnStart bool
+	Stream    *StreamUpdate
+	Tool      *ToolUpdate
 }
 
 // EventFeed bridges the engine's live event stream into the TUI's rendering
@@ -59,6 +61,18 @@ type EventFeed struct {
 // Dependencies.
 func NewEventFeed() *EventFeed {
 	return &EventFeed{updates: make(chan Event, 256)}
+}
+
+// Drain discards queued observations before a new UI turn starts, preventing an
+// old turn's backlog from attaching to the next prompt.
+func (f *EventFeed) Drain() {
+	for {
+		select {
+		case <-f.updates:
+		default:
+			return
+		}
+	}
 }
 
 // UpdateChan exposes the feed the app wires the engine listener to.

@@ -93,10 +93,10 @@ func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, events *tui.EventFeed
 			switch ev.Kind {
 			case engine.AnswerStream:
 				u := tui.StreamUpdate{Kind: tui.AnswerStream, Delta: ev.Delta}
-				pushEvent(mCh, tui.Event{Stream: &u})
+				pushEvent(mCh, tui.Event{RunID: ev.RunID, Stream: &u})
 			case engine.ReasoningStream:
 				u := tui.StreamUpdate{Kind: tui.ReasoningStream, Delta: ev.Delta}
-				pushEvent(mCh, tui.Event{Stream: &u})
+				pushEvent(mCh, tui.Event{RunID: ev.RunID, Stream: &u})
 			}
 		case engine.UsageEvent:
 			pushTelemetry(teCh, tui.TelemetryUpdate{Kind: tui.TelemetryUsage,
@@ -105,19 +105,20 @@ func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, events *tui.EventFeed
 		case engine.TurnEvent:
 			if ev.Start {
 				pushTelemetry(teCh, tui.TelemetryUpdate{Kind: tui.TelemetryTurn})
+				pushEvent(mCh, tui.Event{RunID: ev.RunID, TurnStart: true})
 			}
 		case engine.CompactedEvent:
 			pushTelemetry(teCh, tui.TelemetryUpdate{Kind: tui.TelemetryCompacted})
 		case engine.ToolCallEvent:
 			u := tui.ToolUpdate{Start: &tui.ToolStart{Name: ev.Name, Args: ev.Arguments}}
-			pushEvent(mCh, tui.Event{Tool: &u})
+			pushEvent(mCh, tui.Event{RunID: ev.RunID, Tool: &u})
 		case engine.ToolResultEvent:
 			u := tui.ToolUpdate{Result: &tui.ToolResult{
 				Name: ev.Name, Result: ev.Result, BytesDropped: ev.BytesDropped,
 				Lines: ev.Lines, Dropped: ev.Dropped,
 				Compressed: ev.Compressed,
 			}}
-			pushEvent(mCh, tui.Event{Tool: &u})
+			pushEvent(mCh, tui.Event{RunID: ev.RunID, Tool: &u})
 		}
 	})
 }
