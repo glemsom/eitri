@@ -205,4 +205,184 @@ func TestModel_slashCompletionDismissedOnEmptyLine(t *testing.T) {
 	if strings.Contains(content, "/settings") || strings.Contains(content, "/review") {
 		t.Errorf("completion list should be dismissed on empty line, got: %q", content)
 	}
+	if strings.Contains(content, "/settings") || strings.Contains(content, "/review") {
+		t.Errorf("completion list should be dismissed on empty line, got: %q", content)
+	}
+}
+
+func TestModel_newCommandAsksConfirmation(t *testing.T) {
+	t.Parallel()
+	var prompted string
+	live := NewLiveSessionKey("old")
+	m := NewModelCfg(Dependencies{
+		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
+			prompted = prompt
+			return TurnResult{Answer: "ok"}, nil
+		},
+		LiveKey: live,
+		NewGUID: func() string { return "fresh" },
+	})
+	m = resize(t, m)
+
+	m = typeText(t, m, "/new")
+	m = keypress(t, m, "enter")
+
+	if prompted != "" {
+		t.Fatalf("`/new` reached the engine seam before confirmation, got prompt %q", prompted)
+	}
+	if !m.prompting || !m.confirmNew {
+		t.Fatalf("`/new` did not open the confirmation overlay (prompting=%v confirmNew=%v)", m.prompting, m.confirmNew)
+	}
+	if live.Get() != "old" {
+		t.Fatalf("`/new` mutated the session key before confirmation, got %q", live.Get())
+	}
+}
+
+func TestModel_newCommandCancelLeavesIntact(t *testing.T) {
+	t.Parallel()
+	var prompted string
+	live := NewLiveSessionKey("old")
+	m := NewModelCfg(Dependencies{
+		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
+			prompted = prompt
+			return TurnResult{Answer: "ok"}, nil
+		},
+		LiveKey: live,
+		NewGUID: func() string { return "fresh" },
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "/hello")
+	m = submitAndWait(t, m)
+	if prompted != "/hello" {
+		t.Fatalf("setup turn prompt = %q, want /hello", prompted)
+	}
+
+	prompted = ""
+	m = typeText(t, m, "/new")
+	m = keypress(t, m, "enter")
+	m = keypress(t, m, "n")
+
+	if prompted != "" {
+		t.Fatalf("`/new` ran a turn after cancel, got prompt %q", prompted)
+	}
+	if live.Get() != "old" {
+		t.Fatalf("`/new` rekeyed after cancel, session key = %q, want old", live.Get())
+	}
+	if m.prompting || m.confirmNew {
+		t.Fatal("confirmation overlay still open after cancel")
+	}
+	if len(m.tx.messages) == 0 {
+		t.Fatal("cancel of `/new` cleared the transcript")
+	}
+}
+
+func TestModel_newCommandConfirmClearsContextAndRekeys(t *testing.T) {
+	t.Parallel()
+	live := NewLiveSessionKey("old")
+	m := NewModelCfg(Dependencies{
+		Turn: func(_ context.Context, _ string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+		LiveKey: live,
+		NewGUID: func() string { return "fresh" },
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "/hello")
+	m = submitAndWait(t, m)
+	m.history.Push("remember me")
+	if len(m.tx.messages) == 0 {
+		t.Fatal("setup did not populate the transcript")
+	}
+
+	m = typeText(t, m, "/new")
+	m = keypress(t, m, "enter")
+	m = keypress(t, m, "y")
+
+	if live.Get() != "fresh" {
+		t.Fatalf("`/new` confirm rekeyed session to %q, want fresh", live.Get())
+	}
+	if len(m.tx.messages) != 0 {
+		t.Fatalf("`/new` confirm did not clear the transcript, got %d messages", len(m.tx.messages))
+	}
+	if m.prompting || m.confirmNew {
+		t.Fatal("confirmation overlay still open after confirm")
+	}
+	if got := m.history.Entries(); len(got) == 0 || got[len(got)-1] != "remember me" {
+		t.Fatalf("`/new` cleared the prompt-history ring, got %q", got)
+	}
+}
+
+func TestModel_newCommandBlockedWhileBusy(t *testing.T) {
+	t.Parallel()
+	live := NewLiveSessionKey("old")
+	m := NewModelCfg(Dependencies{
+		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+		LiveKey: live,
+		NewGUID: func() string { return "fresh" },
+	})
+	m = resize(t, m)
+	m.tx.busy = true
+
+	m = typeText(t, m, "/new")
+	m = keypress(t, m, "enter")
+
+	if m.prompting || m.confirmNew {
+		t.Fatal("`/new` opened confirmation while a turn streams")
+	}
+	if live.Get() != "old" {
+		t.Fatalf("`/new` rekeyed while busy, got %q", live.Get())
+	}
+}
+
+func TestModel_newCommandBlockedWhileSettingsOpen(t *testing.T) {
+	t.Parallel()
+	live := NewLiveSessionKey("old")
+	m := NewModelCfg(Dependencies{
+		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+		LiveKey: live,
+		NewGUID: func() string { return "fresh" },
+	})
+	m = resize(t, m)
+	sm, _ := m.startSettings()
+	m = asModel(t, sm)
+
+	m = typeText(t, m, "/new")
+
+	if m.prompting || m.confirmNew {
+		t.Fatal("`/new` opened confirmation while the settings overlay is open")
+	}
+	if live.Get() != "old" {
+		t.Fatalf("`/new` rekeyed while settings open, got %q", live.Get())
+	}
+	if live.Get() != "old" {
+		t.Fatalf("`/new` rekeyed while settings open, got %q", live.Get())
+	}
+}
+
+func TestModel_newCommandBlockedWhileSkillPending(t *testing.T) {
+	t.Parallel()
+	live := NewLiveSessionKey("old")
+	m := NewModelCfg(Dependencies{
+		Turn: func(_ context.Context, _ string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+		LiveKey: live,
+		NewGUID: func() string { return "fresh" },
+	})
+	m = resize(t, m)
+	m.skillPending = true
+
+	m = typeText(t, m, "/new")
+	m = keypress(t, m, "enter")
+
+	if m.prompting || m.confirmNew {
+		t.Fatal("`/new` opened confirmation while a skill is pending")
+	}
+	if live.Get() != "old" {
+		t.Fatalf("`/new` rekeyed while a skill is pending, got %q", live.Get())
+	}
 }

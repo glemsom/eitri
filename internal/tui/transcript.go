@@ -84,6 +84,22 @@ const (
 // hasContent reports whether any turn material (committed messages or a live timeline) exists, i.e. the transcript is no longer showing the empty welcome state.
 func (t Transcript) hasContent() bool {
 	return len(t.messages) > 0 || t.LiveTimeline() != nil || t.busy
+
+}
+
+// Reset clears all turn material so the transcript returns to the empty
+// welcome state — the `/new` surface (issue #613). It drops committed messages,
+// the tool log, the live session, and the focused block; configuration, the
+// prompt-history ring, and the settings overlay all live outside the
+// transcript and are untouched.
+func (t *Transcript) Reset() {
+	t.messages = nil
+	t.log = toolLog{}
+	t.live = nil
+	t.focus = collapseFocus{}
+	t.layout = transcriptLayout{dirty: true}
+	t.histFollow = true
+	t.busy = false
 }
 
 // LiveTimeline returns the in-progress turn's event log through the wired

@@ -30,7 +30,7 @@ type Session struct {
 
 // New creates a session under dataDir/sessions/<GUID>, GUID-named so runs are unique and auditable. debug enables the HTTP trace sink.
 func New(dataDir string, debug bool) (*Session, error) {
-	guid, err := newGUID()
+	guid, err := NewGUID()
 	if err != nil {
 		return nil, fmt.Errorf("generate session GUID: %w", err)
 	}
@@ -122,8 +122,8 @@ func appendFile(path string, body []byte) {
 	_, _ = f.Write([]byte{'\n'})
 }
 
-// newGUID returns a random lower-case hex identifier.
-func newGUID() (string, error) {
+// NewGUID returns a random lower-case hex session identifier.
+func NewGUID() (string, error) {
 	var buf [16]byte
 	if _, err := rand.Read(buf[:]); err != nil {
 		return "", err

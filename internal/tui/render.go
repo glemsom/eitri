@@ -87,6 +87,14 @@ func promptView(th Theme) string {
 		"  " + th.statusStyle.Render("y") + " continue" + g(" · ", " . ") + th.statusStyle.Render("n") + " stop" + g(" · ", " . ") + th.statusStyle.Render("esc") + " cancel\n"
 }
 
+// newConfirmView renders the `/new` confirmation overlay (issue #613): the
+// existing continuation-prompt overlay, re-worded to confirm a fresh session.
+func newConfirmView(th Theme) string {
+	return th.headerStyle.Render("start a fresh session") + "\n\n" +
+		"  Clear this conversation and start fresh?\n" +
+		"  " + th.statusStyle.Render("y") + " new session" + g(" · ", " . ") + th.statusStyle.Render("n") + " keep" + g(" · ", " . ") + th.statusStyle.Render("esc") + " cancel\n"
+}
+
 // thinkingHeader renders a turn's collapsible reasoning block header.
 func thinkingHeader(th Theme, reasoning, effort string) string {
 	hint := fmt.Sprintf("%s %s tok", g("🤔", "?"), formatTokens(tokenEstimate(reasoning)))

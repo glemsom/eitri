@@ -69,6 +69,7 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 		Splash:              true,
 		Skills:              skillSurface(reg, skills),
 		HistoryPath:         tui.PromptHistoryPath(dataDir),
+		LiveKey:             live,
 		Login: func(ctx context.Context, onCode func(tui.LoginCode)) (config.Config, error) {
 			if currentCfg.Provider != string(provider.ProviderCopilot) {
 				return config.Config{}, fmt.Errorf("login is only available for provider %q", provider.ProviderCopilot)
