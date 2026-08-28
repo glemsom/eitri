@@ -26,20 +26,21 @@ func NewPromptHistory(capacity int) *PromptHistory {
 	return &PromptHistory{cap: capacity}
 }
 
-// push is the internal record step. It returns the new item when the ring
-// actually changed (a prompt worth persisting), else nil.
-func (h *PromptHistory) push(prompt string) *string {
+// push is the internal record step. It reports whether the ring actually
+// changed (true for a non-empty, non-consecutive-duplicate prompt worth
+// persisting).
+func (h *PromptHistory) push(prompt string) bool {
 	if strings.TrimSpace(prompt) == "" {
-		return nil
+		return false
 	}
 	if n := len(h.items); n > 0 && h.items[n-1] == prompt {
-		return nil
+		return false
 	}
 	h.items = append(h.items, prompt)
 	if len(h.items) > h.cap {
 		h.items = h.items[len(h.items)-h.cap:]
 	}
-	return &prompt
+	return true
 }
 
 // Push records a submitted prompt onto the ring. Empty prompts are ignored,
@@ -48,7 +49,7 @@ func (h *PromptHistory) push(prompt string) *string {
 // ring is backed by a file, the whole ring is saved on change (issue #612,
 // part of #608); a failed save is ignored so prompt history never blocks a turn.
 func (h *PromptHistory) Push(prompt string) {
-	if h.push(prompt) == nil {
+	if !h.push(prompt) {
 		return
 	}
 	if h.persist != "" {
@@ -67,8 +68,8 @@ func (h *PromptHistory) Entries() []string {
 func (h *PromptHistory) Len() int { return len(h.items) }
 
 // restore seeds the ring with entries previously persisted, truncating to the
-// devicewide capacity so an oversized or corrupt file cannot grow the ring.
-// entries beyond the capacity (most recent retained) are kept.
+// ring capacity so an oversized or corrupt file cannot grow the ring; only the
+// most recent entries (up to capacity) are kept.
 func (h *PromptHistory) restore(entries []string) {
 	if n := len(entries); n > h.cap {
 		entries = entries[n-h.cap:]
