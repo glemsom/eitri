@@ -104,6 +104,16 @@ func TestSystemPromptGuidesToolSelection(t *testing.T) {
 	}
 }
 
+func TestSystemPromptGuidesHTMLLynxRendering(t *testing.T) {
+	t.Parallel()
+	p := SystemPromptContent()
+	for _, want := range []string{"curl --fail --max-time 30", "| lynx -dump -nolist -stdin", "JSON/data", "say so", "don't fabricate"} {
+		if !strings.Contains(p, want) {
+			t.Fatalf("system prompt must carry lean HTML-rendering guidance; missing %q:\n%s", want, p)
+		}
+	}
+}
+
 func TestSystemPromptStatesOutputCapContract(t *testing.T) {
 	t.Parallel()
 	p := SystemPromptContent()
