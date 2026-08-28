@@ -139,6 +139,10 @@ func Run(opts Options) error {
 	if _, err := lookPath("bwrap"); err != nil {
 		return ErrMissingBwrap
 	}
+	// Probe lynx once at boot; the result is re-detected on every run and
+	// carried per-run into the request. Installing lynx mid-session is unsupported.
+	_, lynxErr := lookPath("lynx")
+	lynxAvailable := lynxErr == nil
 
 	guid := tools.GUID(sess.GUID())
 	tempHost := sess.TempDir()
@@ -176,10 +180,10 @@ func Run(opts Options) error {
 		if err := tuiBootError(currentTUIEnv()); err != nil {
 			return err
 		}
-		return runTUI(e, cfg, reg, key, liveProvider, cfgPath, dir, skills, workspace, tempHost)
+		return runTUI(e, cfg, reg, key, liveProvider, cfgPath, dir, skills, workspace, tempHost, lynxAvailable)
 	}
 
-	res, err := runAgent(context.Background(), e, cfg, reg, key, opts.Prompt, skills, nil, nil)
+	res, err := runAgent(context.Background(), e, cfg, reg, key, opts.Prompt, skills, nil, nil, lynxAvailable)
 	if err != nil {
 		return err
 	}
@@ -222,7 +226,7 @@ func (stderrWarner) Warnf(format string, args ...any) {
 }
 
 // runAgent drives one agent turn (user prompt → assistant answer) over the shared run engine, session transcript, and tool registry that both the TUI and batch use. The model-visible index and the per-run workspace directive are each carried as their own system message so they reach the model without perturbing the byte-stable system prompt; a catalog with none renders to a nil index that keeps the no-index wire bytes intact. ctx is threaded through to the engine so the TUI's per-turn cancellation (Ctrl+C/Esc) reaches an in-flight run; batch passes context.Background() (no stop binding).
-func runAgent(ctx context.Context, e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey, prompt string, catalog *tools.Catalog, skillInject *string, canContinue func() bool) (engine.Result, error) {
+func runAgent(ctx context.Context, e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey, prompt string, catalog *tools.Catalog, skillInject *string, canContinue func() bool, lynx bool) (engine.Result, error) {
 	compaction := &engine.CompactionConfig{Fraction: cfg.CompactionFraction}
 	var skillIndex *string
 	if catalog != nil {
@@ -238,6 +242,7 @@ func runAgent(ctx context.Context, e *engine.Engine, cfg config.Config, reg *too
 		Model:           cfg.Model,
 		Prompt:          prompt,
 		Workspace:       reg.Workspace(),
+		Lynx:            lynx,
 		SkillIndex:      skillIndex,
 		SkillInject:     skillInject,
 		SessionKey:      sessionKey,

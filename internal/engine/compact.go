@@ -77,6 +77,10 @@ func (e *Engine) maybeCompact(ctx context.Context, req RunRequest, opts AgentOpt
 		stableHead = append(stableHead, messages[start])
 		start++
 	}
+	for start < len(messages) && isLynxMessage(messages[start]) {
+		stableHead = append(stableHead, messages[start])
+		start++
+	}
 	for start < len(messages) && isSkillIndexMessage(messages[start]) {
 		stableHead = append(stableHead, messages[start])
 		start++
@@ -238,6 +242,14 @@ func isSkillIndexMessage(m provider.Message) bool {
 // system prompt.
 func isWorkspaceMessage(m provider.Message) bool {
 	return m.Role == provider.RoleSystem && strings.Contains(m.Content, "## Working directory")
+}
+
+// isLynxMessage reports whether a message is the injected per-run HTML-rendering
+// system message (see RunRequest.Lynx / lynxDirective). It matches the
+// directive's heading so history stripping and compaction can drop or preserve
+// it independently of the byte-stable system prompt.
+func isLynxMessage(m provider.Message) bool {
+	return m.Role == provider.RoleSystem && strings.Contains(m.Content, "## HTML rendering")
 }
 
 // renderBody serializes the evicted body messages into a flat transcript the summary model can consume.

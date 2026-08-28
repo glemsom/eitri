@@ -33,7 +33,7 @@ func TestRunAgentCarriesProviderIdentity(t *testing.T) {
 			cap.reqs = nil
 			cfg := config.Default()
 			cfg.Provider = tc.cfgProvider
-			if _, err := runAgent(context.Background(), e, cfg, reg, "sess-"+t.Name(), "hi", &tools.Catalog{}, nil, nil); err != nil {
+			if _, err := runAgent(context.Background(), e, cfg, reg, "sess-"+t.Name(), "hi", &tools.Catalog{}, nil, nil, false); err != nil {
 				t.Fatalf("runAgent error = %v, want nil", err)
 			}
 			if len(cap.reqs) == 0 {
