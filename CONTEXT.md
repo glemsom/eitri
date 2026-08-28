@@ -92,6 +92,10 @@ _Avoid_: debug log, http trace
 A Model-owned in-memory ring of submitted user prompts, capped at 100 entries and deduplicating consecutive repeats. It records real user prompts and `/skill ...` activations but never control slash commands or empty drafts; it is the data source the arrow-key recall reads from and survives a `/new` because it lives on the Model, not the transcript or session.
 _Avoid_: history list, submitted-log.
 
+**Arrow-key recall**:
+The readline-style navigation of the prompt history ring from the composer: `up`/`down` pull a prior/following prompt into the draft while the caret rests on the top/bottom line, and `down` past the newest restores the draft that recall displaced. It only fires at the caret edge, never for `shift+up`/`shift+down`, while a turn streams, or while a completion menu is open; a recalled `/skill ...` line stays inert until Enter submits it through the slash path.
+_Avoid_: history browsing, prompt cycling.
+
 **Kitty graphics capability**:
 The terminal's support for the Kitty graphics protocol, resolved once at TUI startup from `TERM_PROGRAM` with a graphics-query + DA1 probe fallback. Non-Kitty terminals receive zero Kitty escape sequences and fall back to text-only rendering.
 _Avoid_: image support, graphics mode

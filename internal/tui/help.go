@@ -25,7 +25,7 @@ func helpView() string {
 
 	b.WriteString("\n# KEYBINDINGS\n\n")
 	writeHelpCategory(&b, "COMPOSER", []helpRow{
-		{"`up/down`", "navigate completion candidates"},
+		{"`up/down`", "navigate completion candidates; recall a prior/next prompt when the completion list is closed"},
 		{"`tab/enter`", "accept highlighted completion"},
 		{"`esc`", "close completion list"},
 		{"`tab`", "cycle block focus when composer is empty"},

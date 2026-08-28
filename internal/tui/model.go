@@ -185,6 +185,14 @@ type Model struct {
 	// reads from and survives a `/new` because it lives on the Model, not the
 	// transcript or session.
 	history *PromptHistory
+
+	// histIdx is the arrow-recall cursor into the history ring, or -1 while no
+	// prompt is being recalled. histDraft pins the composer draft that recall
+	// displaced (the node the `down` key returns to), or the empty string when
+	// recall started from an empty composer. See handleArrowRecall (issue #611,
+	// part of #608).
+	histIdx   int
+	histDraft string
 }
 
 // NewModel builds a bare chat-only model (no Settings surface), the historical default signature.
@@ -246,6 +254,7 @@ func NewModelCfg(d Dependencies) Model {
 		splash:       newSplash(d, transcript, kittyCap),
 		kittyCap:     kittyCap,
 		history:      NewPromptHistory(defaultPromptHistoryCap),
+		histIdx:      -1,
 	}
 	m.fold = NewFold(m.session)
 	m.session.SetThinkingEnabled(d.Config.ThinkingEnabled)
@@ -399,6 +408,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.slash.Move(-1)
 				return m, nil
 			}
+			var recalled bool
+			m, recalled = m.handleArrowRecall(-1)
+			if recalled {
+				return m, nil
+			}
 		case "down":
 			if m.mention.isOpen() {
 				m.mention.Move(1)
@@ -406,6 +420,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if m.slash.isOpen() {
 				m.slash.Move(1)
+				return m, nil
+			}
+			var recalled bool
+			m, recalled = m.handleArrowRecall(1)
+			if recalled {
 				return m, nil
 			}
 		case "ctrl+s":
@@ -601,6 +620,8 @@ func (m Model) submitPrompt() (tea.Model, tea.Cmd) {
 	m.syncComposerHeight()
 	m.slash.Reset()
 	m.mention.Reset()
+	m.histIdx = -1
+	m.histDraft = ""
 	if prompt == "/settings" {
 		return m.startSettings()
 	}
@@ -643,6 +664,92 @@ func (m *Model) startTurn(prompt string, payload string) tea.Cmd {
 		return tea.Batch(cmd, spinnerTick())
 	}
 	return cmd
+}
+
+// handleArrowRecall implements readline-style prompt recall on the composer
+// (issue #611, part of #608). `up`/`down` recall a prior/following prompt into
+// the draft only while the caret rests on the top (up) or bottom (down) line;
+// elsewhere the key falls through to the textarea caret motion, so in-draft
+// navigation and the shift variants are untouched. Recall is suppressed while
+// a turn streams and while any completion surface is open; a recalled
+// `/skill ...` line stays inert until Enter submits it through the slash path.
+func (m Model) handleArrowRecall(dir int) (Model, bool) {
+	if !m.canRecall() {
+		return m, false
+	}
+	entries := m.history.Entries()
+	if len(entries) == 0 {
+		return m, false
+	}
+
+	// A down key outside an active recall never starts one (readline: down is
+	// only meaningful once up has armed a recall).
+	if dir == 1 && m.histIdx == -1 {
+		return m, false
+	}
+
+	// An up key from neutral arms the recall, archiving the draft, but only
+	// when the caret already sits on the top line. Off that line the up key
+	// simply moves the caret instead and is not handled here.
+	if m.histIdx == -1 {
+		if dir == -1 && m.composer.Line() <= 0 {
+			m.histDraft = m.composer.Value()
+			m.stepArrowRecall(dir, entries)
+		} else {
+			return m, false
+		}
+	} else {
+		m.stepArrowRecall(dir, entries)
+	}
+
+	m.applyRecall(entries)
+	return m, true
+}
+
+// stepArrowRecall moves the recall cursor by dir and clamps it to the ring
+// bounds. Stepping down off the newest entry ends the recall (histIdx == -1)
+// so the archived draft can be restored.
+func (m *Model) stepArrowRecall(dir int, entries []string) {
+	n := len(entries)
+	switch dir {
+	case -1:
+		if m.histIdx == -1 {
+			m.histIdx = n - 1
+			return
+		}
+		if m.histIdx > 0 {
+			m.histIdx--
+		}
+	case 1:
+		if m.histIdx+1 >= n {
+			m.histIdx = -1
+			return
+		}
+		m.histIdx++
+	}
+}
+
+// applyRecall writes the entry at the current recall cursor into the draft,
+// or restores the archived draft when the recall ended (histIdx == -1). The
+// composer is re-tracked so the slash/@ surfaces see the new value.
+func (m *Model) applyRecall(entries []string) {
+	if m.histIdx == -1 {
+		m.composer.SetValue(m.histDraft)
+	} else {
+		m.composer.SetValue(entries[m.histIdx])
+	}
+	m.composer.MoveToEnd()
+	m.syncComposerHeight()
+	m.trackComposer()
+}
+
+// canRecall reports whether arrow recall may fire right now: an open
+// completion menu or a streaming turn both block it.
+func (m Model) canRecall() bool {
+	if m.slash.isOpen() || m.mention.isOpen() {
+		return false
+	}
+	return !m.tx.busy
 }
 
 func (m Model) startSkillActivation(name, args string) (tea.Model, tea.Cmd) {
