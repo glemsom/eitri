@@ -395,6 +395,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.slash.Dismiss()
 				return m, nil
 			}
+			m.endRecall()
 			if m.tx.busy {
 				m.stopTurn()
 			}
@@ -505,6 +506,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
+		// Any key not consumed above edits the composer directly, which ends an
+		// active arrow recall so a recalled prompt doesn't linger as stale state.
+		m.endRecall()
 		nm, cmd := m.composer.Update(msg)
 		m.composer = nm
 		cmds = append(cmds, cmd)
@@ -620,8 +624,7 @@ func (m Model) submitPrompt() (tea.Model, tea.Cmd) {
 	m.syncComposerHeight()
 	m.slash.Reset()
 	m.mention.Reset()
-	m.histIdx = -1
-	m.histDraft = ""
+	m.endRecall()
 	if prompt == "/settings" {
 		return m.startSettings()
 	}
@@ -750,6 +753,14 @@ func (m Model) canRecall() bool {
 		return false
 	}
 	return !m.tx.busy
+}
+
+// endRecall drops any active arrow recall, forgetting the archived draft and
+// the recall cursor. It is idempotent and safe to call from the submit path and
+// any non-arrow key that returns the composer to neutral editing.
+func (m *Model) endRecall() {
+	m.histIdx = -1
+	m.histDraft = ""
 }
 
 func (m Model) startSkillActivation(name, args string) (tea.Model, tea.Cmd) {

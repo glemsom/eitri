@@ -186,6 +186,40 @@ func TestArrowRecall_slashLineSubmitsOnEnter(t *testing.T) {
 	}
 }
 
+func TestArrowRecall_editingEndsRecall(t *testing.T) {
+	t.Parallel()
+	m := arrowHistoryModel(t)
+	m = pushHistory(t, m, "older", "newer")
+	m = keypress(t, m, "up") // "newer"
+	if v := m.composer.Value(); v != "newer" {
+		t.Fatalf("up should recall newest, got %q", v)
+	}
+	m = typeText(t, m, "x") // editing cancels recall
+	m = keypress(t, m, "up")
+	if v := m.composer.Value(); v != "newer" {
+		t.Fatalf("editing then up should recall newest again, got %q", v)
+	}
+}
+
+func TestArrowRecall_escapeEndsRecall(t *testing.T) {
+	t.Parallel()
+	m := arrowHistoryModel(t)
+	m = pushHistory(t, m, "older", "newer")
+	m = keypress(t, m, "up") // "newer"
+	if v := m.composer.Value(); v != "newer" {
+		t.Fatalf("up should recall newest, got %q", v)
+	}
+	m = keypress(t, m, "esc")
+	// esc ends the recall cursor without touching the recalled draft.
+	if v := m.composer.Value(); v != "newer" {
+		t.Fatalf("esc should leave the recalled draft intact, got %q", v)
+	}
+	m = keypress(t, m, "up")
+	if v := m.composer.Value(); v != "newer" {
+		t.Fatalf("esc then up should recall newest again, got %q", v)
+	}
+}
+
 func TestArrowRecall_notRecordedItself(t *testing.T) {
 	t.Parallel()
 	m := arrowHistoryModel(t)
