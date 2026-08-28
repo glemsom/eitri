@@ -84,6 +84,16 @@ func TestSystemPromptDocumentsBashFileOps(t *testing.T) {
 	}
 }
 
+func TestSystemPromptGuidesBashChains(t *testing.T) {
+	t.Parallel()
+	p := SystemPromptContent()
+	for _, want := range []string{"&&", "set -euo pipefail", "STEP:", "later success can hide"} {
+		if !strings.Contains(p, want) {
+			t.Fatalf("system prompt must guide bash-chain safety; missing %q:\n%s", want, p)
+		}
+	}
+}
+
 func TestSystemPromptGuidesToolSelection(t *testing.T) {
 	t.Parallel()
 	p := SystemPromptContent()

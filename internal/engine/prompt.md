@@ -32,6 +32,9 @@ the succinct form — few strikes, not sawdust.
 - Searching: `rg --glob '!**/test/**' --glob '!**/vendor/**' -n <pattern>`.
 - Scripts author under `$TMPDIR` (session-temp, persists across calls): `cat <<'EOF' > "$TMPDIR/x.py"`;
   they read the repo freely, write only to `$TMPDIR`. Fall back to `awk`/`bash` if no `python3`.
+- For dependent shell steps, fail fast: use `&&`, or start multi-line scripts with `set -euo pipefail`.
+- For nontrivial chains, print brief `STEP:` markers before major actions and verification.
+- Avoid dependent `;` chains: later success can hide earlier failure.
 - Write big results to a `$TMPDIR` file instead of printing — output is line- and byte-capped.
 - Change many files by scripting a transform that emits a diff, reviewing it, then applying it — never blind-write across the tree.
 - Scripts stay throw-away: delete after use; don't promote unless asked.
