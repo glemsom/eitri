@@ -171,10 +171,10 @@ func TestModel_toolArgsTruncateToWidth(t *testing.T) {
 	m = resizeTo(t, m, 80, 24)
 	m = typeText(t, m, "run it")
 	m = submitAndWait(t, m)
-	m = toolStart(t, m, "web_fetch", `{"url":"https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After"}`)
-	m = toolResult(t, m, ToolResult{Name: "web_fetch", Result: "error: fetch failed", Lines: 1})
+	m = toolStart(t, m, "bash", `{"command":"curl --fail --max-time 30 https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After"}`)
+	m = toolResult(t, m, ToolResult{Name: "bash", Result: "error: fetch failed", Lines: 1})
 
-	line := lineContaining(view(m), "🌐 web_fetch")
+	line := lineContaining(view(m), "🔧 bash")
 	if line == "" {
 		t.Fatalf("tool row missing, got: %q", view(m))
 	}

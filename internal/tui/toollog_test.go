@@ -171,9 +171,9 @@ func TestToolLog_HeadForms(t *testing.T) {
 			want:  "🔧 bash  ls",
 		},
 		{
-			name:  "web fetch",
-			entry: toolEntry{name: "web_fetch", args: `{"url":"https://example.com"}`},
-			want:  "🌐 web_fetch  https://example.com",
+			name:  "curl fetch in bash",
+			entry: toolEntry{name: "bash", args: `{"command":"curl --fail --max-time 30 https://example.com"}`},
+			want:  "🔧 bash  curl --fail --max-time 30 https://example.com",
 		},
 	}
 	for _, c := range cases {

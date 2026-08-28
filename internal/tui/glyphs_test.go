@@ -32,7 +32,6 @@ func TestToolGlyph_charter(t *testing.T) {
 		ascii string
 	}{
 		{"bash", "🔧", "$"},
-		{"web_fetch", "🌐", "w"},
 		{"open_in_browser", "🌍", "W"},
 		{"unknown", "⊕", "+"},
 	}

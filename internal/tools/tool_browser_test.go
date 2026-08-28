@@ -20,7 +20,22 @@ func (b *recordingBrowser) Open(_ context.Context, target string) error {
 
 func TestOpenInBrowserLaunchesHostSideTarget(t *testing.T) {
 	t.Parallel()
-	r, _ := newWebFetchRegistry(t, &stubFetcher{body: "<html><body></body></html>"})
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("home dir: %v", err)
+	}
+	ws := filepath.Join(home, ".eitri-test-brhost-"+strings.ReplaceAll(t.Name(), "/", "_"))
+	if err := os.MkdirAll(ws, 0o700); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(ws) })
+	r := NewRegistry(Deps{
+		Workspace: ws,
+		TempHost:  filepath.Join(ws, "tmp"),
+		GUID:      GUID("g"),
+		Runner:    &recordingRunner{},
+		Browser:   &recordingBrowser{},
+	})
 	br := r.browser.(*recordingBrowser)
 	res, err := r.Run(context.Background(), "open_in_browser", argMap("path", "https://example.com"))
 	out := res.Text
@@ -52,7 +67,6 @@ func TestOpenInBrowserTranslatesSessionTempToHost(t *testing.T) {
 		TempHost:  filepath.Join(top, "sessions", "g", "tmp"),
 		GUID:      GUID("g"),
 		Runner:    &recordingRunner{},
-		Fetcher:   &stubFetcher{body: "<html><body></body></html>"},
 		Browser:   &recordingBrowser{},
 	})
 	br := r.browser.(*recordingBrowser)

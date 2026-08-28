@@ -13,8 +13,8 @@ import (
 )
 
 // reducedToolTurn asserts, on the first request, that the provider receives
-// exactly the reduced tool surface — bash, web_fetch, open_in_browser — and
-// never the removed read/write/edit/skill tools. It then answers directly so
+// exactly the reduced tool surface — bash, open_in_browser — and never the
+// removed web/read/write/edit/skill tools. It then answers directly so
 // the batch run completes.
 func reducedToolTurn() *provider.Scripted {
 	return provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
@@ -22,19 +22,19 @@ func reducedToolTurn() *provider.Scripted {
 		for _, t := range req.Tools {
 			names[t.Function.Name] = true
 		}
-		if len(names) != 3 {
+		if len(names) != 2 {
 			return provider.StreamFunc(
-				provider.Chunk{Content: fmt.Sprintf("tool count = %d, want exactly 3", len(names)), FinishReason: "stop", Done: true},
+				provider.Chunk{Content: fmt.Sprintf("tool count = %d, want exactly 2", len(names)), FinishReason: "stop", Done: true},
 			), nil
 		}
-		for _, want := range []string{"bash", "web_fetch", "open_in_browser"} {
+		for _, want := range []string{"bash", "open_in_browser"} {
 			if !names[want] {
 				return provider.StreamFunc(
 					provider.Chunk{Content: "missing tool: " + want, FinishReason: "stop", Done: true},
 				), nil
 			}
 		}
-		for _, banned := range []string{"read", "write", "edit", "skill"} {
+		for _, banned := range []string{"read", "write", "edit", "skill", "web_fetch"} {
 			if names[banned] {
 				return provider.StreamFunc(
 					provider.Chunk{Content: "forbidden tool present: " + banned, FinishReason: "stop", Done: true},

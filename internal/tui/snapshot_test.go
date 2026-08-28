@@ -121,9 +121,9 @@ func TestSnapshot_frames(t *testing.T) {
 		Result: "ok (1ms)\n  2 tests passed", Lines: 2,
 	})
 	m = applyReasoningDelta(t, m, "A 429-safe retry needs jittered backoff so a thundering herd never re-collides. The client already centralizes requests in send(), so the retry loop belongs there with the circuit breaker state it already tracks.")
-	m = toolStart(t, m, "web_fetch", `{"url":"https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After"}`)
+	m = toolStart(t, m, "bash", `{"command":"curl --fail --max-time 30 https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After | lynx -dump -nolist -stdin"}`)
 	m = toolResult(t, m, ToolResult{
-		Name: "web_fetch", Result: "error executing tool: fetch failed: DNS lookup failed for developer.mozilla.org", Lines: 1,
+		Name: "bash", Result: "error executing tool: fetch failed: DNS lookup failed for developer.mozilla.org", Lines: 1,
 	})
 	m = applyDelta(t, m, "I added a jittered exponential backoff to the client's `send()` path:\n\n- retry up to 3 attempts\n- base delay 250ms, doubling per attempt\n- ±20% jitter so concurrent clients don't re-collide\n- honors the `Retry-After` header when present\n\nThe fetch to the MDN docs failed (DNS), so the header honors the spec default instead.")
 	m = upd(t, m, turnDoneMsg{
@@ -229,9 +229,9 @@ func scriptedChat(t *testing.T, cfg config.Config, w, h int) Model {
 		Result: "ok (1ms)\n  PASS  TestHTTPClient\n  50 lines", Lines: 2,
 	})
 	m = applyReasoningDelta(t, m, "A 429-safe retry needs jittered backoff so a thundering herd never re-collides. The client already centralizes requests in send(), so the retry loop belongs there.")
-	m = toolStart(t, m, "web_fetch", `{"url":"https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After"}`)
+	m = toolStart(t, m, "bash", `{"command":"curl --fail --max-time 30 https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After | lynx -dump -nolist -stdin"}`)
 	m = toolResult(t, m, ToolResult{
-		Name: "web_fetch", Result: "error executing tool: fetch failed: DNS lookup failed for developer.mozilla.org", Lines: 1,
+		Name: "bash", Result: "error executing tool: fetch failed: DNS lookup failed for developer.mozilla.org", Lines: 1,
 	})
 	m = applyDelta(t, m, "I added a jittered exponential backoff to the client's `send()` path:\n\n- retry up to 3 attempts\n- base delay 250ms, doubling per attempt\n- ±20% jitter so concurrent clients don't re-collide\n- honors the `Retry-After` header when present\n\nThe fetch to the MDN docs failed (DNS), so the header honors the spec default instead.")
 	m = upd(t, m, turnDoneMsg{

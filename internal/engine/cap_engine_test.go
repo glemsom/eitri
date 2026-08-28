@@ -27,12 +27,6 @@ func byteCapToolDefs() []provider.Tool {
 				"path": map[string]any{"type": "string"},
 			}, "required": []any{"path"}},
 		}},
-		{Type: "function", Function: provider.ToolFunction{
-			Name: "web_fetch", Description: "fetch url",
-			Parameters: map[string]any{"type": "object", "properties": map[string]any{
-				"url": map[string]any{"type": "string"},
-			}, "required": []any{"url"}},
-		}},
 	}
 }
 
@@ -265,66 +259,6 @@ func TestAgentByteCapPreservesLookLikeMarkerContent(t *testing.T) {
 	}
 }
 
-func TestAgentByteCapWebFetchKeepsExpandPath(t *testing.T) {
-	t.Parallel()
-	raw := hugeDraft("page")
-
-	var gotResult *ToolResultEvent
-	scripted := provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
-		var toolResults int
-		for _, m := range req.Messages {
-			if m.Role == provider.RoleTool {
-				toolResults++
-			}
-		}
-		if toolResults == 0 {
-			return provider.StreamFunc(
-				provider.Chunk{FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{
-					{ID: "call_fetch", Name: "web_fetch", Arguments: `{"url":"https://example.com/"}`},
-				}, Done: true},
-			), nil
-		}
-		for _, m := range req.Messages {
-			if m.Role == provider.RoleTool && m.Content == raw {
-				t.Error("oversized raw web_fetch result reached the provider message history")
-			}
-		}
-		return provider.StreamFunc(
-			provider.Chunk{Content: "done"},
-			provider.Chunk{FinishReason: "stop", Done: true,
-				Usage: &provider.Usage{PromptTokens: 1, CompletionTokens: 1}},
-		), nil
-	})
-
-	e := New(scripted, &mockTranscript{})
-	e.SetListener(func(evt Event) {
-		if tr, ok := evt.(ToolResultEvent); ok {
-			gotResult = &tr
-		}
-	})
-
-	_, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "fetch"},
-		AgentOptions{
-			Tools:    byteCapToolDefs(),
-			Executor: hugeExecutor(map[string]string{"web_fetch": raw}),
-			MaxTurns: 5,
-		})
-	if err != nil {
-		t.Fatalf("RunAgent() error = %v, want nil", err)
-	}
-
-	if gotResult == nil {
-		t.Fatal("no ToolResultEvent emitted")
-	}
-	if gotResult.Result != raw {
-		t.Errorf("ToolResultEvent.Result is not the full raw page (len=%d, want %d)",
-			len(gotResult.Result), len(raw))
-	}
-
-	if gotResult.BytesDropped <= 0 {
-		t.Errorf("ToolResultEvent.BytesDropped = %d, want > 0", gotResult.BytesDropped)
-	}
-}
 
 func hugeExecutor(results map[string]string) ToolExecutor {
 	return ExecutorFunc(func(_ context.Context, name, _ string) (ToolExecResult, error) {

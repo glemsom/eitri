@@ -48,12 +48,12 @@ func TestRegistryExposesTools(t *testing.T) {
 	for _, n := range r.Names() {
 		got[n] = true
 	}
-	for _, want := range []string{"bash", "web_fetch", "open_in_browser"} {
+	for _, want := range []string{"bash", "open_in_browser"} {
 		if !got[want] {
 			t.Fatalf("registry missing tool %q; names = %v", want, r.Names())
 		}
 	}
-	for _, banned := range []string{"read", "write", "edit", "skill"} {
+	for _, banned := range []string{"read", "write", "edit", "skill", "web_fetch"} {
 		if got[banned] {
 			t.Fatalf("registry still exposes tool %q; names = %v", banned, r.Names())
 		}

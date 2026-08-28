@@ -473,7 +473,7 @@ func toolCategoryOf(name string) toolCategory {
 	switch name {
 	case "bash":
 		return catShell
-	case "web_fetch", "open_in_browser":
+	case "open_in_browser":
 		return catWeb
 	}
 	return catOther
