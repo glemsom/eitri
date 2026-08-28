@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -270,6 +271,35 @@ func TestRenderFlow_thinkingGateHidesReasoningBody(t *testing.T) {
 // through the ExpansionState seam) selects summary vs full result body, and
 // the reported row range covers every rendered row of the expanded card so the
 // hit-test cannot drift from what rendered.
+
+func TestRenderFlow_collapsedToolHeadClampsMultilineCommand(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	cmd := "cat <<'EOF' > file\none\ntwo\nthree\nfour\nfive\nsix\nEOF"
+	args, _ := json.Marshal(map[string]string{"command": cmd})
+	events := []TimelineEvent{
+		{Kind: EventToolStart, Start: &ToolStart{Name: "bash", Args: string(args)}},
+		{Kind: EventToolResult, Result: &ToolResult{Name: "bash", Result: "ok", Lines: 1}},
+	}
+	tool := bashTool()
+	tool.entry.args = string(args)
+
+	collapsed, _ := RenderFlow(renderFlowInput(events, message{}, []flowTool{tool}))
+	p := ansiStrip(collapsed)
+	if strings.Contains(p, "five") || strings.Contains(p, "six") {
+		t.Errorf("collapsed tool head must hide command lines after five, got:\n%s", p)
+	}
+	if !strings.Contains(p, "...") {
+		t.Errorf("collapsed tool head must mark hidden command lines, got:\n%s", p)
+	}
+
+	tool.expanded = true
+	expanded, _ := RenderFlow(renderFlowInput(events, message{}, []flowTool{tool}))
+	p = ansiStrip(expanded)
+	if !strings.Contains(p, "six") || !strings.Contains(p, "EOF") {
+		t.Errorf("expanded tool head must show the full command, got:\n%s", p)
+	}
+}
+
 func TestRenderFlow_toolEntryExpansionDrivesBodyAndRows(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	events := []TimelineEvent{

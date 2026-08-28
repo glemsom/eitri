@@ -9,6 +9,8 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
+const collapsedToolCommandMaxLines = 5
+
 // flowInput is one turn's complete rendering context for the flow renderer:
 // its arrival-ordered event log, the assistant-message snapshot that carries
 // the derived reasoning/answer text and the committed-vs-live stream state,
@@ -370,8 +372,11 @@ func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width
 	}
 	label := toolEntryLabel(te)
 	args := toolEntryArgs(te)
+	if !expanded {
+		args = clampLines(args, collapsedToolCommandMaxLines)
+	}
 	budget := width - lipgloss.Width(label) - 8 // room for the outcome + timer
-	if budget > 1 && lipgloss.Width(args) > budget {
+	if budget > 1 && !strings.Contains(args, "\n") && lipgloss.Width(args) > budget {
 		args = truncateWidth(args, budget-1) + g("…", "...")
 	}
 	head := th.toolCategoryStyle(toolCategoryOf(te.name)).Render(label)
@@ -423,6 +428,20 @@ func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+// clampLines keeps the first max newline-separated rows of s, adding an ellipsis
+// when hidden rows remain. It lets collapsed tool heads stay glanceable even for
+// heredoc-heavy bash commands, while expanded cards keep the full command.
+func clampLines(s string, max int) string {
+	if max <= 0 || s == "" {
+		return ""
+	}
+	lines := strings.Split(s, "\n")
+	if len(lines) <= max {
+		return s
+	}
+	return strings.Join(lines[:max], "\n") + g("…", "...")
 }
 
 // cardFrame is the expanded tool card's frame: a left border in the entry's category hue, shared by the result-dump content.
