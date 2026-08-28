@@ -8,18 +8,10 @@ package tui
 import (
 	"context"
 	"path/filepath"
+	"strconv"
 	"strings"
-	"sync/atomic"
 	"testing"
 )
-
-// seqGUID mints sequential session GUIDs so each test can tell re-mints apart.
-type seqGUID struct{ n int32 }
-
-func (s *seqGUID) next() string {
-	n := atomic.AddInt32(&s.n, 1)
-	return "fresh-" + itoa(int(n))
-}
 
 // TestT6ArrowsAcrossNew recalls submitted prompts both before and after a `/new`
 // confirm: the history ring must survive the session re-mint because it lives on
@@ -27,13 +19,16 @@ func (s *seqGUID) next() string {
 func TestT6ArrowsAcrossNew(t *testing.T) {
 	t.Parallel()
 	live := NewLiveSessionKey("old")
-	guid := &seqGUID{}
+	var mint int
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, _ string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
 		LiveKey: live,
-		NewGUID: guid.next,
+		NewGUID: func() string {
+			mint++
+			return "fresh-" + strconv.Itoa(mint)
+		},
 	})
 	m = resize(t, m)
 	m = pushHistory(t, m, "alpha", "beta")
@@ -42,7 +37,7 @@ func TestT6ArrowsAcrossNew(t *testing.T) {
 		t.Fatalf("live key changed before `/new`, got %q", live.Get())
 	}
 
-	// Confirm `/new`: re-mints the session, keeps the transcript empty.
+	// Confirm `/new`: re-mints the session.
 	m = typeText(t, m, "/new")
 	m = keypress(t, m, "enter")
 	m = keypress(t, m, "y")
@@ -60,7 +55,7 @@ func TestT6ArrowsAcrossNew(t *testing.T) {
 		t.Fatalf("second up after `/new` should walk to the older prompt, got %q (history=%v)", got, m.history.Entries())
 	}
 
-	// A fresh prompt appended after `/new` is prepended for recall too. The
+	// A fresh prompt appended after `/new` becomes the newest recall entry. The
 	// recalled "alpha" draft is cleared first so the new draft types cleanly.
 	m.composer.Reset()
 	m = typeText(t, m, "gamma")
@@ -171,19 +166,4 @@ func TestT6RailIdentityAfterNew(t *testing.T) {
 	if strings.Contains(v, "session old") {
 		t.Errorf("rail CONTEXT still shows stale session id after `/new`, got: %q", v)
 	}
-}
-
-// itoa renders a small non-negative int for sequential GUID synthesis.
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var b [12]byte
-	i := len(b)
-	for n > 0 {
-		i--
-		b[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return string(b[i:])
 }
