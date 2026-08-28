@@ -125,7 +125,7 @@ func workspaceDirective(workspace string) string {
 // state emitted from the live probe rather than baked into the byte-stable
 // cached prompt.md.
 func lynxDirective() string {
-	return "## HTML rendering\n`lynx` is installed. To read a web page, fetch with curl and render with lynx: `curl \"$u\" | lynx -dump -nolist -stdin`."
+	return "## HTML rendering\n`lynx` is installed. For HTML pages, fetch and render to readable text: `curl --fail --max-time 30 \"$u\" | lynx -dump -nolist -stdin`. Skip lynx for JSON/data — save the body and inspect it directly. If the dump comes back empty or garbage (JS-rendered page), say so rather than fabricating content."
 }
 
 // bindSkillToPrompt folds a slash-injected skill payload into the single

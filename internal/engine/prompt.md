@@ -41,5 +41,5 @@ Reach for the sharpest tool: a one-liner (`rg`, `sed`, `awk`, `python3 -c '...'`
 ## Tools
 Choose the tool that matches the job, not the first that springs to mind.
 - `bash` — execute shell commands. Writable workspace, host network, session temp at `$TMPDIR`
-- Fetch http(s) via `bash` + `curl`, never a dedicated web tool: `curl --fail --max-time 30 "$URL"`. Fail on HTTP errors; HTML returns raw (extract `.text`/JSON, don't dump markup).
+- Fetch http(s) via `bash` + `curl`, never a dedicated web tool: `curl --fail --max-time 30 "$URL"`. Fail on HTTP errors. For HTML, save it and extract text, don't dump markup; for JSON/data, inspect the body directly.
 - `open_in_browser` — open URL or host path/file URL. For rendered HTML: `cat > "$TMPDIR/x.html" <<'EOF' … EOF`, then pass expanded `file://$TMPDIR/x.html`.
