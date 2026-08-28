@@ -19,7 +19,15 @@ type OpenAICompatible struct {
 
 // NewOpenAICompatible returns a client for the given Bearer key and base URL (the full /v1/chat/completions endpoint or a prefix to which it appends).
 func NewOpenAICompatible(apiKey, url string) *OpenAICompatible {
-	return &OpenAICompatible{apiKey: apiKey, url: url}
+	return &OpenAICompatible{apiKey: apiKey, url: normalizeChatCompletionsURL(url)}
+}
+
+func normalizeChatCompletionsURL(raw string) string {
+	u := strings.TrimRight(raw, "/")
+	if strings.HasSuffix(u, "/chat/completions") {
+		return u
+	}
+	return u + "/chat/completions"
 }
 
 // Models implements ModelLister: it GETs the provider's /models endpoint and returns the discovered model catalog.

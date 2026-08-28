@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/glemsom/eitri/internal/engine"
 	"github.com/glemsom/eitri/internal/provider"
@@ -83,6 +84,33 @@ func TestFeedEngineEventsMergedArrivalOrder(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("merged event %d = %q, want %q (full order %v)", i, got[i], want[i], got)
 		}
+	}
+}
+
+func TestPushEventPreservesFullBufferEvents(t *testing.T) {
+	ch := make(chan tui.Event, 1)
+	ch <- tui.Event{RunID: 1, TurnStart: true}
+	done := make(chan struct{})
+	go func() {
+		pushEvent(ch, tui.Event{RunID: 2, Tool: &tui.ToolUpdate{Start: &tui.ToolStart{Name: "bash"}}})
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		t.Fatal("pushEvent returned while channel was full; event was dropped")
+	case <-time.After(20 * time.Millisecond):
+	}
+	if got := <-ch; got.RunID != 1 {
+		t.Fatalf("first event = %+v, want buffered run 1 event", got)
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("pushEvent did not deliver after buffer freed")
+	}
+	if got := <-ch; got.RunID != 2 || got.Tool == nil || got.Tool.Start == nil {
+		t.Fatalf("second event = %+v, want preserved tool event", got)
 	}
 }
 

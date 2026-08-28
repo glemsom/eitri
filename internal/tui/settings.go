@@ -296,6 +296,7 @@ type settingsResult struct {
 	handled bool
 	cmd     tea.Cmd
 	saved   *config.Config
+	applied bool
 	status  string
 	models  []string
 }
@@ -309,8 +310,8 @@ func (o *SettingsOverlay) Handle(msg tea.Msg) settingsResult {
 		outcome, cmd := o.Key(msgi)
 		res := settingsResult{outcome: outcome, handled: true, cmd: cmd}
 		if outcome == outcomeSaved {
-			cfg, status := o.Save()
-			res.saved, res.status = &cfg, status
+			cfg, status, applied := o.Save()
+			res.saved, res.status, res.applied = &cfg, status, applied
 		}
 		return res
 	case discoverDoneMsg:
@@ -358,20 +359,23 @@ func (o *SettingsOverlay) ApplyDiscovery(msg discoverDoneMsg) {
 // Save persists the draft via the save seams and reports the resulting status
 // message alongside the accepted config; the caller applies the config to the
 // live session.
-func (o *SettingsOverlay) Save() (config.Config, string) {
+func (o *SettingsOverlay) Save() (config.Config, string, bool) {
 	cfg := o.draft()
 	var status string
+	applied := false
 	if o.save == nil {
 		status = "view-only"
+		applied = true
 	} else if err := o.save(cfg); err != nil {
 		status = "save failed: " + err.Error()
 	} else {
 		status = "saved"
+		applied = true
 	}
-	if o.saveBack != nil {
+	if applied && o.saveBack != nil {
 		o.saveBack(cfg)
 	}
-	return cfg, status
+	return cfg, status, applied
 }
 
 // settingsView renders the Settings surface: a focused row per settable knob, the focused row highlighted, a Save/Cancel footer.
@@ -477,8 +481,12 @@ func (m Model) updateSettings(msgi tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.settings = nil
 	case outcomeSaved:
 		m.savedMsg = res.status
-		m.deps.Config = *res.saved
-		m.tx.applySettings(*res.saved)
+		if res.applied {
+			m.deps.Config = *res.saved
+			m.tx.applySettings(*res.saved)
+			m.tx.reasoningEffort = res.saved.ReasoningEffort
+			m.session.SetThinkingEnabled(res.saved.ThinkingEnabled)
+		}
 		m.settings = nil
 	}
 	return m, res.cmd

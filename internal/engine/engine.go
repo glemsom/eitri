@@ -267,6 +267,14 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		for {
 			c, err := s.Next()
 			if errors.Is(err, io.EOF) {
+				if e.stopped(ctx) {
+					stopContent += content
+					stopReasoning += reasoning
+					final.Answer = stopContent
+					final.Reasoning = stopReasoning
+					e.finishStopped(final, req.Prompt, runID, turn)
+					return final, ErrStopped
+				}
 				break
 			}
 			if err != nil {

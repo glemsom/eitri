@@ -66,9 +66,12 @@ func TestSettingsOverlay_SaveReportsStatusAndReturnsDraft(t *testing.T) {
 		}
 	}
 
-	cfg, status := o.Save()
+	cfg, status, applied := o.Save()
 	if status != "saved" {
 		t.Fatalf("save status = %q, want \"saved\"", status)
+	}
+	if !applied {
+		t.Fatal("applied = false, want true after successful save")
 	}
 	if saved.Provider != cfg.Provider {
 		t.Fatalf("seam-saved provider = %q, want %q", saved.Provider, cfg.Provider)
@@ -95,13 +98,21 @@ func TestSettingsOverlay_ApplyDiscoveryErrorState(t *testing.T) {
 
 func TestSettingsOverlay_SaveFailureCarriesError(t *testing.T) {
 	t.Parallel()
+	mirrored := false
 	deps := Dependencies{
-		Save: func(config.Config) error { return errors.New("disk full") },
+		Save:     func(config.Config) error { return errors.New("disk full") },
+		SaveBack: func(config.Config) { mirrored = true },
 	}
 	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, deps)
-	_, status := o.Save()
+	_, status, applied := o.Save()
 	if status != "save failed: disk full" {
 		t.Fatalf("save status = %q, want \"save failed: disk full\"", status)
+	}
+	if applied {
+		t.Fatal("applied = true after save failure, want false")
+	}
+	if mirrored {
+		t.Fatal("SaveBack ran after save failure")
 	}
 }
 

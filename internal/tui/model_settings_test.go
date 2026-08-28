@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -162,6 +163,70 @@ func TestModel_SettingsPathsSpaceTypesASpace(t *testing.T) {
 
 	if len(saved.ExtraWritablePaths) != 1 || saved.ExtraWritablePaths[0] != "/srv v2" {
 		t.Fatalf("saved paths = %v, want [/srv v2] (space typed literally)", saved.ExtraWritablePaths)
+	}
+}
+
+func TestModel_SettingsSaveAppliesThinkingStateToLiveSession(t *testing.T) {
+	t.Parallel()
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+		Models: []string{"deepseek-v4-flash"},
+		Config: cfgFixture(), // thinking on, high effort
+		Save:   func(c config.Config) error { return nil },
+	})
+	m = resize(t, m)
+	m = keypress(t, m, "ctrl+s")
+	for i := fieldProvider; i < fieldThinking; i++ {
+		m = keypress(t, m, "tab")
+	}
+	m = keypress(t, m, "down") // thinking off
+	m = keypress(t, m, "tab")  // effort
+	m = keypress(t, m, "up")   // high -> medium
+	for i := fieldEffort; i < fieldSave; i++ {
+		m = keypress(t, m, "tab")
+	}
+	m = keypress(t, m, "enter")
+
+	if m.session.ThinkingEnabled() {
+		t.Fatal("turn session ThinkingEnabled = true after Settings save, want false")
+	}
+	if m.tx.reasoningEffort != "medium" {
+		t.Fatalf("transcript reasoningEffort = %q, want medium", m.tx.reasoningEffort)
+	}
+}
+
+func TestModel_SettingsSaveFailureDoesNotApplyLiveConfig(t *testing.T) {
+	t.Parallel()
+	applied := false
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+		Models: []string{"deepseek-v4-flash"},
+		Config: cfgFixture(),
+		Save:   func(c config.Config) error { return errors.New("disk full") },
+		SaveBack: func(c config.Config) {
+			applied = true
+		},
+	})
+	m = resize(t, m)
+	m = keypress(t, m, "ctrl+s")
+	m = keypress(t, m, "down") // provider opencode-go -> github-copilot
+	for i := fieldProvider; i < fieldSave; i++ {
+		m = keypress(t, m, "tab")
+	}
+	m = keypress(t, m, "enter")
+
+	if applied {
+		t.Fatal("SaveBack ran after Settings save failure")
+	}
+	if m.deps.Config.Provider != "opencode-go" {
+		t.Fatalf("live config provider = %q after failed save, want opencode-go", m.deps.Config.Provider)
+	}
+	if m.savedMsg != "save failed: disk full" {
+		t.Fatalf("savedMsg = %q, want save failure", m.savedMsg)
 	}
 }
 

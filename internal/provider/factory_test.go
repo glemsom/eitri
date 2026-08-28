@@ -46,6 +46,39 @@ func TestFromConfigRoutesCustomOpenAI(t *testing.T) {
 	}
 }
 
+func TestFromConfigCustomOpenAIBaseURLNormalizesToChatEndpoint(t *testing.T) {
+	t.Parallel()
+	p, err := FromConfig(config.Config{
+		Provider:     "custom-openai",
+		CustomOpenAI: config.OpenAIConfig{BaseURL: "https://my.endpoint/v1/", Key: "k"},
+	}, ProviderEnv{})
+	if err != nil {
+		t.Fatalf("FromConfig() error = %v, want nil", err)
+	}
+	oc, ok := p.(*OpenAICompatible)
+	if !ok {
+		t.Fatalf("FromConfig(custom-openai) = %T, want *OpenAICompatible", p)
+	}
+	if oc.url != "https://my.endpoint/v1/chat/completions" {
+		t.Fatalf("custom-openai url = %q, want normalized chat completions endpoint", oc.url)
+	}
+}
+
+func TestFromConfigOpenCodeBaseURLNormalizesToChatEndpoint(t *testing.T) {
+	t.Parallel()
+	p, err := FromConfig(config.Config{Provider: "opencode-go"}, ProviderEnv{OpenCodeKey: "k", OpenCodeURL: "https://proxy.local/v1"})
+	if err != nil {
+		t.Fatalf("FromConfig() error = %v, want nil", err)
+	}
+	oc, ok := p.(*OpenAICompatible)
+	if !ok {
+		t.Fatalf("FromConfig(opencode-go) = %T, want *OpenAICompatible", p)
+	}
+	if oc.url != "https://proxy.local/v1/chat/completions" {
+		t.Fatalf("opencode url = %q, want normalized chat completions endpoint", oc.url)
+	}
+}
+
 func TestFromConfigCustomOpenAIMissingSettingsFails(t *testing.T) {
 	t.Parallel()
 	_, err := FromConfig(config.Config{Provider: "custom-openai"}, ProviderEnv{})

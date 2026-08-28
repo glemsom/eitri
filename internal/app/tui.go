@@ -131,12 +131,9 @@ func pushTelemetry(ch chan<- tui.TelemetryUpdate, u tui.TelemetryUpdate) {
 	}
 }
 
-// pushEvent delivers a merged event to the ordered feed's channel without blocking the engine's event-goroutine: if the buffered channel is full the event is dropped, because the per-turn timeline is best-effort that must never stall a live run.
+// pushEvent delivers a merged event to the ordered feed's channel without loss. Stream, tool, and turn-start observations are the TUI's transcript source of truth, so dropping a full-buffer event would make the rendered turn diverge from the engine's actual work.
 func pushEvent(ch chan<- tui.Event, u tui.Event) {
-	select {
-	case ch <- u:
-	default:
-	}
+	ch <- u
 }
 
 // skillSurface adapts the run's skill catalog to the TUI's slash-command surface: Items lists the detected skill names for `/` completion and Activate renders the named skill's payload through the registry's slash-activation seam.

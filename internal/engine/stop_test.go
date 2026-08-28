@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"io"
 	"testing"
 
 	"github.com/glemsom/eitri/internal/provider"
@@ -27,6 +28,26 @@ func (s *blockedStream) Next() (provider.Chunk, error) {
 	}
 	<-s.ctx.Done()
 	return provider.Chunk{}, s.ctx.Err()
+}
+
+type eofAfterCancelStream struct {
+	ctx     context.Context
+	chunks  []provider.Chunk
+	nextIdx int
+	ready   chan struct{}
+}
+
+func (s *eofAfterCancelStream) Next() (provider.Chunk, error) {
+	if s.nextIdx < len(s.chunks) {
+		c := s.chunks[s.nextIdx]
+		s.nextIdx++
+		if s.nextIdx == len(s.chunks) && s.ready != nil {
+			close(s.ready)
+		}
+		return c, nil
+	}
+	<-s.ctx.Done()
+	return provider.Chunk{}, io.EOF
 }
 
 func TestErrStoppedWrapsContextCanceled(t *testing.T) {
@@ -156,6 +177,37 @@ func TestRunAgentStopDuringStreamWritesStoppedTranscriptRecord(t *testing.T) {
 	}
 	if !contains(tr.lines[0], "first turn partial") {
 		t.Errorf("stopped transcript record %q missing the partial content", tr.lines[0])
+	}
+}
+
+func TestRunAgentCanceledStreamEOFIsStopped(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	tr := &mockTranscript{}
+	started := make(chan struct{})
+	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
+		return &eofAfterCancelStream{ctx: ctx, ready: started, chunks: []provider.Chunk{{Content: "partial"}}}, nil
+	}), tr)
+
+	done := make(chan struct{})
+	var res Result
+	var err error
+	go func() {
+		defer close(done)
+		res, err = e.RunAgent(ctx, RunRequest{Model: "m", Prompt: "stopme"}, AgentOptions{})
+	}()
+	testutil.Await(t, "provider stream to emit partial", started)
+	cancel()
+	<-done
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("RunAgent error = %v, want context.Canceled-wrapping stop", err)
+	}
+	if res.Answer != "partial" {
+		t.Fatalf("Answer = %q, want stopped partial", res.Answer)
+	}
+	if len(tr.lines) != 1 || !contains(tr.lines[0], "[stopped]") {
+		t.Fatalf("transcript writes = %v, want one stopped record", tr.lines)
 	}
 }
 
