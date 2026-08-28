@@ -22,7 +22,6 @@ type sessionCycle struct {
 	Resp *provider.ResponseLog
 }
 
-// readCycles parses messages.jsonl at path into ordered request/response cycles.
 func readCycles(path string) ([]sessionCycle, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -71,7 +70,6 @@ func readCycles(path string) ([]sessionCycle, error) {
 	return cycles, sc.Err()
 }
 
-// truncate shortens s to n runes with an ellipsis marker.
 func truncate(s string, n int) string {
 	r := []rune(s)
 	if len(r) <= n {
@@ -184,7 +182,6 @@ func stripReasoning(cycles []sessionCycle) {
 	}
 }
 
-// writeCycleJSON emits both records of one cycle as pretty-printed JSON for drill-down.
 func writeCycleJSON(c sessionCycle, out io.Writer) {
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
@@ -288,7 +285,6 @@ func writeTalkMessage(turn int, role string, m provider.Message, out io.Writer, 
 	}
 }
 
-// indent indents every line of s by four spaces so message bodies sit under their `[N] role:` header; empty bodies render as an empty line.
 func indent(s string) string {
 	lines := strings.Split(s, "\n")
 	for i, l := range lines {

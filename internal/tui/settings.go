@@ -78,12 +78,10 @@ func (f settingsForm) Model() string {
 	return f.models[i]
 }
 
-// step moves focus by ±1, wrapping within [0, fieldCount).
 func (f *settingsForm) step(d int) {
 	f.field = (f.field + d + fieldCount) % fieldCount
 }
 
-// next advances to the next field (wrap).
 func (f *settingsForm) next() { f.step(1) }
 
 // adjust steps the focused value. d is ±1 for cycle setters, ±step for numeric steppers, or a direct edit for the free-form path field.

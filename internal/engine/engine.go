@@ -169,7 +169,6 @@ type ToolExecutor interface {
 // ExecutorFunc adapts a plain function to the ToolExecutor interface.
 type ExecutorFunc func(ctx context.Context, name string, argsJSON string) (ToolExecResult, error)
 
-// Execute implements ToolExecutor.
 func (f ExecutorFunc) Execute(ctx context.Context, name, argsJSON string) (ToolExecResult, error) {
 	return f(ctx, name, argsJSON)
 }

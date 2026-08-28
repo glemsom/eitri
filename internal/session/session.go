@@ -11,7 +11,6 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// transcriptName is the session transcript file inside a session dir.
 const transcriptName = "transcript.md"
 
 // TraceSink records full HTTP traffic to/from the provider.
@@ -20,7 +19,6 @@ type TraceSink interface {
 	TraceResponse(body []byte)
 }
 
-// Session is a single run's persistent, auditable on-disk trail.
 type Session struct {
 	dir      string
 	data     *os.File
@@ -51,17 +49,14 @@ func (s *Session) MessageLogSink() provider.MessageLogSink {
 	return s.messages
 }
 
-// GUID returns this session's unique identifier.
 func (s *Session) GUID() string {
 	return filepath.Base(s.dir)
 }
 
-// Dir returns the session transcript directory (sessions/<GUID>).
 func (s *Session) Dir() string {
 	return s.dir
 }
 
-// TempDir returns this run's session temp directory.
 func (s *Session) TempDir() string {
 	return filepath.Join(s.dir, "tmp")
 }
@@ -89,7 +84,6 @@ func (s *Session) TraceSink() TraceSink {
 	return s.trace
 }
 
-// Close flushes and closes the transcript file.
 func (s *Session) Close() error {
 	if s.data != nil {
 		_ = s.data.Close()
@@ -111,7 +105,6 @@ func (f *fileTrace) TraceResponse(body []byte) {
 	appendFile(filepath.Join(f.dir, "trace-response.http"), body)
 }
 
-// appendFile appends body to path, creating the file if it does not exist.
 func appendFile(path string, body []byte) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
@@ -122,7 +115,6 @@ func appendFile(path string, body []byte) {
 	_, _ = f.Write([]byte{'\n'})
 }
 
-// NewGUID returns a random lower-case hex session identifier.
 func NewGUID() (string, error) {
 	var buf [16]byte
 	if _, err := rand.Read(buf[:]); err != nil {

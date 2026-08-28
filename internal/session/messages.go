@@ -1,4 +1,4 @@
-// Package session — messages.go: the message-layer debug transcript. Every provider request/response cycle is appended as one JSON line to messages.jsonl in the session dir, giving a full, token-efficient ground-truth record of what the model saw and produced.
+// Package session provides the on-disk run trail.
 package session
 
 import (
@@ -11,27 +11,22 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// messagesName is the message-layer JSONL transcript inside a session dir.
 const messagesName = "messages.jsonl"
 
-// messageLog appends provider.MessageLogSink records to the session's messages.jsonl.
 type messageLog struct {
 	mu   sync.Mutex
 	dir  string
 	file *os.File
 }
 
-// newMessageLog creates the lazy-writer for messages.jsonl in dir.
 func newMessageLog(dir string) *messageLog {
 	return &messageLog{dir: dir}
 }
 
-// LogRequest implements provider.MessageLogSink.
 func (m *messageLog) LogRequest(rec provider.RequestLog) {
 	m.append(rec)
 }
 
-// LogResponse implements provider.MessageLogSink.
 func (m *messageLog) LogResponse(rec provider.ResponseLog) {
 	m.append(rec)
 }
@@ -54,7 +49,6 @@ func (m *messageLog) append(rec any) {
 	_, _ = m.file.Write(append(line, '\n'))
 }
 
-// closeMessageLog flushes and closes the JSONL file.
 func (s *Session) closeMessageLog() error {
 	if s.messages == nil {
 		return nil

@@ -31,7 +31,6 @@ type Dialect interface {
 // fragments.
 type ChatCompletionsDialect struct{}
 
-// NewChatCompletionsDialect returns a Chat-Completions dialect.
 func NewChatCompletionsDialect() *ChatCompletionsDialect {
 	return &ChatCompletionsDialect{}
 }
@@ -40,7 +39,6 @@ func NewChatCompletionsDialect() *ChatCompletionsDialect {
 // It is stateless, so the single shared instance is safe.
 var chatDialect = NewChatCompletionsDialect()
 
-// Build implements Dialect.
 func (d *ChatCompletionsDialect) Build(req Request) ([]byte, error) {
 	body := chatCompletionBody{
 		Model:                req.Model,
@@ -61,7 +59,6 @@ func (d *ChatCompletionsDialect) Build(req Request) ([]byte, error) {
 	return json.Marshal(body)
 }
 
-// Capabilities implements Dialect.
 func (d *ChatCompletionsDialect) Capabilities() []GenerationControl {
 	return []GenerationControl{
 		GenerationControlGenerationBudget,
@@ -72,19 +69,14 @@ func (d *ChatCompletionsDialect) Capabilities() []GenerationControl {
 	}
 }
 
-// Manifest implements Dialect, re-expressing canonical tool definitions into
-// the Chat-Completions function manifest.
 func (d *ChatCompletionsDialect) Manifest(defs []DialectDefinition) any {
 	return chatToolManifest(defs)
 }
 
-// Stream implements Dialect, returning a stream that parses Chat-Completions
-// SSE events and folds streamed tool_call fragments into complete calls.
 func (d *ChatCompletionsDialect) Stream(r io.Reader) Stream {
 	return &openAIStream{ev: newSSE(r), acc: newToolAccumulator()}
 }
 
-// chatCompletionBody is the OpenAI Chat-Completions request shape.
 type chatCompletionBody struct {
 	Model                string           `json:"model"`
 	Messages             []Message        `json:"messages"`
@@ -133,7 +125,6 @@ type jsonObjectMode struct {
 	Type string `json:"type"`
 }
 
-// maxOutputTokens returns the Generation Budget for req as an int usable as a wire max_completion_tokens: it is 0 when no budget was requested so the field is omitted.
 func maxOutputTokens(req Request) int {
 	if req.MaxOutputTokens <= 0 {
 		return 0
@@ -184,7 +175,6 @@ func chatToolManifest(defs []DialectDefinition) []Tool {
 	return out
 }
 
-// toolsForWire returns the tool manifest to serialize for req.
 func toolsForWire(req Request) []Tool {
 	if !req.ToolSchemaEnforcement || len(req.Tools) == 0 {
 		return req.Tools
@@ -198,7 +188,8 @@ func toolsForWire(req Request) []Tool {
 	return out
 }
 
-// promptCacheRetention returns the OpenCode Go prompt-cache retention duration so the gateway keeps the session cache alive for a day, else empty so the field is omitted and unrelated endpoints stay untouched.
+// prompt-cache retention duration, otherwise empty so the field is omitted.
+// 24h keeps the OpenCode Go gateway's session cache alive for a day.
 const promptCacheRetention24h = "24h"
 
 func promptCacheRetention(req Request) string {
@@ -295,7 +286,6 @@ type openAIStream struct {
 	acc *toolAccumulator
 }
 
-// Next implements Stream.
 func (os *openAIStream) Next() (Chunk, error) {
 	e, err := os.ev.Next()
 	if errors.Is(err, io.EOF) {
@@ -307,7 +297,6 @@ func (os *openAIStream) Next() (Chunk, error) {
 	return parseEvent(e.data, os.acc)
 }
 
-// wireChunk is the OpenAI Chat-Completions `chat.completion.chunk` SSE payload.
 type wireChunk struct {
 	Choices []struct {
 		Index *int `json:"index"`

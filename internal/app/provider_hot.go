@@ -15,7 +15,6 @@ type hotProvider struct {
 
 func newHotProvider(p provider.Provider) *hotProvider { return &hotProvider{p: p} }
 
-// Set swaps the active provider used for subsequent calls.
 func (h *hotProvider) Set(p provider.Provider) {
 	h.mu.Lock()
 	defer h.mu.Unlock()

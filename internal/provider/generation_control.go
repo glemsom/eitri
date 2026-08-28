@@ -33,7 +33,6 @@ type UnsupportedRequiredControlError struct {
 	Control GenerationControl
 }
 
-// Error implements error.
 func (e *UnsupportedRequiredControlError) Error() string {
 	return fmt.Sprintf("provider does not support required generation control %q", string(e.Control))
 }

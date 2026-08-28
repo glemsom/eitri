@@ -28,10 +28,8 @@ type toolLog struct {
 	expansion ExpansionState
 }
 
-// Len reports the number of entries the log holds.
 func (l toolLog) Len() int { return len(l.entries) }
 
-// Entry returns a copy of the entry at index i.
 func (l toolLog) Entry(i int) toolEntry { return l.entries[i] }
 
 // SetAnchor records the message index new entries opened by Apply are anchored to (the "you" message of the turn currently running).

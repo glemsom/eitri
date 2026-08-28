@@ -21,10 +21,8 @@ const busySpinnerTick = 80 * time.Millisecond
 // busySpinnerFrames is the OpenCode-style braille frame set.
 var busySpinnerFrames = []rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
 
-// spinnerTickMsg advances the busy spinner by one frame.
 type spinnerTickMsg struct{}
 
-// spinnerTick returns the command that delivers the next spinner frame after busySpinnerTick.
 func spinnerTick() tea.Cmd {
 	return tea.Tick(busySpinnerTick, func(time.Time) tea.Msg { return spinnerTickMsg{} })
 }

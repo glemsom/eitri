@@ -10,7 +10,6 @@ import (
 	"time"
 )
 
-// RequestLog is one outbound provider request at the message layer.
 type RequestLog struct {
 	Time     time.Time `json:"ts"`
 	Dir      string    `json:"dir"` // always "req"
@@ -19,7 +18,6 @@ type RequestLog struct {
 	Tools    []string  `json:"tools,omitempty"`
 }
 
-// ResponseLog is one completed provider response at the message layer: the assembled assistant output of one streamed turn.
 type ResponseLog struct {
 	Time             time.Time  `json:"ts"`
 	Dir              string     `json:"dir"` // always "resp"
@@ -63,7 +61,6 @@ type loggingStream struct {
 	emitted   bool
 }
 
-// Next implements Stream.
 func (l *loggingStream) Next() (Chunk, error) {
 	c, err := l.inner.Next()
 	if err == nil {
@@ -116,7 +113,6 @@ func NewLoggingProvider(p Provider, sink MessageLogSink) *LoggingProvider {
 	return &LoggingProvider{inner: p, sink: sink}
 }
 
-// Stream implements Provider.
 func (lp *LoggingProvider) Stream(ctx context.Context, req Request) (Stream, error) {
 	lp.sink.LogRequest(RequestLog{
 		Time: time.Now(), Dir: "req",

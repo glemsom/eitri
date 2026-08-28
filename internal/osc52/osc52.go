@@ -23,7 +23,6 @@ type Writer struct {
 	w io.Writer
 }
 
-// New returns an OSC 52 writer that writes to w.
 func New(w io.Writer) *Writer {
 	return &Writer{w: w}
 }

@@ -22,7 +22,6 @@ func newSSE(r io.Reader) *sse {
 	return &sse{r: bufio.NewReader(r)}
 }
 
-// Next returns the next event in the stream.
 func (s *sse) Next() (sseEvent, error) {
 	for {
 		line, err := readLine(s.r)

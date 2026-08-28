@@ -155,9 +155,7 @@ func (s *splashState) advance() {
 // splashWindowTitle is the branding title the splash installs via OSC 0 while it plays.
 const splashWindowTitle = "⚒ Eitri — forging agents"
 
-// oscSetTitle returns the OSC 0 (icon-and-window-title) sequence for title.
-// Terminals without title support ignore the escape, so emitting it is always
-// harmless.
+// Terminals without title support ignore the escape, so emitting it is always harmless.
 func oscSetTitle(title string) string { return "\x1b]0;" + title + "\x07" }
 
 // splashCursorHide is DECTCEM off (CSI ? 25 l): the hardware cursor disappears while the splash owns the screen.
@@ -182,10 +180,8 @@ func splashEndCmd(w io.Writer, prevTitle string) tea.Cmd {
 	}
 }
 
-// splashTickMsg advances the splash by one frame.
 type splashTickMsg struct{}
 
-// splashTick returns the command that delivers the next splash frame.
 func splashTick() tea.Cmd {
 	return tea.Tick(splashTickInterval, func(time.Time) tea.Msg { return splashTickMsg{} })
 }

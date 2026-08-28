@@ -14,12 +14,10 @@ var _ Dialect = (*CopilotChatDialect)(nil)
 // the caller keeps thinking on and disabled when thinking is off.
 type CopilotChatDialect struct{}
 
-// NewCopilotChatDialect returns the Copilot chat dialect.
 func NewCopilotChatDialect() *CopilotChatDialect {
 	return &CopilotChatDialect{}
 }
 
-// Build implements Dialect.
 func (d *CopilotChatDialect) Build(req Request) ([]byte, error) {
 	return json.Marshal(chatCompletionBody{
 		Model:           req.Model,

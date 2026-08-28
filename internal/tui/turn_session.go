@@ -71,7 +71,6 @@ func (s *TurnSession) recordLive(ev TimelineEvent) {
 	s.timeline = append(s.timeline, ev)
 }
 
-// ThinkingEnabled reports whether new messages this turn creates request thinking.
 func (s *TurnSession) ThinkingEnabled() bool { return s.thinkingEnabled }
 
 // Stop cancels the armed turn's context, if any.
@@ -88,7 +87,6 @@ func (s *TurnSession) End() {
 	s.ctx = nil
 }
 
-// SetThinkingEnabled updates the thinking flag used for new messages created during the turn.
 func (s *TurnSession) SetThinkingEnabled(v bool) { s.thinkingEnabled = v }
 
 // Commit reconciles one turn completion — success, error, or stopped — into

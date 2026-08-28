@@ -51,7 +51,6 @@ type responsesContentPart struct {
 // the Responses SSE stream parsing.
 type ResponsesDialect struct{}
 
-// NewResponsesDialect returns a Responses dialect.
 func NewResponsesDialect() *ResponsesDialect {
 	return &ResponsesDialect{}
 }

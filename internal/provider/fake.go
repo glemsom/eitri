@@ -18,7 +18,6 @@ func NewFake(path string) *Fake {
 	return &Fake{path: path}
 }
 
-// Stream implements Provider by replaying the fixture.
 func (f *Fake) Stream(_ context.Context, _ Request) (Stream, error) {
 	data, err := os.ReadFile(f.path)
 	if err != nil {
@@ -46,7 +45,6 @@ type fakeStream struct {
 	acc *toolAccumulator
 }
 
-// Next implements Stream.
 func (fs *fakeStream) Next() (Chunk, error) {
 	e, err := fs.ev.Next()
 	if errors.Is(err, io.EOF) {

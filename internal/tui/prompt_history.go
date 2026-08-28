@@ -57,14 +57,12 @@ func (h *PromptHistory) Push(prompt string) {
 	}
 }
 
-// Entries returns a copy of the recorded prompts in submission order.
 func (h *PromptHistory) Entries() []string {
 	out := make([]string, len(h.items))
 	copy(out, h.items)
 	return out
 }
 
-// Len reports how many prompts the ring currently holds.
 func (h *PromptHistory) Len() int { return len(h.items) }
 
 // restore seeds the ring with entries previously persisted, truncating to the

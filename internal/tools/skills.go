@@ -35,19 +35,16 @@ type Catalog struct {
 	order  []string          // skill names, sorted, project-shadows-user by name
 }
 
-// Names returns the discovered skill names in stable (sorted) order.
 func (c *Catalog) Names() []string {
 	out := make([]string, len(c.order))
 	copy(out, c.order)
 	return out
 }
 
-// Skill returns the named skill, or nil when it is not in the catalog.
 func (c *Catalog) Skill(name string) *Skill {
 	return c.skills[name]
 }
 
-// Scope returns the install scope ("user" or "project") for the named skill, or "" when the name is not in the catalog.
 // ModelVisibleSkills returns the model-visible skill names in sorted order:
 // non-model-invocable skills filtered out, project scope shadowing user scope on
 // name collision (already resolved at discovery).
@@ -236,7 +233,6 @@ func validSkillName(s string) bool {
 	return true
 }
 
-// splitFrontmatter splits SKILL.md content into a frontmatter string and the body.
 func splitFrontmatter(s string) (body, front string, ok bool) {
 	if !strings.HasPrefix(s, "---") {
 		return "", "", false

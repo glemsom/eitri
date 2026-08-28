@@ -81,7 +81,6 @@ func NewRegistry(d Deps) *Registry {
 	return r
 }
 
-// Names returns the registered tool names in stable order.
 func (r *Registry) Names() []string {
 	return []string{"bash", "open_in_browser"}
 }
@@ -89,7 +88,6 @@ func (r *Registry) Names() []string {
 // PathTranslator returns the shared translation seam (exposed for host-side launch points like open_in_browser and for tests).
 func (r *Registry) PathTranslator() *PathTranslator { return r.tr }
 
-// Workspace returns the workspace root (host-absolute, cleaned): the resolve base for sandbox-relative paths.
 func (r *Registry) Workspace() string { return r.workspace }
 
 // Run executes the named tool with the given decoded args, returning its result string plus whether the result is the line-compressor's compressed form.

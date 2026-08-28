@@ -17,7 +17,6 @@ type sliceStream struct {
 	idx    int
 }
 
-// Next implements Stream.
 func (s *sliceStream) Next() (Chunk, error) {
 	if s.idx >= len(s.chunks) {
 		return Chunk{}, io.EOF
@@ -40,7 +39,6 @@ func NewScripted(h Handler) *Scripted {
 	return &Scripted{h: h}
 }
 
-// Stream implements Provider by delegating to the handler.
 func (sp *Scripted) Stream(ctx context.Context, req Request) (Stream, error) {
 	if sp.h == nil {
 		return nil, errors.New("scripted provider: nil handler")

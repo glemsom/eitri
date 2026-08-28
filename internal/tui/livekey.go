@@ -11,19 +11,16 @@ type LiveSessionKey struct {
 	key string
 }
 
-// NewLiveSessionKey builds a live-session-key holder seeded with the initial key.
 func NewLiveSessionKey(initial string) *LiveSessionKey {
 	return &LiveSessionKey{key: initial}
 }
 
-// Get returns the current session key.
 func (l *LiveSessionKey) Get() string {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	return l.key
 }
 
-// Set replaces the current session key with a new one.
 func (l *LiveSessionKey) Set(v string) {
 	l.mu.Lock()
 	l.key = v

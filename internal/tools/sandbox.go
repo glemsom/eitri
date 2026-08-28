@@ -90,7 +90,6 @@ func (s *Sandbox) Run(ctx context.Context, cmd string) (*Output, error) {
 	return s.run.Run(ctx, "bwrap", args)
 }
 
-// cleanPaths returns cleaned bind paths, dropping empties.
 func cleanPaths(paths []string) []string {
 	out := make([]string, 0, len(paths))
 	for _, p := range paths {
@@ -161,7 +160,6 @@ func resolveRegularFile(src string) (path string, ok bool, err error) {
 	return src, true, nil
 }
 
-// copyFile copies src to dst, creating dst as a plain caller-owned file.
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
