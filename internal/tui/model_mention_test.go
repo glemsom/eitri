@@ -103,13 +103,47 @@ func TestModel_mentionSelectPreservesRest(t *testing.T) {
 	if !m.mention.isOpen() {
 		t.Fatalf("caret on @src should keep the dropdown open")
 	}
-	// pick the src/ candidate (already the highlighted match for partial "src")
+	// pick the src/ folder candidate: it descends instead of closing
 	if got := m.mention.SelectedCandidate(); got != "src/" {
 		t.Fatalf("expected src/ candidate, got %q", got)
 	}
 	m = keypress(t, m, "enter")
-	if got := m.composer.Value(); got != "go src" {
-		t.Errorf("after select draft = %q, want bare path with rest preserved", got)
+	if got := m.composer.Value(); got != "go @src/" {
+		t.Errorf("after folder select draft = %q, want @src/ with dropdown kept open", got)
+	}
+	if !m.mention.isOpen() {
+		t.Error("selecting a folder must keep the mention dropdown open")
+	}
+}
+
+func TestModel_mentionDescendsIntoFolderToFullPath(t *testing.T) {
+	t.Parallel()
+	ws := mentionWorkspace(t)
+	m := mentionModel(t, ws)
+	m = typeText(t, m, "@")
+	m = feedMentionWalk(t, m, ws)
+	if !m.mention.isOpen() {
+		t.Fatalf("dropdown should open on @")
+	}
+	// move the selection to the src/ folder and descend into it
+	for m.mention.SelectedCandidate() != "src/" {
+		m = keypress(t, m, "down")
+	}
+	m = keypress(t, m, "enter")
+	if got := m.composer.Value(); got != "@src/" {
+		t.Fatalf("after descend draft = %q, want @src/", got)
+	}
+	// the dropdown now lists the folder's children
+	if got := m.mention.SelectedCandidate(); got != "src/util.go" {
+		t.Fatalf("child candidate = %q, want src/util.go", got)
+	}
+	// selecting the file completes the full path and closes the dropdown
+	m = keypress(t, m, "enter")
+	if got := m.composer.Value(); got != "src/util.go" {
+		t.Errorf("after file select draft = %q, want src/util.go", got)
+	}
+	if m.mention.isOpen() {
+		t.Error("selecting a file must close the mention dropdown")
 	}
 }
 

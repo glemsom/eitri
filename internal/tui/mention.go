@@ -83,25 +83,43 @@ func (mn *Mention) Reset() {
 }
 
 // Select applies the candidate: it replaces only the tracked `@partial` span in
-// value with the candidate's bare path (the `@` stripped), preserving the rest
-// of the draft and any other mentions. The boolean reports whether a selection
-// was made.
+// value, preserving the rest of the draft and any other mentions. A file
+// candidate completes to its bare path (the `@` stripped) and closes the
+// dropdown. A folder candidate (trailing slash) instead descends: the `@` is
+// kept and the folder's path with a trailing slash is inserted so the dropdown
+// re-opens on the folder's children, letting the user keep completing deeper
+// paths recursively. The boolean reports whether a selection was made.
 func (mn *Mention) Select(value string) (string, bool) {
 	if !mn.open || len(mn.cands) == 0 {
 		return value, false
 	}
 	cand := mn.cands[mn.idx]
-	bare := strings.TrimSuffix(cand, "/")
 	end := mn.start + 1 + len(mn.partial)
 	if end > len(value) {
 		end = len(value)
 	}
-	out := value[:mn.start] + bare
+	tail := ""
 	if end < len(value) {
-		out += value[end:]
+		tail = value[end:]
 	}
+	if isFolderCandidate(cand) {
+		// descend: keep the @ and the slash so the dropdown re-filters to the
+		// folder's children instead of closing on a bare folder path
+		mn.partial = cand
+		mn.Open(nil)
+		mn.SetCandidates(candidatesForPartial(mn.manifest, mn.partial))
+		out := value[:mn.start] + "@" + cand + tail
+		return out, true
+	}
+	out := value[:mn.start] + cand + tail
 	mn.Reset()
 	return out, true
+}
+
+// isFolderCandidate reports whether a mention candidate names a directory.
+// Folders carry a trailing slash in the manifest, so the suffix is the marker.
+func isFolderCandidate(cand string) bool {
+	return strings.HasSuffix(cand, "/")
 }
 
 // mentionWalkMsg carries a freshly walked workspace manifest back from the
