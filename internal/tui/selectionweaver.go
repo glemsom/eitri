@@ -85,22 +85,34 @@ func (s selectionWeaver) highlight(content string, sel string) string {
 	if !s.active {
 		return content
 	}
-	startLine, startCol, endLine, endCol := s.selRange()
 	lines := strings.Split(content, "\n")
-	if startLine >= len(lines) {
-		return content
+	return strings.Join(s.highlightVisible(lines, 0, sel), "\n")
+}
+
+// highlightVisible paints the selection over a visible window of rendered rows.
+// base is the content-line number of visible[0], so the in-progress selection
+// stays stored in global transcript coordinates while mouse-motion frames only
+// touch rows that can reach the terminal.
+func (s selectionWeaver) highlightVisible(visible []string, base int, sel string) []string {
+	if !s.active || len(visible) == 0 {
+		return visible
 	}
-	for i := startLine; i <= endLine && i < len(lines); i++ {
+	startLine, startCol, endLine, endCol := s.selRange()
+	for i := range visible {
+		line := base + i
+		if line < startLine || line > endLine {
+			continue
+		}
 		from, to := startCol, endCol
-		if i > startLine {
+		if line > startLine {
 			from = 0
 		}
-		if i < endLine {
-			to = len([]rune(ansiStrip(lines[i]))) - 1
+		if line < endLine {
+			to = len([]rune(ansiStrip(visible[i]))) - 1
 		}
-		lines[i] = highlightRange(lines[i], from, to, sel)
+		visible[i] = highlightRange(visible[i], from, to, sel)
 	}
-	return strings.Join(lines, "\n")
+	return visible
 }
 
 // coveredLines returns the plain text covered by a finished drag selection,

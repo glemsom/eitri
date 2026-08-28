@@ -19,15 +19,15 @@ func TestLayoutCache_hitTestsReuseRecordedIndex(t *testing.T) {
 	m = submitAndWait(t, m)
 	m = toolStart(t, m, "bash", `{"command":"go test ./..."}`)
 	m = toolResult(t, m, ToolResult{Name: "bash", Result: "full output line one\nfull output line two", Lines: 2})
-	view(m) // hydrate the persisted viewport; the value-copy cache discards
+	view(m) // hydrate the persisted viewport and shared transcript layout cache
 
-	if m.tx.layout.builds != 0 {
-		t.Fatalf("layout cache should start unbuilt, got %d builds", m.tx.layout.builds)
+	if m.tx.layout.builds != 1 {
+		t.Fatalf("first view must build the layout exactly once, got %d builds", m.tx.layout.builds)
 	}
 
-	m.tx.toolEntryAtLine(0) // result irrelevant; the build is what we're asserting
+	m.tx.toolEntryAtLine(0) // result irrelevant; the cache reuse is what we're asserting
 	if m.tx.layout.builds != 1 {
-		t.Fatalf("first hit-test must build the layout exactly once, got %d builds", m.tx.layout.builds)
+		t.Fatalf("first hit-test must reuse the hydrated layout, got %d builds", m.tx.layout.builds)
 	}
 
 	for i := 0; i < 20; i++ {

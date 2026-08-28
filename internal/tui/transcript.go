@@ -60,11 +60,14 @@ type msgRowRange struct {
 
 // transcriptLayout is the persistent layout cache for the history region : one batched renderHistory pass captures the row->tool-entry mapping (rows), the row->message mapping (msgs), both in content-line coordinates, and the ANSI-stripped history rows (plain, the drag-select copy space) so the mouse hit-test reads the recorded index instead of re-deriving layout on every pointer event. dirty is true when a transcript-affecting change makes the cached index stale; the lazy hit-test rebuilds exactly once per invalidate.
 type transcriptLayout struct {
-	rows   []toolRowRange // row->tool-entry index in content-line coordinates
-	msgs   []msgRowRange  // row->message index in content-line coordinates
-	plain  []string       // ANSI-stripped history rows (the drag-select space)
-	dirty  bool
-	builds int
+	rows                []toolRowRange // row->tool-entry index in content-line coordinates
+	msgs                []msgRowRange  // row->message index in content-line coordinates
+	rendered            string         // ANSI-rendered history rows, cached for scroll/mouse-only frames
+	renderedLines       []string       // rendered split rows, reused by visible-only selection highlight
+	plain               []string       // ANSI-stripped history rows (the drag-select space)
+	viewportSyncedBuild int            // layout.builds value last installed in the viewport
+	dirty               bool
+	builds              int
 }
 
 // viewMode is the transcript's global expansion mode: the default (respects
@@ -214,9 +217,16 @@ func (t *Transcript) renderPane(band string) string {
 	bandStr := band
 
 	// The scroll region renders through the native bubbletea/viewport component (T1 alt-screen pivot, ), which owns the history clip + follow.
-	var hist strings.Builder
-	t.renderHistory(&hist, nil, nil)
-	histRegion := t.renderHistoryViewport(hist.String(), lineCount(bandStr))
+	content := ""
+	if t.busy {
+		var hist strings.Builder
+		t.renderHistory(&hist, nil, nil)
+		content = hist.String()
+	} else {
+		t.ensureLayout()
+		content = t.layout.rendered
+	}
+	histRegion := t.renderHistoryViewport(content, lineCount(bandStr))
 	if histRegion != "" && !strings.HasSuffix(histRegion, "\n") {
 		histRegion += "\n"
 	}
@@ -392,14 +402,56 @@ func (t *Transcript) renderHistoryViewport(content string, reserved int) string 
 	}
 	t.histViewport.SetWidth(t.transcriptWidth())
 	t.histViewport.SetHeight(vh)
-	if t.weaver.active {
-		content = t.weaver.highlight(content, t.theme.selectionBgSGR())
+	if content != t.layout.rendered || t.layout.viewportSyncedBuild != t.layout.builds || (content != "" && t.histViewport.TotalLineCount() == 0) {
+		t.histViewport.SetContent(content)
+		t.layout.viewportSyncedBuild = t.layout.builds
 	}
-	t.histViewport.SetContent(content)
 	if t.histFollow {
 		t.histViewport.GotoBottom()
 	}
+	if t.weaver.active {
+		return t.highlightedViewportView(content)
+	}
 	return t.histViewport.View()
+}
+
+// highlightedViewportView paints an in-progress drag over only the visible rows.
+// Drag motion arrives far more often than keyboard paging, so repainting the
+// whole transcript on every mouse move makes selection feel stuck on long
+// conversations.
+func (t *Transcript) highlightedViewportView(content string) string {
+	w, h := t.histViewport.Width(), t.histViewport.Height()
+	if sw := t.histViewport.Style.GetWidth(); sw != 0 {
+		w = min(w, sw)
+	}
+	if sh := t.histViewport.Style.GetHeight(); sh != 0 {
+		h = min(h, sh)
+	}
+	if w == 0 || h == 0 {
+		return ""
+	}
+
+	lines := t.layout.renderedLines
+	if content != t.layout.rendered {
+		lines = strings.Split(content, "\n")
+	}
+	top := t.histViewport.YOffset()
+	bottom := min(top+h, len(lines))
+	visible := []string(nil)
+	if top < bottom {
+		visible = append(visible, lines[top:bottom]...)
+	}
+	visible = t.weaver.highlightVisible(visible, top, t.theme.selectionBgSGR())
+
+	contentWidth := w - t.histViewport.Style.GetHorizontalFrameSize()
+	contentHeight := h - t.histViewport.Style.GetVerticalFrameSize()
+	contents := lipgloss.NewStyle().
+		Width(contentWidth).
+		Height(contentHeight).
+		Render(strings.Join(visible, "\n"))
+	return t.histViewport.Style.
+		UnsetWidth().UnsetHeight().
+		Render(contents)
 }
 
 // navigateHistory applies a T2 keyboard scroll command to the persisted history viewport owned by the Transcript: PgUp/Home move toward the older output and break the follow position; PgDn/End move toward the newest and re-engage follow when they reach the bottom.
@@ -495,9 +547,10 @@ func (t *Transcript) recordLayout() {
 	l.rows = l.rows[:0]
 	l.msgs = l.msgs[:0]
 	t.renderHistory(&hist, &l.rows, &l.msgs)
-	lines := strings.Split(hist.String(), "\n")
+	l.rendered = hist.String()
+	l.renderedLines = strings.Split(l.rendered, "\n")
 	l.plain = l.plain[:0]
-	for _, line := range lines {
+	for _, line := range l.renderedLines {
 		l.plain = append(l.plain, ansiStrip(line))
 	}
 	l.dirty = false

@@ -579,6 +579,7 @@ func TestDragSelect_scrolledViewportMapsRows(t *testing.T) {
 func TestDragSelect_wheelStillScrollsDuringDrag(t *testing.T) {
 	t.Parallel()
 	m := scrollOverflowModel(t)
+	m.clipboard = func(string) error { return nil }
 	rows, top := historyContentRows(m)
 	if top <= 0 {
 		t.Fatalf("overflowed follow should be scrolled to the bottom, got top %d", top)

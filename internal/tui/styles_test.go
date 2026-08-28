@@ -352,6 +352,7 @@ func TestModel_themeSeam(t *testing.T) {
 	alt.accent = lipgloss.Color("#FF0000")
 	alt.agentPaneStyle = borderedPane(alt.accent)
 	m.tx.theme = alt
+	m.tx.layout.dirty = true
 
 	pane = lineContaining(view(m), "plain")
 	if !strings.Contains(pane, "\x1b[38;2;255;0;0m") {
