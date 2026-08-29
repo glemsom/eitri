@@ -41,7 +41,7 @@ The derived answer to "what is the agent doing right now": `idle`, `reasoning`, 
 _Avoid_: status, state
 
 **Expansion / collapse**:
-The per-block open/closed state of chain-of-thought and tool-result entries in a transcript, toggled per block and by global expand-all / collapse-all modes.
+The per-block open/closed state of chain-of-thought and tool-result entries in a transcript, toggled per block and by global expand-all / collapse-all modes. A live turn's chain-of-thought is one block per streamed delta, each focused and toggled independently and cleared when the turn commits to a single snapshot block.
 _Avoid_: toggle
 
 **Transcript event log**:

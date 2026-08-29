@@ -723,9 +723,9 @@ type collapsibleBlock struct {
 
 // collapsibleBlocks returns the transcript's collapsible blocks in render
 // order: each turn's reasoning fragments at their prompt position (one block per
-// interleaved fragment on a live turn, one whole-turn block otherwise), then that
-// turn's tool entries in anchored order — the traversal Tab cycles the block focus
-// through.
+// fragment the flow emits — per streaming delta on a live turn (issue #657), one
+// whole-turn block otherwise), then that turn's tool entries in anchored order —
+// the traversal Tab cycles the block focus through.
 func (t Transcript) collapsibleBlocks() []collapsibleBlock {
 	var blocks []collapsibleBlock
 	for i, msg := range t.messages {
@@ -737,16 +737,20 @@ func (t Transcript) collapsibleBlocks() []collapsibleBlock {
 			if m.role == "you" {
 				break // the next turn began without a reasoning block here
 			}
-			frags := t.reasoningFragmentsFor(m)
-			if m.streaming && len(frags) > 0 {
-				// A live turn renders each interleaved reasoning fragment as its
-				// own block so Tab can focus and Enter toggle any single one
-				// independently (issue #449 user story 3).
-				for k := range frags {
-					blocks = append(blocks, collapsibleBlock{kind: blockReasoning, msgIdx: j, fragIdx: k})
+			if m.streaming {
+				// A live turn's flow flushes one reasoning fragment per delta, so
+				// the focus owns one block per emitted fragment in emission order —
+				// fragments on both sides of a tool entry included (issue #658 AC1).
+				// A turn that never asked for reasoning emits none; its blocks stay
+				// unfocusable.
+				if m.thinkingRequested {
+					for k := range liveReasoningFragments(t.flowEventsFor(m)) {
+						blocks = append(blocks, collapsibleBlock{kind: blockReasoning, msgIdx: j, fragIdx: k})
+					}
 				}
 				break
 			}
+			frags := reasoningFragments(t.flowEventsFor(m))
 			if m.thinkingRequested && (m.reasoning != "" || len(frags) > 0) {
 				blocks = append(blocks, collapsibleBlock{kind: blockReasoning, msgIdx: j})
 				break
@@ -759,16 +763,30 @@ func (t Transcript) collapsibleBlocks() []collapsibleBlock {
 	return blocks
 }
 
-// reasoningFragmentsFor returns the reasoning fragments a message's flow
-// renders: a live (streaming) turn reads its fragments from the live timeline
-// (the per-turn event log mid-run), every other turn from its committed event
-// log.
-func (t Transcript) reasoningFragmentsFor(m message) []string {
-	events := m.events
+// flowEventsFor returns the event sequence a message's flow renders from: the
+// live timeline while the message is the running turn's streaming reply, else
+// its committed event log.
+func (t Transcript) flowEventsFor(m message) []TimelineEvent {
 	if t.busy && m.streaming && len(t.LiveTimeline()) > 0 {
-		events = t.LiveTimeline()
+		return t.LiveTimeline()
 	}
-	return reasoningFragments(events)
+	return m.events
+}
+
+// liveReasoningFragments returns the reasoning fragment texts a live turn's
+// flow emits: one per non-empty reasoning delta, in emission order — exactly the
+// per-delta fragments flowRenderer.fold flushes (issue #657). Tool boundaries
+// never merge fragments on a live turn, so the focus enumeration must not merge
+// them either; a committed turn folds all reasoning into one snapshot block and
+// uses reasoningFragments instead.
+func liveReasoningFragments(events []TimelineEvent) []string {
+	var out []string
+	for _, ev := range events {
+		if ev.Kind == EventReasoning && ev.Delta != "" {
+			out = append(out, ev.Delta)
+		}
+	}
+	return out
 }
 
 // reasoningFragments splits an event log into its reasoning fragments: each run
@@ -845,8 +863,11 @@ func (t Transcript) focusedBlockIs(kind blockKind, msgIdx, toolIdx, fragIdx int)
 // live on the seam keyed on reasoningWholeID) always wins, then the global modes,
 // then the collapsed-by-default flag.
 func thinkingExpandedForBlock(msg message, cfg expansionConfig) bool {
-	if msg.streaming && msg.reasoning != "" {
-		// a live streamed block auto-expands unless pinned force-collapsed
+	if msg.streaming && msg.reasoning != "" && cfg.mode != viewCollapseAll {
+		// a live streamed block auto-expands unless pinned force-collapsed, so
+		// the user watches chain-of-thought arrive; the collapse-all mode's hide-
+		// every-body request wins over the auto-expand so E covers every fragment
+		// of a live per-delta burst too (issue #658 AC3).
 		if f, ok := msg.expansion.forceFor(blockReasoning, reasoningWholeID); ok && !f {
 			return false
 		}
