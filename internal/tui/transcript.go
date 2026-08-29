@@ -854,11 +854,12 @@ func (t Transcript) focusedBlockIs(kind blockKind, msgIdx, toolIdx, fragIdx int)
 
 // thinkingExpandedForBlock is the free-function form of the whole-turn
 // reasoning-block expansion decision, read through the ExpansionState seam by
-// both the Transcript and the FlowRenderer. It builds the explicit config bundle from the render-time
-// mode and CoT-collapsed-by-default flag and asks the seam for the whole-block
-// decision without mutating any stored state,
-// folding in the live-stream auto-expand (a streaming reasoning block stays open
-// regardless of mode unless pinned force-collapsed on the seam). A pinned
+// both the Transcript and the FlowRenderer. It builds the explicit config bundle
+// from the render-time mode and CoT-collapsed-by-default flag and asks the seam
+// for the whole-block decision without mutating any stored state, folding in the
+// live-stream auto-expand (a streaming reasoning block stays open so the user
+// watches chain-of-thought arrive, yielding to a pinned force-collapse or the
+// hide-every-body collapse-all mode). A pinned
 // whole-block force (the migrated thinkingCollapsed / thinkingExpanded flags now
 // live on the seam keyed on reasoningWholeID) always wins, then the global modes,
 // then the collapsed-by-default flag.

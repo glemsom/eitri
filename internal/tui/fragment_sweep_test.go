@@ -116,16 +116,21 @@ func TestTranscript_perDeltaFocusCyclesFragmentsOnBothSidesOfTool(t *testing.T) 
 		t.Fatalf("block 3 = %+v, want the tool entry", b)
 	}
 
-	// Tab cycles forward in emission order: fragA, fragB, fragC, then the tool;
-	// one more Tab wraps back to fragA.
-	for want := 0; want <= 3; want++ {
+	// Tab cycles forward in emission order: fragA, fragB, fragC, then the tool.
+	for _, want := range []collapsibleBlock{
+		{kind: blockReasoning, msgIdx: 1, fragIdx: 0},
+		{kind: blockReasoning, msgIdx: 1, fragIdx: 1},
+		{kind: blockReasoning, msgIdx: 1, fragIdx: 2},
+		{kind: blockTool, toolIdx: 0},
+	} {
 		tx.focusNext()
-		if got, ok := tx.focused(); !ok || got.fragIdx != want && !(want == 3 && got.kind == blockTool) {
-			t.Fatalf("after Tab to block %d focused = %+v ok=%v, want block %d", want, got, ok, want)
+		if got, ok := tx.focused(); !ok || got != want {
+			t.Fatalf("after Tab focused = %+v ok=%v, want %+v", got, ok, want)
 		}
 	}
+	// One more Tab wraps back to the first fragment.
 	tx.focusNext()
-	if got, ok := tx.focused(); !ok || got.kind != blockReasoning || got.fragIdx != 0 {
+	if got, ok := tx.focused(); !ok || got != (collapsibleBlock{kind: blockReasoning, msgIdx: 1, fragIdx: 0}) {
 		t.Fatalf("wrap-around Tab focused = %+v ok=%v, want reasoning fragment 0", got, ok)
 	}
 
@@ -233,7 +238,7 @@ func TestModel_followStaysEngagedThroughPerDeltaBurst(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m, _ = submitBusy(t, m)
 
-	for i := 0; i < 40; i++ {
+	for i := range 40 {
 		m = applyReasoningDelta(t, m, fmt.Sprintf("burst%02d ", i))
 		followRendered(m)
 		if !m.tx.histFollow {
