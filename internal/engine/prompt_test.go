@@ -70,7 +70,7 @@ func TestSystemPromptDocumentsBashFileOps(t *testing.T) {
 		"read numbered nl":   "nl -ba",
 		"read range sed":     "sed -n",
 		"edit in place":      "sed -i",
-		"diff apply patch":   "git apply",
+		"diff apply patch":   "patch",
 		"multi-line edit":    "multi-line",
 		"write heredoc":      `cat <<'EOF'`,
 		"verify re-read":     "re-read",
@@ -114,13 +114,44 @@ func TestSystemPromptGuidesHTMLLynxRendering(t *testing.T) {
 	}
 }
 
-func TestSystemPromptStatesOutputCapContract(t *testing.T) {
+func TestSystemPromptDoesNotStateOutputCapContract(t *testing.T) {
 	t.Parallel()
 	p := SystemPromptContent()
-	for _, want := range []string{"capped", "+N more", "bytes truncated", "partial"} {
-		if !strings.Contains(p, want) {
-			t.Fatalf("system prompt must state the output truncation contract; missing %q:\n%s", want, p)
+	// The output-cap + compression contract (line/byte capping, the "+N more"
+	// and "+N bytes truncated" markers) lives exactly once, in the bash tool
+	// description (single authoritative prompt, one fixed text).
+	for _, banned := range []string{"capped", "+N more", "bytes truncated"} {
+		if strings.Contains(p, banned) {
+			t.Fatalf("system prompt must not restate the output-cap contract; found %q:\n%s", banned, p)
 		}
+	}
+}
+
+func TestSystemPromptStatesDeclaredToolset(t *testing.T) {
+	t.Parallel()
+	p := SystemPromptContent()
+	// The prompt promises the declared toolset unconditionally (enforced at
+	// boot); the base substrate is assumed present.
+	for _, want := range []string{"declared toolset", "guaranteed", "coreutils", "rg", "curl", "lynx", "patch", "python3"} {
+		if !strings.Contains(p, want) {
+			t.Fatalf("system prompt must promise the declared toolset; missing %q:\n%s", want, p)
+		}
+	}
+}
+
+func TestSystemPromptTreatsGitAsSoftDependency(t *testing.T) {
+	t.Parallel()
+	p := SystemPromptContent()
+	for _, want := range []string{"git", "usually present", "never guaranteed"} {
+		if !strings.Contains(p, want) {
+			t.Fatalf("system prompt must mark git as a soft dependency; missing %q:\n%s", want, p)
+		}
+	}
+	if !strings.Contains(p, "git diff") {
+		t.Fatalf("system prompt must self-review with git diff when available:\n%s", p)
+	}
+	if strings.Contains(p, "git apply") {
+		t.Fatalf("system prompt must apply edits via patch, never git apply:\n%s", p)
 	}
 }
 
