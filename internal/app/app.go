@@ -93,6 +93,9 @@ type Options struct {
 
 	Stdout io.Writer
 
+	// Stderr receives boot notices (e.g. a missing soft dependency); defaults to os.Stderr.
+	Stderr io.Writer
+
 	Provider provider.Provider
 
 	LookPath func(name string) (string, error)
@@ -135,6 +138,13 @@ func Run(opts Options) error {
 	}
 	if err := checkDependencies(lookPath); err != nil {
 		return err
+	}
+	stderr := opts.Stderr
+	if stderr == nil {
+		stderr = os.Stderr
+	}
+	for _, notice := range checkSoftDependencies(lookPath) {
+		fmt.Fprintf(stderr, "eitri: %s\n", notice)
 	}
 
 	guid := tools.GUID(sess.GUID())
