@@ -76,7 +76,7 @@ func TestCheckDependenciesErrorCarriesPerDistroInstallHints(t *testing.T) {
 	}
 }
 
-func TestCheckDependenciesDependencyString(t *testing.T) {
+func TestCheckDependenciesErrorNamesExecutableAndPackage(t *testing.T) {
 	// The executable and its distro package can differ (bwrap → bubblewrap,
 	// rg → ripgrep); the error must name both so a human knows what to install.
 	err := checkDependencies(lookup())
