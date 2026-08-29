@@ -469,14 +469,14 @@ func (t *Transcript) highlightedViewportView(content string) string {
 		Render(contents)
 }
 
-// navigateHistory applies a T2 keyboard scroll command to the persisted history viewport owned by the Transcript: PgUp/Home move toward the older output and break the follow position; PgDn/End move toward the newest and re-engage follow when they reach the bottom.
+// navigateHistory applies a T2 keyboard scroll command to the persisted history viewport owned by the Transcript: PgUp/Home move toward the older output and break the follow position; PgDn/End move toward the newest and re-engage follow when they reach the bottom. PgUp/PgDn page by half the visible height so the reading position keeps its place in view.
 func (t *Transcript) navigateHistory(key string) bool {
 	switch key {
 	case "pgup":
 		if t.histViewport.AtTop() {
 			return t.histFollow // already at the oldest output; nothing to do
 		}
-		t.histViewport.PageUp()
+		t.histViewport.ScrollUp(t.pageRows())
 		t.histFollow = false // scrolling up breaks follow
 	case "home":
 		if t.histViewport.AtTop() {
@@ -485,7 +485,7 @@ func (t *Transcript) navigateHistory(key string) bool {
 		t.histViewport.GotoTop()
 		t.histFollow = false
 	case "pgdown":
-		t.histViewport.PageDown()
+		t.histViewport.ScrollDown(t.pageRows())
 		if t.histViewport.AtBottom() {
 			t.histFollow = true // paging to the newest re-engages follow
 		}
@@ -496,7 +496,7 @@ func (t *Transcript) navigateHistory(key string) bool {
 	return t.histFollow
 }
 
-// navigateMouse applies a T2 mouse-wheel scroll to the persisted history viewport owned by the Transcript: wheel up scrolls toward older output and breaks follow; wheel down scrolls toward the newest and re-engages follow once it reaches the bottom.
+// navigateMouse applies a T2 mouse-wheel scroll to the persisted history viewport owned by the Transcript: wheel up scrolls toward older output and breaks follow; wheel down scrolls toward the newest and re-engages follow once it reaches the bottom. Each notch scrolls a third of the visible height so the wheel moves the reading position gently.
 func (t *Transcript) navigateMouse(msg tea.MouseWheelMsg) bool {
 	if !t.inScrollRegion(msg.Y) {
 		return t.histFollow
@@ -517,8 +517,16 @@ func (t *Transcript) navigateMouse(msg tea.MouseWheelMsg) bool {
 	return t.histFollow
 }
 
-func (t *Transcript) mouseWheelRows() int {
+func (t *Transcript) pageRows() int {
 	rows := t.histViewport.Height() / 2
+	if rows < 1 {
+		return 1
+	}
+	return rows
+}
+
+func (t *Transcript) mouseWheelRows() int {
+	rows := t.histViewport.Height() / 3
 	if rows < 1 {
 		return 1
 	}
