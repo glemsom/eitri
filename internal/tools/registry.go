@@ -85,9 +85,6 @@ func (r *Registry) Names() []string {
 	return []string{"bash", "open_in_browser"}
 }
 
-// PathTranslator returns the shared translation seam (exposed for host-side launch points like open_in_browser and for tests).
-func (r *Registry) PathTranslator() *PathTranslator { return r.tr }
-
 func (r *Registry) Workspace() string { return r.workspace }
 
 // Run executes the named tool with the given decoded args, returning its result string plus whether the result is the line-compressor's compressed form.
