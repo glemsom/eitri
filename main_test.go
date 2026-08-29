@@ -30,6 +30,30 @@ func TestCLISmoke(t *testing.T) {
 		}
 	})
 
+	t.Run("usage states the full dependency contract", func(t *testing.T) {
+		cmd := exec.Command(bin, "--help")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("eitri --help exit error = %v, output:\n%s", err, out)
+		}
+		// The usage text reflects the full dependency contract (ADR-0001), not just bubblewrap.
+		for _, name := range []string{"bwrap", "bash", "rg", "curl", "lynx", "patch", "python3"} {
+			if !strings.Contains(string(out), name) {
+				t.Fatalf("usage output %q does not name declared tool %q", out, name)
+			}
+		}
+		for _, hint := range []string{"sudo apt install", "sudo dnf install", "sudo pacman -S"} {
+			if !strings.Contains(string(out), hint) {
+				t.Fatalf("usage output %q lacks per-distro install hint %q", out, hint)
+			}
+		}
+		for _, want := range []string{"ADR-0001", "Soft dependencies", "coreutils"} {
+			if !strings.Contains(string(out), want) {
+				t.Fatalf("usage output %q lacks the %q dependency-tier marker", out, want)
+			}
+		}
+	})
+
 	t.Run("version prints and exits zero", func(t *testing.T) {
 		cmd := exec.Command(bin, "--version")
 		out, err := cmd.CombinedOutput()
@@ -41,7 +65,7 @@ func TestCLISmoke(t *testing.T) {
 		}
 	})
 
-	t.Run("hard-fails without bwrap", func(t *testing.T) {
+	t.Run("hard-fails when declared dependencies are missing", func(t *testing.T) {
 		empty := t.TempDir()
 		dataDir := filepath.Join(t.TempDir(), ".eitri")
 		cmd := exec.Command(bin)
@@ -51,13 +75,20 @@ func TestCLISmoke(t *testing.T) {
 		)
 		out, err := cmd.CombinedOutput()
 		if err == nil {
-			t.Fatalf("eitri without bwrap exited zero, output:\n%s", out)
+			t.Fatalf("eitri without declared deps exited zero, output:\n%s", out)
 		}
 		if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 0 {
-			t.Fatalf("eitri without bwrap returned exit code 0, output:\n%s", out)
+			t.Fatalf("eitri without declared deps returned exit code 0, output:\n%s", out)
 		}
-		if !strings.Contains(string(out), "bwrap") {
-			t.Fatalf("eitri without bwrap output %q lacks an install-bubblewrap hint", out)
+		// The refusal names every missing declared tool (bwrap..python3) with
+		// an install hint, not just the first miss.
+		for _, name := range []string{"bwrap", "bash", "rg", "curl", "lynx", "patch", "python3"} {
+			if !strings.Contains(string(out), name) {
+				t.Fatalf("eitri without declared deps output %q does not name missing tool %q", out, name)
+			}
+		}
+		if !strings.Contains(string(out), "sudo apt install") {
+			t.Fatalf("eitri without declared deps output %q lacks an install hint", out)
 		}
 	})
 }

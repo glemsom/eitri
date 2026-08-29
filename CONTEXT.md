@@ -20,6 +20,10 @@ _Avoid_: tmp, scratch
 The isolation boundary for shell commands: root read-only (including host `/tmp` unless configured writable), workspace and session temp writable, separate PID namespace, private `/dev` and `/proc`.
 _Avoid_: container, jail
 
+**Declared dependency / declared toolset**:
+The executable set Eitri verifies at boot and refuses to start without — the hard substrate (`bwrap`, `bash`) plus the declared tools (`rg`, `curl`, `lynx`, `patch`, `python3`) — because the single fixed prompt promises them unconditionally. Soft dependencies (`git`, a browser launcher for `open_in_browser`) are opportunistic: never gated at boot, surfacing only if the agent reaches for them.
+_Avoid_: requirement, prerequisite
+
 **Host-side tool**:
 A tool running outside the sandbox while resolving the same path namespace as `bash`; write-side tools gate targets on the writable roots.
 _Avoid_: local tool, external tool
@@ -123,3 +127,7 @@ _Avoid_: dependency probe, verify tooling, preflight
 **Single authoritative prompt**:
 Eitri's one fixed system prompt (`internal/engine/prompt.md`), written to match exactly the declared dependency set and never adapted to what is installed on a given machine. It owns operating strategy; the `bash`/`open_in_browser` tool Descriptions keep their mechanical contract on the normal function-calling surface. This is what makes the startup dependency check mandatory rather than advisory.
 _Avoid_: system prompt, adaptive prompt, tool guidance
+
+**Repository instructions (AGENTS.md)**:
+The content of the workspace-root `AGENTS.md`, carried to the provider as its own system-layer message headed `## Repository instructions (AGENTS.md)` and appended after the persona, workspace directive, and skill index. Additive — it never replaces the byte-stable persona prompt, and a workspace without the file sends the pre-feature wire bytes unchanged. The message is stripped from persisted session history and preserved in the compaction stable head, mirroring the workspace directive and skill index.
+_Avoid_: project instructions, repo guidance, agent handbook

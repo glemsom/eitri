@@ -116,18 +116,39 @@ func TestScroll_mouseWheelNavigatesTranscript(t *testing.T) {
 	}
 }
 
-func TestScroll_mouseWheelMovesByVisibleChunk(t *testing.T) {
+func TestScroll_mouseWheelMovesByThirdPage(t *testing.T) {
 	t.Parallel()
 	m := scrollOverflowModel(t)
 	start := scrollOffset(m)
-	wantMin := mustVpHeight(m) / 2
-	if wantMin < 1 {
-		wantMin = 1
+	want := mustVpHeight(m) / 3
+	if want < 1 {
+		want = 1
 	}
 
 	m = mustUpdate(t, m, wheelMsg(true))
-	if got := start - scrollOffset(m); got < wantMin {
-		t.Fatalf("one wheel tick moved %d rows, want at least half the visible transcript (%d rows)", got, wantMin)
+	if got := start - scrollOffset(m); got != want {
+		t.Fatalf("one wheel tick moved %d rows, want exactly a third of the visible transcript (%d rows)", got, want)
+	}
+}
+
+func TestScroll_pgKeysMoveByHalfPage(t *testing.T) {
+	t.Parallel()
+	m := scrollOverflowModel(t)
+	half := mustVpHeight(m) / 2
+	if half < 1 {
+		half = 1
+	}
+
+	bottom := scrollOffset(m)
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyPgUp})
+	if got := bottom - scrollOffset(m); got != half {
+		t.Errorf("PgUp moved %d rows, want exactly half the visible transcript (%d rows)", got, half)
+	}
+
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyHome})
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyPgDown})
+	if got := scrollOffset(m); got != half {
+		t.Errorf("PgDn from the top moved to offset %d, want exactly half the visible transcript (%d rows)", got, half)
 	}
 }
 

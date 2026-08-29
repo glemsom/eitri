@@ -14,10 +14,12 @@
 ## Quickstart
 
 ```sh
-# Install the bubblewrap sandbox (required; Eitri never runs unsandboxed):
-#   Debian/Ubuntu: sudo apt install bubblewrap
-#   Fedora:        sudo dnf install bubblewrap
-#   Arch:          sudo pacman -S bubblewrap
+# Install the declared toolset (required; Eitri refuses to start without it,
+# because its agent prompt promises these tools unconditionally — see
+# ADR-0001 under docs/adr/):
+#   Debian/Ubuntu: sudo apt install bubblewrap bash ripgrep curl lynx patch python3
+#   Fedora:        sudo dnf install bubblewrap bash ripgrep curl lynx patch python3
+#   Arch:          sudo pacman -S bubblewrap bash ripgrep curl lynx patch python3
 
 make build          # 1. build ./bin/eitri
 ./bin/eitri         # 2. launch the interactive TUI
@@ -35,6 +37,10 @@ make build          # 1. build ./bin/eitri
 | `eitri -v` | In batch mode, print the model's thinking/reasoning to stdout |
 | `eitri -d` | Debug mode: write full HTTP traces to/from the provider |
 | `eitri --version` | Print the version and exit |
+
+### Repository instructions (`AGENTS.md`)
+
+If the workspace root (the directory you launch Eitri from) contains an `AGENTS.md`, Eitri reads it and carries its content to the model as a dedicated system-layer directive headed `## Repository instructions (AGENTS.md)` — both in the TUI and in batch (`-b`) mode. The injected instructions are **additive**: the built-in Eitri persona prompt is preserved unchanged, and the message is excluded from persisted session history so it isn't duplicated on the next turn. Without an `AGENTS.md`, no extra message is sent and the request is byte-identical to the pre-feature case. There is no opt-in or escape-hatch flag; the file is loaded whenever it exists.
 
 ### Sessions
 
@@ -143,7 +149,15 @@ The `copilot` and `custom_openai` objects are managed by Eitri (via device-flow 
 ## Requirements
 
 - **Linux** (Eitri is a Linux agent).
-- **bubblewrap (`bwrap`)** must be installed — Eitri never runs unsandboxed and refuses to start without it.
+- **Declared toolset** (required; fatal at boot) — Eitri verifies every declared dependency at launch and refuses to start without it, because its agent prompt promises these tools unconditionally (see [ADR-0001](docs/adr/0001-dependency-tiers.md)):
+  - Hard substrate: `bwrap` (bubblewrap — Eitri never runs unsandboxed) and `bash`.
+  - Declared tools: `rg` (ripgrep), `curl`, `lynx`, `patch`, `python3`.
+  - Install hints (a missing tool aborts the launch naming every miss with its package):
+    - Debian/Ubuntu: `sudo apt install bubblewrap bash ripgrep curl lynx patch python3`
+    - Fedora: `sudo dnf install bubblewrap bash ripgrep curl lynx patch python3`
+    - Arch: `sudo pacman -S bubblewrap bash ripgrep curl lynx patch python3`
+- **Soft dependencies** (optional, never gate startup) — `git` (opportunistic `git diff` self-review) and a browser launcher (`xdg-open`, backing `open_in_browser`) may be absent: a missing `git` prints a single non-fatal boot notice and the run continues; a missing browser backend surfaces only when `open_in_browser` actually runs, as a contained error.
+- **Base toolset** (assumed present) — the coreutils `bash` builds on: `grep`, `sed`, `awk`, `cat`, `nl`, `diff`; no boot check.
 
 ## Building
 

@@ -1,4 +1,4 @@
-// Package app drives the Eitri boot sequence: resolving the data directory, checking the bubblewrap (bwrap) sandbox prerequisite, and wiring flag-driven behavior.
+// Package app drives the Eitri boot sequence: resolving the data directory, checking the declared dependency toolset, and wiring flag-driven behavior.
 package app
 
 import (
@@ -31,9 +31,6 @@ const (
 	DataDirEnv = "EITRI_DIR"
 	ConfigEnv  = "EITRI_CONFIG"
 )
-
-// ErrMissingBwrap is returned when the bubblewrap (bwrap) executable cannot be found on the host.
-var ErrMissingBwrap = errors.New("bubblewrap (bwrap) is required but was not found; install bubblewrap to continue")
 
 // ErrTUINotInteractive is returned when the interactive TUI cannot render into the host terminal — stdout is not a TTY, TERM is unset or "dumb", or the window is below the minimum width.
 var ErrTUINotInteractive = errors.New("the interactive TUI requires an interactive terminal: stdout must be a TTY, TERM must be set (not \"dumb\"), and the window must be at least 80 columns wide; run in batch mode instead: eitri -b \"<prompt>\"")
@@ -96,6 +93,9 @@ type Options struct {
 
 	Stdout io.Writer
 
+	// Stderr receives boot notices (e.g. a missing soft dependency); defaults to os.Stderr.
+	Stderr io.Writer
+
 	Provider provider.Provider
 
 	LookPath func(name string) (string, error)
@@ -136,8 +136,15 @@ func Run(opts Options) error {
 	if lookPath == nil {
 		lookPath = exec.LookPath
 	}
-	if _, err := lookPath("bwrap"); err != nil {
-		return ErrMissingBwrap
+	if err := checkDependencies(lookPath); err != nil {
+		return err
+	}
+	stderr := opts.Stderr
+	if stderr == nil {
+		stderr = os.Stderr
+	}
+	for _, notice := range checkSoftDependencies(lookPath) {
+		fmt.Fprintf(stderr, "eitri: %s\n", notice)
 	}
 
 	guid := tools.GUID(sess.GUID())
@@ -230,20 +237,22 @@ func runAgent(ctx context.Context, e *engine.Engine, cfg config.Config, reg *too
 			skillIndex = &idx
 		}
 	}
+	repoInstructions := loadRepoInstructions(reg.Workspace())
 	effort := cfg.ReasoningEffort
 	if !cfg.ThinkingEnabled {
 		effort = ""
 	}
 	return e.RunAgent(ctx, engine.RunRequest{
-		Model:           cfg.Model,
-		Prompt:          prompt,
-		Workspace:       reg.Workspace(),
-		SkillIndex:      skillIndex,
-		SkillInject:     skillInject,
-		SessionKey:      sessionKey,
-		ThinkingEnabled: cfg.ThinkingEnabled,
-		ReasoningEffort: effort,
-		ProviderID:      provider.ProviderID(cfg.Provider),
+		Model:            cfg.Model,
+		Prompt:           prompt,
+		Workspace:        reg.Workspace(),
+		SkillIndex:       skillIndex,
+		RepoInstructions: repoInstructions,
+		SkillInject:      skillInject,
+		SessionKey:       sessionKey,
+		ThinkingEnabled:  cfg.ThinkingEnabled,
+		ReasoningEffort:  effort,
+		ProviderID:       provider.ProviderID(cfg.Provider),
 	}, engine.AgentOptions{
 		Tools:      providerTools(reg.Definitions()),
 		ToolChoice: "auto",
@@ -266,6 +275,19 @@ func runAgent(ctx context.Context, e *engine.Engine, cfg config.Config, reg *too
 		Compaction:  compaction,
 		OnCompacted: func() { fmt.Fprint(os.Stderr, "[compacted]\n") },
 	})
+}
+
+// loadRepoInstructions reads the workspace-root AGENTS.md (if present) so its
+// content can ride to the provider as the repository-instructions system message.
+// A missing or unreadable file returns nil, leaving the wire request
+// byte-identical to the no-instructions case — no opt-in, no escape hatch.
+func loadRepoInstructions(workspace string) *string {
+	b, err := os.ReadFile(filepath.Join(workspace, "AGENTS.md"))
+	if err != nil {
+		return nil
+	}
+	content := string(b)
+	return &content
 }
 
 // providerTools maps the registry's definitions to provider Chat-Completions Tool objects via the dialect's tool-schema re-expression (provider.NewChatCompletionsDialect().Manifest): one canonical JSON-Schema per tool is re-expressed per dialect, never hand-copied per provider.

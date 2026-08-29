@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/glemsom/eitri/internal/tui"
@@ -46,26 +47,41 @@ func TestRunToleratesExistingDataDir(t *testing.T) {
 	}
 }
 
-func TestRunErrorsWithoutBwrap(t *testing.T) {
+func TestRunErrorsWithoutDeclaredDependencies(t *testing.T) {
 	dir := t.TempDir()
 	dataDir := filepath.Join(dir, ".eitri")
 
 	err := Run(Options{DataDir: dataDir, LookPath: missingLookPath})
 	if err == nil {
-		t.Fatal("Run() error = nil, want an install-bubblewrap error")
+		t.Fatal("Run() error = nil, want a fatal missing-dependencies error")
 	}
-	if !errors.Is(err, ErrMissingBwrap) {
-		t.Fatalf("Run() error = %v, want ErrMissingBwrap", err)
+	if !errors.Is(err, ErrMissingDependencies) {
+		t.Fatalf("Run() error = %v, want ErrMissingDependencies", err)
 	}
-	if !containsInstallMsg(err.Error()) {
-		t.Fatalf("Run() error %q does not contain an install-bubblewrap hint", err.Error())
+	errMsg := err.Error()
+	for _, name := range declaredDependencyNames() {
+		if !contains(errMsg, name) {
+			t.Fatalf("Run() error %q does not name the missing tool %q", errMsg, name)
+		}
+	}
+	if !containsInstallMsg(errMsg) {
+		t.Fatalf("Run() error %q does not contain an install hint", errMsg)
 	}
 }
 
-func TestRunHonorsNoUnsandboxedFallback(t *testing.T) {
+func TestRunRefusesBootWhenBwrapAloneIsMissing(t *testing.T) {
 	dir := t.TempDir()
-	if err := Run(Options{DataDir: filepath.Join(dir, ".eitri"), LookPath: missingLookPath}); !errors.Is(err, ErrMissingBwrap) {
-		t.Fatalf("Run() error = %v, want ErrMissingBwrap; bwrap absence must be a hard failure", err)
+	present := []string{"bash", "rg", "curl", "lynx", "patch", "python3"}
+	err := Run(Options{DataDir: filepath.Join(dir, ".eitri"), LookPath: lookup(present...)})
+	if !errors.Is(err, ErrMissingDependencies) {
+		t.Fatalf("Run() error = %v, want ErrMissingDependencies; bwrap absence must stay a hard failure inside the single check pass", err)
+	}
+	de, ok := err.(*DependencyError)
+	if !ok {
+		t.Fatalf("error type = %T, want *DependencyError", err)
+	}
+	if strings.Join(de.Missing, ",") != "bwrap" {
+		t.Fatalf("DependencyError.Missing = %v, want exactly [bwrap]", de.Missing)
 	}
 }
 
@@ -149,7 +165,7 @@ var okLookPath = func(name string) (string, error) { return "/usr/bin/" + name, 
 var missingLookPath = func(name string) (string, error) { return "", errors.New("executable not found") }
 
 func containsInstallMsg(s string) bool {
-	return len(s) > 0 && (contains(s, "bubblewrap") || contains(s, "bwrap"))
+	return len(s) > 0 && (contains(s, "sudo apt install") || contains(s, "sudo dnf install") || contains(s, "sudo pacman -S"))
 }
 
 func contains(s, sub string) bool {
