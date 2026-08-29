@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"strings"
 )
 
@@ -287,28 +286,6 @@ func ModelIDs(models []ModelInfo) []string {
 // ModelLister is an optional capability a Provider may expose: discovering the available models from the configured provider so the Settings surface can offer a picker without hand-editing config, and the runtime can learn model-specific routing metadata.
 type ModelLister interface {
 	Models(ctx context.Context) ([]ModelInfo, error)
-}
-
-// consume reads a Stream to completion, returning the concatenated assistant answer content and the terminal usage, if any.
-func consume(s Stream) (string, *Usage, error) {
-	var answer string
-	var usage *Usage
-	for {
-		c, err := s.Next()
-		if errors.Is(err, io.EOF) {
-			return answer, usage, nil
-		}
-		if err != nil {
-			return "", nil, err
-		}
-		answer += c.Content
-		if c.Usage != nil {
-			usage = c.Usage
-		}
-		if c.Done {
-			return answer, usage, nil
-		}
-	}
 }
 
 // UnmarshalJSON decodes a ToolCall from the Chat Completions wire shape (id/type at top level, name+arguments nested under function), mirroring MarshalJSON.
