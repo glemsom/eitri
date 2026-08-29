@@ -178,9 +178,6 @@ type Model struct {
 	continueReq  chan struct{}
 	continueResp chan bool
 	prompting    bool
-	// confirmNew distinguishes a `/new` confirmation from the max-turns
-	// continuation prompt so updatePrompt routes the decision separately.
-	confirmNew bool
 
 	slash        *SkillActivation
 	mention      *Mention
@@ -624,24 +621,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// updatePrompt handles a keypress while a confirmation prompt is pending. A
-// `/new` confirmation is routed separately from the engine's max-turns
-// continuation prompt (issue #613): confirming mints a fresh session key onto
-// the live key and clears the transcript, while cancelling leaves everything
-// intact.
+// updatePrompt handles a keypress on the engine's max-turns continuation
+// prompt (issue #613): `y`/enter continues the run, `n`/esc stops it.
 func (m Model) updatePrompt(msgi tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	if m.confirmNew {
-		switch msgi.String() {
-		case "y", "Y", "enter":
-			m.prompting = false
-			m.confirmNew = false
-			m.mintNewSession()
-		case "n", "N", "esc", "ctrl+c":
-			m.prompting = false
-			m.confirmNew = false
-		}
-		return m, nil
-	}
 	switch msgi.String() {
 	case "y", "Y", "enter":
 		m.prompting = false
@@ -664,6 +646,9 @@ func (m *Model) mintNewSession() {
 		m.liveKey.Set(m.newGUID())
 	}
 	m.tx.Reset()
+	if m.telemetry != nil {
+		m.telemetry.Reset()
+	}
 }
 
 // newGUID returns a fresh session GUID for `/new`: the injected Dependencies
@@ -719,15 +704,14 @@ func (m Model) submitPrompt() (tea.Model, tea.Cmd) {
 	}
 	if prompt == "/new" {
 		// `/new` is a control slash command: never recorded into the history
-		// ring. It opens a confirmation overlay (issue #613); confirming mints a
-		// fresh live session key and clears the transcript, cancelling leaves
-		// everything intact. It is blocked while a turn streams, a skill is
-		// pending, or the settings overlay is open.
-		if m.tx.busy || m.skillPending || m.settings != nil || m.prompting {
+		// ring. It immediately mints a fresh live session key and clears the
+		// transcript and the live stats — the point of `/new` is a clean
+		// session, so there is no confirmation. It is blocked while a turn
+		// streams, a skill is pending, or the settings overlay is open.
+		if m.tx.busy || m.skillPending || m.settings != nil {
 			return m, nil
 		}
-		m.prompting = true
-		m.confirmNew = true
+		m.mintNewSession()
 		return m, nil
 	}
 
@@ -963,9 +947,6 @@ func (m Model) viewString() string {
 		return m.settings.View()
 	}
 	if m.prompting {
-		if m.confirmNew {
-			return newConfirmView(m.tx.theme)
-		}
 		return promptView(m.tx.theme)
 	}
 

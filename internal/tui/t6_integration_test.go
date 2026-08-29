@@ -14,7 +14,7 @@ import (
 )
 
 // TestT6ArrowsAcrossNew recalls submitted prompts both before and after a `/new`
-// confirm: the history ring must survive the session re-mint because it lives on
+// re-mint: the history ring must survive the session re-mint because it lives on
 // the Model, not the transcript or session (T2/T3 + T5).
 func TestT6ArrowsAcrossNew(t *testing.T) {
 	t.Parallel()
@@ -37,12 +37,11 @@ func TestT6ArrowsAcrossNew(t *testing.T) {
 		t.Fatalf("live key changed before `/new`, got %q", live.Get())
 	}
 
-	// Confirm `/new`: re-mints the session.
+	// `/new` immediately re-mints the session.
 	m = typeText(t, m, "/new")
 	m = keypress(t, m, "enter")
-	m = keypress(t, m, "y")
 	if live.Get() != "fresh-1" {
-		t.Fatalf("`/new` confirm did not re-mint the live key, got %q", live.Get())
+		t.Fatalf("`/new` did not re-mint the live key, got %q", live.Get())
 	}
 
 	// Arrows must still recall the pre-`/new` prompts after the re-mint.
@@ -96,7 +95,6 @@ func TestT6PersistAcrossRestart(t *testing.T) {
 	}
 	reopened = typeText(t, reopened, "/new")
 	reopened = keypress(t, reopened, "enter")
-	reopened = keypress(t, reopened, "y")
 	reopened = keypress(t, reopened, "up")
 	if got := reopened.composer.Value(); got != "persisted prompt" {
 		t.Fatalf("recall of restarted history after `/new` = %q, want persisted prompt", got)
@@ -105,7 +103,7 @@ func TestT6PersistAcrossRestart(t *testing.T) {
 
 // TestT6NewYieldsFreshEngineContext verifies the engine-turn seam observes a
 // clean session: each submitted turn reads the current session key, so a turn
-// before `/new` and the next turn after confirm use different keys — fresh
+// before `/new` and the next turn after the re-mint use different keys — fresh
 // engine session history on the new key (T1 + T5).
 func TestT6NewYieldsFreshEngineContext(t *testing.T) {
 	t.Parallel()
@@ -125,7 +123,6 @@ func TestT6NewYieldsFreshEngineContext(t *testing.T) {
 
 	m = typeText(t, m, "/new")
 	m = keypress(t, m, "enter")
-	m = keypress(t, m, "y")
 	m = typeText(t, m, "next turn")
 	m = submitAndWait(t, m)
 
@@ -135,7 +132,7 @@ func TestT6NewYieldsFreshEngineContext(t *testing.T) {
 }
 
 // TestT6RailIdentityAfterNew verifies the on-screen rail CONTEXT session id
-// reflects the re-minted live key after a `/new` confirm (T1 rail seam + T5).
+// reflects the re-minted live key after a `/new` (T1 rail seam + T5).
 func TestT6RailIdentityAfterNew(t *testing.T) {
 	t.Parallel()
 	live := NewLiveSessionKey("old")
@@ -157,7 +154,6 @@ func TestT6RailIdentityAfterNew(t *testing.T) {
 
 	m = typeText(t, m, "/new")
 	m = keypress(t, m, "enter")
-	m = keypress(t, m, "y")
 
 	v := view(m)
 	if !strings.Contains(v, "session fresh") {

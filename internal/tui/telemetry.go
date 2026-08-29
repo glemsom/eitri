@@ -74,6 +74,19 @@ func (t *Telemetry) apply(u TelemetryUpdate) {
 	}
 }
 
+// Reset zeroes the live session counters and restarts the elapsed clock, giving
+// a fresh `/new` session an empty STATS picture. The static model, effort,
+// thinking, and maxTurns seeding is preserved across the reset.
+func (t *Telemetry) Reset() {
+	t.turns = 0
+	t.cacheHit = 0
+	t.cacheMiss = 0
+	t.output = 0
+	t.compacted = false
+	t.liveCtx = 0
+	t.startedAt = time.Now()
+}
+
 // liveContextSize returns the live per-turn context-window size in tokens (0 before the first usage event).
 func (t *Telemetry) liveContextSize() int { return t.liveCtx }
 

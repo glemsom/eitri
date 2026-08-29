@@ -101,7 +101,7 @@ The readline-style navigation of the prompt history ring from the composer: `up`
 _Avoid_: history browsing, prompt cycling.
 
 **`/new` (fresh session)**
-A control slash command that starts a fresh session: it never records into the prompt-history ring. It opens a confirmation overlay (the existing continuation-prompt surface, re-worded) and is blocked while a turn streams, a skill is pending, or the Settings overlay is open. On confirm it re-mints the live session key to a fresh GUID — the engine's session history for the new key begins empty — and resets the transcript to the empty welcome state, while the old GUID's on-disk session dir and engine history are orphaned (auditable, no pruning). It preserves config, Settings, provider, and the prompt-history ring, all of which live outside the transcript.
+A control slash command that starts a fresh session: it never records into the prompt-history ring and immediately re-mints with no confirmation, blocked while a turn streams, a skill is pending, or the Settings overlay is open. It re-mints the live session key to a fresh GUID — the engine's session history for the new key begins empty — resets the transcript to the empty welcome state, and zeros the live STATS counters, while the old GUID's on-disk session dir and engine history are orphaned (auditable, no pruning). It preserves config, Settings, provider, and the prompt-history ring, all of which live outside the transcript.
 _Avoid_: reset, wipe, clear history.
 
 **Kitty graphics capability**:
