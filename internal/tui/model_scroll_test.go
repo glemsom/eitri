@@ -116,18 +116,18 @@ func TestScroll_mouseWheelNavigatesTranscript(t *testing.T) {
 	}
 }
 
-func TestScroll_mouseWheelMovesByThirdPage(t *testing.T) {
+func TestScroll_mouseWheelMovesTenthOfPage(t *testing.T) {
 	t.Parallel()
 	m := scrollOverflowModel(t)
 	start := scrollOffset(m)
-	want := mustVpHeight(m) / 3
+	want := mustVpHeight(m) / 10
 	if want < 1 {
 		want = 1
 	}
 
 	m = mustUpdate(t, m, wheelMsg(true))
 	if got := start - scrollOffset(m); got != want {
-		t.Fatalf("one wheel tick moved %d rows, want exactly a third of the visible transcript (%d rows)", got, want)
+		t.Fatalf("one wheel tick moved %d rows, want exactly a tenth of the visible transcript (%d rows)", got, want)
 	}
 }
 
