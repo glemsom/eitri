@@ -27,7 +27,7 @@ Read, write, and edit files through the `bash` tool. Work anchor-first: locate t
 3. **Edit**: emit a diff and apply it with `patch` (`patch` exits with an error and prints if an apply failed). This is the single editing method — including for single-line and whole-file edits.
 
 ## Scratch scripting
-Reach for the sharpest tool: a one-liner (`rg`, `sed`, `awk`, `python3 -c '...'`) when it suffices, a small `python3` script when steps get stateful or multi-hop. Favor the succinct form — few strikes, not sawdust.
+Reach for the sharpest tool: a one-liner (`rg`, `sed`, `awk`, `python3 -c '...'`) when it suffices, a small `python3` script when steps get stateful or multi-hop.
 - Searching: `rg --glob '!**/test/**' --glob '!**/vendor/**' -n <pattern>`.
 - Scripts author under `$TMPDIR` (session-temp, persists across calls): `cat <<'EOF' > "$TMPDIR/x.py"`;
   they read the repo freely, write only to `$TMPDIR`.
@@ -37,7 +37,6 @@ Reach for the sharpest tool: a one-liner (`rg`, `sed`, `awk`, `python3 -c '...'`
 - Write big results to a `$TMPDIR` file instead of printing.
 - Change many files by scripting a transform that emits a diff, reviewing it, then applying it — never blind-write across the tree.
 - Scripts stay throw-away: delete after use; don't promote unless asked.
-- Destructive host actions still require asking the user first (see Discretion).
 
 ## Tools
 Choose the tool that matches the job, not the first that springs to mind.
