@@ -1,4 +1,4 @@
-// Package app drives the Eitri boot sequence: resolving the data directory, checking the bubblewrap (bwrap) sandbox prerequisite, and wiring flag-driven behavior.
+// Package app drives the Eitri boot sequence: resolving the data directory, checking the declared dependency toolset, and wiring flag-driven behavior.
 package app
 
 import (
@@ -31,9 +31,6 @@ const (
 	DataDirEnv = "EITRI_DIR"
 	ConfigEnv  = "EITRI_CONFIG"
 )
-
-// ErrMissingBwrap is returned when the bubblewrap (bwrap) executable cannot be found on the host.
-var ErrMissingBwrap = errors.New("bubblewrap (bwrap) is required but was not found; install bubblewrap to continue")
 
 // ErrTUINotInteractive is returned when the interactive TUI cannot render into the host terminal — stdout is not a TTY, TERM is unset or "dumb", or the window is below the minimum width.
 var ErrTUINotInteractive = errors.New("the interactive TUI requires an interactive terminal: stdout must be a TTY, TERM must be set (not \"dumb\"), and the window must be at least 80 columns wide; run in batch mode instead: eitri -b \"<prompt>\"")
@@ -136,8 +133,8 @@ func Run(opts Options) error {
 	if lookPath == nil {
 		lookPath = exec.LookPath
 	}
-	if _, err := lookPath("bwrap"); err != nil {
-		return ErrMissingBwrap
+	if err := checkDependencies(lookPath); err != nil {
+		return err
 	}
 
 	guid := tools.GUID(sess.GUID())

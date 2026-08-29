@@ -41,7 +41,7 @@ func TestCLISmoke(t *testing.T) {
 		}
 	})
 
-	t.Run("hard-fails without bwrap", func(t *testing.T) {
+	t.Run("hard-fails when declared dependencies are missing", func(t *testing.T) {
 		empty := t.TempDir()
 		dataDir := filepath.Join(t.TempDir(), ".eitri")
 		cmd := exec.Command(bin)
@@ -51,13 +51,20 @@ func TestCLISmoke(t *testing.T) {
 		)
 		out, err := cmd.CombinedOutput()
 		if err == nil {
-			t.Fatalf("eitri without bwrap exited zero, output:\n%s", out)
+			t.Fatalf("eitri without declared deps exited zero, output:\n%s", out)
 		}
 		if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 0 {
-			t.Fatalf("eitri without bwrap returned exit code 0, output:\n%s", out)
+			t.Fatalf("eitri without declared deps returned exit code 0, output:\n%s", out)
 		}
-		if !strings.Contains(string(out), "bwrap") {
-			t.Fatalf("eitri without bwrap output %q lacks an install-bubblewrap hint", out)
+		// The refusal names every missing declared tool (bwrap..python3) with
+		// an install hint, not just the first miss.
+		for _, name := range []string{"bwrap", "bash", "rg", "curl", "lynx", "patch", "python3"} {
+			if !strings.Contains(string(out), name) {
+				t.Fatalf("eitri without declared deps output %q does not name missing tool %q", out, name)
+			}
+		}
+		if !strings.Contains(string(out), "sudo apt install") {
+			t.Fatalf("eitri without declared deps output %q lacks an install hint", out)
 		}
 	})
 }
