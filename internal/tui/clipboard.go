@@ -5,18 +5,14 @@ import (
 	"os"
 	"strings"
 
-	"github.com/atotto/clipboard"
-
 	"github.com/glemsom/eitri/internal/osc52"
 )
 
-// newClipboard returns the clipboard write seam: the injected Dependencies.Clipboard when set, else the atotto/clipboard package default so Ctrl+O and /copy work out of the box.
+// newClipboard returns the clipboard write seam: the injected Dependencies.Clipboard when set (still OSC 52-fallbacked), else the OSC 52 terminal-clipboard writer onto the configured OSC 52 output. Eitri never shells out to a host clipboard tool such as xclip or wl-clipboard — the terminal itself is the clipboard — so Ctrl+O and /copy work on any OSC 52 terminal without a host tool installed.
 func newClipboard(d Dependencies) func(text string) error {
 	var primary func(text string) error
 	if d.Clipboard != nil {
 		primary = d.Clipboard
-	} else {
-		primary = clipboard.WriteAll
 	}
 	out := d.OSC52Out
 	if out == nil {
@@ -25,11 +21,13 @@ func newClipboard(d Dependencies) func(text string) error {
 	return clipboardWithOSCFallback(primary, out)
 }
 
-// clipboardWithOSCFallback wraps a primary clipboard seam in the OSC 52 fallback: when the primary path fails — e.g. the atotto/clipboard package reporting "Unsupported platform" on a machine without xclip or wl-clipboard — the copy re-routes through the OSC 52 terminal-clipboard writer to the terminal output, which Ghostty and other OSC 52 terminals turn into a system-clipboard write.
+// clipboardWithOSCFallback wraps a primary clipboard seam in the OSC 52 fallback: when the primary path fails — e.g. an injected seam reporting an error — the copy re-routes through the OSC 52 terminal-clipboard writer to the terminal output, which Ghostty and other OSC 52 terminals turn into a system-clipboard write. A nil primary makes the seam OSC 52-only, the no-injection default.
 func clipboardWithOSCFallback(primary func(text string) error, out io.Writer) func(text string) error {
 	return func(text string) error {
-		if err := primary(text); err == nil {
-			return nil
+		if primary != nil {
+			if err := primary(text); err == nil {
+				return nil
+			}
 		}
 		return osc52.New(out).Write(text)
 	}

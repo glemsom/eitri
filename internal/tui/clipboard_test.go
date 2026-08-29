@@ -11,6 +11,38 @@ func failingClipboard(text string) error {
 	return errors.New("Unsupported platform")
 }
 
+func TestNewClipboardDefaultsToOSC52(t *testing.T) {
+	t.Parallel()
+	var out bytes.Buffer
+	clip := newClipboard(Dependencies{OSC52Out: &out})
+	if err := clip("hello"); err != nil {
+		t.Fatalf("clip(hello) error = %v, want nil", err)
+	}
+	want := "\x1b]52;c;aGVsbG8=\x07"
+	if got := out.String(); got != want {
+		t.Errorf("output = %q, want %q", got, want)
+	}
+}
+
+func TestNewClipboardHonorsInjectedClipboard(t *testing.T) {
+	t.Parallel()
+	var copied string
+	var out bytes.Buffer
+	clip := newClipboard(Dependencies{
+		Clipboard: func(s string) error { copied = s; return nil },
+		OSC52Out:  &out,
+	})
+	if err := clip("hello"); err != nil {
+		t.Fatalf("clip(hello) error = %v, want nil", err)
+	}
+	if copied != "hello" {
+		t.Errorf("injected Clipboard received %q, want %q", copied, "hello")
+	}
+	if out.Len() != 0 {
+		t.Errorf("injected Clipboard path wrote %q, want no OSC 52 output", out.String())
+	}
+}
+
 func TestClipboardWithOSCFallbackFallsBackToOSC52(t *testing.T) {
 	t.Parallel()
 	var out bytes.Buffer
