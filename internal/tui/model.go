@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"time"
 
@@ -122,14 +121,6 @@ type Dependencies struct {
 	ThinkingSuppression func() bool
 	Clipboard           func(text string) error
 	OSC52Out            io.Writer
-	// Splash enables the animated launch splash (matrix rain resolving into the rainbow wordmark); tests default it off so views start settled.
-	Splash bool
-	// KittyDA1 is the optional live probe for the Kitty graphics DA1 fallback: when TERM_PROGRAM names no known Kitty-graphics terminal, the probe emits the CSI ? u query and reports whether the answer carries the graphics attribute. Tests leave it nil so detection stays environment-free.
-	KittyDA1 func() bool
-	// TitleOut is where OSC 0 window-title sequences are written; nil defaults to os.Stdout. Tests point it at a buffer.
-	TitleOut io.Writer
-	// TerminalTitle reports the terminal title current before the splash starts, so the splash can restore it on exit. Nil means the title was empty.
-	TerminalTitle func() string
 	// HistoryPath is the path of the prompt-history file to persist submitted
 	// prompts to (a sibling of config.json in the data directory, issue #612,
 	// part of #608). Empty leaves the ring in-memory only.
@@ -142,22 +133,6 @@ type Dependencies struct {
 	// NewGUID mints a fresh session GUID string for `/new`; nil falls back to the
 	// session package's random hex mint.
 	NewGUID func() string
-}
-
-// titleOut is where OSC 0 window-title escapes are written: the injected Dependencies.TitleOut when set, else os.Stdout.
-func (d Dependencies) titleOut() io.Writer {
-	if d.TitleOut != nil {
-		return d.TitleOut
-	}
-	return os.Stdout
-}
-
-// previousTerminalTitle resolves the title to restore after the splash: the injected reader when present, else the empty string.
-func previousTerminalTitle(d Dependencies) string {
-	if d.TerminalTitle == nil {
-		return ""
-	}
-	return d.TerminalTitle()
 }
 
 // Model is the Bubble Tea state backing the TUI.
@@ -191,10 +166,6 @@ type Model struct {
 	liveRunID int
 
 	clipboard func(text string) error
-
-	splash *Splash // non-nil while the launch splash is playing; nil once it settled or was skipped
-
-	kittyCap bool // the terminal supports the Kitty graphics protocol (see kitty.go)
 
 	// history is the Model-owned in-memory ring of submitted user prompts
 	// (issue #610, part of #608); it is the data source the arrow-key recall
@@ -263,7 +234,6 @@ func NewModelCfg(d Dependencies) Model {
 		toolResultsExpanded: !d.Config.ToolResultsCollapsedByDefault,
 	}
 
-	kittyCap := detectKittyGraphics(liveKittyEnv, d.KittyDA1)
 	m := Model{
 		composer:     comp,
 		session:      NewTurnSession(d.Turn),
@@ -278,8 +248,6 @@ func NewModelCfg(d Dependencies) Model {
 		liveRunID:    -1,
 		liveKey:      d.LiveKey,
 		clipboard:    newClipboard(d),
-		splash:       newSplash(d, transcript, kittyCap),
-		kittyCap:     kittyCap,
 		history:      newModelHistory(d.HistoryPath),
 		histIdx:      -1,
 	}
@@ -291,9 +259,6 @@ func NewModelCfg(d Dependencies) Model {
 	}
 	return m
 }
-
-// kittyGraphics reports whether the terminal supports the Kitty graphics protocol: every Kitty-gated feature reads this flag instead of probing the environment itself, so a non-Kitty terminal never sees a single Kitty escape sequence.
-func (m *Model) kittyGraphics() bool { return m.kittyCap }
 
 // newHistoryViewport builds the persisted history scroll component (T1 alt-screen pivot, ) as a plain bubbletea/viewport value.
 func newHistoryViewport() viewport.Model {
@@ -330,9 +295,6 @@ func clockTick() tea.Cmd {
 // Init returns any startup commands.
 func (m Model) Init() tea.Cmd {
 	var cmds []tea.Cmd
-	if m.splash != nil {
-		cmds = append(cmds, m.splash.Start())
-	}
 	if m.telemetry != nil {
 		cmds = append(cmds, telemetryWait(m.telemetry))
 	}
@@ -345,20 +307,6 @@ func (m Model) Init() tea.Cmd {
 
 // Update handles a UI event and returns the next state plus any commands.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// While the splash owns the screen, every message first lands on the
-	// splash module's single Handle entry point: the animation tick advances
-	// it and any keypress skips it, both wholly inside the module. Nothing
-	// that arrives during the splash reaches the hot path below.
-	if m.splash != nil {
-		res := m.splash.Handle(msg)
-		if res.handled {
-			if res.ended {
-				m.splash = nil
-			}
-			return m, res.cmd
-		}
-	}
-
 	var cmds []tea.Cmd
 
 	m.savedMsg = ""
@@ -940,9 +888,6 @@ func (m Model) View() tea.View {
 
 // viewString renders the surface content string (the tea.View content).
 func (m Model) viewString() string {
-	if m.splash != nil {
-		return m.splash.View(m.tx.width, m.tx.height)
-	}
 	if m.settings != nil {
 		return m.settings.View()
 	}

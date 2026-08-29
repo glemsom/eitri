@@ -66,7 +66,6 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 		Events:              events, // merged arrival-ordered feed: stream deltas and tool observations land in step
 		Rail:                rail,
 		ThinkingSuppression: thinkingSuppression(p),
-		Splash:              true,
 		Skills:              skillSurface(reg, skills),
 		HistoryPath:         tui.PromptHistoryPath(dataDir),
 		LiveKey:             live,

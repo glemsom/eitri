@@ -10,12 +10,12 @@ import (
 )
 
 // Busy spinner: the animated braille indicator that runs while a turn works,
-// plus the motion gate both animated surfaces share. The default is an
+// plus the motion gate that decides when animation is allowed. The default is an
 // OpenCode-style braille frame set advanced every busySpinnerTick; the static
 // "… thinking" line (render.go's busyLine) is the reduced-motion fallback.
 // The gate disables all animation when the user opts out (EITRI_NO_MOTION) or
 // the locale cannot render braille (non-UTF-8) — the same gate keeps the
-// launch splash off for those environments (see splash.go's splashFor).
+// spinner's animated frames off for those environments too.
 const busySpinnerTick = 80 * time.Millisecond
 
 // busySpinnerFrames is the OpenCode-style braille frame set.

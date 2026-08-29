@@ -76,10 +76,6 @@ _Avoid_: dispatch, turn state machine
 The owner of an open Settings surface: the draft form, its on-demand model-discovery lifecycle, and persistence of the draft through the save seams. The Model only tracks whether an overlay is open and routes messages to a single Handle entry point.
 _Avoid_: settings form handler, settings state machine
 
-**Launch splash**:
-The animated full-screen startup sequence (matrix rain resolving into the rainbow wordmark) that owns the screen until it settles or is skipped. The splash module owns the lifecycle end to end; the Model only tracks whether it is active and routes every message through its single Handle entry point.
-_Avoid_: boot screen, loading screen
-
 **Busy spinner**:
 The animated braille indicator that runs while a turn works — an OpenCode-style frame set advanced every 80 ms — degrading to a static "… thinking" line for reduced-motion or non-UTF-8 environments.
 _Avoid_: loader, progress indicator
