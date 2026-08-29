@@ -30,6 +30,32 @@ func TestCLISmoke(t *testing.T) {
 		}
 	})
 
+	t.Run("usage states the full dependency contract", func(t *testing.T) {
+		cmd := exec.Command(bin, "--help")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("eitri --help exit error = %v, output:\n%s", err, out)
+		}
+		// The usage text reflects the dependency requirement in full
+		// (ADR-0001), not just bubblewrap: every declared tool with
+		// per-distro install hints, plus the soft and base tiers.
+		for _, name := range []string{"bwrap", "bash", "rg", "curl", "lynx", "patch", "python3"} {
+			if !strings.Contains(string(out), name) {
+				t.Fatalf("usage output %q does not name declared tool %q", out, name)
+			}
+		}
+		for _, hint := range []string{"sudo apt install", "sudo dnf install", "sudo pacman -S"} {
+			if !strings.Contains(string(out), hint) {
+				t.Fatalf("usage output %q lacks per-distro install hint %q", out, hint)
+			}
+		}
+		for _, want := range []string{"ADR-0001", "Soft dependencies", "coreutils"} {
+			if !strings.Contains(string(out), want) {
+				t.Fatalf("usage output %q lacks the %q dependency-tier marker", out, want)
+			}
+		}
+	})
+
 	t.Run("version prints and exits zero", func(t *testing.T) {
 		cmd := exec.Command(bin, "--version")
 		out, err := cmd.CombinedOutput()
