@@ -105,11 +105,13 @@ func RenderFlow(in flowInput) (string, []toolRowRange) {
 }
 
 // fold turns the event log into its named flow blocks in emission order. The
-// committed-turn vs live-turn difference is a parameter (msg.streaming): a live
-// turn flushes each reasoning fragment at the tool boundary it precedes, while
-// a committed turn folds its reasoning into one authoritative snapshot rendered
-// exactly once, at the first tool boundary (or the tail). Answer fragments are
-// flushed at every boundary too, so partial answers land where they streamed.
+// committed-turn vs live-turn difference is a parameter (msg.streaming): a
+// live turn paints each reasoning delta as it arrives — the user watches chain-
+// of-thought progress during a pure-thinking stretch, no tool boundary needed —
+// while a committed turn folds its reasoning into one authoritative snapshot
+// rendered exactly once, at the first tool boundary (or the tail). Answer
+// fragments are flushed at every boundary too, so partial answers land where
+// they streamed.
 func (r flowRenderer) fold(events []TimelineEvent, msg message) []flowItem {
 	items := []flowItem{}
 	ti := 0
@@ -124,7 +126,7 @@ func (r flowRenderer) fold(events []TimelineEvent, msg message) []flowItem {
 	flushReasoning := func() {
 		var txt string
 		if msg.streaming {
-			txt = reasoning.String() // the live delta fragment accumulated since the last boundary
+			txt = reasoning.String() // the live delta fragment accumulated since the last flush
 			reasoning.Reset()
 		} else {
 			if reasoningEmitted {
@@ -192,6 +194,9 @@ func (r flowRenderer) fold(events []TimelineEvent, msg message) []flowItem {
 		switch ev.Kind {
 		case EventReasoning:
 			reasoning.WriteString(ev.Delta)
+			if msg.streaming {
+				flushReasoning() // a live turn paints each delta now; empty/gated flushes are no-ops
+			}
 		case EventToolStart:
 			flushReasoning()
 			flushAnswer(false)

@@ -151,6 +151,47 @@ func TestRenderFlow_liveInterleavesReasoningFragmentsInEmissionOrder(t *testing.
 	}
 }
 
+// TestRenderFlow_liveFlushesReasoningPerDeltaWithoutToolBoundary locks the
+// #657 contract for a pure chain-of-thought stretch: a live, streaming turn
+// with no intervening tool boundary paints each reasoning delta as its own
+// fragment as it arrives, rather than hiding everything in one composite block
+// until the tail. Each delta renders separately (one header per fragment), and
+// the whole streamed span never appears as a single contiguous block.
+func TestRenderFlow_liveFlushesReasoningPerDeltaWithoutToolBoundary(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	in := renderFlowInput(
+		[]TimelineEvent{
+			{Kind: EventReasoning, Delta: "think "},
+			{Kind: EventReasoning, Delta: "one "},
+			{Kind: EventReasoning, Delta: "two"},
+			{Kind: EventAnswer, Delta: "Done."},
+		},
+		message{reasoning: "think one two", content: "Done.", streaming: true, thinkingRequested: true},
+		nil,
+	)
+
+	out, _ := RenderFlow(in)
+	plain := ansiStrip(out)
+
+	// Three reasoning deltas must paint as three separate fragments, not one
+	// composite block: each delta's text survives, and the streamed span is
+	// never a single contiguous run.
+	for _, frag := range []string{"think ", "one ", "two"} {
+		if !strings.Contains(plain, frag) {
+			t.Errorf("live reasoning fragment %q missing from flow:\n%s", frag, plain)
+		}
+	}
+	if strings.Contains(plain, "think one two") {
+		t.Errorf("live reasoning must render as separate per-delta fragments, not one contiguous block:\n%s", plain)
+	}
+	if n := strings.Count(plain, " tok"); n != 3 {
+		t.Errorf("live reasoning must emit one header per delta (want 3), got %d:\n%s", n, plain)
+	}
+	if !strings.Contains(plain, "Done.") {
+		t.Errorf("live turn must still render its answer, got:\n%s", plain)
+	}
+}
+
 func TestRenderFlow_committedCollapsesReasoningToHint(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	in := renderFlowInput(
