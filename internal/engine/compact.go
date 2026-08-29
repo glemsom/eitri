@@ -66,18 +66,23 @@ func (e *Engine) maybeCompact(ctx context.Context, req RunRequest, opts AgentOpt
 		stableHead = append(stableHead, messages[0])
 		start = 1
 	}
-	// The persona head may be followed by the per-run workspace directive and
-	// the model-visible skill index as extra system messages; keep them in the
-	// stable head alongside the system prompt so the compact-path wire messages
-	// match the non-compact path. Both are re-injected fresh (req.Workspace,
-	// req.SkillIndex) on the next run and evicted periodically, but preserving
-	// them through eviction keeps them adjacent to the persona where the model
-	// expects them.
+	// The persona head may be followed by the per-run workspace directive, the
+	// model-visible skill index, and the workspace-root AGENTS.md instructions as
+	// extra system messages; keep them in the stable head alongside the system
+	// prompt so the compact-path wire messages match the non-compact path. All
+	// three are re-injected fresh (req.Workspace, req.SkillIndex,
+	// req.RepoInstructions) on the next run and evicted periodically, but
+	// preserving them through eviction keeps them adjacent to the persona where
+	// the model expects them.
 	for start < len(messages) && isWorkspaceMessage(messages[start]) {
 		stableHead = append(stableHead, messages[start])
 		start++
 	}
 	for start < len(messages) && isSkillIndexMessage(messages[start]) {
+		stableHead = append(stableHead, messages[start])
+		start++
+	}
+	for start < len(messages) && isRepoInstructionMessage(messages[start]) {
 		stableHead = append(stableHead, messages[start])
 		start++
 	}
@@ -238,6 +243,15 @@ func isSkillIndexMessage(m provider.Message) bool {
 // system prompt.
 func isWorkspaceMessage(m provider.Message) bool {
 	return m.Role == provider.RoleSystem && strings.Contains(m.Content, "## Working directory")
+}
+
+// isRepoInstructionMessage reports whether a message is the injected
+// workspace-root AGENTS.md system message (see RunRequest.RepoInstructions /
+// repoInstructionsDirective). It matches the directive's heading so history
+// stripping and compaction can drop or preserve it independently of the
+// byte-stable system prompt.
+func isRepoInstructionMessage(m provider.Message) bool {
+	return m.Role == provider.RoleSystem && strings.Contains(m.Content, "## Repository instructions (AGENTS.md)")
 }
 
 // renderBody serializes the evicted body messages into a flat transcript the summary model can consume.
