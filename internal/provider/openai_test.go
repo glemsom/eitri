@@ -440,7 +440,7 @@ func TestOpenAIEmitsThinkingAndReasoningEffort(t *testing.T) {
 		Model:           "deepseek-v4-flash",
 		Messages:        []Message{{Role: RoleUser, Content: "hi"}},
 		ThinkingEnabled: true,
-		ReasoningEffort: "xhigh", // legacy; normalized to high on the wire
+		ReasoningEffort: "high",
 	}); err != nil {
 		t.Fatalf("OpenAI.Stream() error = %v, want nil", err)
 	}
@@ -494,7 +494,7 @@ func TestNormalizeReasoningEffort(t *testing.T) {
 		"low":    "low",
 		"medium": "medium",
 		"high":   "high",
-		"xhigh":  "high",
+		"xhigh":  "xhigh",
 		"max":    "max",
 		"":       "",
 		"bogus":  "bogus",

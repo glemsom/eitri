@@ -177,11 +177,8 @@ type Request struct {
 	ToolSchemaEnforcement bool
 }
 
-// NormalizeReasoningEffort forwards reasoning-effort tiers to the wire low, medium, high and max are each first-class and pass through unchanged.
+// NormalizeReasoningEffort forwards reasoning-effort tiers to the wire, passing low, medium, high and max through unchanged.
 func NormalizeReasoningEffort(effort string) string {
-	if effort == "xhigh" {
-		return "high"
-	}
 	return effort
 }
 
