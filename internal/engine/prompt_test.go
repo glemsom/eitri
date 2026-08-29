@@ -150,6 +150,31 @@ func TestSystemPromptStaysLeanOnToolPresence(t *testing.T) {
 	}
 }
 
+func TestSystemPromptSectionStructure(t *testing.T) {
+	t.Parallel()
+	p := SystemPromptContent()
+	order := []string{
+		"You are Eitri",
+		"## How to work",
+		"## Tools",
+		"### bash",
+		"### open_in_browser",
+		"### Find, read, edit",
+		"## Scratch scripting",
+	}
+	last := -1
+	for _, want := range order {
+		i := strings.Index(p, want)
+		if i < 0 {
+			t.Fatalf("system prompt missing section %q:\n%s", want, p)
+		}
+		if i <= last {
+			t.Fatalf("system prompt section %q out of order (at %d, after %d):\n%s", want, i, last, p)
+		}
+		last = i
+	}
+}
+
 func TestSystemPromptIsStatic(t *testing.T) {
 	t.Parallel()
 	p := SystemPromptContent()
