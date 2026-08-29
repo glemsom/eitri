@@ -52,9 +52,6 @@ func (d *ChatCompletionsDialect) Build(req Request) ([]byte, error) {
 		Thinking:             thinkingControl(req),
 		ReasoningEffort:      reasoningEffortControl(req),
 		MaxOutputTokens:      maxOutputTokens(req),
-		ResponseFormat:       jsonObjectModeControl(req),
-		Temperature:          samplingTemperatureControl(req),
-		TopP:                 samplingTopPControl(req),
 	}
 	return json.Marshal(body)
 }
@@ -62,8 +59,6 @@ func (d *ChatCompletionsDialect) Build(req Request) ([]byte, error) {
 func (d *ChatCompletionsDialect) Capabilities() []GenerationControl {
 	return []GenerationControl{
 		GenerationControlGenerationBudget,
-		GenerationControlJSONObjectMode,
-		GenerationControlSamplingPolicy,
 		GenerationControlToolSchemaEnforcement,
 		GenerationControlThinkingSuppression,
 	}
@@ -89,9 +84,6 @@ type chatCompletionBody struct {
 	Thinking             *thinkingEnabler `json:"thinking,omitempty"`
 	ReasoningEffort      string           `json:"reasoning_effort,omitempty"`
 	MaxOutputTokens      int              `json:"max_completion_tokens,omitempty"`
-	ResponseFormat       *jsonObjectMode  `json:"response_format,omitempty"`
-	Temperature          *float64         `json:"temperature,omitempty"`
-	TopP                 *float64         `json:"top_p,omitempty"`
 }
 
 // thinkingEnabler is DeepSeek's thinking-mode toggle; the enabled form keeps thinking default-on for agent loops.
@@ -120,42 +112,11 @@ func reasoningEffortControl(req Request) string {
 	return NormalizeReasoningEffort(req.ReasoningEffort)
 }
 
-// jsonObjectMode is OpenAI's constrained-output response_format; its enabled form asks the provider to return a valid JSON object.
-type jsonObjectMode struct {
-	Type string `json:"type"`
-}
-
 func maxOutputTokens(req Request) int {
 	if req.MaxOutputTokens <= 0 {
 		return 0
 	}
 	return req.MaxOutputTokens
-}
-
-// jsonObjectModeControl returns the JSON Object Mode response_format for req when the caller opted into it, else nil so the field is omitted.
-func jsonObjectModeControl(req Request) *jsonObjectMode {
-	if !req.JSONObjectMode {
-		return nil
-	}
-	return &jsonObjectMode{Type: "json_object"}
-}
-
-// samplingTemperatureControl returns the pointer to emit as the wire `temperature` when req requests temperature-based sampling, else nil so the field is omitted.
-func samplingTemperatureControl(req Request) *float64 {
-	if req.Sampling == nil || req.Sampling.Mode != SamplingTemperature {
-		return nil
-	}
-	v := req.Sampling.Value
-	return &v
-}
-
-// samplingTopPControl returns the pointer to emit as the wire `top_p` when req requests nucleus (top-p) sampling, else nil so the field is omitted.
-func samplingTopPControl(req Request) *float64 {
-	if req.Sampling == nil || req.Sampling.Mode != SamplingNucleus {
-		return nil
-	}
-	v := req.Sampling.Value
-	return &v
 }
 
 // chatToolManifest re-expresses canonical tool definitions into the

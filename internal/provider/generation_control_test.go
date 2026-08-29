@@ -19,20 +19,19 @@ func (c *capableProvider) SupportedGenerationControls(context.Context) ([]Genera
 func TestNegotiateAllSupported(t *testing.T) {
 	t.Parallel()
 	p := &capableProvider{supported: []GenerationControl{
-		GenerationControlJSONObjectMode,
 		GenerationControlGenerationBudget,
-		GenerationControlSamplingPolicy,
 		GenerationControlToolSchemaEnforcement,
+		GenerationControlThinkingSuppression,
 	}}
 	reqs := []ControlRequirement{
-		{Control: GenerationControlJSONObjectMode, Required: true},
-		{Control: GenerationControlSamplingPolicy, Required: false},
+		{Control: GenerationControlToolSchemaEnforcement, Required: true},
+		{Control: GenerationControlThinkingSuppression, Required: false},
 	}
 	got, err := NegotiateGenerationControls(context.Background(), p, reqs)
 	if err != nil {
 		t.Fatalf("NegotiateGenerationControls() error = %v, want nil", err)
 	}
-	want := []string{string(GenerationControlJSONObjectMode), string(GenerationControlSamplingPolicy)}
+	want := []string{string(GenerationControlToolSchemaEnforcement), string(GenerationControlThinkingSuppression)}
 	if !sameControls(got, want) {
 		t.Fatalf("NegotiateGenerationControls() = %v, want %v", got, want)
 	}
@@ -62,18 +61,18 @@ func TestNegotiateUnsupportedRequiredFails(t *testing.T) {
 	t.Parallel()
 	p := &capableProvider{supported: []GenerationControl{GenerationControlToolSchemaEnforcement}}
 	reqs := []ControlRequirement{
-		{Control: GenerationControlJSONObjectMode, Required: true},
+		{Control: GenerationControlThinkingSuppression, Required: true},
 		{Control: GenerationControlToolSchemaEnforcement, Required: true},
 	}
 	_, err := NegotiateGenerationControls(context.Background(), p, reqs)
 	if err == nil {
 		t.Fatal("NegotiateGenerationControls() error = nil, want unsupported-required error")
 	}
-	if !isUnsupportedRequired(err, GenerationControlJSONObjectMode) {
-		t.Fatalf("error = %v, want unsupported-required for JSON Object Mode", err)
+	if !isUnsupportedRequired(err, GenerationControlThinkingSuppression) {
+		t.Fatalf("error = %v, want unsupported-required for Thinking Suppression", err)
 	}
-	if !strings.Contains(err.Error(), string(GenerationControlJSONObjectMode)) {
-		t.Fatalf("error = %q, want it to name JSON Object Mode", err.Error())
+	if !strings.Contains(err.Error(), string(GenerationControlThinkingSuppression)) {
+		t.Fatalf("error = %q, want it to name Thinking Suppression", err.Error())
 	}
 }
 
@@ -81,7 +80,7 @@ func TestNegotiateUnsupportedOptionalDegrades(t *testing.T) {
 	t.Parallel()
 	p := &capableProvider{supported: []GenerationControl{
 		GenerationControlGenerationBudget,
-		GenerationControlSamplingPolicy,
+		GenerationControlThinkingSuppression,
 	}}
 	reqs := []ControlRequirement{
 		{Control: GenerationControlToolSchemaEnforcement, Required: false}, // unsupported, optional
@@ -119,16 +118,16 @@ func TestNegotiateProviderWithoutCapability(t *testing.T) {
 
 func TestNegotiateDeduplicatesRepeatedControls(t *testing.T) {
 	t.Parallel()
-	p := &capableProvider{supported: []GenerationControl{GenerationControlSamplingPolicy}}
+	p := &capableProvider{supported: []GenerationControl{GenerationControlThinkingSuppression}}
 	reqs := []ControlRequirement{
-		{Control: GenerationControlSamplingPolicy, Required: false},
-		{Control: GenerationControlSamplingPolicy, Required: true},
+		{Control: GenerationControlThinkingSuppression, Required: false},
+		{Control: GenerationControlThinkingSuppression, Required: true},
 	}
 	got, err := NegotiateGenerationControls(context.Background(), p, reqs)
 	if err != nil {
 		t.Fatalf("NegotiateGenerationControls() error = %v, want nil", err)
 	}
-	want := []string{string(GenerationControlSamplingPolicy)}
+	want := []string{string(GenerationControlThinkingSuppression)}
 	if !sameControls(got, want) {
 		t.Fatalf("NegotiateGenerationControls() = %v, want %v", got, want)
 	}
