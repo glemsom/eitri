@@ -34,7 +34,8 @@ Flags:
   --version      print the version and exit
 
 Eitri creates its data directory (~/.eitri, or EITRI_DIR) on launch and
-requires bubblewrap (bwrap) to be installed; it never runs unsandboxed.
+requires its declared toolset — bwrap, bash, rg, curl, lynx, patch, python3 —
+to be installed, refusing to start otherwise; it never runs unsandboxed.
 `
 
 func main() {

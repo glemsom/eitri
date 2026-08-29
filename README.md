@@ -14,10 +14,11 @@
 ## Quickstart
 
 ```sh
-# Install the bubblewrap sandbox (required; Eitri never runs unsandboxed):
-#   Debian/Ubuntu: sudo apt install bubblewrap
-#   Fedora:        sudo dnf install bubblewrap
-#   Arch:          sudo pacman -S bubblewrap
+# Install the declared toolset (required; Eitri refuses to start without it,
+# because its agent prompt promises these tools unconditionally):
+#   Debian/Ubuntu: sudo apt install bubblewrap bash ripgrep curl lynx patch python3
+#   Fedora:        sudo dnf install bubblewrap bash ripgrep curl lynx patch python3
+#   Arch:          sudo pacman -S bubblewrap bash ripgrep curl lynx patch python3
 
 make build          # 1. build ./bin/eitri
 ./bin/eitri         # 2. launch the interactive TUI
@@ -143,7 +144,7 @@ The `copilot` and `custom_openai` objects are managed by Eitri (via device-flow 
 ## Requirements
 
 - **Linux** (Eitri is a Linux agent).
-- **bubblewrap (`bwrap`)** must be installed — Eitri never runs unsandboxed and refuses to start without it.
+- **Declared toolset** — Eitri verifies every declared dependency at boot and refuses to start without it: the hard substrate `bwrap` (bubblewrap — Eitri never runs unsandboxed) and `bash`, plus the declared tools `rg` (ripgrep), `curl`, `lynx`, `patch`, and `python3`. A missing tool aborts the launch with install hints rather than running with a broken toolset.
 
 ## Building
 

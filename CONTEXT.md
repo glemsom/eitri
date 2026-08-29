@@ -20,6 +20,10 @@ _Avoid_: tmp, scratch
 The isolation boundary for shell commands: root read-only (including host `/tmp` unless configured writable), workspace and session temp writable, separate PID namespace, private `/dev` and `/proc`.
 _Avoid_: container, jail
 
+**Declared dependency / declared toolset**:
+The executable set Eitri verifies at boot and refuses to start without — the hard substrate (`bwrap`, `bash`) plus the declared tools (`rg`, `curl`, `lynx`, `patch`, `python3`) — because the single fixed prompt promises them unconditionally. Soft dependencies (`git`, a browser launcher for `open_in_browser`) are opportunistic: never gated at boot, surfacing only if the agent reaches for them.
+_Avoid_: requirement, prerequisite
+
 **Host-side tool**:
 A tool running outside the sandbox while resolving the same path namespace as `bash`; write-side tools gate targets on the writable roots.
 _Avoid_: local tool, external tool
