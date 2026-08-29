@@ -66,16 +66,15 @@ func TestSystemPromptDocumentsBashFileOps(t *testing.T) {
 	t.Parallel()
 	p := SystemPromptContent()
 	cases := map[string]string{
-		"locate with rg":     "rg -n",
-		"read numbered nl":   "nl -ba",
-		"read range sed":     "sed -n",
-		"edit in place":      "sed -i",
-		"diff apply patch":   "patch",
-		"multi-line edit":    "multi-line",
-		"write heredoc":      `cat <<'EOF'`,
-		"verify re-read":     "re-read",
-		"home skill pack":    "~/.agents/skills/",
-		"project skill pack": ".agents/skills/",
+		"locate with rg":        "rg -n",
+		"read numbered nl":      "nl -ba",
+		"read range sed":        "sed -n",
+		"emit a diff":           "emit a diff",
+		"diff apply patch":      "patch",
+		"single editing method": "single editing method",
+		"write heredoc":         `cat <<'EOF'`,
+		"home skill pack":       "~/.agents/skills/",
+		"project skill pack":    ".agents/skills/",
 	}
 	for name, want := range cases {
 		if !strings.Contains(p, want) {
@@ -139,19 +138,15 @@ func TestSystemPromptStatesDeclaredToolset(t *testing.T) {
 	}
 }
 
-func TestSystemPromptTreatsGitAsSoftDependency(t *testing.T) {
+func TestSystemPromptStaysLeanOnToolPresence(t *testing.T) {
 	t.Parallel()
 	p := SystemPromptContent()
-	for _, want := range []string{"git", "usually present", "never guaranteed"} {
-		if !strings.Contains(p, want) {
-			t.Fatalf("system prompt must mark git as a soft dependency; missing %q:\n%s", want, p)
+	// Tools outside the guaranteed toolset must neither be promised nor
+	// hedged about. Editing is a single, patch-based method.
+	for _, banned := range []string{"usually present", "never guaranteed", "git diff", "git apply", "sed -i"} {
+		if strings.Contains(p, banned) {
+			t.Fatalf("system prompt must not hedge non-guaranteed tools or multi-method edits; found %q:\n%s", banned, p)
 		}
-	}
-	if !strings.Contains(p, "git diff") {
-		t.Fatalf("system prompt must self-review with git diff when available:\n%s", p)
-	}
-	if strings.Contains(p, "git apply") {
-		t.Fatalf("system prompt must apply edits via patch, never git apply:\n%s", p)
 	}
 }
 
