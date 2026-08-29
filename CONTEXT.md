@@ -107,3 +107,7 @@ _Avoid_: reset, wipe, clear history.
 **Kitty graphics capability**:
 The terminal's support for the Kitty graphics protocol, resolved once at TUI startup from `TERM_PROGRAM` with a graphics-query + DA1 probe fallback. Non-Kitty terminals receive zero Kitty escape sequences and fall back to text-only rendering.
 _Avoid_: image support, graphics mode
+
+**Repository instructions (AGENTS.md)**:
+The content of the workspace-root `AGENTS.md`, carried to the provider as its own system-layer message headed `## Repository instructions (AGENTS.md)` and appended after the persona, workspace directive, and skill index. Additive — it never replaces the byte-stable persona prompt, and a workspace without the file sends the pre-feature wire bytes unchanged. The message is stripped from persisted session history and preserved in the compaction stable head, mirroring the workspace directive and skill index.
+_Avoid_: project instructions, repo guidance, agent handbook

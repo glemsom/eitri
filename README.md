@@ -38,6 +38,10 @@ make build          # 1. build ./bin/eitri
 | `eitri -d` | Debug mode: write full HTTP traces to/from the provider |
 | `eitri --version` | Print the version and exit |
 
+### Repository instructions (`AGENTS.md`)
+
+If the workspace root (the directory you launch Eitri from) contains an `AGENTS.md`, Eitri reads it and carries its content to the model as a dedicated system-layer directive headed `## Repository instructions (AGENTS.md)` — both in the TUI and in batch (`-b`) mode. The injected instructions are **additive**: the built-in Eitri persona prompt is preserved unchanged, and the message is excluded from persisted session history so it isn't duplicated on the next turn. Without an `AGENTS.md`, no extra message is sent and the request is byte-identical to the pre-feature case. There is no opt-in or escape-hatch flag; the file is loaded whenever it exists.
+
 ### Sessions
 
 Eitri records every session so you can review, replay, and search past work:

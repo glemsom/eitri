@@ -85,6 +85,14 @@ type RunRequest struct {
 	// keeping the outgoing request byte-identical to the no-index case.
 	SkillIndex *string
 
+	// RepoInstructions is the optional content of the workspace-root AGENTS.md.
+	// When set, it is carried to the provider as a dedicated system-layer message
+	// appended after the persona head (and any workspace directive / skill index)
+	// so repository-authored instructions reach the model without perturbing the
+	// byte-stable system prompt. Nil omits the message entirely, keeping the
+	// outgoing request byte-identical to the pre-feature case.
+	RepoInstructions *string
+
 	ThinkingEnabled bool
 	ReasoningEffort string
 
@@ -111,6 +119,14 @@ func systemPromptHead() []provider.Message {
 // path rather than baked into prompt.md.
 func workspaceDirective(workspace string) string {
 	return "## Working directory\nYou are operating in the workspace `" + workspace + "`. Resolve all relative paths against it."
+}
+
+// repoInstructionsDirective renders the workspace-root AGENTS.md content as a
+// dedicated system-layer message head: the heading anchors the matcher that
+// strips it from persisted history and preserves it through compaction, so the
+// injected block is never duplicated on a later turn.
+func repoInstructionsDirective(content string) string {
+	return "## Repository instructions (AGENTS.md)\n\n" + content
 }
 
 // bindSkillToPrompt folds a slash-injected skill payload into the single
@@ -191,6 +207,9 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 	}
 	if req.SkillIndex != nil {
 		messages = append(messages, provider.Message{Role: provider.RoleSystem, Content: *req.SkillIndex})
+	}
+	if req.RepoInstructions != nil {
+		messages = append(messages, provider.Message{Role: provider.RoleSystem, Content: repoInstructionsDirective(*req.RepoInstructions)})
 	}
 	messages = append(messages, e.sessionHistory(req.SessionKey)...)
 	userContent := req.Prompt
@@ -416,14 +435,18 @@ func (e *Engine) storeSessionHistory(sessionKey string, messages []provider.Mess
 		start = 1
 	}
 	// The persona head may be immediately followed by the per-run workspace
-	// directive and/or the model-visible skill index as extra system messages.
-	// Both are re-injected fresh every run (req.Workspace, req.SkillIndex), so
-	// they must not persist into session history (that would duplicate the
-	// message on the next turn).
+	// directive, the model-visible skill index, and the workspace-root AGENTS.md
+	// instructions as extra system messages. All three are re-injected fresh every
+	// run (req.Workspace, req.SkillIndex, req.RepoInstructions), so they must not
+	// persist into session history (that would duplicate the message on the next
+	// turn).
 	for start < len(messages) && isWorkspaceMessage(messages[start]) {
 		start++
 	}
 	for start < len(messages) && isSkillIndexMessage(messages[start]) {
+		start++
+	}
+	for start < len(messages) && isRepoInstructionMessage(messages[start]) {
 		start++
 	}
 	persisted := append([]provider.Message(nil), messages[start:]...)

@@ -237,20 +237,22 @@ func runAgent(ctx context.Context, e *engine.Engine, cfg config.Config, reg *too
 			skillIndex = &idx
 		}
 	}
+	repoInstructions := loadRepoInstructions(reg.Workspace())
 	effort := cfg.ReasoningEffort
 	if !cfg.ThinkingEnabled {
 		effort = ""
 	}
 	return e.RunAgent(ctx, engine.RunRequest{
-		Model:           cfg.Model,
-		Prompt:          prompt,
-		Workspace:       reg.Workspace(),
-		SkillIndex:      skillIndex,
-		SkillInject:     skillInject,
-		SessionKey:      sessionKey,
-		ThinkingEnabled: cfg.ThinkingEnabled,
-		ReasoningEffort: effort,
-		ProviderID:      provider.ProviderID(cfg.Provider),
+		Model:            cfg.Model,
+		Prompt:           prompt,
+		Workspace:        reg.Workspace(),
+		SkillIndex:       skillIndex,
+		RepoInstructions: repoInstructions,
+		SkillInject:      skillInject,
+		SessionKey:       sessionKey,
+		ThinkingEnabled:  cfg.ThinkingEnabled,
+		ReasoningEffort:  effort,
+		ProviderID:       provider.ProviderID(cfg.Provider),
 	}, engine.AgentOptions{
 		Tools:      providerTools(reg.Definitions()),
 		ToolChoice: "auto",
@@ -273,6 +275,19 @@ func runAgent(ctx context.Context, e *engine.Engine, cfg config.Config, reg *too
 		Compaction:  compaction,
 		OnCompacted: func() { fmt.Fprint(os.Stderr, "[compacted]\n") },
 	})
+}
+
+// loadRepoInstructions reads the workspace-root AGENTS.md (if present) so its
+// content can ride to the provider as the repository-instructions system message.
+// A missing or unreadable file returns nil, leaving the wire request
+// byte-identical to the no-instructions case — no opt-in, no escape hatch.
+func loadRepoInstructions(workspace string) *string {
+	b, err := os.ReadFile(filepath.Join(workspace, "AGENTS.md"))
+	if err != nil {
+		return nil
+	}
+	content := string(b)
+	return &content
 }
 
 // providerTools maps the registry's definitions to provider Chat-Completions Tool objects via the dialect's tool-schema re-expression (provider.NewChatCompletionsDialect().Manifest): one canonical JSON-Schema per tool is re-expressed per dialect, never hand-copied per provider.
