@@ -8,11 +8,9 @@ import (
 // GenerationControl identifies one provider-side generation control a special turn may request on the wire.
 type GenerationControl string
 
-// The five generation controls a provider can declare support for and a special turn can request.
+// The three generation controls a provider can declare support for and a special turn can request.
 const (
-	GenerationControlJSONObjectMode        GenerationControl = "json_object_mode"
 	GenerationControlGenerationBudget      GenerationControl = "generation_budget"
-	GenerationControlSamplingPolicy        GenerationControl = "sampling_policy"
 	GenerationControlToolSchemaEnforcement GenerationControl = "tool_schema_enforcement"
 	GenerationControlThinkingSuppression   GenerationControl = "thinking_suppression"
 )

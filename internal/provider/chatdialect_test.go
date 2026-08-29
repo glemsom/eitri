@@ -22,8 +22,6 @@ func TestChatCompletionsDialectCapabilities(t *testing.T) {
 	}
 	want := []GenerationControl{
 		GenerationControlGenerationBudget,
-		GenerationControlJSONObjectMode,
-		GenerationControlSamplingPolicy,
 		GenerationControlToolSchemaEnforcement,
 		GenerationControlThinkingSuppression,
 	}
@@ -49,9 +47,7 @@ func TestChatCompletionsDialectBuildShapesAllControls(t *testing.T) {
 		ThinkingEnabled:       true,
 		ReasoningEffort:       "high",
 		MaxOutputTokens:       256,
-		JSONObjectMode:        true,
 		ToolSchemaEnforcement: true,
-		Sampling:              &SamplingPolicy{Mode: SamplingTemperature, Value: 0.7},
 	})
 	if err != nil {
 		t.Fatalf("Build() error = %v, want nil", err)
@@ -67,8 +63,6 @@ func TestChatCompletionsDialectBuildShapesAllControls(t *testing.T) {
 		"thinking":              map[string]any{"type": "enabled"},
 		"reasoning_effort":      "high",
 		"max_completion_tokens": float64(256),
-		"response_format":       map[string]any{"type": "json_object"},
-		"temperature":           float64(0.7),
 	}
 	for key, want := range checks {
 		if got, ok := parsed[key]; !ok || !jsonEqual(got, want) {
@@ -86,7 +80,7 @@ func TestChatCompletionsDialectBuildOmitsUnsetControls(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build() error = %v, want nil", err)
 	}
-	for _, absent := range []string{"prompt_cache_key", "thinking", "reasoning_effort", "max_completion_tokens", "response_format", "temperature", "top_p"} {
+	for _, absent := range []string{"prompt_cache_key", "thinking", "reasoning_effort", "max_completion_tokens"} {
 		if strings.Contains(string(body), `"`+absent+`"`) {
 			t.Errorf("unset control %q leaked into body: %s", absent, body)
 		}

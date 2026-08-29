@@ -212,7 +212,7 @@ func TestEngineNegotiatesGenerationControls(t *testing.T) {
 	e := New(p, &mockTranscript{})
 
 	_, err := e.NegotiateGenerationControls(context.Background(), []provider.ControlRequirement{{
-		Control:  provider.GenerationControlJSONObjectMode,
+		Control:  provider.GenerationControlToolSchemaEnforcement,
 		Required: true,
 	}})
 	if err == nil {
@@ -321,24 +321,4 @@ func hasMessage(msgs []provider.Message, role provider.Role, content string) boo
 		}
 	}
 	return false
-}
-
-// TestRunAgentOmitsSamplingPolicy pins that ordinary agent turns never set the provider Sampling field; only a special turn would, and none remain after #520 deleted the Sampling Policy turn.
-func TestRunAgentOmitsSamplingPolicy(t *testing.T) {
-	t.Parallel()
-	cap := &capturedRequests{}
-	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
-		cap.reqs = append(cap.reqs, req)
-		return provider.StreamFunc(provider.Chunk{Content: "hi"}, provider.Chunk{FinishReason: "stop", Done: true}), nil
-	}), &mockTranscript{})
-
-	if _, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "go"}, AgentOptions{}); err != nil {
-		t.Fatalf("RunAgent() error = %v, want nil", err)
-	}
-	if len(cap.reqs) != 1 {
-		t.Fatalf("provider requests = %d, want 1", len(cap.reqs))
-	}
-	if cap.reqs[0].Sampling != nil {
-		t.Errorf("ordinary turn set Sampling = %+v, want nil", cap.reqs[0].Sampling)
-	}
 }

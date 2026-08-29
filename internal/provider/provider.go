@@ -174,25 +174,7 @@ type Request struct {
 
 	MaxOutputTokens int
 
-	JSONObjectMode        bool
 	ToolSchemaEnforcement bool
-
-	Sampling *SamplingPolicy
-}
-
-// SamplingPolicyMode identifies which wire sampling knob a special turn requests.
-type SamplingPolicyMode string
-
-// The two supported Sampling Policy modes.
-const (
-	SamplingTemperature SamplingPolicyMode = "temperature"
-	SamplingNucleus     SamplingPolicyMode = "nucleus"
-)
-
-// SamplingPolicy is a special turn's requested sampling: exactly one mode plus its value.
-type SamplingPolicy struct {
-	Mode  SamplingPolicyMode
-	Value float64
 }
 
 // NormalizeReasoningEffort forwards reasoning-effort tiers to the wire low, medium, high and max are each first-class and pass through unchanged.
