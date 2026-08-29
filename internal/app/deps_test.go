@@ -31,6 +31,31 @@ func declaredDependencyNames() []string {
 	return names
 }
 
+// softDependencyNames returns the soft dependency executables, in declaration order.
+func softDependencyNames() []string {
+	names := make([]string, len(softDependencies))
+	for i, d := range softDependencies {
+		names[i] = d.name
+	}
+	return names
+}
+
+func TestCheckSoftDependenciesAllPresent(t *testing.T) {
+	if got := checkSoftDependencies(lookup(softDependencyNames()...)); got != nil {
+		t.Fatalf("checkSoftDependencies() = %v, want no notices when every soft dependency is present", got)
+	}
+}
+
+func TestCheckSoftDependenciesMissingGitReturnsSingleNotice(t *testing.T) {
+	notices := checkSoftDependencies(lookup("bash" /* git absent */))
+	if len(notices) != 1 {
+		t.Fatalf("checkSoftDependencies() = %v, want exactly one notice for the single missing soft dependency git", notices)
+	}
+	if !strings.Contains(notices[0], "git") {
+		t.Fatalf("notice %q does not name the missing soft dependency git", notices[0])
+	}
+}
+
 func TestCheckDependenciesAllPresent(t *testing.T) {
 	names := declaredDependencyNames()
 	if err := checkDependencies(lookup(names...)); err != nil {

@@ -145,6 +145,7 @@ The `copilot` and `custom_openai` objects are managed by Eitri (via device-flow 
 
 - **Linux** (Eitri is a Linux agent).
 - **Declared toolset** — Eitri verifies every declared dependency at boot and refuses to start without it: the hard substrate `bwrap` (bubblewrap — Eitri never runs unsandboxed) and `bash`, plus the declared tools `rg` (ripgrep), `curl`, `lynx`, `patch`, and `python3`. A missing tool aborts the launch with install hints rather than running with a broken toolset.
+- **Soft dependencies** (optional, never gate startup) — `git` (opportunistic `git diff` self-review) and a browser launcher (`xdg-open`, backing `open_in_browser`) may be absent: a missing `git` prints a single non-fatal boot notice and the run continues; a missing browser backend surfaces only when `open_in_browser` actually runs, as a contained error.
 
 ## Building
 
