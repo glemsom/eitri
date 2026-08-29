@@ -103,3 +103,23 @@ _Avoid_: reset, wipe, clear history.
 **Kitty graphics capability**:
 The terminal's support for the Kitty graphics protocol, resolved once at TUI startup from `TERM_PROGRAM` with a graphics-query + DA1 probe fallback. Non-Kitty terminals receive zero Kitty escape sequences and fall back to text-only rendering.
 _Avoid_: image support, graphics mode
+
+**Declared dependency**:
+A tool Eitri's single system prompt relies on unconditionally and therefore checks for at startup, refusing to run when missing. One of a fixed set (`rg`, `curl`, `lynx`, `patch`, `python3`, plus the `bwrap`/`bash` substrate); contrasted with a base tool that is assumed present and a soft dependency that is documented but never gates startup.
+_Avoid_: supported tool, external tool, tool requirement
+
+**Base tool**:
+A shell program assumed present on any host that runs Eitri and therefore never checked at startup (`grep`, `sed`, `awk`, `cat`, `nl`, `diff`). Distinct from a declared dependency, which is startup-checked and fatal if missing.
+_Avoid_: core utility, builtin
+
+**Soft dependency**:
+A tool Eitri may use but never gates startup on: absent at runtime the affected path degrades or fails in a contained, user-visible way. `git` (edit/review loop) and `xdg-open` (backend of `open_in_browser`); a missing `git` raises a single non-fatal boot notice, a missing `xdg-open` fails only when the browser tool actually runs.
+_Avoid_: optional tool, nice-to-have
+
+**Startup dependency check**:
+The single boot-time pass in `app.Run` (reusing the injectable `LookPath` seam) that verifies every declared dependency is present, reporting all missing tools with per-distro install hints through one exit path and exit code 1. Exists so the fixed system prompt never names a tool that is not installed.
+_Avoid_: dependency probe, verify tooling, preflight
+
+**Single authoritative prompt**:
+Eitri's one fixed system prompt (`internal/engine/prompt.md`), written to match exactly the declared dependency set and never adapted to what is installed on a given machine. It owns operating strategy; the `bash`/`open_in_browser` tool Descriptions keep their mechanical contract on the normal function-calling surface. This is what makes the startup dependency check mandatory rather than advisory.
+_Avoid_: system prompt, adaptive prompt, tool guidance
