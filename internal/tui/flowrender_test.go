@@ -394,3 +394,36 @@ func TestRenderFlow_committedSnapshotTailSurvivesDroppedDeltas(t *testing.T) {
 		t.Fatalf("snapshot tail lost when final deltas were dropped:\n%s", plain)
 	}
 }
+
+// TestRenderFlow_interimNarrationDoesNotCorruptCommittedTail locks the shape
+// behind the lost-answer bug in the TUI: interim narration deltas from earlier
+// provider cycles ("Let me review...", "Cleaning up.") are separate blocks and
+// are NOT a prefix of the committed snapshot (final.Answer holds only the final
+// cycle's text). The tail-reconciliation window must advance only for fragments
+// that are a true prefix of the committed content, or blind-slicing
+// content[emittedAnswerLen:] cuts the start of the real answer.
+func TestRenderFlow_interimNarrationDoesNotCorruptCommittedTail(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	const content = "The full answer begins here and continues with much more detail about everything that was done."
+	in := renderFlowInput(
+		[]TimelineEvent{
+			{Kind: EventAnswer, Delta: "Let me review the diffs."},
+			{Kind: EventToolStart, Start: &ToolStart{Name: "bash", Args: "git diff"}},
+			{Kind: EventToolResult, Result: &ToolResult{Name: "bash", Result: "out"}},
+			{Kind: EventAnswer, Delta: "Cleaning up."},
+			{Kind: EventToolStart, Start: &ToolStart{Name: "bash", Args: "nl"}},
+			{Kind: EventToolResult, Result: &ToolResult{Name: "bash", Result: "ok"}},
+			{Kind: EventAnswer, Delta: "The full answer begins here"},
+		},
+		message{content: content, thinkingRequested: true},
+		[]flowTool{
+			{entry: toolEntry{name: "bash", args: "git diff", anchor: 0, complete: true, result: "out", lines: 1}, logIdx: 0, expanded: false},
+			{entry: toolEntry{name: "bash", args: "nl", anchor: 0, complete: true, result: "ok", lines: 1}, logIdx: 1, expanded: false},
+		},
+	)
+	out, _ := RenderFlow(in)
+	plain := ansiStrip(out)
+	if !strings.Contains(plain, "The full answer begins here") {
+		t.Fatalf("committed answer opening lost behind interim narration:\n%s", plain)
+	}
+}
