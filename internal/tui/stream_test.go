@@ -133,16 +133,17 @@ func TestModel_thinkingStreamsLive(t *testing.T) {
 		t.Errorf("live reasoning should render a thinking hint, got: %q", content)
 	}
 	plain := ansiStrip(content)
-	// #657: a live turn paints each reasoning delta as its own fragment as it
-	// arrives, so both deltas render expanded with one header each — the raw
-	// view carries per-word style spans, so the body checks strip them.
+	// Contiguous reasoning deltas coalesce into one live fragment so the body
+	// streams in place under a single header; the bodies all stay visible while
+	// streaming (live auto-expand). The raw view carries per-word style spans,
+	// so the body checks strip them.
 	for _, frag := range []string{"I check the env.", "Then I edit."} {
 		if !strings.Contains(plain, frag) {
 			t.Errorf("live reasoning body should render expanded while streaming, missing %q, got: %q", frag, content)
 		}
 	}
-	if n := strings.Count(plain, "tok"); n != 2 {
-		t.Errorf("live reasoning must render one header per delta (want 2), got %d:\n%s", n, plain)
+	if n := strings.Count(plain, "tok"); n != 1 {
+		t.Errorf("live reasoning must render ONE growing header for the contiguous run, got %d:\n%s", n, plain)
 	}
 
 	m = applyDelta(t, m, "Hi there.")
@@ -179,10 +180,10 @@ func TestModel_thinkingExpandedStreams(t *testing.T) {
 	if !strings.Contains(plain, "reasoning") {
 		t.Errorf("streamed reasoning should render as its own live fragment, got: %q", view(m))
 	}
-	// #657: each reasoning delta renders as a separate fragment, never merged
-	// into the previous delta's block.
-	if strings.Contains(plain, "first reasoning") {
-		t.Errorf("each reasoning delta must render as a separate fragment, got: %q", view(m))
+	// Contiguous reasoning deltas coalesce: the second delta grows the first
+	// fragment's block rather than painting a separate per-delta card.
+	if !strings.Contains(plain, "first reasoning") {
+		t.Errorf("contiguous reasoning deltas must coalesce into one growing block, got: %q", view(m))
 	}
 }
 

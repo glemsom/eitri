@@ -723,7 +723,7 @@ type collapsibleBlock struct {
 
 // collapsibleBlocks returns the transcript's collapsible blocks in render
 // order: each turn's reasoning fragments at their prompt position (one block per
-// fragment the flow emits — per streaming delta on a live turn (issue #657), one
+// fragment the flow emits — one per tool-delimited run on a live turn, one
 // whole-turn block otherwise), then that turn's tool entries in anchored order —
 // the traversal Tab cycles the block focus through.
 func (t Transcript) collapsibleBlocks() []collapsibleBlock {
@@ -738,13 +738,14 @@ func (t Transcript) collapsibleBlocks() []collapsibleBlock {
 				break // the next turn began without a reasoning block here
 			}
 			if m.streaming {
-				// A live turn's flow flushes one reasoning fragment per delta, so
-				// the focus owns one block per emitted fragment in emission order —
-				// fragments on both sides of a tool entry included (issue #658 AC1).
-				// A turn that never asked for reasoning emits none; its blocks stay
-				// unfocusable.
+				// A live turn's flow coalesces contiguous reasoning deltas into one
+				// fragment per tool-delimited run (so token-size SSE deltas never
+				// paint a card per token), and the focus owns one block per such
+				// run in emission order — fragments on both sides of a tool entry
+				// included (issue #658 AC1). A turn that never asked for reasoning
+				// emits none; its blocks stay unfocusable.
 				if m.thinkingRequested {
-					for k := range liveReasoningFragments(t.flowEventsFor(m)) {
+					for k := range reasoningFragments(t.flowEventsFor(m)) {
 						blocks = append(blocks, collapsibleBlock{kind: blockReasoning, msgIdx: j, fragIdx: k})
 					}
 				}
@@ -771,22 +772,6 @@ func (t Transcript) flowEventsFor(m message) []TimelineEvent {
 		return t.LiveTimeline()
 	}
 	return m.events
-}
-
-// liveReasoningFragments returns the reasoning fragment texts a live turn's
-// flow emits: one per non-empty reasoning delta, in emission order — exactly the
-// per-delta fragments flowRenderer.fold flushes (issue #657). Tool boundaries
-// never merge fragments on a live turn, so the focus enumeration must not merge
-// them either; a committed turn folds all reasoning into one snapshot block and
-// uses reasoningFragments instead.
-func liveReasoningFragments(events []TimelineEvent) []string {
-	var out []string
-	for _, ev := range events {
-		if ev.Kind == EventReasoning && ev.Delta != "" {
-			out = append(out, ev.Delta)
-		}
-	}
-	return out
 }
 
 // reasoningFragments splits an event log into its reasoning fragments: each run
@@ -868,7 +853,7 @@ func thinkingExpandedForBlock(msg message, cfg expansionConfig) bool {
 		// a live streamed block auto-expands unless pinned force-collapsed, so
 		// the user watches chain-of-thought arrive; the collapse-all mode's hide-
 		// every-body request wins over the auto-expand so E covers every fragment
-		// of a live per-delta burst too (issue #658 AC3).
+		// of a live coalesced burst too (issue #658 AC3).
 		if f, ok := msg.expansion.forceFor(blockReasoning, reasoningWholeID); ok && !f {
 			return false
 		}
