@@ -54,6 +54,31 @@ func TestModel_mentionOpenListsRootCandidates(t *testing.T) {
 	}
 }
 
+func TestModel_mentionCompletionRendersWorkspaceMentionsPopover(t *testing.T) {
+	t.Parallel()
+	ws := mentionWorkspace(t)
+	m := mentionModel(t, ws)
+	m = typeText(t, m, "@")
+	m = feedMentionWalk(t, m, ws)
+
+	content := ansiStrip(view(m))
+	mentions := strings.Index(content, "Workspace mentions")
+	ask := strings.Index(content, "Ask Eitri")
+	hints := strings.Index(content, "navigate")
+	if mentions == -1 {
+		t.Fatalf("mention completion missing Workspace mentions popover, got:\n%s", content)
+	}
+	if ask == -1 || mentions > ask {
+		t.Fatalf("Workspace mentions popover must render above Ask Eitri panel, got:\n%s", content)
+	}
+	if hints == -1 || hints < ask {
+		t.Fatalf("completion hints must render below composer panel, got:\n%s", content)
+	}
+	if !strings.Contains(content, "▸ main.go") || !strings.Contains(content, "  readme.md") {
+		t.Fatalf("mention candidates missing selected/non-selected rows, got:\n%s", content)
+	}
+}
+
 func TestModel_mentionNavigateAndSelect(t *testing.T) {
 	t.Parallel()
 	ws := mentionWorkspace(t)

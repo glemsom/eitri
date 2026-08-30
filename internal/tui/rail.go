@@ -256,9 +256,9 @@ const liveContextWarnThreshold = constants.LiveContextWarnThreshold
 // defaultRailWidth is the rail width applied while the Transcript's mutable railWidth field is unset (0): consumers read the field through railWidthOrDefault, so this constant is only the zero-state default, never a width any consumer computes from.
 const defaultRailWidth = constants.DefaultRailWidth
 
-// syncWidths re-sizes the composer to the band width so markdown wraps and the composer box align with the edge-to-edge bottom band.
+// syncWidths re-sizes the composer to the panel body width so markdown wraps inside the edge-to-edge bottom band.
 func (m *Model) syncWidths() {
-	m.composer.SetWidth(m.tx.bandWidth())
+	m.composer.SetWidth(composerPanelBodyWidth(m.tx.bandWidth()))
 	m.syncComposerHeight()
 }
 

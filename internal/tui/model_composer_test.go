@@ -125,7 +125,7 @@ func TestModel_composerGrowsWithDraftLines(t *testing.T) {
 		t.Fatalf("empty composer should rest at %d rows, got %d", minComposerRows, h)
 	}
 	if rows := composerRows(m); len(rows) != minComposerRows {
-		t.Errorf("empty composer should render %d rows, got %d", minComposerRows, len(rows))
+		t.Errorf("empty composer should render %d panel body rows, got %d", minComposerRows, len(rows))
 	}
 
 	m = typeText(t, m, "line one")
@@ -185,8 +185,8 @@ func TestModel_composerLongDraftBandPinned(t *testing.T) {
 
 	content := view(m)
 	trimmed := strings.TrimRight(content, "\n")
-	if !strings.HasSuffix(trimmed, strings.TrimRight(comp, "\n")) {
-		t.Errorf("band must stay pinned at the bottom with an over-bound draft, got:\n%q", content)
+	if !strings.HasSuffix(ansiStrip(trimmed), "╯") {
+		t.Errorf("band must stay pinned at the bottom with the panel border, got:\n%q", content)
 	}
 	if n := len(strings.Split(trimmed, "\n")); n > 12 {
 		t.Errorf("view (%d lines) exceeds terminal height 12 with an over-bound draft, got:\n%q", n, trimmed)

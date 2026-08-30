@@ -135,6 +135,29 @@ type Dependencies struct {
 	NewGUID func() string
 }
 
+type feedbackKind int
+
+const (
+	feedbackNeutral feedbackKind = iota
+	feedbackSuccess
+	feedbackFailure
+)
+
+type composerFeedback struct {
+	text string
+	kind feedbackKind
+}
+
+func neutralFeedback(text string) composerFeedback {
+	return composerFeedback{text: text, kind: feedbackNeutral}
+}
+func successFeedback(text string) composerFeedback {
+	return composerFeedback{text: text, kind: feedbackSuccess}
+}
+func failureFeedback(text string) composerFeedback {
+	return composerFeedback{text: text, kind: feedbackFailure}
+}
+
 // Model is the Bubble Tea state backing the TUI.
 type Model struct {
 	composer textarea.Model
@@ -147,7 +170,7 @@ type Model struct {
 	liveKey *LiveSessionKey
 
 	settings *SettingsOverlay
-	savedMsg string
+	feedback composerFeedback
 
 	continueReq  chan struct{}
 	continueResp chan bool
@@ -198,7 +221,6 @@ func NewModel(t Turn) Model {
 // NewModelCfg builds a TUI model wired to the given dependencies.
 func NewModelCfg(d Dependencies) Model {
 	comp := textarea.New()
-	comp.Placeholder = g("Ask Eitri something…", "Ask Eitri something...")
 	if !localeSupportsUTF8() {
 		comp.Prompt = "| " // ASCII composer rail
 	} else {
@@ -251,7 +273,7 @@ func NewModelCfg(d Dependencies) Model {
 	m.runtime = NewTurnRuntime(m.session, d.Events)
 	m.runtime.SetThinkingEnabled(d.Config.ThinkingEnabled)
 	if !isSupportedTheme(d.Config.Theme) {
-		m.savedMsg = fmt.Sprintf("unknown theme %q, using %s", d.Config.Theme, config.DefaultTheme)
+		m.feedback = neutralFeedback(fmt.Sprintf("unknown theme %q, using %s", d.Config.Theme, config.DefaultTheme))
 	}
 	return m
 }
@@ -318,7 +340,7 @@ func normalizeShiftPrintable(msg tea.KeyPressMsg) tea.KeyPressMsg {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
-	m.savedMsg = ""
+	m.feedback = composerFeedback{}
 
 	select {
 	case <-m.continueReq:
@@ -810,7 +832,6 @@ func (m *Model) stopTurn() {
 	}
 	m.runtime.Stop()
 }
-
 
 // trackComposer updates both completion surfaces after a composer mutation: the
 // slash surface from the value, and the @ mention surface from the caret position.

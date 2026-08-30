@@ -17,8 +17,9 @@ import (
 
 // Composer caret style policy: the composer's hardware caret is deliberately a steady (non-blinking) block rather than whatever the textarea or terminal defaults would draw.
 const (
-	composerCaretShape = tea.CursorBlock
-	composerCaretBlink = false
+	composerCaretShape      = tea.CursorBlock
+	composerCaretBlink      = false
+	emptyComposerAffordance = "Ask Eitri to fix a bug, explain code, or run tests"
 )
 
 // minComposerRows is how tall the composer rests when the draft is empty, so the input field reads as a multi-line composer rather than a single-line prompt.
@@ -93,6 +94,52 @@ func composerContentRows(c textarea.Model) int {
 	return rows
 }
 
+func composerPanelBodyWidth(bandWidth int) int {
+	w := bandWidth - 2
+	if w < 1 {
+		w = 1
+	}
+	return w
+}
+
+func renderTitledPanel(title string, width int, style lipgloss.Style, body string) string {
+	if width < 2 {
+		width = 2
+	}
+	inner := width - 2
+	if inner < 0 {
+		inner = 0
+	}
+	titleText := "─ " + title + " "
+	if lipgloss.Width(titleText) > width-2 {
+		titleText = "─"
+	}
+	topFill := width - 2 - lipgloss.Width(titleText)
+	if topFill < 0 {
+		topFill = 0
+	}
+	var b strings.Builder
+	b.WriteString(style.Render("╭" + titleText + strings.Repeat("─", topFill) + "╮"))
+	for _, line := range strings.Split(body, "\n") {
+		plainLine := ansiStrip(line)
+		if lipgloss.Width(plainLine) > inner {
+			line = truncateWidth(plainLine, inner-1) + g("…", "...")
+		}
+		pad := inner - lipgloss.Width(line)
+		if pad < 0 {
+			pad = 0
+		}
+		b.WriteByte('\n')
+		b.WriteString(style.Render("│"))
+		b.WriteString(line)
+		b.WriteString(strings.Repeat(" ", pad))
+		b.WriteString(style.Render("│"))
+	}
+	b.WriteByte('\n')
+	b.WriteString(style.Render("╰" + strings.Repeat("─", inner) + "╯"))
+	return b.String()
+}
+
 // bandHeight returns how many terminal rows the fixed bottom band (status strip, slash completion, composer) occupies, so the scroll region and the right rail can clamp to the rows it leaves behind.
 func (m Model) bandHeight() int {
 	var band strings.Builder
@@ -118,32 +165,29 @@ func (m *Model) syncComposerRail() {
 	m.composer.SetStyles(st)
 }
 
-// renderBand renders the fixed bottom band: the hints-only status row (when telemetry is wired; the row carries keybinding hints plus the busy spinner, never telemetry numbers) plus the slash-command completion list and the composer, in that order.
+// renderBand renders the fixed bottom band: completion candidates above the composer panel, then contextual composer hints and transient feedback below it.
 func (m Model) renderBand(b *strings.Builder) {
 	var inner strings.Builder
-	statusRow := ""
-	if m.telemetry != nil {
-		if m.tx.busy {
-			statusRow = m.tx.theme.bandStatusStyle.Render(busyLine(m.tx.spinner, m.tx.phase())) + "  "
+	if m.tx.busy {
+		body := busyLine(m.tx.spinner, m.tx.phase()) + "\n" + m.tx.theme.statusStyle.Render("composer locked")
+		style := lipgloss.NewStyle().Foreground(dimmed(m.tx.theme.accent, 0.45))
+		inner.WriteString(renderTitledPanel("Eitri is forging", m.tx.bandWidth(), style, body))
+	} else {
+		if m.slash.isOpen() {
+			inner.WriteString(renderTitledPanel("Commands", m.tx.bandWidth(), m.tx.theme.bandSeparatorStyle, m.slash.RenderCompletionBody(m.tx.theme)))
+			inner.WriteByte('\n')
+		} else if m.mention.isOpen() {
+			inner.WriteString(renderTitledPanel("Workspace mentions", m.tx.bandWidth(), m.tx.theme.bandSeparatorStyle, m.mention.RenderCompletionBody(m.tx.theme)))
+			inner.WriteByte('\n')
 		}
-		hints := bandHints()
-		if m.tx.busy {
-			hints += g(" · ", " . ") + "ctrl+c stop"
-		}
-		statusRow += m.tx.theme.statusStyle.Render(hints)
-		statusRow = lipgloss.NewStyle().Width(m.tx.bandWidth()).Render(statusRow)
-		inner.WriteString(statusRow)
-		inner.WriteString("\n")
+		inner.WriteString(renderTitledPanel("Ask Eitri", m.tx.bandWidth(), m.tx.theme.bandSeparatorStyle, m.composer.View()))
 	}
-	if m.slash.isOpen() || m.mention.isOpen() {
-		inner.WriteString(m.tx.theme.statusStyle.Render(g("↑/↓", "up/down") + " navigate" + g(" · ", " . ") + "tab/enter select" + g(" · ", " . ") + "esc close"))
-		inner.WriteByte('\n')
+	inner.WriteString("\n" + m.tx.theme.statusStyle.Render(fitBandLine(m.composerHint(), m.tx.bandWidth())))
+	if m.showEmptyComposerAffordance() {
+		inner.WriteString("\n" + m.tx.theme.statusStyle.Render(fitBandLine(emptyComposerAffordance, m.tx.bandWidth())))
 	}
-	m.slash.RenderCompletion(&inner, m.tx.theme)
-	m.mention.RenderCompletion(&inner, m.tx.theme)
-	inner.WriteString(m.composer.View())
-	if m.savedMsg != "" {
-		inner.WriteString("\n" + m.tx.theme.statusStyle.Render(m.savedMsg))
+	if m.feedback.text != "" {
+		inner.WriteString("\n" + m.renderFeedback())
 	}
 	tw := m.tx.bandWidth()
 	if tw < 2 {
@@ -163,6 +207,7 @@ func (m Model) composerCursor(content string) *tea.Cursor {
 	if cur == nil {
 		return nil
 	}
+	cur.X++
 	var band strings.Builder
 	m.renderBand(&band)
 	pre := m.composerPreRows()
@@ -170,16 +215,50 @@ func (m Model) composerCursor(content string) *tea.Cursor {
 	return cur
 }
 
+func (m Model) renderFeedback() string {
+	switch m.feedback.kind {
+	case feedbackSuccess:
+		return m.tx.theme.outcomeOKStyle.Render(fitBandLine(g("✓ ", "OK ")+m.feedback.text, m.tx.bandWidth()))
+	case feedbackFailure:
+		return m.tx.theme.outcomeErrStyle.Render(fitBandLine(g("✗ ", "ERR ")+m.feedback.text, m.tx.bandWidth()))
+	default:
+		return m.tx.theme.statusStyle.Render(fitBandLine(m.feedback.text, m.tx.bandWidth()))
+	}
+}
+
+func fitBandLine(s string, width int) string {
+	if width < 1 {
+		width = 1
+	}
+	if lipgloss.Width(s) <= width {
+		return s
+	}
+	return truncateWidth(s, width-1) + g("…", "...")
+}
+
 // composerPreRows returns how many band rows render above the composer: the accent separator, the live status strip (when wired), and one row per slash-completion candidate .
 func (m Model) composerPreRows() int {
 	n := 1 // accent separator
-	if m.telemetry != nil {
-		n++
+	if m.slash.isOpen() {
+		n += m.slash.CandidateCount() + 2 // slash popover borders
+	} else if m.mention.isOpen() {
+		n += m.mention.CandidateCount() + 2 // mention popover borders
+	}
+	n++ // titled composer panel top border
+	return n
+}
+
+func (m Model) showEmptyComposerAffordance() bool {
+	return !m.tx.busy && !m.slash.isOpen() && !m.mention.isOpen() && strings.TrimSpace(m.composer.Value()) == ""
+}
+
+func (m Model) composerHint() string {
+	sep := g(" · ", " . ")
+	if m.tx.busy {
+		return "ctrl+c stop" + sep + "pgup read history" + sep + "end follow"
 	}
 	if m.slash.isOpen() || m.mention.isOpen() {
-		n++
+		return g("↑/↓", "up/down") + " navigate" + sep + "tab/enter select" + sep + "esc close"
 	}
-	n += m.slash.CandidateCount()
-	n += m.mention.CandidateCount()
-	return n
+	return "enter send" + sep + "shift+enter newline" + sep + "/ commands" + sep + "@ files" + sep + "ctrl+s settings"
 }

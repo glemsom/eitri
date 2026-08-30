@@ -59,13 +59,13 @@ func TestComposer_CaretStylePolicy(t *testing.T) {
 func TestComposer_CaretTracksTyping(t *testing.T) {
 	t.Parallel()
 	m := caretModel(t)
-	composerTop := lineCount(view(m)) - minComposerRows
-	if c := caret(t, m); c.X != 2 || c.Y != composerTop {
-		t.Errorf("empty-composer caret = (%d,%d), want (2,%d)", c.X, c.Y, composerTop)
+	composerTop := lineCount(view(m)) - minComposerRows - 1
+	if c := caret(t, m); c.X != 3 || c.Y != composerTop {
+		t.Errorf("empty-composer caret = (%d,%d), want (3,%d)", c.X, c.Y, composerTop)
 	}
 	m = typeText(t, m, "hi")
-	if c := caret(t, m); c.X != 4 || c.Y != composerTop {
-		t.Errorf("caret after typing %q = (%d,%d), want (4,%d)", "hi", c.X, c.Y, composerTop)
+	if c := caret(t, m); c.X != 5 || c.Y != composerTop {
+		t.Errorf("caret after typing %q = (%d,%d), want (5,%d)", "hi", c.X, c.Y, composerTop)
 	}
 }
 
@@ -178,6 +178,7 @@ func caretAtEndOfVisibleRow(t *testing.T, m Model, needle string) {
 	}
 	c := caret(t, m)
 	plain := strings.TrimRight(ansiStrip(lines[row]), " ")
+	plain = strings.TrimRight(strings.TrimSuffix(plain, "│"), " ")
 	if want := plainWidth(plain); c.X != want {
 		t.Errorf("caret X = %d, want end of visible row %d (%d); row %q", c.X, want, row, plain)
 	}
@@ -188,19 +189,23 @@ func caretAtEndOfVisibleRow(t *testing.T, m Model, needle string) {
 
 func composerRows(m Model) []string {
 	lines := frameLines(m)
-	sep := -1
+	top := -1
 	for i := len(lines) - 1; i >= 0; i-- {
-		if strings.Contains(ansiStrip(lines[i]), "─") {
-			sep = i
+		if strings.Contains(ansiStrip(lines[i]), "Ask Eitri") {
+			top = i
 			break
 		}
 	}
-	if sep < 0 {
+	if top < 0 {
 		return nil
 	}
 	var rows []string
-	for _, l := range lines[sep+1:] {
-		rows = append(rows, strings.TrimRight(ansiStrip(l), " "))
+	for _, l := range lines[top+1:] {
+		plain := strings.TrimRight(ansiStrip(l), " ")
+		if strings.Contains(plain, "╰") {
+			break
+		}
+		rows = append(rows, plain)
 	}
 	return rows
 }

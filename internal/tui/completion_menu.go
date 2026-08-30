@@ -77,14 +77,26 @@ func (m *completionMenu) RenderCompletion(b *strings.Builder, th Theme) {
 	if !m.open {
 		return
 	}
+	b.WriteString(m.RenderCompletionBody(th))
+	b.WriteByte('\n')
+}
+
+func (m *completionMenu) RenderCompletionBody(th Theme) string {
+	if !m.open {
+		return ""
+	}
+	var b strings.Builder
 	for i, candidate := range m.view {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
 		if m.offset+i == m.idx {
 			b.WriteString(th.slashSelectStyle.Render(g("▸ ", "> ") + candidate))
 		} else {
 			b.WriteString(th.statusStyle.Render("  " + candidate))
 		}
-		b.WriteByte('\n')
 	}
+	return b.String()
 }
 
 func (m *completionMenu) recomputeView() {

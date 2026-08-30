@@ -488,7 +488,13 @@ func (m Model) updateSettings(msgi tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case outcomeClosed:
 		m.settings = nil
 	case outcomeSaved:
-		m.savedMsg = res.status
+		if res.applied {
+			m.feedback = successFeedback(res.status)
+		} else if strings.HasPrefix(res.status, "save failed:") {
+			m.feedback = failureFeedback(res.status)
+		} else {
+			m.feedback = neutralFeedback(res.status)
+		}
 		if res.applied {
 			m.deps.Config = *res.saved
 			m.tx.applySettings(*res.saved)

@@ -85,9 +85,9 @@ func (m *Model) copySelection(d selectionWeaver) {
 	text, ok := d.coveredLines(lines)
 	if !ok {
 		if len(lines) == 0 {
-			m.savedMsg = "copy failed: empty transcript"
+			m.feedback = failureFeedback("copy failed: empty transcript")
 		} else {
-			m.savedMsg = "copy failed: selection out of range"
+			m.feedback = failureFeedback("copy failed: selection out of range")
 		}
 		return
 	}
@@ -95,12 +95,12 @@ func (m *Model) copySelection(d selectionWeaver) {
 		return // selection covered no text; nothing to copy
 	}
 	if m.clipboard == nil {
-		m.savedMsg = "copy failed: clipboard unavailable"
+		m.feedback = failureFeedback("copy failed: clipboard unavailable")
 		return
 	}
 	if err := m.clipboard(text); err != nil {
-		m.savedMsg = "copy failed: " + err.Error()
+		m.feedback = failureFeedback("copy failed: " + err.Error())
 		return
 	}
-	m.savedMsg = "copied"
+	m.feedback = successFeedback("copied")
 }

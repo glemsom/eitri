@@ -225,8 +225,8 @@ func TestModel_SettingsSaveFailureDoesNotApplyLiveConfig(t *testing.T) {
 	if m.deps.Config.Provider != "opencode-go" {
 		t.Fatalf("live config provider = %q after failed save, want opencode-go", m.deps.Config.Provider)
 	}
-	if m.savedMsg != "save failed: disk full" {
-		t.Fatalf("savedMsg = %q, want save failure", m.savedMsg)
+	if m.feedback.text != "save failed: disk full" || m.feedback.kind != feedbackFailure {
+		t.Fatalf("feedback = %#v, want failure save message", m.feedback)
 	}
 }
 

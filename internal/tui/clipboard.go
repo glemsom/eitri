@@ -36,14 +36,14 @@ func clipboardWithOSCFallback(primary func(text string) error, out io.Writer) fu
 // copyTranscript copies the plain-text transcript to the system clipboard through the injected seam: Ctrl+O and /copy both route here.
 func (m *Model) copyTranscript() {
 	if m.clipboard == nil {
-		m.savedMsg = "copy failed: clipboard unavailable"
+		m.feedback = failureFeedback("copy failed: clipboard unavailable")
 		return
 	}
 	if err := m.clipboard(m.transcriptText()); err != nil {
-		m.savedMsg = "copy failed: " + err.Error()
+		m.feedback = failureFeedback("copy failed: " + err.Error())
 		return
 	}
-	m.savedMsg = "copied"
+	m.feedback = successFeedback("copied")
 }
 
 // transcriptText renders the conversation log as plain text for clipboard copy : role-marked user prompts and assistant answers, per-turn reasoning blocks, and the interleaved tool-call entries (compact one-liner plus full result when complete) — all ANSI-free so the pasted session is clean.

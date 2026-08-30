@@ -356,3 +356,27 @@ func TestModel_newCommandBlockedWhileSkillPending(t *testing.T) {
 		t.Fatalf("`/new` rekeyed while a skill is pending, got %q", live.Get())
 	}
 }
+
+func TestModel_slashCompletionRendersCommandsPopover(t *testing.T) {
+	t.Parallel()
+	m := NewModelCfg(Dependencies{Skills: &SkillsSurface{Items: []SkillItem{{Name: "review"}}}})
+	m = resize(t, m)
+	m = typeText(t, m, "/")
+
+	content := ansiStrip(view(m))
+	commands := strings.Index(content, "Commands")
+	ask := strings.Index(content, "Ask Eitri")
+	hints := strings.Index(content, "navigate")
+	if commands == -1 {
+		t.Fatalf("slash completion missing Commands popover, got:\n%s", content)
+	}
+	if ask == -1 || commands > ask {
+		t.Fatalf("Commands popover must render above Ask Eitri panel, got:\n%s", content)
+	}
+	if hints == -1 || hints < ask {
+		t.Fatalf("completion hints must render below composer panel, got:\n%s", content)
+	}
+	if !strings.Contains(content, "▸ /settings") || !strings.Contains(content, "  /copy") {
+		t.Fatalf("slash candidates missing selected/non-selected rows, got:\n%s", content)
+	}
+}

@@ -101,8 +101,14 @@ func TestModelStatusStripBusySpinner(t *testing.T) {
 	if !strings.Contains(bs, " Working") {
 		t.Errorf("busy status strip missing spinner, got: %q", bs)
 	}
-	if !strings.Contains(bs, "ctrl+s settings") {
-		t.Errorf("busy status strip missing keybinding hints, got: %q", bs)
+	if !strings.Contains(bs, "Eitri is forging") {
+		t.Errorf("busy band missing locked panel title, got: %q", bs)
+	}
+	if !strings.Contains(bs, "composer locked") {
+		t.Errorf("busy band missing locked composer copy, got: %q", bs)
+	}
+	if !strings.Contains(bs, "ctrl+c stop") || !strings.Contains(bs, "pgup read history") || !strings.Contains(bs, "end follow") {
+		t.Errorf("busy status strip missing busy keybinding hints, got: %q", bs)
 	}
 	for _, gone := range []string{"cache:", "cost:", "0/", "effort:", "thinking:"} {
 		if strings.Contains(bs, gone) {
