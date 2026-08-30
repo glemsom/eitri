@@ -136,7 +136,7 @@ func mentionWalkCmd(dir string) tea.Cmd {
 }
 
 // walkWorkspace returns the workspace-relative path tree in sorted order, dirs
-// rendered with a trailing slash, skipping hidden entries, unreadable subtrees,
+// rendered with a trailing slash, skipping unreadable subtrees, the .git internals,
 // and paths the workspace's git ignore rules exclude.
 func walkWorkspace(dir string) []string {
 	var paths []string
@@ -147,11 +147,8 @@ func walkWorkspace(dir string) []string {
 		if p == dir {
 			return nil
 		}
-		if strings.HasPrefix(d.Name(), ".") {
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
+		if d.IsDir() && d.Name() == ".git" {
+			return filepath.SkipDir
 		}
 		rel, err := filepath.Rel(dir, p)
 		if err != nil {
@@ -255,7 +252,7 @@ func candidatesForPartial(manifest []string, partial string) []string {
 // collectUnder adds to out the immediate children of the manifest under prefix,
 // its first segment surfaced literally (with a trailing slash when it is a
 // directory). Segments whose compiled candidate starts with base are kept, so an
-// empty base collects every child. Hidden segments are excluded.
+// empty base collects every child.
 func collectUnder(manifest []string, prefix, base string, out map[string]bool) {
 	for _, e := range manifest {
 		if !strings.HasPrefix(e, prefix) {
@@ -266,9 +263,6 @@ func collectUnder(manifest []string, prefix, base string, out map[string]bool) {
 			continue
 		}
 		seg, isDir := firstSegment(rest)
-		if strings.HasPrefix(seg, ".") {
-			continue
-		}
 		if strings.HasPrefix(seg, base) {
 			cand := prefix + seg
 			if isDir {

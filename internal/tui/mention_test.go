@@ -148,7 +148,7 @@ func TestMentionCandidates_DeepSiblingAndDescendant(t *testing.T) {
 	}
 }
 
-func TestMentionCandidates_HiddenEntriesSkipped(t *testing.T) {
+func TestMentionCandidates_HiddenEntriesIncluded(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	mustWriteFile(t, filepath.Join(dir, ".hidden.go"), "x\n")
@@ -157,14 +157,18 @@ func TestMentionCandidates_HiddenEntriesSkipped(t *testing.T) {
 	mustWriteFile(t, filepath.Join(dir, "main.go"), "x\n")
 
 	manifest := walkWorkspace(dir)
-	join := strings.Join(manifest, ",")
-	if strings.Contains(join, ".hidden") || strings.Contains(join, ".cache") {
-		t.Errorf("hidden entries leaked into manifest %q", manifest)
-	}
 	got := candidatesForPartial(manifest, "")
 	gotJoin := strings.Join(got, ",")
-	if !strings.Contains(gotJoin, "main.go") {
-		t.Errorf("candidates %q missing main.go", got)
+	for _, want := range []string{".hidden.go", ".cache/", "main.go"} {
+		if !strings.Contains(gotJoin, want) {
+			t.Errorf("candidates %q missing %q", got, want)
+		}
+	}
+
+	nested := candidatesForPartial(manifest, ".cache/")
+	nestedJoin := strings.Join(nested, ",")
+	if !strings.Contains(nestedJoin, ".cache/tool.go") {
+		t.Errorf("nested hidden candidates %q missing .cache/tool.go", nested)
 	}
 }
 
