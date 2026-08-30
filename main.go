@@ -35,14 +35,15 @@ Flags:
 
 Eitri creates its data directory (~/.eitri, or EITRI_DIR) on launch and
 refuses to start without its declared toolset — bwrap, bash, rg, curl, lynx,
-patch, python3 — because its agent prompt promises those tools
-unconditionally (ADR-0001, docs/adr/). Install hints:
-  Debian/Ubuntu: sudo apt install bubblewrap bash ripgrep curl lynx patch python3
-  Fedora:        sudo dnf install bubblewrap bash ripgrep curl lynx patch python3
-  Arch:          sudo pacman -S bubblewrap bash ripgrep curl lynx patch python3
-Soft dependencies (git, a browser launcher such as xdg-open) are optional and
-never block startup; the base coreutils (grep, sed, awk, cat, nl, diff) are
-assumed present. Eitri never runs unsandboxed.
+patch, python3, git — because its agent prompt promises those tools
+unconditionally (ADR-0002, docs/adr/). Install hints:
+  Debian/Ubuntu: sudo apt install bubblewrap bash ripgrep curl lynx patch python3 git
+  Fedora:        sudo dnf install bubblewrap bash ripgrep curl lynx patch python3 git
+  Arch:          sudo pacman -S bubblewrap bash ripgrep curl lynx patch python3 git
+A browser launcher such as xdg-open is the one soft dependency: optional,
+never blocking startup, surfacing only if open_in_browser is used without one.
+The base coreutils (grep, sed, awk, cat, nl, diff) are assumed present.
+Eitri never runs unsandboxed.
 `
 
 func main() {

@@ -21,7 +21,7 @@ The isolation boundary for shell commands: root read-only (including host `/tmp`
 _Avoid_: container, jail
 
 **Declared dependency / declared toolset**:
-The executable set Eitri verifies at boot and refuses to start without — the hard substrate (`bwrap`, `bash`) plus the declared tools (`rg`, `curl`, `lynx`, `patch`, `python3`) — because the single fixed prompt promises them unconditionally. Soft dependencies (`git`, a browser launcher for `open_in_browser`) are opportunistic: never gated at boot, surfacing only if the agent reaches for them.
+The executable set Eitri verifies at boot and refuses to start without — the hard substrate (`bwrap`, `bash`) plus the declared tools (`rg`, `curl`, `lynx`, `patch`, `python3`, `git`) — because the single fixed prompt promises them unconditionally. The one soft dependency, a browser launcher for `open_in_browser`, is opportunistic: never gated at boot, surfacing only if the agent reaches for it.
 _Avoid_: requirement, prerequisite
 
 **Host-side tool**:
@@ -113,7 +113,7 @@ The terminal's support for the Kitty graphics protocol, resolved once at TUI sta
 _Avoid_: image support, graphics mode
 
 **Declared dependency**:
-A tool Eitri's single system prompt relies on unconditionally and therefore checks for at startup, refusing to run when missing. One of a fixed set (`rg`, `curl`, `lynx`, `patch`, `python3`, plus the `bwrap`/`bash` substrate); contrasted with a base tool that is assumed present and a soft dependency that is documented but never gates startup.
+A tool Eitri's single system prompt relies on unconditionally and therefore checks for at startup, refusing to run when missing. One of a fixed set (`rg`, `curl`, `lynx`, `patch`, `python3`, `git`, plus the `bwrap`/`bash` substrate); contrasted with a base tool that is assumed present and a soft dependency that is documented but never gates startup.
 _Avoid_: supported tool, external tool, tool requirement
 
 **Base tool**:
@@ -121,7 +121,7 @@ A shell program assumed present on any host that runs Eitri and therefore never 
 _Avoid_: core utility, builtin
 
 **Soft dependency**:
-A tool Eitri may use but never gates startup on: absent at runtime the affected path degrades or fails in a contained, user-visible way. `git` (edit/review loop) and `xdg-open` (backend of `open_in_browser`); a missing `git` raises a single non-fatal boot notice, a missing `xdg-open` fails only when the browser tool actually runs.
+A tool Eitri may use but never gates startup on: absent at runtime the affected path degrades or fails in a contained, user-visible way. The one soft dependency is `xdg-open` (backend of `open_in_browser`), never probed at boot; a missing backend fails only when the browser tool actually runs.
 _Avoid_: optional tool, nice-to-have
 
 **Startup dependency check**:

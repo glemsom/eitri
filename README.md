@@ -16,10 +16,10 @@
 ```sh
 # Install the declared toolset (required; Eitri refuses to start without it,
 # because its agent prompt promises these tools unconditionally — see
-# ADR-0001 under docs/adr/):
-#   Debian/Ubuntu: sudo apt install bubblewrap bash ripgrep curl lynx patch python3
-#   Fedora:        sudo dnf install bubblewrap bash ripgrep curl lynx patch python3
-#   Arch:          sudo pacman -S bubblewrap bash ripgrep curl lynx patch python3
+# ADR-0002 under docs/adr/):
+#   Debian/Ubuntu: sudo apt install bubblewrap bash ripgrep curl lynx patch python3 git
+#   Fedora:        sudo dnf install bubblewrap bash ripgrep curl lynx patch python3 git
+#   Arch:          sudo pacman -S bubblewrap bash ripgrep curl lynx patch python3 git
 
 make build          # 1. build ./bin/eitri
 ./bin/eitri         # 2. launch the interactive TUI
@@ -149,14 +149,14 @@ The `copilot` and `custom_openai` objects are managed by Eitri (via device-flow 
 ## Requirements
 
 - **Linux** (Eitri is a Linux agent).
-- **Declared toolset** (required; fatal at boot) — Eitri verifies every declared dependency at launch and refuses to start without it, because its agent prompt promises these tools unconditionally (see [ADR-0001](docs/adr/0001-dependency-tiers.md)):
+- **Declared toolset** (required; fatal at boot) — Eitri verifies every declared dependency at launch and refuses to start without it, because its agent prompt promises these tools unconditionally (see [ADR-0002](docs/adr/0002-git-is-a-declared-dependency.md)):
   - Hard substrate: `bwrap` (bubblewrap — Eitri never runs unsandboxed) and `bash`.
-  - Declared tools: `rg` (ripgrep), `curl`, `lynx`, `patch`, `python3`.
+  - Declared tools: `rg` (ripgrep), `curl`, `lynx`, `patch`, `python3`, `git`.
   - Install hints (a missing tool aborts the launch naming every miss with its package):
-    - Debian/Ubuntu: `sudo apt install bubblewrap bash ripgrep curl lynx patch python3`
-    - Fedora: `sudo dnf install bubblewrap bash ripgrep curl lynx patch python3`
-    - Arch: `sudo pacman -S bubblewrap bash ripgrep curl lynx patch python3`
-- **Soft dependencies** (optional, never gate startup) — `git` (opportunistic `git diff` self-review) and a browser launcher (`xdg-open`, backing `open_in_browser`) may be absent: a missing `git` prints a single non-fatal boot notice and the run continues; a missing browser backend surfaces only when `open_in_browser` actually runs, as a contained error.
+    - Debian/Ubuntu: `sudo apt install bubblewrap bash ripgrep curl lynx patch python3 git`
+    - Fedora: `sudo dnf install bubblewrap bash ripgrep curl lynx patch python3 git`
+    - Arch: `sudo pacman -S bubblewrap bash ripgrep curl lynx patch python3 git`
+- **Soft dependency** (optional, never gates startup) — a browser launcher (`xdg-open`, backing `open_in_browser`) may be absent: it surfaces only when `open_in_browser` actually runs, as a contained error.
 - **Base toolset** (assumed present) — the coreutils `bash` builds on: `grep`, `sed`, `awk`, `cat`, `nl`, `diff`; no boot check.
 
 ## Building

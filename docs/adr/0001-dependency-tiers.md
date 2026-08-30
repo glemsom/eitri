@@ -1,5 +1,7 @@
 # Declared toolset: three dependency tiers
 
+Status: superseded by [ADR-0002](0002-git-is-a-declared-dependency.md) — `git` moved from the soft tier into the declared toolset; the model still has only two tiers below the base tools (declared, base), and the historical reasoning below stays as the record of why the split existed.
+
 Eitri is a single static binary whose agent prompt promises a fixed toolset
 unconditionally, so a run must never start on an incomplete toolset. We split
 dependencies into three tiers with distinct boot behavior: a **declared

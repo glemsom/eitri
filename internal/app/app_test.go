@@ -71,7 +71,7 @@ func TestRunErrorsWithoutDeclaredDependencies(t *testing.T) {
 
 func TestRunRefusesBootWhenBwrapAloneIsMissing(t *testing.T) {
 	dir := t.TempDir()
-	present := []string{"bash", "rg", "curl", "lynx", "patch", "python3"}
+	present := []string{"bash", "rg", "curl", "lynx", "patch", "python3", "git"}
 	err := Run(Options{DataDir: filepath.Join(dir, ".eitri"), LookPath: lookup(present...)})
 	if !errors.Is(err, ErrMissingDependencies) {
 		t.Fatalf("Run() error = %v, want ErrMissingDependencies; bwrap absence must stay a hard failure inside the single check pass", err)

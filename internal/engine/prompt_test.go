@@ -131,7 +131,7 @@ func TestSystemPromptStatesDeclaredToolset(t *testing.T) {
 	p := SystemPromptContent()
 	// The prompt promises the declared toolset unconditionally (enforced at
 	// boot); the base substrate is assumed present.
-	for _, want := range []string{"declared toolset", "guaranteed", "coreutils", "rg", "curl", "lynx", "patch", "python3"} {
+	for _, want := range []string{"declared toolset", "guaranteed", "coreutils", "rg", "curl", "lynx", "patch", "python3", "git"} {
 		if !strings.Contains(p, want) {
 			t.Fatalf("system prompt must promise the declared toolset; missing %q:\n%s", want, p)
 		}
@@ -142,8 +142,8 @@ func TestSystemPromptStaysLeanOnToolPresence(t *testing.T) {
 	t.Parallel()
 	p := SystemPromptContent()
 	// Tools outside the guaranteed toolset must neither be promised nor
-	// hedged about. Editing is a single, patch-based method.
-	for _, banned := range []string{"usually present", "never guaranteed", "git diff", "git apply", "sed -i"} {
+	// hedged about. Editing is a single, diff-apply-based method.
+	for _, banned := range []string{"usually present", "never guaranteed", "sed -i"} {
 		if strings.Contains(p, banned) {
 			t.Fatalf("system prompt must not hedge non-guaranteed tools or multi-method edits; found %q:\n%s", banned, p)
 		}
@@ -153,7 +153,7 @@ func TestSystemPromptStaysLeanOnToolPresence(t *testing.T) {
 func TestSystemPromptGuidesPatchStrategy(t *testing.T) {
 	t.Parallel()
 	p := SystemPromptContent()
-	for _, want := range []string{"GNU `patch`", "hand-written unified diff", "*** Begin Patch", "Only garbage was found", "Hunk FAILED", "diff -Naur old new"} {
+	for _, want := range []string{"git apply", "--recount", "hand-written diff", "*** Begin Patch", "patch does not apply", "diff -Naur old new"} {
 		if !strings.Contains(p, want) {
 			t.Fatalf("system prompt must guide patch strategy; missing %q:\n%s", want, p)
 		}

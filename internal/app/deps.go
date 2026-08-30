@@ -7,11 +7,12 @@ import (
 )
 
 // The declared toolset: the hard substrate (bwrap, bash) plus the declared
-// tools (rg, curl, lynx, patch, python3) that the single fixed system prompt
-// promises unconditionally. A missing name here is fatal at boot: the run
-// refuses to start rather than let the agent reach for a tool that cannot
-// exist. Soft dependencies (git, a browser launcher) are deliberately absent:
-// they are opportunistic and never gate startup.
+// tools (rg, curl, lynx, patch, python3, git) that the single fixed system
+// prompt promises unconditionally. A missing name here is fatal at boot: the
+// run refuses to start rather than let the agent reach for a tool that
+// cannot exist. The browser launcher backing open_in_browser is the one
+// deliberate exception (see ADR-0002): it has zero boot impact and surfaces
+// only as a contained runtime error if open_in_browser actually runs.
 
 // dependency is one declared executable and the distro package that provides
 // it; the package name can differ from the executable name (bwrap is shipped
@@ -29,19 +30,7 @@ var declaredDependencies = []dependency{
 	{name: "lynx", pkgName: "lynx"},
 	{name: "patch", pkgName: "patch"},
 	{name: "python3", pkgName: "python3"},
-}
-
-// softDependency is one opportunistic executable: never gated at boot. Its
-// absence yields exactly one non-fatal notice; the run proceeds regardless.
-// The browser launcher is deliberately not listed: per its contract it has
-// zero boot impact and surfaces only when open_in_browser actually runs.
-type softDependency struct {
-	name string
-	note string
-}
-
-var softDependencies = []softDependency{
-	{name: "git", note: "git is not installed (a soft dependency): Eitri still runs, but opportunistic git use such as `git diff` self-review is unavailable"},
+	{name: "git", pkgName: "git"},
 }
 
 // distroInstallers maps each supported distro family to its package install
@@ -110,17 +99,4 @@ func checkDependencies(lookPath func(name string) (string, error)) error {
 		return nil
 	}
 	return &DependencyError{Missing: missing}
-}
-
-// checkSoftDependencies resolves the soft dependencies through the same
-// executable-lookup seam, returning exactly one non-fatal notice per absent
-// tool. An empty result means every soft dependency is present.
-func checkSoftDependencies(lookPath func(name string) (string, error)) []string {
-	var notices []string
-	for _, d := range softDependencies {
-		if _, err := lookPath(d.name); err != nil {
-			notices = append(notices, d.note)
-		}
-	}
-	return notices
 }

@@ -70,11 +70,12 @@ func TestRunBatchVerboseShowsThinking(t *testing.T) {
 	}
 }
 
-func TestRunBatchMissingGitPrintsSingleNonFatalNotice(t *testing.T) {
+func TestRunRefusesWhenGitMissing(t *testing.T) {
 	dir := t.TempDir()
-	var out, errOut bytes.Buffer
+	var out bytes.Buffer
 
-	// git is absent (soft dependency); the declared toolset is fully present.
+	// git is now a declared dependency (ADR-0002): its absence must refuse
+	// startup exactly like any other declared tool, not degrade quietly.
 	missingGit := func(name string) (string, error) {
 		if name == "git" {
 			return "", errors.New("executable not found: git")
@@ -87,70 +88,13 @@ func TestRunBatchMissingGitPrintsSingleNonFatalNotice(t *testing.T) {
 		LookPath: missingGit,
 		Prompt:   "Say hello",
 		Stdout:   &out,
-		Stderr:   &errOut,
-		Provider: provider.NewFake("../provider/testdata/hello.sse"),
-	})
-	if err != nil {
-		t.Fatalf("Run(batch) error = %v, want nil — a missing soft dependency must not stop the run", err)
-	}
-	if !strings.Contains(out.String(), "Hello world") {
-		t.Fatalf("batch output %q missing the final answer; run must complete normally", out.String())
-	}
-	n := strings.Count(errOut.String(), "eitri: ")
-	if n != 1 {
-		t.Fatalf("stderr carries %d boot notices (%q), want exactly one non-fatal notice", n, errOut.String())
-	}
-	if !strings.Contains(errOut.String(), "git") {
-		t.Fatalf("boot notice %q does not name the missing soft dependency", errOut.String())
-	}
-}
-
-func TestRunBatchGitPresentPrintsNoBootNotice(t *testing.T) {
-	dir := t.TempDir()
-	var out, errOut bytes.Buffer
-
-	err := Run(Options{
-		DataDir:  filepath.Join(dir, ".eitri"),
-		LookPath: okLookPath,
-		Prompt:   "Say hello",
-		Stdout:   &out,
-		Stderr:   &errOut,
-		Provider: provider.NewFake("../provider/testdata/hello.sse"),
-	})
-	if err != nil {
-		t.Fatalf("Run(batch) error = %v, want nil", err)
-	}
-	if errOut.Len() != 0 {
-		t.Fatalf("stderr = %q, want no git notice when git is present", errOut.String())
-	}
-}
-
-func TestRunDeclaredRefusalStaysFatalWhenGitAlsoMissing(t *testing.T) {
-	dir := t.TempDir()
-	var out, errOut bytes.Buffer
-
-	// bwrap (declared) and git (soft) are both absent: the declared refusal
-	// must stay fatal — soft absence never suppresses a true missing-tool failure.
-	missingBwrapAndGit := func(name string) (string, error) {
-		if name == "git" || name == "bwrap" {
-			return "", errors.New("executable not found: " + name)
-		}
-		return okLookPath(name)
-	}
-
-	err := Run(Options{
-		DataDir:  filepath.Join(dir, ".eitri"),
-		LookPath: missingBwrapAndGit,
-		Prompt:   "Say hello",
-		Stdout:   &out,
-		Stderr:   &errOut,
 		Provider: provider.NewFake("../provider/testdata/hello.sse"),
 	})
 	if !errors.Is(err, ErrMissingDependencies) {
-		t.Fatalf("Run() error = %v, want ErrMissingDependencies — declared refusals stay fatal with git absent", err)
+		t.Fatalf("Run() error = %v, want ErrMissingDependencies when git is missing", err)
 	}
 	if out.Len() != 0 {
-		t.Fatalf("stdout = %q, want empty when boot refuses on declared dependencies", out.String())
+		t.Fatalf("stdout = %q, want empty when boot refuses on a missing declared dependency", out.String())
 	}
 }
 
