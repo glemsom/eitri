@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/glemsom/eitri/internal/config"
 )
 
@@ -235,7 +237,8 @@ func TestModel_eExpandsAllECollapseAllHints(t *testing.T) {
 		t.Errorf("e must expand the CoT block, got: %q", view(m))
 	}
 
-	m = keypress(t, m, "E")
+	nm, _ := m.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModShift})
+	m = asModel(t, nm)
 	if got := m.composer.Value(); got != "E" {
 		t.Errorf("Shift+E as the first draft letter must reach the composer, got %q", got)
 	}

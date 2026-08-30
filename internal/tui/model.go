@@ -306,6 +306,15 @@ func (m Model) Init() tea.Cmd {
 }
 
 // Update handles a UI event and returns the next state plus any commands.
+func normalizeShiftPrintable(msg tea.KeyPressMsg) tea.KeyPressMsg {
+	if msg.Text == "" && msg.Mod == tea.ModShift && msg.Code >= 'a' && msg.Code <= 'z' {
+		msg.Text = strings.ToUpper(string(rune(msg.Code)))
+		msg.Code = tea.KeyExtended
+		msg.Mod = 0
+	}
+	return msg
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
@@ -344,6 +353,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyPressMsg:
+		msgi = normalizeShiftPrintable(msgi)
 		if m.settings != nil {
 			return m.updateSettings(msgi)
 		}
@@ -480,7 +490,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Any key not consumed above edits the composer directly, which ends an
 		// active arrow recall so a recalled prompt doesn't linger as stale state.
 		m.endRecall()
-		nm, cmd := m.composer.Update(msg)
+		nm, cmd := m.composer.Update(msgi)
 		m.composer = nm
 		cmds = append(cmds, cmd)
 		cmds = append(cmds, m.trackComposer())
