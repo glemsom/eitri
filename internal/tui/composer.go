@@ -189,12 +189,6 @@ func (m Model) renderBand(b *strings.Builder) {
 	if m.feedback.text != "" {
 		inner.WriteString("\n" + m.renderFeedback())
 	}
-	tw := m.tx.bandWidth()
-	if tw < 2 {
-		tw = 2
-	}
-	b.WriteString(m.tx.theme.bandSeparatorStyle.Render(strings.Repeat(g("─", "-"), tw)))
-	b.WriteString("\n")
 	b.WriteString(inner.String())
 }
 
@@ -236,9 +230,9 @@ func fitBandLine(s string, width int) string {
 	return truncateWidth(s, width-1) + g("…", "...")
 }
 
-// composerPreRows returns how many band rows render above the composer: the accent separator, the live status strip (when wired), and one row per slash-completion candidate .
+// composerPreRows returns how many band rows render above the composer: the composer panel top border plus one row per slash-completion candidate .
 func (m Model) composerPreRows() int {
-	n := 1 // accent separator
+	n := 1
 	if m.slash.isOpen() {
 		n += m.slash.CandidateCount() + 2 // slash popover borders
 	} else if m.mention.isOpen() {
