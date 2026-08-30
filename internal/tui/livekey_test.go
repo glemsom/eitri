@@ -27,4 +27,10 @@ func TestRailReflectsMutableSessionKey(t *testing.T) {
 	if strings.Contains(view, "session eitri-1") {
 		t.Errorf("rail CONTEXT still shows stale session id, got: %q", view)
 	}
+	if !strings.Contains(view, "temp /tmp/eitri-2") {
+		t.Errorf("rail CONTEXT did not refresh temp to new session temp after live key changed, got: %q", view)
+	}
+	if strings.Contains(view, "temp /tmp/eitri-1") {
+		t.Errorf("rail CONTEXT still shows stale temp, got: %q", view)
+	}
 }

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -172,6 +173,21 @@ func (r *Rail) SetBranch(branch string) { r.branch = branch }
 // sessionID seeded at construction.
 func (r *Rail) SetLiveKey(l *LiveSessionKey) { r.sessionKey = l }
 
+func (r *Rail) currentSessionTemp(sessionID string) string {
+	if r.sessionKey == nil || sessionID == r.sessionID || r.sessionTemp == "" {
+		return r.sessionTemp
+	}
+	clean := filepath.Clean(r.sessionTemp)
+	if filepath.Base(clean) == r.sessionID {
+		return filepath.Join(filepath.Dir(clean), sessionID)
+	}
+	parent := filepath.Dir(clean)
+	if filepath.Base(parent) == r.sessionID {
+		return filepath.Join(filepath.Dir(parent), sessionID, filepath.Base(clean))
+	}
+	return r.sessionTemp
+}
+
 // renderContext renders the CONTEXT section: the active session surface.
 func (r *Rail) renderContext(th Theme, railWidth int) string {
 	var b strings.Builder
@@ -183,7 +199,7 @@ func (r *Rail) renderContext(th Theme, railWidth int) string {
 		ts = r.sessionKey.Get()
 	}
 	r.lineAligned(&body, "session", ts, kw, railWidth)
-	r.lineAligned(&body, "temp", r.sessionTemp, kw, railWidth)
+	r.lineAligned(&body, "temp", r.currentSessionTemp(ts), kw, railWidth)
 	if r.branch != "" {
 		r.lineAligned(&body, "branch", r.branch, kw, railWidth)
 	}
