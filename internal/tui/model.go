@@ -162,8 +162,7 @@ type Model struct {
 
 	telemetry *Telemetry
 
-	events    *EventFeed
-	liveRunID int
+	runtime *TurnRuntime
 
 	clipboard func(text string) error
 
@@ -244,8 +243,6 @@ func NewModelCfg(d Dependencies) Model {
 		slash:        NewSkillActivation(d),
 		mention:      NewMention(d.WorkspacePath),
 		telemetry:    d.Telemetry,
-		events:       d.Events,
-		liveRunID:    -1,
 		liveKey:      d.LiveKey,
 		clipboard:    newClipboard(d),
 		history:      newModelHistory(d.HistoryPath),
@@ -253,6 +250,7 @@ func NewModelCfg(d Dependencies) Model {
 	}
 
 	m.fold = NewFold(m.session)
+	m.runtime = NewTurnRuntime(m.session, m.fold, d.Events)
 	m.session.SetThinkingEnabled(d.Config.ThinkingEnabled)
 	if !isSupportedTheme(d.Config.Theme) {
 		m.savedMsg = fmt.Sprintf("unknown theme %q, using %s", d.Config.Theme, config.DefaultTheme)
@@ -271,6 +269,11 @@ func newHistoryViewport() viewport.Model {
 func (m *Model) SetTurnSession(ts *TurnSession) {
 	m.session = ts
 	m.fold = NewFold(ts)
+	var events *EventFeed
+	if m.runtime != nil {
+		events = m.runtime.events
+	}
+	m.runtime = NewTurnRuntime(m.session, m.fold, events)
 }
 
 // ContinueHook returns the interactive continuation hook wired to this Model's prompt channels.
@@ -298,8 +301,8 @@ func (m Model) Init() tea.Cmd {
 	if m.telemetry != nil {
 		cmds = append(cmds, telemetryWait(m.telemetry))
 	}
-	if m.events != nil {
-		cmds = append(cmds, eventWait(m.events))
+	if m.runtime.HasEvents() {
+		cmds = append(cmds, m.runtime.Wait())
 	}
 	cmds = append(cmds, clockTick())
 	return tea.Batch(cmds...)
@@ -326,14 +329,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, telemetryWait(m.telemetry)
 
 	case eventMsg:
-		if m.events == nil {
+		if !m.runtime.HasEvents() {
 			return m, nil
 		}
 		if msgi.update.TurnStart {
-			m.liveRunID = msgi.update.RunID
-			return m, eventWait(m.events)
+			m.runtime.OnTurnStart(msgi.update.RunID)
+			return m, m.runtime.Wait()
 		}
-		if m.acceptEvent(msgi.update) {
+		if m.runtime.Accept(msgi.update) {
 			if msgi.update.Stream != nil {
 				m.applyStreamDelta(*msgi.update.Stream)
 			}
@@ -341,7 +344,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.applyToolUpdate(*msgi.update.Tool)
 			}
 		}
-		return m, eventWait(m.events)
+		return m, m.runtime.Wait()
 
 	case tea.WindowSizeMsg:
 		m.tx.SetSize(msgi.Width, msgi.Height)
@@ -672,17 +675,12 @@ func (m Model) submitPrompt() (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// startTurn begins the turn through the session, which owns all of turn start. The live merged event feed is re-armed here, and the spinner tick starts so the busy indicator animates.
+// startTurn begins the turn through TurnRuntime, which owns live event
+// acceptance for the turn: re-arming the run ID, draining the merged event
+// feed, and starting the spinner tick so the busy indicator animates.
 func (m *Model) startTurn(prompt string, payload string) tea.Cmd {
-	m.liveRunID = -1
-	if m.events != nil {
-		m.events.Drain()
-	}
-	cmd := m.session.Begin(m.tx, prompt, payload)
+	cmd := m.runtime.Begin(m.tx, prompt, payload)
 	m.syncComposerRail()
-	if m.events != nil {
-		return tea.Batch(cmd, spinnerTick())
-	}
 	return cmd
 }
 
@@ -793,13 +791,6 @@ func (m Model) startSkillActivation(name, args string) (tea.Model, tea.Cmd) {
 	m.tx.busy = true
 	m.syncComposerRail()
 	return m, skillCmdWithContext(ctx, m.deps.Skills.Activate, name, args, m.skillSeq)
-}
-
-func (m Model) acceptEvent(u Event) bool {
-	if u.RunID == 0 {
-		return true // tests and package-local callers can deliver direct events.
-	}
-	return m.liveRunID == u.RunID
 }
 
 // stopTurn cancels the in-flight turn through the session.

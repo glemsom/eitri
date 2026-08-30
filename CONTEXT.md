@@ -68,6 +68,10 @@ _Avoid_: detail view, full view
 The session-owned writer that stitches a running turn's live material onto the transcript: streamed deltas grow the streaming assistant message and tool observations land in the tool log, but Fold owns neither the streamed text (TurnFlow does) nor the tool events (TurnSession does) itself.
 _Avoid_: stream handler, event appender
 
+**Turn runtime**:
+The TUI-side module that owns one agent turn's lifecycle and live observations: begin, stop, event acceptance, transcript event log growth, streaming projection, and commit. Model routes user/UI events to it; Transcript renders its snapshots.
+_Avoid_: turn coordinator, event handler, stream manager
+
 **TurnSession**:
 The owner of a turn's whole life: Begin arms a new turn, Stop cancels the in-flight one, and Commit reconciles completion (success, error, stopped) into the transcript. It owns the in-turn tool event log and the arrival order that interleaves it with TurnFlow's stream events, plus the streaming cursor, which the transcript reads through a read-only accessor. The busy flag lives on the transcript, not the session.
 _Avoid_: dispatch, turn state machine

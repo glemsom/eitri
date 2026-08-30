@@ -307,15 +307,15 @@ func submitAndWait(t *testing.T, m Model) Model {
 	// command when a feed is wired; executing that waiter here would block on
 	// the empty channel forever. The feed is restored on the returned model so
 	// later direct eventMsg deliveries (the merged seam) still apply.
-	savedEvents := m.events
-	m.events = nil
+	savedEvents := m.runtime.events
+	m.runtime.events = nil
 	nm, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatalf("turn command was nil after submit")
 	}
 	out := asModel(t, nm)
 	out = runSubmitted(t, out, cmd)
-	out.events = savedEvents
+	out.runtime.events = savedEvents
 	return out
 }
 
