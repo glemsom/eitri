@@ -48,6 +48,19 @@ type Transcript struct {
 	// small and rebuilt each delta.
 	busyPrefix      string
 	busyPrefixDirty bool
+	// busyPrefixTail caches the trailing followWindowLines of busyPrefix,
+	// recomputed alongside it (via lastNLines, itself bounded to
+	// followWindowLines rather than scanning busyPrefix's full length). The
+	// busy+follow fast path in renderHistoryViewport composes this with the
+	// live tail instead of the full committed prefix, so a CoT/answer stream
+	// with the reader following along never touches history outside this
+	// bounded window.
+	busyPrefixTail string
+	// viewportStale is true when the busy+follow fast path skipped feeding the
+	// persisted histViewport this frame: the viewport's lines/YOffset are then
+	// stale (from before the fast-path burst started) and must be resynced via
+	// ensureViewportSynced before anything reads or scrolls it.
+	viewportStale   bool
 	width           int
 	height          int
 	histFollow      bool
@@ -84,6 +97,13 @@ type transcriptLayout struct {
 // or the E collapse-all-to-hints mode.
 type viewMode int
 
+// followWindowLines bounds the busyPrefixTail cache and the busy+follow fast
+// path's rendered window: generous headroom over any real terminal height, so
+// lastNLines never has to fall back to scanning past it. Bounding this to a
+// constant (rather than the live viewport height) means the cache built in
+// renderBusyPrefix does not need rebuilding on every resize tick.
+const followWindowLines = 4000
+
 const (
 	viewDefault viewMode = iota
 	viewExpandAll
@@ -107,7 +127,9 @@ func (t *Transcript) Reset() {
 	t.focus = collapseFocus{}
 	t.layout = transcriptLayout{dirty: true}
 	t.busyPrefix = ""
+	t.busyPrefixTail = ""
 	t.busyPrefixDirty = true
+	t.viewportStale = false
 	t.histFollow = true
 	t.busy = false
 }
@@ -247,12 +269,34 @@ func (t *Transcript) renderPane(band string) string {
 	bandStr := band
 
 	// The scroll region renders through the native bubbletea/viewport component (T1 alt-screen pivot, ), which owns the history clip + follow.
-	content := t.renderPaneContent()
-	histRegion := t.renderHistoryViewport(content, lineCount(bandStr))
+	histRegion := t.renderHistoryPane(lineCount(bandStr))
 	if histRegion != "" && !strings.HasSuffix(histRegion, "\n") {
 		histRegion += "\n"
 	}
 	return histRegion + bandStr
+}
+
+// renderHistoryPane renders the scroll region for this frame, choosing between
+// the busy+follow fast path and the plain content-then-viewport path.
+// renderPaneContent's concatenation of the cached committed prefix with the
+// live tail is itself an O(len(history)) copy — affordable once per commit,
+// unaffordable once per streamed token — so the fast path never calls it: the
+// reader following a running turn only ever needs the bounded busyPrefixTail
+// composed with the fresh live tail. Every other state (not busy, or busy but
+// the reader scrolled away) needs the true full content anyway for correct
+// scrollback, and takes the plain path unchanged.
+func (t *Transcript) renderHistoryPane(reserved int) string {
+	vh := t.scrollRegionHeight(reserved)
+	if vh > 0 && t.busy && t.histFollow && !t.weaver.active {
+		t.histViewport.SetWidth(t.transcriptWidth())
+		t.histViewport.SetHeight(vh)
+		t.viewportStale = true
+		if t.busyPrefixDirty || t.busyPrefix == "" {
+			t.renderBusyPrefix()
+		}
+		return t.renderTailWindow(t.busyPrefixTail+t.renderLiveTail(), vh)
+	}
+	return t.renderHistoryViewport(t.renderPaneContent(), reserved)
 }
 
 // renderHistory renders the scroll region: the agent history that the user reads and scrolls.
@@ -350,7 +394,27 @@ func (t *Transcript) renderBusyPrefix() {
 	var b strings.Builder
 	t.renderMessageRange(&b, nil, nil, 0, t.busyTailIndex(), true, false)
 	t.busyPrefix = b.String()
+	t.busyPrefixTail = lastNLines(t.busyPrefix, followWindowLines)
 	t.busyPrefixDirty = false
+}
+
+// lastNLines returns the trailing n lines of s, scanning backward for at most
+// n newlines instead of splitting the whole string: the cost is bounded by n,
+// not by len(s), so the busy+follow fast path can call this every delta
+// without its cost growing with the committed history.
+func lastNLines(s string, n int) string {
+	if n <= 0 || s == "" {
+		return ""
+	}
+	idx := len(s)
+	for i := 0; i < n; i++ {
+		j := strings.LastIndexByte(s[:idx], '\n')
+		if j < 0 {
+			return s
+		}
+		idx = j
+	}
+	return s[idx+1:]
 }
 
 // renderLiveTail renders only the running turn's flow (its prompt, its
@@ -499,10 +563,8 @@ func (t *Transcript) renderHistoryViewport(content string, reserved int) string 
 	}
 	t.histViewport.SetWidth(t.transcriptWidth())
 	t.histViewport.SetHeight(vh)
-	if content != t.layout.rendered || t.layout.viewportSyncedBuild != t.layout.builds || (content != "" && t.histViewport.TotalLineCount() == 0) {
-		t.histViewport.SetContent(content)
-		t.layout.viewportSyncedBuild = t.layout.builds
-	}
+
+	t.syncViewportContent(content)
 	if t.histFollow {
 		t.histViewport.GotoBottom()
 	}
@@ -510,6 +572,66 @@ func (t *Transcript) renderHistoryViewport(content string, reserved int) string 
 		return t.highlightedViewportView(content)
 	}
 	return t.histViewport.View()
+}
+
+// syncViewportContent feeds content into the persisted viewport when it is
+// out of date: a prior busy+follow fast-path frame left it stale, the
+// rendered bytes changed, the layout cache was rebuilt since the last sync, or
+// the viewport has never been populated. Callers that already know they need
+// a sync (ensureViewportSynced) still route through here so the dirty checks
+// and viewportStale/viewportSyncedBuild bookkeeping stay in one place.
+func (t *Transcript) syncViewportContent(content string) {
+	if !t.viewportStale && content == t.layout.rendered && t.layout.viewportSyncedBuild == t.layout.builds && (content == "" || t.histViewport.TotalLineCount() != 0) {
+		return
+	}
+	t.histViewport.SetContent(content)
+	t.layout.viewportSyncedBuild = t.layout.builds
+	t.viewportStale = false
+}
+
+// ensureViewportSynced forces the persisted viewport to hold the true full
+// content, positioned at the bottom, before a scroll or click action reads or
+// mutates it: the busy+follow fast path leaves it stale (still showing
+// whatever it held before the fast path engaged), so acting on it directly —
+// PgUp, Home, wheel-up, or a click's row/col hit-test — would scroll or map
+// coordinates within stale, possibly much shorter, content. It is a no-op once
+// the viewport is already synced.
+func (t *Transcript) ensureViewportSynced() {
+	if !t.viewportStale {
+		return
+	}
+	followed := t.histFollow
+	t.syncViewportContent(t.renderPaneContent())
+	if followed {
+		t.histViewport.GotoBottom()
+	}
+}
+
+// renderTailWindow renders the trailing vh rows of window directly, bypassing
+// the persisted viewport entirely: the busy+follow fast path always shows
+// exactly the bottom of the content, so there is no scroll position to track.
+func (t *Transcript) renderTailWindow(window string, vh int) string {
+	w := t.histViewport.Width()
+	if sw := t.histViewport.Style.GetWidth(); sw != 0 {
+		w = min(w, sw)
+	}
+	h := vh
+	if sh := t.histViewport.Style.GetHeight(); sh != 0 {
+		h = min(h, sh)
+	}
+	if w == 0 || h == 0 {
+		return ""
+	}
+	body := lastNLines(window, h)
+	contentWidth := w - t.histViewport.Style.GetHorizontalFrameSize()
+	contentHeight := h - t.histViewport.Style.GetVerticalFrameSize()
+	contents := lipgloss.NewStyle().
+		Width(contentWidth).
+		Height(contentHeight).
+		Render(body)
+	return t.histViewport.Style.
+		UnsetWidth().UnsetHeight().
+		Render(contents)
 }
 
 // highlightedViewportView paints an in-progress drag over only the visible rows.
@@ -553,6 +675,7 @@ func (t *Transcript) highlightedViewportView(content string) string {
 
 // navigateHistory applies a T2 keyboard scroll command to the persisted history viewport owned by the Transcript: PgUp/Home move toward the older output and break the follow position; PgDn/End move toward the newest and re-engage follow when they reach the bottom. PgUp/PgDn page by half the visible height so the reading position keeps its place in view.
 func (t *Transcript) navigateHistory(key string) bool {
+	t.ensureViewportSynced()
 	switch key {
 	case "pgup":
 		if t.histViewport.AtTop() {
@@ -618,8 +741,12 @@ func (t *Transcript) mouseWheelRows() int {
 // scrollRegion assembles the history-region seam from the persisted viewport's
 // current size and scroll position plus the plain content line count, so render,
 // click-drag selection, and wheel scroll route through one region source and
-// coordinates and on-screen rows cannot drift apart.
+// coordinates and on-screen rows cannot drift apart. It resyncs the viewport
+// first (ensureViewportSynced), a no-op unless the busy+follow fast path left
+// it stale, so every hit-test/scroll consumer reads a viewport that matches
+// the true content.
 func (t *Transcript) scrollRegion() scrollRegion {
+	t.ensureViewportSynced()
 	vp := t.histViewport
 	return scrollRegion{
 		height:  vp.Height(),
@@ -921,8 +1048,20 @@ func (t *Transcript) toggleFocused() {
 }
 
 // focusedBlockIs reports whether the block identified by kind/msgIdx/toolIdx/
-// fragIdx is the one under the focus cursor, so the renderer can mark it.
+// fragIdx is the one under the focus cursor, so the renderer can mark it. This
+// runs once per rendered block (reasoning header, tool entry, answer) — every
+// delta of a busy turn calls it again — so it short-circuits on the common
+// case first: no block focused (the user never pressed Tab) needs no scan at
+// all, since t.focused() always answers !ok when the cursor is off regardless
+// of the block list. Skipping the collapsibleBlocks() rescan here is what
+// keeps a CoT/answer stream's per-token frame cost independent of how many
+// prior turns sit in history; without it, every delta re-walked the entire
+// committed message log through collapsibleBlocks() just to learn no block was
+// focused.
 func (t Transcript) focusedBlockIs(kind blockKind, msgIdx, toolIdx, fragIdx int) bool {
+	if !t.focus.on {
+		return false
+	}
 	blk, ok := t.focused()
 	return ok && blk.kind == kind && blk.msgIdx == msgIdx && blk.toolIdx == toolIdx && blk.fragIdx == fragIdx
 }

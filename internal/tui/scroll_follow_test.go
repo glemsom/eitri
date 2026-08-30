@@ -39,7 +39,7 @@ func TestScrollFollow_longStreamViewportStaysPinned(t *testing.T) {
 	if n := lineCount(histContent); n <= vh {
 		t.Fatalf("long stream must overflow: %d history lines fit in a %d-row viewport", n, vh)
 	}
-	if !m.tx.histViewport.AtBottom() {
+	if !atBottom(m) {
 		t.Errorf("following stream must pin the viewport to the newest content, offset %d (not bottom)", scrollOffset(m))
 	}
 	// The very tail of the live stream (the busy indicator over the newest
@@ -57,7 +57,7 @@ func TestScrollFollow_longStreamViewportStaysPinned(t *testing.T) {
 		if !m.tx.histFollow {
 			t.Fatalf("delta %d must keep follow engaged", i)
 		}
-		if !m.tx.histViewport.AtBottom() {
+		if !atBottom(m) {
 			t.Fatalf("delta %d let the viewport slip off the newest content (offset %d)", i, scrollOffset(m))
 		}
 	}
@@ -71,7 +71,7 @@ func TestScrollFollow_scrollUpPausesAndHoldsWhileStreaming(t *testing.T) {
 	t.Parallel()
 	m := longStreamModel(t)
 	followRendered(m)
-	if !m.tx.histViewport.AtBottom() {
+	if !atBottom(m) {
 		t.Fatalf("precondition: following stream must be pinned to the newest")
 	}
 
@@ -100,7 +100,7 @@ func TestScrollFollow_scrollUpPausesAndHoldsWhileStreaming(t *testing.T) {
 		t.Fatalf("End must re-engage auto-follow after a pause")
 	}
 	followRendered(m)
-	if !m.tx.histViewport.AtBottom() {
+	if !atBottom(m) {
 		t.Errorf("resumed follow must pin the viewport to the newest content, got offset %d", scrollOffset(m))
 	}
 }
@@ -154,7 +154,7 @@ func TestScrollFollow_newTurnResumesAfterPause(t *testing.T) {
 		t.Fatalf("a new turn must re-engage auto-follow after a pause, got histFollow=false")
 	}
 	followRendered(m)
-	if !m.tx.histViewport.AtBottom() {
+	if !atBottom(m) {
 		t.Errorf("a new turn should re-follow the newest output, got offset %d", scrollOffset(m))
 	}
 }

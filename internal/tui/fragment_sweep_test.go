@@ -245,7 +245,7 @@ func TestModel_followStaysEngagedThroughPerDeltaBurst(t *testing.T) {
 		if !m.tx.histFollow {
 			t.Fatalf("delta %d must keep follow engaged", i)
 		}
-		if !m.tx.histViewport.AtBottom() {
+		if !atBottom(m) {
 			t.Fatalf("delta %d let the viewport slip off the newest content (offset %d)", i, scrollOffset(m))
 		}
 	}
