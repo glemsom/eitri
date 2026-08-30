@@ -35,14 +35,23 @@ type Transcript struct {
 	focus collapseFocus
 	// live is the TurnSession owning the in-progress turn, wired at Begin so
 	// render paths can read the live event log; a bare Transcript has none.
-	live         *TurnSession
-	layout       transcriptLayout
-	telemetry    *Telemetry
-	weaver       selectionWeaver
-	width        int
-	height       int
-	histFollow   bool
-	histViewport viewport.Model
+	live      *TurnSession
+	layout    transcriptLayout
+	telemetry *Telemetry
+	weaver    selectionWeaver
+
+	// busyPrefix caches the rendered committed-history prefix (workspace header + every
+	// message before the running turn's prompt) so busy-path per-delta frames re-render
+	// only the live turn's flow instead of the whole transcript. It is invalidated on
+	// every committed-history change but never on a stream delta (syncStreamSnapshots), so
+	// the expensive prefix render is amortized across a streaming burst; the live tail is
+	// small and rebuilt each delta.
+	busyPrefix      string
+	busyPrefixDirty bool
+	width           int
+	height          int
+	histFollow      bool
+	histViewport    viewport.Model
 
 	railWidth int
 
@@ -97,6 +106,8 @@ func (t *Transcript) Reset() {
 	t.live = nil
 	t.focus = collapseFocus{}
 	t.layout = transcriptLayout{dirty: true}
+	t.busyPrefix = ""
+	t.busyPrefixDirty = true
 	t.histFollow = true
 	t.busy = false
 }
@@ -204,6 +215,7 @@ func (t *Transcript) SetSize(width, height int) {
 	t.width = width
 	t.height = height
 	t.layout.dirty = true
+	t.busyPrefixDirty = true
 }
 
 // applySettings applies the Settings-save outcomes that affect the transcript — theme, and the expand/collapse render defaults (issue #432) — and marks the layout cache dirty in the same step, since the flip can re-wrap the transcript.
@@ -213,18 +225,21 @@ func (t *Transcript) applySettings(cfg config.Config) {
 	t.cotExpanded = !cfg.CoTCollapsedByDefault
 	t.toolResultsExpanded = !cfg.ToolResultsCollapsedByDefault
 	t.layout.dirty = true
+	t.busyPrefixDirty = true
 }
 
 // appendUserMsg appends a user message (a slash/skill/login activation prompt) to the transcript and marks the shared layout cache dirty in the same step, so callers never invalidate by hand around the append.
 func (t *Transcript) appendUserMsg(content string) {
 	t.messages = append(t.messages, message{role: "you", content: content})
 	t.layout.dirty = true
+	t.busyPrefixDirty = true
 }
 
 // setRailWidth stores the rail width and marks the shared layout cache dirty, so the next render pass re-wraps the history at the new transcript width and re-records the row layout . scroll/follow survive because the persisted viewport keeps its position; it is only re-sized, never re-created.
 func (t *Transcript) setRailWidth(w int) {
 	t.railWidth = w
 	t.layout.dirty = true
+	t.busyPrefixDirty = true
 }
 
 // renderPane renders the transcript + composer surface into the left pane.
@@ -232,15 +247,7 @@ func (t *Transcript) renderPane(band string) string {
 	bandStr := band
 
 	// The scroll region renders through the native bubbletea/viewport component (T1 alt-screen pivot, ), which owns the history clip + follow.
-	content := ""
-	if t.busy {
-		var hist strings.Builder
-		t.renderHistory(&hist, nil, nil)
-		content = hist.String()
-	} else {
-		t.ensureLayout()
-		content = t.layout.rendered
-	}
+	content := t.renderPaneContent()
 	histRegion := t.renderHistoryViewport(content, lineCount(bandStr))
 	if histRegion != "" && !strings.HasSuffix(histRegion, "\n") {
 		histRegion += "\n"
@@ -290,6 +297,76 @@ func (t Transcript) isLiveTurnPrompt(i int) bool {
 }
 
 func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, msgRows *[]msgRowRange) {
+	t.renderMessageRange(b, toolRows, msgRows, 0, len(t.messages), true, true)
+}
+
+// renderPaneContent returns the pane's content string for the current frame,
+// choosing the only render path that can change since the last frame: a busy
+// turn's live tail re-renders per delta, while the committed prefix (every
+// message before the running turn's live prompt) is served from the cached
+// busyPrefix unless a committed-history change invalidated it. The live turn
+// flows through the identical renderMessageRange code the full render and the
+// interaction layout use, so committed-vs-live emission cannot drift and the
+// concatenated bytes match a fresh full render exactly.
+func (t *Transcript) renderPaneContent() string {
+	if !t.busy {
+		t.ensureLayout()
+		return t.layout.rendered
+	}
+	// Busy: stream snapshots mark the message layout dirty each delta, but they
+	// never touch the committed prefix. Only committed-history mutations
+	// (appends, tool changes, toggles, resize) set busyPrefixDirty, so across a
+	// reasoning/answer burst the prefix renders once and each delta re-renders
+	// only the trailing live turn.
+	if t.busyPrefixDirty || t.busyPrefix == "" {
+		t.renderBusyPrefix()
+	}
+	tail := t.renderLiveTail()
+	return t.busyPrefix + tail
+}
+
+// busyTailIndex returns the index of the running turn's user prompt — the first
+// message the live-tail render owns. Every message before it is static committed
+// history; every message from it onward (the prompt itself plus, once a delta has
+// arrived, its trailing streaming assistant reply) forms the per-delta live tail.
+// The tail must include the prompt so the shared renderer sets the flow anchor
+// that live tool entries index against.
+func (t Transcript) busyTailIndex() int {
+	for i := len(t.messages) - 1; i >= 0; i-- {
+		if t.messages[i].role == "you" {
+			return i
+		}
+	}
+	return 0
+}
+
+// renderBusyPrefix renders and caches the committed prefix: the workspace
+// header plus every message strictly before the running turn's tail. It uses
+// the same renderMessageRange emitter as the full render, but with no stream
+// clock (now zero — all prefix tool entries are committed and use doneAt).
+func (t *Transcript) renderBusyPrefix() {
+	var b strings.Builder
+	t.renderMessageRange(&b, nil, nil, 0, t.busyTailIndex(), true, false)
+	t.busyPrefix = b.String()
+	t.busyPrefixDirty = false
+}
+
+// renderLiveTail renders only the running turn's flow (its prompt, its
+// streamed/tool timeline through the shared FlowRenderer) plus the busy
+// indicator line — the only bytes that change while a turn streams.
+func (t Transcript) renderLiveTail() string {
+	var b strings.Builder
+	t.renderMessageRange(&b, nil, nil, t.busyTailIndex(), len(t.messages), false, true)
+	return b.String()
+}
+
+// renderMessageRange renders messages [startMsg, endMsg) plus the workspace
+// header (when withHeader) and, for a busy turn, the trailing busy indicator
+// line (when withBusyLine). toolRows/msgRows receive the message/tool row
+// indexes for the rendered span, offset so the caller can concat spans. This is
+// the single emission path behind the full-history render, the committed-prefix
+// cache, and the per-delta live tail, so no two code paths can drift.
+func (t Transcript) renderMessageRange(b *strings.Builder, toolRows *[]toolRowRange, msgRows *[]msgRowRange, startMsg, endMsg int, withHeader, withBusyLine bool) {
 	if toolRows != nil {
 		*toolRows = (*toolRows)[:0]
 	}
@@ -301,12 +378,14 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 		b.WriteString(s)
 		nl += strings.Count(s, "\n")
 	}
-	if t.workspacePath != "" {
-		emit(t.theme.statusStyle.Render("workspace: " + t.workspacePath))
-		emit("\n")
-	}
-	if len(t.messages) == 0 && !t.busy {
-		emit(idleWelcome(t.theme))
+	if withHeader {
+		if t.workspacePath != "" {
+			emit(t.theme.statusStyle.Render("workspace: " + t.workspacePath))
+			emit("\n")
+		}
+		if len(t.messages) == 0 && !t.busy {
+			emit(idleWelcome(t.theme))
+		}
 	}
 	now := time.Time{}
 	if t.busy {
@@ -333,7 +412,8 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 		emit(block)
 		recordToolRows(rows, base)
 	}
-	for i, msg := range t.messages {
+	for i := startMsg; i < endMsg; i++ {
+		msg := t.messages[i]
 		msgStart := nl // content row where this message's block begins
 		w := t.transcriptWidth()
 
@@ -365,7 +445,7 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 		}
 	}
 
-	if t.busy && t.telemetry == nil {
+	if withBusyLine && t.busy && t.telemetry == nil {
 		if t.busyPulse > 0 {
 			emit(t.theme.bandStatusStyle.Render(busyLine(t.spinner, t.phase())))
 		} else {
@@ -600,6 +680,7 @@ func (t *Transcript) toggleToolEntry(idx int) {
 		t.log.Expand(idx)
 	}
 	t.layout.dirty = true // an entry expanded/collapsed changes its rendered rows
+	t.busyPrefixDirty = true
 }
 
 // toolExpandedFor reports whether tool entry idx renders expanded under the
@@ -619,6 +700,7 @@ func (t Transcript) expansionConfig() expansionConfig {
 func (t *Transcript) appendMsg(content string) {
 	t.messages = append(t.messages, message{role: "eitri", content: content, events: synthAnswerLog(content)})
 	t.layout.dirty = true
+	t.busyPrefixDirty = true
 }
 
 // synthAnswerLog builds the one-event answer log every assistant entry owns,
@@ -641,6 +723,7 @@ func (t *Transcript) syncStreamSnapshots(i int, content, reasoning string) {
 func (t *Transcript) applyTool(u ToolUpdate) {
 	t.log.Apply(u)
 	t.layout.dirty = true
+	t.busyPrefixDirty = true
 }
 
 // endTurn clears the busy state after a completed turn and marks the shared layout cache dirty, so completion-time message finalization re-wraps without caller-side invalidation.
@@ -648,6 +731,7 @@ func (t *Transcript) endTurn() {
 	t.busy = false
 	t.spinner = 0
 	t.layout.dirty = true
+	t.busyPrefixDirty = true
 }
 
 // toggleExpandAll flips the persistent Ctrl+E expanded-view mode: Ctrl+E on the Model routes here, and it marks the shared layout dirty because showing or hiding all tool results re-wraps the log. Turning the mode on clears the collapse-all mode; turning it off returns to the defaults (issue #432).
@@ -666,6 +750,7 @@ func (t *Transcript) setExpandAll(v bool) {
 		t.clearCollapseForces()
 	}
 	t.layout.dirty = true // showing/hiding blocks re-wraps the transcript
+	t.busyPrefixDirty = true
 }
 
 // setCollapseAll enters or leaves the E collapse-all-to-hints mode: every
@@ -679,6 +764,7 @@ func (t *Transcript) setCollapseAll(v bool) {
 		t.clearExpandForces()
 	}
 	t.layout.dirty = true // collapsing/hiding blocks re-wraps the transcript
+	t.busyPrefixDirty = true
 }
 
 // clearCollapseForces drops every per-block force-collapse flag so the
@@ -896,6 +982,7 @@ func (t *Transcript) toggleThinkingFragment(i, fragIdx int) {
 	e := &t.messages[i].expansion
 	e.set(blockReasoning, fragIdx, !t.thinkingExpandedForFragment(t.messages[i], fragIdx))
 	t.layout.dirty = true // one fragment expanded/collapsed changes its rendered rows
+	t.busyPrefixDirty = true
 }
 
 // clearReasoningFragments drops the per-fragment reasoning forces of message i
