@@ -19,11 +19,23 @@ func scrollOverflowModel(t *testing.T) Model {
 	return m
 }
 
-func mustVpLines(m Model) int  { return m.tx.histViewport.TotalLineCount() }
+func mustVpLines(m Model) int  { m.tx.ensureViewportSynced(); return m.tx.histViewport.TotalLineCount() }
 func mustVpHeight(m Model) int { return m.tx.histViewport.Height() }
 
 func scrollOffset(m Model) int {
+	m.tx.ensureViewportSynced()
 	return m.tx.histViewport.YOffset()
+}
+
+// atBottom answers whether the transcript is scrolled to the newest content,
+// forcing the persisted viewport in sync first: the busy+follow fast path
+// (renderHistoryViewport) renders the bottom directly without touching
+// histViewport's own YOffset/lines, so a bare AtBottom() read taken right
+// after a render (with no intervening scroll/click action, which would have
+// synced it as a side effect) can see stale pre-burst state.
+func atBottom(m Model) bool {
+	m.tx.ensureViewportSynced()
+	return m.tx.histViewport.AtBottom()
 }
 
 func TestScroll_pagingKeysNavigateTranscript(t *testing.T) {
@@ -52,7 +64,7 @@ func TestScroll_pagingKeysNavigateTranscript(t *testing.T) {
 	}
 
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyEnd})
-	if !m.tx.histViewport.AtBottom() {
+	if !atBottom(m) {
 		t.Errorf("End should jump to the transcript bottom, got offset %d", scrollOffset(m))
 	}
 	if !m.tx.histFollow {
@@ -105,10 +117,10 @@ func TestScroll_mouseWheelNavigatesTranscript(t *testing.T) {
 	}
 
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyHome})
-	for i := 0; i < 50 && !m.tx.histViewport.AtBottom(); i++ {
+	for i := 0; i < 50 && !atBottom(m); i++ {
 		m = mustUpdate(t, m, wheelMsg(false))
 	}
-	if !m.tx.histViewport.AtBottom() {
+	if !atBottom(m) {
 		t.Fatalf("wheel down should reach the bottom, got offset %d", scrollOffset(m))
 	}
 	if !m.tx.histFollow {
@@ -196,7 +208,7 @@ func TestScroll_newSubmitRefollowsNewest(t *testing.T) {
 		t.Errorf("a new submit must re-engage follow, got histFollow=false")
 	}
 	got, _, _ := followRendered(m)
-	if !m.tx.histViewport.AtBottom() {
+	if !atBottom(m) {
 		t.Errorf("a new submit should re-follow to the newest output, got offset %d (not at bottom)", scrollOffset(m))
 	}
 	if row := newestNonBlank(got); !strings.Contains(row, "new") {
