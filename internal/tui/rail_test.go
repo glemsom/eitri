@@ -52,14 +52,14 @@ func TestRailRenderModel(t *testing.T) {
 	if !strings.Contains(view, "MODEL") {
 		t.Errorf("rail missing MODEL section, got: %q", view)
 	}
-	if !strings.Contains(view, "opencode-go/deepseek-v4-f…") {
-		t.Errorf("rail MODEL missing provider/model (truncated to the rail width), got: %q", view)
+	if !strings.Contains(view, "provider opencode-go") {
+		t.Errorf("rail MODEL missing separated provider, got: %q", view)
 	}
-	if !strings.Contains(view, "effort high") {
-		t.Errorf("rail MODEL missing effort, got: %q", view)
+	if !strings.Contains(view, "model deepseek-v4-flash") {
+		t.Errorf("rail MODEL missing separated model, got: %q", view)
 	}
-	if !strings.Contains(view, "thinking off") {
-		t.Errorf("rail MODEL missing thinking flag, got: %q", view)
+	if !strings.Contains(view, "mode effort:high think:off") {
+		t.Errorf("rail MODEL missing compact mode metadata, got: %q", view)
 	}
 }
 
@@ -109,7 +109,7 @@ func TestRailRenderSectionHues(t *testing.T) {
 	if cache := lineContaining(view, "cache 80%"); !strings.Contains(cache, "\x1b[38;2;224;175;104m") {
 		t.Errorf("STATS body line = %q, want the stats hue", cache)
 	}
-	if model := lineContaining(view, "opencode-go/deepseek-v4-f…"); !strings.Contains(model, "\x1b[38;2;158;206;106m") {
+	if model := lineContaining(view, "model deepseek-v4-flash"); !strings.Contains(model, "\x1b[38;2;158;206;106m") {
 		t.Errorf("MODEL body line = %q, want the model hue", model)
 	}
 }
@@ -458,11 +458,11 @@ func TestRailRenderModelWide(t *testing.T) {
 	r := NewRail("opencode-go", "deepseek-v4-flash", "high", false, "sess-1", "/tmp/sess-1")
 	view := r.render(NewTelemetry("deepseek-v4-flash", "high", false, 250), defaultTheme, 50)
 
-	if !strings.Contains(view, "opencode-go/deepseek-v4-flash") {
-		t.Errorf("rail MODEL truncated at wide width 50, got: %q", view)
+	if !strings.Contains(view, "provider     opencode-go") || !strings.Contains(view, "model        deepseek-v4-flash") {
+		t.Errorf("rail MODEL should show separated provider/model at wide width 50, got: %q", view)
 	}
-	if strings.Contains(view, "opencode-go/deepseek-v4-f…") {
-		t.Errorf("rail MODEL should not truncate at wide width 50, got: %q", view)
+	if strings.Contains(view, "deepseek-v4-f…") {
+		t.Errorf("rail MODEL should not truncate model at wide width 50, got: %q", view)
 	}
 }
 
@@ -495,8 +495,8 @@ func TestRailDefaultWidthUnchanged(t *testing.T) {
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
 	view := r.render(te, defaultTheme, defaultRailWidth)
 
-	if !strings.Contains(view, "opencode-go/deepseek-v4-f…") {
-		t.Errorf("rail MODEL should truncate at default width, got: %q", view)
+	if !strings.Contains(view, "model deepseek-v4-flash") {
+		t.Errorf("rail MODEL should keep model readable at default width, got: %q", view)
 	}
 	if !strings.Contains(view, "cache 80%") {
 		t.Errorf("rail STATS missing cache at default width, got: %q", view)
@@ -558,11 +558,11 @@ func TestRailWideValuesFuller(t *testing.T) {
 	defView := r.render(NewTelemetry("deepseek-v4-flash", "low", true, 250), defaultTheme, defaultRailWidth)
 	wideView := r.render(NewTelemetry("deepseek-v4-flash", "low", true, 250), defaultTheme, 55)
 
-	if !strings.Contains(defView, "opencode-go/deepseek-v4-f…") {
-		t.Errorf("default width should truncate provider/model, got: %q", defView)
+	if !strings.Contains(defView, "provider opencode-go") || !strings.Contains(defView, "model deepseek-v4-flash") {
+		t.Errorf("default width should show separated provider/model, got: %q", defView)
 	}
-	if !strings.Contains(wideView, "opencode-go/deepseek-v4-flash") {
-		t.Errorf("wide width should show full provider/model, got: %q", wideView)
+	if !strings.Contains(wideView, "provider       opencode-go") || !strings.Contains(wideView, "model          deepseek-v4-flash") {
+		t.Errorf("wide width should show separated provider/model, got: %q", wideView)
 	}
 	defTokens := lineContaining(defView, "tokens")
 	wideTokens := lineContaining(wideView, "tokens")
@@ -594,5 +594,60 @@ func TestRail_truncateCellWidthWideRunes(t *testing.T) {
 		if got := lipgloss.Width(plain(row)); got > contentWidth(c.rail) {
 			t.Errorf("line(%q,%q,%d) display width %d overflows content width %d: %q", c.key, c.val, c.rail, got, contentWidth(c.rail), row)
 		}
+	}
+}
+
+func TestRailStatsContextMeterStates(t *testing.T) {
+	t.Parallel()
+	r := NewRail("opencode-go", "deepseek", "low", true, "sid", "/tmp/sid")
+	te := NewTelemetry("deepseek", "low", true, 250)
+
+	empty := r.renderStats(te, defaultTheme, 36)
+	emptyCtx := lineContaining(empty, "ctx")
+	if !strings.Contains(ansiStrip(emptyCtx), "ctx        0") || strings.Contains(ansiStrip(emptyCtx), "[") {
+		t.Fatalf("empty ctx should render numeric without meter, got: %q", empty)
+	}
+
+	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Ctx: 75_000})
+	normal := r.renderStats(te, defaultTheme, 36)
+	if !strings.Contains(ansiStrip(normal), "ctx        75.0k [===---]") {
+		t.Fatalf("normal ctx meter missing, got: %q", normal)
+	}
+	if strings.Contains(lineContaining(normal, "ctx 75.0k"), "38;2;247;118;142") {
+		t.Fatalf("normal ctx meter used warning color: %q", lineContaining(normal, "ctx 75.0k"))
+	}
+
+	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Ctx: 150_000})
+	warn := r.renderStats(te, defaultTheme, 36)
+	if !strings.Contains(ansiStrip(warn), "ctx        150.0k [======]") {
+		t.Fatalf("warning ctx meter missing, got: %q", warn)
+	}
+	warnLine := lineContaining(warn, "150.0k")
+	if !strings.Contains(warnLine, "38;2;247;118;142") {
+		t.Fatalf("warning ctx meter missing warning color: %q", warnLine)
+	}
+}
+
+func TestRailStatsCacheMeterStates(t *testing.T) {
+	t.Parallel()
+	r := NewRail("opencode-go", "deepseek", "low", true, "sid", "/tmp/sid")
+	for _, tc := range []struct {
+		name string
+		hit  int
+		miss int
+		want string
+	}{
+		{"zero", 0, 10, "0% [------]"},
+		{"partial", 4, 6, "40% [==----]"},
+		{"full", 10, 0, "100% [======]"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			te := NewTelemetry("deepseek", "low", true, 250)
+			te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: tc.hit, Miss: tc.miss})
+			view := r.renderStats(te, defaultTheme, 36)
+			if !strings.Contains(ansiStrip(view), tc.want) {
+				t.Fatalf("cache meter missing %q, got: %q", tc.want, view)
+			}
+		})
 	}
 }

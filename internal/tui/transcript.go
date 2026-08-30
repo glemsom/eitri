@@ -60,11 +60,11 @@ type Transcript struct {
 	// persisted histViewport this frame: the viewport's lines/YOffset are then
 	// stale (from before the fast-path burst started) and must be resynced via
 	// ensureViewportSynced before anything reads or scrolls it.
-	viewportStale   bool
-	width           int
-	height          int
-	histFollow      bool
-	histViewport    viewport.Model
+	viewportStale bool
+	width         int
+	height        int
+	histFollow    bool
+	histViewport  viewport.Model
 
 	railWidth int
 
@@ -220,7 +220,7 @@ func (t Transcript) viewWithRail(pane string, bandHeight int) string {
 		return pane
 	}
 	rw := t.railWidthOrDefault()
-	right := styledRail(t.rail.render(t.telemetry, t.theme, rw), t.railClampHeight(bandHeight), rw)
+	right := styledRail(t.rail.renderLiveWithTools(t.telemetry, t.theme, rw, t.phase(), t.spinner, &t.log), t.railClampHeight(bandHeight), rw)
 	return t.surfaceWithRail(pane, right, bandHeight)
 }
 

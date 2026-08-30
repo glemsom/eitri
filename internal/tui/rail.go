@@ -115,8 +115,17 @@ func keyColWidth(keyWidth int) int {
 	return keyWidth
 }
 
-// render returns the rail's rendered STATS/CONTEXT/MODEL block, each section tinted with its per-section hue from the theme palette — the header bold, the body lines in the same hue — so the sections read apart at a glance.
+// render returns the rail's rendered sections for tests and non-live callers.
 func (r *Rail) render(te *Telemetry, th Theme, railWidth int) string {
+	return r.renderLive(te, th, railWidth, PhaseIdle, 0)
+}
+
+// renderLive returns the rail's rendered STATS/CONTEXT/MODEL block, each section tinted with its per-section hue from the theme palette — the header bold, the body lines in the same hue — so the sections read apart at a glance.
+func (r *Rail) renderLive(te *Telemetry, th Theme, railWidth int, phase Phase, spinner int) string {
+	return r.renderLiveWithTools(te, th, railWidth, phase, spinner, nil)
+}
+
+func (r *Rail) renderLiveWithTools(te *Telemetry, th Theme, railWidth int, phase Phase, spinner int, log *toolLog) string {
 	var b strings.Builder
 	b.WriteString(r.renderStats(te, th, railWidth))
 	b.WriteString("\n")
@@ -154,7 +163,7 @@ func (r *Rail) renderStats(te *Telemetry, th Theme, railWidth int) string {
 	}
 	var body strings.Builder
 	kw := railKeyWidth(railWidth)
-	r.lineAligned(&body, "cache", fmt.Sprintf("%.0f%%", pct), kw, railWidth)
+	r.lineAligned(&body, "cache", fmt.Sprintf("%.0f%% %s", pct, railMeter(pct/100, railWidth)), kw, railWidth)
 	r.lineAligned(&body, "turns", fmt.Sprintf("%d/%d", turns, maxTurns), kw, railWidth)
 	r.lineAligned(&body, "elapsed", formatElapsed(elapsed), kw, railWidth)
 	r.lineAligned(&body, "tokens", fmt.Sprintf("%s in/%s out", formatTokens(totalIn), formatTokens(out)), kw, railWidth)
@@ -206,23 +215,23 @@ func (r *Rail) renderContext(th Theme, railWidth int) string {
 	return b.String() + th.railBody(railContext, strings.TrimRight(body.String(), "\n"))
 }
 
-// renderModel renders the MODEL section: the provider/model/effort surface.
+// renderModel renders the MODEL section with provider/model hierarchy and compact mode badges.
 func (r *Rail) renderModel(th Theme, railWidth int) string {
 	var b strings.Builder
 	b.WriteString(th.railHeader(railModel, "MODEL") + "\n")
 	var body strings.Builder
-	r.line(&body, r.provider+"/"+r.model, "", railWidth)
+	kw := railKeyWidth(railWidth)
+	r.lineAligned(&body, "provider", r.provider, kw, railWidth)
+	r.lineAligned(&body, "model", r.model, kw, railWidth)
 	effort := r.effort
 	if effort == "" {
 		effort = "n/a"
 	}
-	kw := railKeyWidth(railWidth)
-	r.lineAligned(&body, "effort", effort, kw, railWidth)
-	thinking := "off"
+	thinking := "think:off"
 	if r.thinking {
-		thinking = "on"
+		thinking = "think:on"
 	}
-	r.lineAligned(&body, "thinking", thinking, kw, railWidth)
+	r.lineAligned(&body, "mode", fmt.Sprintf("effort:%s %s", effort, thinking), kw, railWidth)
 	return b.String() + th.railBody(railModel, strings.TrimRight(body.String(), "\n"))
 }
 
@@ -242,12 +251,34 @@ func formatTokens(n int) string {
 func renderStatsCtxLine(r *Rail, th Theme, liveCtx, railWidth int) string {
 	var b strings.Builder
 	kw := railKeyWidth(railWidth)
-	r.lineAligned(&b, "ctx", formatTokens(liveCtx), kw, railWidth)
+	val := formatTokens(liveCtx)
+	if liveCtx > 0 {
+		val += " " + railMeter(float64(liveCtx)/float64(liveContextWarnThreshold), railWidth)
+	}
+	r.lineAligned(&b, "ctx", val, kw, railWidth)
 	line := strings.TrimRight(b.String(), "\n")
 	if liveCtx >= liveContextWarnThreshold {
 		line = lipgloss.NewStyle().Foreground(th.error).Render(line)
 	}
 	return line
+}
+
+func railMeter(fraction float64, railWidth int) string {
+	width := 6
+	if railWidth >= 45 {
+		width = 10
+	}
+	if railWidth >= 60 {
+		width = 14
+	}
+	if fraction < 0 {
+		fraction = 0
+	}
+	if fraction > 1 {
+		fraction = 1
+	}
+	filled := int(fraction*float64(width) + 0.5)
+	return "[" + strings.Repeat("=", filled) + strings.Repeat("-", width-filled) + "]"
 }
 
 // liveContextWarnThreshold is the live context-window size (prompt tokens) at which the STATS ctx line flips to warning styling.
