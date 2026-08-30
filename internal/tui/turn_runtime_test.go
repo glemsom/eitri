@@ -1,6 +1,10 @@
 package tui
 
-import "testing"
+import (
+	"context"
+	"errors"
+	"testing"
+)
 
 // TurnRuntime.OnTurnStart records the engine-reported run ID, and Accept only
 // admits events matching it.
@@ -139,5 +143,143 @@ func TestTurnRuntimeObserveSkipsPulseOnToolStartWhenThinkingOn(t *testing.T) {
 
 	if tx.busyPulse != 0 {
 		t.Fatalf("busy pulse = %d, want 0 when thinking is on", tx.busyPulse)
+	}
+}
+
+// newTestRuntime builds a TurnRuntime with its fold bound to its own session,
+// the shape callers always use outside of tests.
+func newTestRuntime(answer string, err error) *TurnRuntime {
+	s := NewTurnSession(stubTurn(answer, err))
+	return NewTurnRuntime(s, NewFold(s), nil)
+}
+
+// Commit reconciles a streamed success into the streaming assistant message
+// and clears busy/live-timeline state, driven entirely through TurnRuntime.
+func TestTurnRuntimeCommitSuccessStreaming(t *testing.T) {
+	rt := newTestRuntime("", nil)
+	tx := newTestTx()
+	rt.Begin(&tx, "q", "")
+	rt.Observe(&tx, Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "partial"}})
+
+	stopped, err := rt.Commit(&tx, turnDoneMsg{answer: "final answer", reasoning: "reasoned"})
+	if stopped || err != nil {
+		t.Fatalf("stopped=%v err=%v, want false/nil", stopped, err)
+	}
+	msg := tx.messages[len(tx.messages)-1]
+	if msg.content != "final answer" || msg.reasoning != "reasoned" || msg.streaming {
+		t.Fatalf("message = %+v", msg)
+	}
+	if tx.busy || rt.LiveTimeline() != nil {
+		t.Error("Commit did not clear busy/live-timeline state")
+	}
+}
+
+// Commit synthesizes the event log for a non-streamed success, so the
+// committed message still carries an arrival-ordered record.
+func TestTurnRuntimeCommitSuccessNoStreaming(t *testing.T) {
+	rt := newTestRuntime("", nil)
+	tx := newTestTx()
+	rt.Begin(&tx, "q", "")
+
+	stopped, err := rt.Commit(&tx, turnDoneMsg{answer: "the answer"})
+	if stopped || err != nil {
+		t.Fatalf("stopped=%v err=%v, want false/nil", stopped, err)
+	}
+	msg := tx.messages[len(tx.messages)-1]
+	if msg.content != "the answer" || len(msg.events) == 0 {
+		t.Fatalf("message = %+v, want a synthesized event log", msg)
+	}
+}
+
+// Commit marks a streamed turn stopped and keeps its live partial content.
+func TestTurnRuntimeCommitStoppedStreaming(t *testing.T) {
+	rt := newTestRuntime("", nil)
+	tx := newTestTx()
+	rt.Begin(&tx, "q", "")
+	rt.Observe(&tx, Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "partial"}})
+
+	stopped, err := rt.Commit(&tx, turnDoneMsg{stopped: true})
+	if !stopped || err != nil {
+		t.Fatalf("stopped=%v err=%v, want true/nil", stopped, err)
+	}
+	msg := tx.messages[len(tx.messages)-1]
+	if msg.content != "partial" || !msg.stopped || msg.streaming {
+		t.Fatalf("message = %+v, want stopped live partial", msg)
+	}
+}
+
+// Commit appends a failure message and reports the error for a failed turn.
+func TestTurnRuntimeCommitError(t *testing.T) {
+	rt := newTestRuntime("", nil)
+	tx := newTestTx()
+	rt.Begin(&tx, "q", "")
+
+	stopped, err := rt.Commit(&tx, turnDoneMsg{err: errors.New("provider failed")})
+	if stopped || err == nil {
+		t.Fatalf("stopped=%v err=%v, want false/non-nil", stopped, err)
+	}
+	if len(tx.messages) != 2 || tx.messages[1].role != "eitri" {
+		t.Fatalf("messages = %+v", tx.messages)
+	}
+}
+
+// Stop cancels the in-flight turn started through Begin, so the turn's
+// cancelable context observes cancellation.
+func TestTurnRuntimeStopCancelsBegunTurn(t *testing.T) {
+	cancelSeen := func(ctx context.Context, _ string, _ string) (TurnResult, error) {
+		<-ctx.Done()
+		return TurnResult{}, context.Canceled
+	}
+	rt := NewTurnRuntime(NewTurnSession(cancelSeen), nil, nil)
+	rt.fold = NewFold(rt.session)
+	tx := newTestTx()
+	cmd := rt.Begin(&tx, "hi", "")
+
+	rt.Stop()
+
+	msg := cmd().(turnDoneMsg)
+	if !msg.stopped {
+		t.Fatalf("turnDoneMsg = %+v, want stopped", msg)
+	}
+}
+
+// SetThinkingEnabled/ThinkingEnabled round-trip through the runtime, which is
+// the shape turn-created messages read.
+func TestTurnRuntimeThinkingEnabledRoundTrips(t *testing.T) {
+	rt := NewTurnRuntime(NewTurnSession(stubTurn("ok", nil)), nil, nil)
+	rt.SetThinkingEnabled(true)
+	if !rt.ThinkingEnabled() {
+		t.Fatal("expected thinking enabled to round-trip true")
+	}
+	rt.SetThinkingEnabled(false)
+	if rt.ThinkingEnabled() {
+		t.Fatal("expected thinking enabled to round-trip false")
+	}
+}
+
+// Begin, Observe, and Commit together mark the transcript layout dirty on
+// every mutation, so no caller invalidates the cache by hand around a turn.
+func TestTurnRuntimeMarksLayoutDirtyThroughFullTurn(t *testing.T) {
+	rt := newTestRuntime("final answer", nil)
+	tx := newTestTx()
+	tx.layout.dirty = false
+	cmd := rt.Begin(&tx, "do the thing", "")
+	if !tx.layout.dirty {
+		t.Fatal("Begin must mark the transcript layout dirty")
+	}
+
+	tx.layout.dirty = false
+	rt.Observe(&tx, Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "final answer"}})
+	if !tx.layout.dirty {
+		t.Fatal("Observe must mark the transcript layout dirty")
+	}
+
+	tx.layout.dirty = false
+	msg := cmd().(turnDoneMsg)
+	if _, err := rt.Commit(&tx, msg); err != nil {
+		t.Fatalf("Commit returned err %v", err)
+	}
+	if !tx.layout.dirty {
+		t.Fatal("Commit must mark the transcript layout dirty")
 	}
 }
