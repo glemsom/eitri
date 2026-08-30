@@ -249,7 +249,7 @@ func NewModelCfg(d Dependencies) Model {
 	}
 
 	m.runtime = NewTurnRuntime(m.session, NewFold(m.session), d.Events)
-	m.session.SetThinkingEnabled(d.Config.ThinkingEnabled)
+	m.runtime.SetThinkingEnabled(d.Config.ThinkingEnabled)
 	if !isSupportedTheme(d.Config.Theme) {
 		m.savedMsg = fmt.Sprintf("unknown theme %q, using %s", d.Config.Theme, config.DefaultTheme)
 	}
@@ -496,7 +496,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case turnDoneMsg:
-		m.session.Commit(m.tx, msgi)
+		m.runtime.Commit(m.tx, msgi)
 		m.syncComposerRail()
 		return m, nil
 	case clockTickMsg:
@@ -785,7 +785,7 @@ func (m Model) startSkillActivation(name, args string) (tea.Model, tea.Cmd) {
 	return m, skillCmdWithContext(ctx, m.deps.Skills.Activate, name, args, m.skillSeq)
 }
 
-// stopTurn cancels the in-flight turn through the session.
+// stopTurn cancels the in-flight turn through TurnRuntime.
 func (m *Model) stopTurn() {
 	if m.skillPending {
 		if m.skillCancel != nil {
@@ -798,7 +798,7 @@ func (m *Model) stopTurn() {
 		m.syncComposerRail()
 		return
 	}
-	m.session.Stop()
+	m.runtime.Stop()
 }
 
 

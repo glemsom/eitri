@@ -61,6 +61,31 @@ func (rt *TurnRuntime) Wait() tea.Cmd {
 	return eventWait(rt.events)
 }
 
+// Commit reconciles one turn completion into the transcript through the
+// session; Model routes turnDoneMsg here instead of calling TurnSession
+// directly.
+func (rt *TurnRuntime) Commit(tx *Transcript, msg turnDoneMsg) (stopped bool, err error) {
+	return rt.session.Commit(tx, msg)
+}
+
+// Stop cancels the in-flight turn through the session; Model routes
+// non-skill stops here instead of calling TurnSession directly.
+func (rt *TurnRuntime) Stop() {
+	rt.session.Stop()
+}
+
+// SetThinkingEnabled sets the thinking-enabled flag used when the turn
+// creates messages.
+func (rt *TurnRuntime) SetThinkingEnabled(v bool) { rt.session.SetThinkingEnabled(v) }
+
+// ThinkingEnabled reports the thinking-enabled flag used when the turn
+// creates messages.
+func (rt *TurnRuntime) ThinkingEnabled() bool { return rt.session.ThinkingEnabled() }
+
+// LiveTimeline exposes the in-progress turn's arrival-ordered event log for
+// read-only rendering.
+func (rt *TurnRuntime) LiveTimeline() []TimelineEvent { return rt.session.LiveTimeline() }
+
 // Observe projects one live event onto the transcript through the Fold:
 // stream deltas grow the streaming assistant message, and tool observations
 // land in the tool log and transcript event log. Stream deltas arriving

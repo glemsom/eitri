@@ -483,7 +483,7 @@ func (m Model) updateSettings(msgi tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.deps.Config = *res.saved
 			m.tx.applySettings(*res.saved)
 			m.tx.reasoningEffort = res.saved.ReasoningEffort
-			m.session.SetThinkingEnabled(res.saved.ThinkingEnabled)
+			m.runtime.SetThinkingEnabled(res.saved.ThinkingEnabled)
 		}
 		m.settings = nil
 	}
