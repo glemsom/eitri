@@ -17,7 +17,7 @@ func (b *bashTool) Name() string {
 }
 
 func (b *bashTool) Description() string {
-	return "Execute a shell command inside the bwrap sandbox. The workspace is writable, $TMPDIR/$TEMP/$TMP point to the writable session temp, root (including /tmp) is read-only unless extra writable paths are configured, /proc is a fresh pid-namespace-scoped procfs, /dev is a private devtmpfs with a writable /dev/shm, and the command has host network access. Returns combined stdout+stderr as one stream. Output passes through a deterministic compressor at the tool-result boundary: ANSI escape sequences are stripped, repeated consecutive lines are collapsed, and progress/redraw frames are collapsed. Listings longer than a bounded line budget are truncated with an explicit \"+N more\" marker — never silent — so treat a truncated listing as partial; re-running the command is the recovery path if you need the tail. The compression is deterministic: running the same command again yields the same compressed form. Terse output passes through untouched."
+	return "Execute a shell command in a sandbox. Workspace and $TMPDIR/$TEMP/$TMP are writable; everything else is read-only unless extra writable paths are configured. Host network access. Returns combined stdout+stderr as one stream. Long output is truncated with an explicit \"+N more\" marker — re-run the command if you need the tail."
 }
 
 func (b *bashTool) Schema() map[string]any {
