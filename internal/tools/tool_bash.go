@@ -17,7 +17,7 @@ func (b *bashTool) Name() string {
 }
 
 func (b *bashTool) Description() string {
-	return "Execute a shell command in a sandbox. Returns combined stdout+stderr as one stream. Long output is truncated with an explicit \"+N more\" marker — re-run the command if you need the tail."
+	return "Execute a shell command in a sandbox. Returns the combined stream (stdout then stderr; ANSI escape sequences stripped, repeated consecutive lines collapsed). Output passes through a deterministic line compressor: heavy listings are truncated with an explicit \"+N more\" marker — never silent — so re-running the command is the recovery path if you need the tail. Same command yields the same compressed form."
 }
 
 func (b *bashTool) Schema() map[string]any {
