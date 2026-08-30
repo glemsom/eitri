@@ -17,7 +17,7 @@ func (b *bashTool) Name() string {
 }
 
 func (b *bashTool) Description() string {
-	return "Execute a shell command in a sandbox. Workspace and $TMPDIR/$TEMP/$TMP are writable; everything else is read-only unless extra writable paths are configured. Host network access. Returns combined stdout+stderr as one stream. Long output is truncated with an explicit \"+N more\" marker — re-run the command if you need the tail."
+	return "Execute a shell command in a sandbox. Returns combined stdout+stderr as one stream. Long output is truncated with an explicit \"+N more\" marker — re-run the command if you need the tail."
 }
 
 func (b *bashTool) Schema() map[string]any {
