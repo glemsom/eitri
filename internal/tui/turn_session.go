@@ -17,6 +17,9 @@ type TurnSession struct {
 	cancel          context.CancelFunc
 	thinkingEnabled bool
 	curStream       int
+	// flow owns the turn's streamed reasoning/answer observations and the live
+	// snapshots derived from them.
+	flow TurnFlow
 	// timeline and turnSeq are the live per-turn event log and its arrival
 	// counter — owned by the session alone; the Transcript only reads them
 	// through LiveTimeline.
@@ -40,6 +43,7 @@ func (s *TurnSession) Begin(tx *Transcript, prompt, payload string) tea.Cmd {
 	tx.appendUserMsg(prompt)
 	tx.busy = true
 	s.curStream = -1
+	s.flow.Reset()
 	s.timeline = nil
 	s.turnSeq = 0
 	tx.log.SetAnchor(len(tx.messages) - 1)
@@ -99,19 +103,20 @@ func (s *TurnSession) Commit(tx *Transcript, msg turnDoneMsg) (stopped bool, err
 	tx.endTurn()
 	s.End()
 	wasStreaming := s.curStream >= 0 && s.curStream < len(tx.messages)
+	content, reasoning := s.flow.Finalize(msg.answer, msg.reasoning, msg.stopped)
 
 	if msg.stopped {
 		if wasStreaming {
 			i := s.curStream
-			tx.messages[i].content = msg.answer
-			tx.messages[i].reasoning = msg.reasoning
+			tx.messages[i].content = content
+			tx.messages[i].reasoning = reasoning
 			tx.messages[i].streaming = false
 			tx.messages[i].stopped = true
 			tx.clearReasoningFragments(i)
 			s.commitTimeline(tx, i)
 			s.curStream = -1
-		} else if msg.answer != "" || msg.reasoning != "" {
-			tx.messages = append(tx.messages, message{role: "eitri", content: msg.answer, reasoning: msg.reasoning, stopped: true, thinkingRequested: s.thinkingEnabled})
+		} else if content != "" || reasoning != "" {
+			tx.messages = append(tx.messages, message{role: "eitri", content: content, reasoning: reasoning, stopped: true, thinkingRequested: s.thinkingEnabled})
 			s.commitNewAssistant(tx)
 		}
 		return true, nil
@@ -129,8 +134,8 @@ func (s *TurnSession) Commit(tx *Transcript, msg turnDoneMsg) (stopped bool, err
 	}
 	if wasStreaming {
 		i := s.curStream
-		tx.messages[i].content = msg.answer
-		tx.messages[i].reasoning = msg.reasoning
+		tx.messages[i].content = content
+		tx.messages[i].reasoning = reasoning
 		tx.messages[i].streaming = false
 		tx.clearReasoningFragments(i)
 		if !tx.expandAll {
@@ -139,7 +144,7 @@ func (s *TurnSession) Commit(tx *Transcript, msg turnDoneMsg) (stopped bool, err
 		s.commitTimeline(tx, i)
 		s.curStream = -1
 	} else {
-		tx.messages = append(tx.messages, message{role: "eitri", content: msg.answer, reasoning: msg.reasoning, thinkingRequested: s.thinkingEnabled})
+		tx.messages = append(tx.messages, message{role: "eitri", content: content, reasoning: reasoning, thinkingRequested: s.thinkingEnabled})
 		s.commitNewAssistant(tx)
 	}
 	return false, nil
@@ -152,6 +157,7 @@ func (s *TurnSession) commitTimeline(tx *Transcript, i int) {
 	if i >= 0 && i < len(tx.messages) {
 		tx.messages[i].events = s.timeline
 	}
+	s.flow.Reset()
 	s.timeline = nil
 	s.turnSeq = 0
 }
@@ -165,6 +171,7 @@ func (s *TurnSession) commitNewAssistant(tx *Transcript) {
 		s.timeline = synthAnswerLog(tx.messages[idx].content)
 	}
 	tx.messages[idx].events = s.timeline
+	s.flow.Reset()
 	s.timeline = nil
 	s.turnSeq = 0
 }

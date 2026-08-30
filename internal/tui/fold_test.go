@@ -60,6 +60,7 @@ func TestFoldNewTurnAppendsFreshStreamingMessage(t *testing.T) {
 	f.Stream(&tx, AnswerStream, "first")
 	tx.messages[0].streaming = false
 	s.curStream = -1
+	s.flow.Reset()
 	s.timeline = nil
 	s.turnSeq = 0
 

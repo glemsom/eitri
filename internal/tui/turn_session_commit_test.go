@@ -76,6 +76,25 @@ func TestCommit_stoppedNoStreaming(t *testing.T) {
 	}
 }
 
+func TestCommit_stoppedStreamingFallsBackToLivePartialWhenFinalEmpty(t *testing.T) {
+	t.Parallel()
+	s := NewTurnSession(stubTurn("", nil))
+	f := NewFold(s)
+	tx := newTestTx()
+	s.Begin(&tx, "q", "")
+
+	f.Stream(&tx, AnswerStream, "partial")
+
+	stopped, err := s.Commit(&tx, turnDoneMsg{stopped: true})
+	if !stopped || err != nil {
+		t.Fatalf("stopped=%v err=%v", stopped, err)
+	}
+	msg := tx.messages[len(tx.messages)-1]
+	if msg.content != "partial" || !msg.stopped {
+		t.Fatalf("message = %+v, want stopped live partial", msg)
+	}
+}
+
 func TestCommit_errorAppendsFailureMessage(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))

@@ -72,6 +72,10 @@ _Avoid_: stream handler, event appender
 The owner of a turn's whole life: Begin arms a new turn, Stop cancels the in-flight one, and Commit reconciles completion (success, error, stopped) into the transcript. It owns the in-turn event log (timeline), its sequence counter, and the streaming cursor, which the transcript reads through a read-only accessor. The busy flag lives on the transcript, not the session.
 _Avoid_: dispatch, turn state machine
 
+**TurnFlow**:
+The per-turn record of ordered live observations and the answer/reasoning snapshots derived from them. It is the source for what a turn has emitted so far and what is committed when the turn completes; turn lifecycle remains with TurnSession and transcript layout remains with the transcript.
+_Avoid_: event buffer, stream accumulator
+
 **Settings overlay**:
 The owner of an open Settings surface: the draft form, its on-demand model-discovery lifecycle, and persistence of the draft through the save seams. The Model only tracks whether an overlay is open and routes messages to a single Handle entry point.
 _Avoid_: settings form handler, settings state machine

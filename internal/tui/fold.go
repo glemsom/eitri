@@ -14,22 +14,22 @@ func NewFold(session *TurnSession) *Fold {
 	return &Fold{session: session}
 }
 
-// Stream grows the in-progress assistant message by one streamed delta and
-// records the delta on the turn's arrival-ordered event timeline; the derived
-// content/reasoning snapshots re-sync from the timeline afterwards.
+// Stream grows the in-progress assistant message by one streamed delta,
+// records it on the turn's arrival-ordered event timeline, and copies the
+// TurnFlow-derived live snapshots onto the streaming message.
 func (f *Fold) Stream(tx *Transcript, kind StreamKind, delta string) {
-	if delta == "" {
+	if !f.session.flow.Observe(kind, delta) {
 		return
 	}
 	f.session.recordLive(TimelineEvent{Kind: streamEventKind(kind), Delta: delta})
 	cur := f.session.curStream
 	if cur >= 0 && cur < len(tx.messages) && tx.messages[cur].streaming {
-		tx.syncStreamSnapshots(cur, f.session.timeline)
+		tx.syncStreamSnapshots(cur, f.session.flow.Content(), f.session.flow.Reasoning())
 		return
 	}
 	tx.messages = append(tx.messages, message{role: "eitri", streaming: true, thinkingRequested: f.session.thinkingEnabled})
 	f.session.curStream = len(tx.messages) - 1
-	tx.syncStreamSnapshots(f.session.curStream, f.session.timeline)
+	tx.syncStreamSnapshots(f.session.curStream, f.session.flow.Content(), f.session.flow.Reasoning())
 	tx.busyPulse = 3
 }
 

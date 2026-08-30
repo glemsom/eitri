@@ -628,10 +628,12 @@ func synthAnswerLog(content string) []TimelineEvent {
 	return []TimelineEvent{{Kind: EventAnswer, Delta: content}}
 }
 
-// syncStreamSnapshots re-derives the streaming message's content/reasoning text from the turn's event log: the log is the single arrival-ordered source of text, and the snapshots keep copy-to-clipboard, telemetry, and the gateway export reading identical content without touching their seams. The snapshot sync is the one point where streamed text lands in the transcript, so it marks the shared layout cache dirty itself.
-func (t *Transcript) syncStreamSnapshots(i int, events []TimelineEvent) {
+// syncStreamSnapshots copies the turn's latest live answer/reasoning snapshots
+// onto the streaming message and marks the shared layout cache dirty.
+func (t *Transcript) syncStreamSnapshots(i int, content, reasoning string) {
 	m := &t.messages[i]
-	m.content, m.reasoning = deriveSnapshots(events)
+	m.content = content
+	m.reasoning = reasoning
 	t.layout.dirty = true
 }
 
