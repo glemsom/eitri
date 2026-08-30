@@ -301,7 +301,6 @@ func renderReasoningBlock(theme Theme, config string, width int, effort string, 
 	if msg.streaming {
 		pane = theme.streamingThinkingPaneStyle
 	}
-	pane = pane.Border(lipgloss.Border{Left: g("│", "|")})
 	b.WriteString(fmt.Sprintf("%s\n", pane.Render(strings.TrimRight(md, "\n"))))
 	return b.String()
 }
@@ -336,7 +335,6 @@ func renderAnswerBlock(theme Theme, config string, width int, msg message, text 
 	} else if msg.streaming {
 		pane = theme.streamingPaneStyle
 	}
-	pane = pane.Border(lipgloss.Border{Left: g("│", "|")})
 	s := fmt.Sprintf("%s\n", pane.Render(strings.TrimRight(md, "\n")))
 	if final && msg.stopped {
 		s += theme.statusStyle.Render(stoppedMarker()) + "\n"

@@ -355,13 +355,11 @@ func dimmed(c color.Color, f float64) color.Color {
 		uint8(float64(r>>8)*f), uint8(float64(g>>8)*f), uint8(float64(b>>8)*f)))
 }
 
-// borderedPane builds a left-bordered pane with the given border color — the shared frame for assistant answers (agent accent) and failing turns (error color), keeping the two pane styles from diverging.
+// borderedPane builds the shared assistant pane style with one-cell left padding and the given accent color, keeping answer, reasoning, streaming, and error panes visually related without adding copy-hostile border glyphs.
 func borderedPane(c color.Color) lipgloss.Style {
 	return lipgloss.NewStyle().
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderLeft(true).
 		PaddingLeft(1).
-		BorderForeground(c)
+		Foreground(c)
 }
 
 // toolCategoryStyle returns the theme style for a tool category: the per-category hue for shell/file/web/skill, and the generic faint tool line for anything else.
