@@ -339,7 +339,7 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 
 		if msg.role == "you" {
 			anchor = i
-			md, _ := RenderMarkdown(msg.content, w-4, t.configTheme)
+			md, _ := RenderPromptMarkdown(msg.content, w-4, t.configTheme)
 			bubble := renderUserPromptCard(t.theme, md, w)
 			emit(bubble + "\n")
 			if t.isLiveTurnPrompt(i) {
