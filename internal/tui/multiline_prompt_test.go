@@ -26,3 +26,29 @@ func TestTranscriptUserPromptPreservesMultilineInput(t *testing.T) {
 		t.Fatalf("multiline prompt collapsed newline to a space:\n%q\n%s", plain, plain)
 	}
 }
+
+// TestRenderPromptMarkdownPreservesExactNewlines guards against glamour's
+// per-paragraph padding leaking phantom blank rows into the prompt card: each
+// line is rendered in isolation, so any blank glamour inserts above/below a
+// part must be stripped before the parts are joined. The rendered plain text
+// must contain exactly as many newlines as the user typed — never more.
+func TestRenderPromptMarkdownPreservesExactNewlines(t *testing.T) {
+	cases := []string{
+		"single line",
+		"first line\nsecond line",
+		"a\n\n\nb",
+		"\nleading and trailing\n",
+	}
+	for _, in := range cases {
+		md, err := RenderPromptMarkdown(in, 80, "dark")
+		if err != nil {
+			t.Fatalf("RenderPromptMarkdown(%q): %v", in, err)
+		}
+		plain := ansiStrip(md)
+		got := strings.Count(plain, "\n")
+		want := strings.Count(in, "\n")
+		if got != want {
+			t.Errorf("prompt %q: rendered %d newlines, want %d\n%s", in, got, want, plain)
+		}
+	}
+}

@@ -177,7 +177,12 @@ func RenderPromptMarkdown(prompt string, width int, theme string) (string, error
 		if err != nil {
 			return "", err
 		}
-		parts[i] = rendered
+		// glamour wraps each independently-rendered paragraph in a leading and a
+		// trailing blank row (RenderMarkdown trims only the one trailing newline), so
+		// every part comes back carrying a phantom blank line above and below. Strip
+		// both edges so each part contributes exactly its entered rows and the join
+		// below introduces precisely the newlines the user typed — no more, no fewer.
+		parts[i] = strings.Trim(rendered, "\n")
 	}
 	return strings.Join(parts, "\n"), nil
 }

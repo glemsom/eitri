@@ -585,7 +585,7 @@ func TestTranscript_emptyTimelineGapRendersThroughFlowRenderer(t *testing.T) {
 	// FlowRenderer emitter produces for the synthesized (empty) log — no
 	// legacy tool-log branch output beneath the card.
 	want := ""
-	md, _ := RenderMarkdown("run it", tx.transcriptWidth()-4, tx.configTheme)
+	md, _ := RenderPromptMarkdown("run it", tx.transcriptWidth()-4, tx.configTheme)
 	want += renderUserPromptCard(tx.theme, md, tx.transcriptWidth()) + "\n"
 	flow, _ := tx.renderEventFlow(nil, 0, message{}, 0, time.Time{})
 	want += flow
