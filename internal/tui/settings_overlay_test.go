@@ -50,6 +50,27 @@ func TestSettingsOverlay_EscClosesWithoutPersisting(t *testing.T) {
 	}
 }
 
+func TestSettingsOverlay_ArrowUpDownNavigateRows(t *testing.T) {
+	t.Parallel()
+	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, Dependencies{})
+
+	outcome, cmd := o.Key(tea.KeyPressMsg{Code: tea.KeyDown})
+	if outcome != outcomeContinue || cmd != nil {
+		t.Fatalf("down outcome/cmd = %v/%v, want outcomeContinue/nil", outcome, cmd)
+	}
+	if o.field != fieldModel {
+		t.Fatalf("field after down = %d, want model", o.field)
+	}
+	if o.cfg.Provider != cfgFixture().Provider {
+		t.Fatalf("down changed provider to %q, want unchanged", o.cfg.Provider)
+	}
+
+	o.Key(tea.KeyPressMsg{Code: tea.KeyUp})
+	if o.field != fieldProvider {
+		t.Fatalf("field after up = %d, want provider", o.field)
+	}
+}
+
 func TestSettingsOverlay_SaveReportsStatusAndReturnsDraft(t *testing.T) {
 	t.Parallel()
 	var saved config.Config
@@ -60,7 +81,7 @@ func TestSettingsOverlay_SaveReportsStatusAndReturnsDraft(t *testing.T) {
 	}
 	o, _ := openSettingsOverlay(cfgFixture(), []string{"deepseek-v4-flash"}, defaultTheme, nil, nil, deps)
 	for range fieldSave {
-		outcome, _ := o.Key(tea.KeyPressMsg{Code: tea.KeyTab})
+		outcome, _ := o.Key(tea.KeyPressMsg{Code: tea.KeyEnter})
 		if outcome == outcomeSaved {
 			break
 		}
@@ -122,7 +143,7 @@ func TestSettingsOverlay_HandleSavesOnEnterAtSaveField(t *testing.T) {
 	deps := Dependencies{Save: func(c config.Config) error { saved = c; return nil }}
 	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, deps)
 	for range fieldSave {
-		o.Handle(tea.KeyPressMsg{Code: tea.KeyTab})
+		o.Handle(tea.KeyPressMsg{Code: tea.KeyEnter})
 	}
 
 	res := o.Handle(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -182,7 +203,7 @@ func TestSettingsOverlay_ProviderChangeArmsDiscoveryForDraftProvider(t *testing.
 	}
 	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, deps)
 
-	outcome, cmd := o.Key(tea.KeyPressMsg{Code: tea.KeyDown})
+	outcome, cmd := o.Key(tea.KeyPressMsg{Code: tea.KeyTab})
 	if outcome != outcomeContinue || cmd == nil {
 		t.Fatalf("provider change outcome/cmd = %v/%v, want outcomeContinue/discovery cmd", outcome, cmd)
 	}

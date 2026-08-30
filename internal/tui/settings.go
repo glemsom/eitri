@@ -253,21 +253,31 @@ func (o *SettingsOverlay) Key(k tea.KeyPressMsg) (settingsKeyOutcome, tea.Cmd) {
 	switch k.String() {
 	case "esc", "ctrl+c":
 		return outcomeClosed, nil
-	case "tab", "enter":
-		if k.String() == "enter" && s.onSave() {
+	case "enter":
+		if s.onSave() {
 			return outcomeSaved, nil
 		}
 		if s.field == fieldPaths {
 			s.cfg.ExtraWritablePaths = splitPaths(s.pathBuf)
 		}
 		s.next()
-	case "up", "shift+up", "left":
+	case "up", "shift+up":
+		if s.field == fieldPaths {
+			s.cfg.ExtraWritablePaths = splitPaths(s.pathBuf)
+		}
+		s.step(-1)
+	case "down", "shift+down":
+		if s.field == fieldPaths {
+			s.cfg.ExtraWritablePaths = splitPaths(s.pathBuf)
+		}
+		s.step(1)
+	case "left":
 		before := s.cfg.Provider
 		s.adjust(-1)
 		if s.cfg.Provider != before {
 			return outcomeContinue, o.beginDiscovery()
 		}
-	case "down", "shift+down", "right":
+	case "right", "tab":
 		before := s.cfg.Provider
 		s.adjust(1)
 		if s.cfg.Provider != before {
@@ -460,7 +470,7 @@ func settingsView(f settingsForm) string {
 	}
 	b.WriteString("\n")
 	b.WriteString(save + "  " + cancel + "\n")
-	b.WriteString(th.statusStyle.Render("tab/enter: navigate " + g("·", ".") + " arrows/+" + g("−", "-") + ": adjust " + g("·", ".") + " esc: close"))
+	b.WriteString(th.statusStyle.Render("up/down: navigate " + g("·", ".") + " left/right/tab: adjust " + g("·", ".") + " enter: next/save " + g("·", ".") + " esc: close"))
 	return b.String()
 }
 

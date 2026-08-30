@@ -46,7 +46,7 @@ func TestModel_SettingsSavePersistsAndCloses(t *testing.T) {
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+s")
 	for i := fieldProvider; i < fieldSave; i++ {
-		m = keypress(t, m, "tab")
+		m = keypress(t, m, "enter")
 	}
 	m = keypress(t, m, "enter")
 
@@ -71,10 +71,10 @@ func TestModel_SettingsAdjustedValuePersists(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+s")
-	m = keypress(t, m, "tab")  // focus Model
-	m = keypress(t, m, "down") // select grok-2
+	m = keypress(t, m, "enter") // focus Model
+	m = keypress(t, m, "tab")   // select grok-2
 	for i := fieldModel; i < fieldSave; i++ {
-		m = keypress(t, m, "tab")
+		m = keypress(t, m, "enter")
 	}
 	keypress(t, m, "enter")
 
@@ -97,11 +97,11 @@ func TestModel_SettingsEffortSelectingMediumPersists(t *testing.T) {
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+s")
 	for i := fieldProvider; i < fieldEffort; i++ {
-		m = keypress(t, m, "tab")
+		m = keypress(t, m, "enter")
 	}
-	m = keypress(t, m, "up")
+	m = keypress(t, m, "left")
 	for i := fieldEffort; i < fieldSave; i++ {
-		m = keypress(t, m, "tab")
+		m = keypress(t, m, "enter")
 	}
 	keypress(t, m, "enter")
 
@@ -124,12 +124,12 @@ func TestModel_SettingsPathsBackspaceEdits(t *testing.T) {
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+s")
 	for i := fieldProvider; i < fieldPaths; i++ {
-		m = keypress(t, m, "tab")
+		m = keypress(t, m, "enter")
 	}
 	m = keypress(t, m, "x")         // append
 	m = keypress(t, m, "backspace") // delete it
 	for i := fieldPaths; i < fieldSave; i++ {
-		m = keypress(t, m, "tab")
+		m = keypress(t, m, "enter")
 	}
 	keypress(t, m, "enter")
 
@@ -152,12 +152,12 @@ func TestModel_SettingsPathsSpaceTypesASpace(t *testing.T) {
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+s")
 	for i := fieldProvider; i < fieldPaths; i++ {
-		m = keypress(t, m, "tab")
+		m = keypress(t, m, "enter")
 	}
 	m = keypress(t, m, " ")
 	m = keypress(t, m, "v2")
 	for i := fieldPaths; i < fieldSave; i++ {
-		m = keypress(t, m, "tab")
+		m = keypress(t, m, "enter")
 	}
 	keypress(t, m, "enter")
 
@@ -179,13 +179,13 @@ func TestModel_SettingsSaveAppliesThinkingStateToLiveSession(t *testing.T) {
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+s")
 	for i := fieldProvider; i < fieldThinking; i++ {
-		m = keypress(t, m, "tab")
+		m = keypress(t, m, "enter")
 	}
-	m = keypress(t, m, "down") // thinking off
-	m = keypress(t, m, "tab")  // effort
-	m = keypress(t, m, "up")   // high -> medium
+	m = keypress(t, m, "tab")   // thinking off
+	m = keypress(t, m, "enter") // effort
+	m = keypress(t, m, "left")  // high -> medium
 	for i := fieldEffort; i < fieldSave; i++ {
-		m = keypress(t, m, "tab")
+		m = keypress(t, m, "enter")
 	}
 	m = keypress(t, m, "enter")
 
@@ -213,9 +213,9 @@ func TestModel_SettingsSaveFailureDoesNotApplyLiveConfig(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+s")
-	m = keypress(t, m, "down") // provider opencode-go -> github-copilot
+	m = keypress(t, m, "tab") // provider opencode-go -> github-copilot
 	for i := fieldProvider; i < fieldSave; i++ {
-		m = keypress(t, m, "tab")
+		m = keypress(t, m, "enter")
 	}
 	m = keypress(t, m, "enter")
 
@@ -244,11 +244,11 @@ func TestModel_SettingsThinkingTogglePersists(t *testing.T) {
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+s")
 	for i := fieldProvider; i < fieldThinking; i++ {
-		m = keypress(t, m, "tab")
+		m = keypress(t, m, "enter")
 	}
-	m = keypress(t, m, "down")
+	m = keypress(t, m, "tab")
 	for i := fieldThinking; i < fieldSave; i++ {
-		m = keypress(t, m, "tab")
+		m = keypress(t, m, "enter")
 	}
 	keypress(t, m, "enter")
 
@@ -277,13 +277,13 @@ func TestModel_SettingsCollapseTogglesPersistAndFlipDefaults(t *testing.T) {
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+s")
 	for i := fieldProvider; i < fieldCoTCollapsed; i++ {
-		m = keypress(t, m, "tab")
+		m = keypress(t, m, "enter")
 	}
-	m = keypress(t, m, "down") // CoT collapsed -> off
-	m = keypress(t, m, "tab")  // focus Tool results collapsed
-	m = keypress(t, m, "down") // tool results collapsed -> off
+	m = keypress(t, m, "tab")   // CoT collapsed -> off
+	m = keypress(t, m, "enter") // focus Tool results collapsed
+	m = keypress(t, m, "tab")   // tool results collapsed -> off
 	for i := fieldToolResultsCollapsed; i < fieldSave; i++ {
-		m = keypress(t, m, "tab")
+		m = keypress(t, m, "enter")
 	}
 	m = keypress(t, m, "enter")
 
@@ -315,11 +315,11 @@ func TestModel_SettingsThemeSelectingPersists(t *testing.T) {
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+s")
 	for i := fieldProvider; i < fieldTheme; i++ {
-		m = keypress(t, m, "tab")
+		m = keypress(t, m, "enter")
 	}
-	m = keypress(t, m, "down")
+	m = keypress(t, m, "tab")
 	for i := fieldTheme; i < fieldSave; i++ {
-		m = keypress(t, m, "tab")
+		m = keypress(t, m, "enter")
 	}
 	keypress(t, m, "enter")
 
