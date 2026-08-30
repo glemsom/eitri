@@ -32,6 +32,12 @@ func New(dataDir string, debug bool) (*Session, error) {
 	if err != nil {
 		return nil, fmt.Errorf("generate session GUID: %w", err)
 	}
+	return NewWithGUID(dataDir, guid, debug)
+}
+
+// NewWithGUID creates a session under dataDir/sessions/guid. It is used by `/new`,
+// where the TUI has already minted and displayed the fresh live key.
+func NewWithGUID(dataDir, guid string, debug bool) (*Session, error) {
 	dir := filepath.Join(dataDir, "sessions", guid)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create session dir %s: %w", dir, err)

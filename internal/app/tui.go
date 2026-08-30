@@ -11,20 +11,33 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/engine"
 	"github.com/glemsom/eitri/internal/provider"
+	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/tools"
 	"github.com/glemsom/eitri/internal/tui"
 )
 
+type sessionTurnBinder func(sessionKey string) error
+
 // runEngineTurn adapts the shared runAgent turn to the tui.Turn seam.
 func runEngineTurn(e *engine.Engine, cfg func() config.Config, reg *tools.Registry, sessionKey *tui.LiveSessionKey, catalog *tools.Catalog, canContinue func() bool) tui.Turn {
+	return runEngineTurnWithBinder(e, cfg, reg, sessionKey, catalog, canContinue, nil)
+}
+
+func runEngineTurnWithBinder(e *engine.Engine, cfg func() config.Config, reg *tools.Registry, sessionKey *tui.LiveSessionKey, catalog *tools.Catalog, canContinue func() bool, bind sessionTurnBinder) tui.Turn {
 	return func(ctx context.Context, prompt string, payload string) (tui.TurnResult, error) {
 		cur := cfg()
+		key := sessionKey.Get()
+		if bind != nil {
+			if err := bind(key); err != nil {
+				return tui.TurnResult{}, err
+			}
+		}
 		// Thread a plain payload from the Turn seam into the engine as a *string: an empty payload stays nil at the runAgent boundary (no injection).
 		var skillInject *string
 		if payload != "" {
 			skillInject = &payload
 		}
-		res, err := runAgent(ctx, e, cur, reg, sessionKey.Get(), prompt, catalog, skillInject, canContinue)
+		res, err := runAgent(ctx, e, cur, reg, key, prompt, catalog, skillInject, canContinue)
 		if err != nil {
 			if errors.Is(err, engine.ErrStopped) {
 				return tui.TurnResult{Answer: res.Answer, Reasoning: res.Reasoning, Stopped: true}, nil
@@ -37,6 +50,20 @@ func runEngineTurn(e *engine.Engine, cfg func() config.Config, reg *tools.Regist
 
 // runTUI launches the interactive fullscreen TUI on the shared engine and blocks until the user quits.
 func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey string, p provider.Provider, cfgPath string, dataDir string, skills *tools.Catalog, workspace string, sessionTemp string) error {
+	activeSessionKey := sessionKey
+	bindSession := func(key string) error {
+		if key == activeSessionKey {
+			return nil
+		}
+		sess, err := session.NewWithGUID(dataDir, key, false)
+		if err != nil {
+			return err
+		}
+		e.BindSession(sess)
+		reg.SetTempHost(sess.TempDir())
+		activeSessionKey = key
+		return nil
+	}
 	effort := cfg.ReasoningEffort
 	if !cfg.ThinkingEnabled {
 		effort = ""
@@ -80,7 +107,7 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 			})
 		},
 	})
-	ts := tui.NewTurnSession(runEngineTurn(e, func() config.Config { return currentCfg }, reg, live, skills, m.ContinueHook()))
+	ts := tui.NewTurnSession(runEngineTurnWithBinder(e, func() config.Config { return currentCfg }, reg, live, skills, m.ContinueHook(), bindSession))
 	ts.SetThinkingEnabled(cfg.ThinkingEnabled)
 	m.SetTurnSession(ts)
 	return runProgram(m)

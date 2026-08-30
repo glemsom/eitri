@@ -113,6 +113,9 @@ func NewLoggingProvider(p Provider, sink MessageLogSink) *LoggingProvider {
 	return &LoggingProvider{inner: p, sink: sink}
 }
 
+// SetSink retargets message-layer logging for subsequent provider requests.
+func (lp *LoggingProvider) SetSink(sink MessageLogSink) { lp.sink = sink }
+
 func (lp *LoggingProvider) Stream(ctx context.Context, req Request) (Stream, error) {
 	lp.sink.LogRequest(RequestLog{
 		Time: time.Now(), Dir: "req",

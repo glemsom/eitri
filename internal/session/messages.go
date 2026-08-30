@@ -50,7 +50,7 @@ func (m *messageLog) append(rec any) {
 }
 
 func (s *Session) closeMessageLog() error {
-	if s.messages == nil {
+	if s.messages == nil || s.messages.file == nil {
 		return nil
 	}
 	err := s.messages.file.Close()

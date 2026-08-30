@@ -87,6 +87,14 @@ func (r *Registry) Names() []string {
 
 func (r *Registry) Workspace() string { return r.workspace }
 
+// SetTempHost rewires the per-session temp directory used by sandboxed tools.
+func (r *Registry) SetTempHost(tempHost string) {
+	r.sandbox.tempHost = filepath.Clean(tempHost)
+}
+
+// TempHost returns the per-session temp directory used by sandboxed tools.
+func (r *Registry) TempHost() string { return r.sandbox.tempHost }
+
 // Run executes the named tool with the given decoded args, returning its result string plus whether the result is the line-compressor's compressed form.
 func (r *Registry) Run(ctx context.Context, name string, args map[string]any) (ToolResult, error) {
 	tool, ok := r.tools[name]

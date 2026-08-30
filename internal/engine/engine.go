@@ -25,6 +25,11 @@ type TranscriptWriter interface {
 	WriteTranscript(line []byte) error
 }
 
+type SessionSink interface {
+	TranscriptWriter
+	MessageLogSink() provider.MessageLogSink
+}
+
 // Engine is a run engine bound to a provider and a transcript sink.
 type Engine struct {
 	provider   provider.Provider
@@ -41,6 +46,16 @@ type Engine struct {
 // New returns an Engine that talks to p and appends run records to tr.
 func New(p provider.Provider, tr TranscriptWriter) *Engine {
 	return &Engine{provider: p, transcript: tr, histories: make(map[string][]provider.Message)}
+}
+
+// BindSession retargets the engine's on-disk transcript and message-log sinks to
+// the active session key. It also updates a LoggingProvider wrapper when present,
+// so `/new` starts writing messages.jsonl under the newly displayed GUID.
+func (e *Engine) BindSession(sink SessionSink) {
+	e.transcript = sink
+	if lp, ok := e.provider.(*provider.LoggingProvider); ok {
+		lp.SetSink(sink.MessageLogSink())
+	}
 }
 
 // Listener receives one typed Event per streamed observation from a live run, in order, synchronously from within the turn's drain loop.
