@@ -34,7 +34,7 @@ func reducedToolTurn() *provider.Scripted {
 				), nil
 			}
 		}
-		for _, banned := range []string{"read", "write", "edit", "skill", "web_fetch"} {
+		for _, banned := range []string{"read", "write", "edit", "skill", "web_fetch", "multi_tool_use"} {
 			if names[banned] {
 				return provider.StreamFunc(
 					provider.Chunk{Content: "forbidden tool present: " + banned, FinishReason: "stop", Done: true},
