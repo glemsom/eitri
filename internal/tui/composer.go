@@ -230,9 +230,9 @@ func fitBandLine(s string, width int) string {
 	return truncateWidth(s, width-1) + g("…", "...")
 }
 
-// composerPreRows returns how many band rows render above the composer: the composer panel top border plus one row per slash-completion candidate .
+// composerPreRows returns how many band rows render above the textarea caret origin: one row per slash-completion candidate, with the composer panel top border already reflected by the rendered band origin.
 func (m Model) composerPreRows() int {
-	n := 1
+	n := 0
 	if m.slash.isOpen() {
 		n += m.slash.CandidateCount() + 2 // slash popover borders
 	} else if m.mention.isOpen() {
