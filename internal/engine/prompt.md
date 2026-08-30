@@ -23,16 +23,20 @@ Open a URL or host path/file URL in the user's browser. For rendered HTML, write
 ### Find, read, edit (anchor-first)
 1. **Locate** with ripgrep, fitting output to intent: `rg -n <pattern>` tree-wide when the range is unknown, `--heading -n` to scan with line numbers, `--color=never` for plain text, `-l`/`--files-with-matches` to survey.
 2. **Read** the exact range with anchors: `nl -ba <file> | sed -n 'X,Yp'`. Plain `sed -n 'X,Yp' <file>` when no anchors are needed.
-3. **Edit**: emit a diff (unified format), apply with `git apply --recount -p0` (errors and prints on failure) — the single editing method, any hunks/files per diff. A hand-written diff works for any edit, existing file or new — bare paths, no `a/`/`b/` prefix:
-   ```
-   --- greet.py
-   +++ greet.py
-   @@ -1,3 +1,3 @@
-    def greet(name):
-   -    print("Hi " + name)
-   +    print(f"Hi {name}")
-   ```
-   Context lines start with a space, removed with `-`, added with `+`. `--recount` recomputes each hunk's span from its body, so header `,N` counts need not be exact — keep ≥1 context line around each change. Standard unified diff only — never `*** Begin Patch` / `*** Update File`. `patch does not apply`? Context mismatch or malformed diff — re-read and redo; for many files, generate each diff mechanically first (`diff -Naur old new`), review, then apply.
+3. **Edit**, by shape:
+   - **One localized change, existing file** — literal search/replace, no line numbers, no diff. Capture the exact old and new text, guard with a fixed-string match count, substitute with `sed -z` (treats the file as one blob, so the match can span lines):
+     ```sh
+     OLD='    print("Hi " + name)'
+     NEW='    print(f"Hi {name}")'
+     c=$(grep -zoF "$OLD" greet.py | tr -cd '\0' | wc -c)
+     [ "$c" -eq 1 ] || { echo "match count: $c" >&2; false; }
+     OLD_ESC=$(printf '%s' "$OLD" | sed -e 's/[.[\*^$\/]/\\&/g')
+     NEW_ESC=$(printf '%s' "$NEW" | sed -e 's/[&\/\\]/\\&/g')
+     sed -z "s/${OLD_ESC}/${NEW_ESC}/" greet.py > "$TMPDIR/out" && mv "$TMPDIR/out" greet.py
+     ```
+     `grep -F` is a literal, non-regex match, so the count check needs no escaping; `sed -z` has no literal mode, so escape BRE metacharacters in `OLD` and `&`/`\` in `NEW` before substituting. Count `!= 1`? The anchor text isn't unique or doesn't match verbatim — re-read the file fresh (an earlier attempt may have partly landed) and widen the anchor until it's unique.
+   - **New file, or a rewrite too broad to anchor** — `cat > file <<'EOF' … EOF` heredoc, full contents, no diff needed.
+   - **Many localized changes in one file, or across several files** — repeat the search/replace step per change, one at a time; verify (re-`grep`/re-read) between edits rather than batching them blind.
 
 ## Scratch scripting
 A one-liner (`rg`, `sed`, `awk`, `python3 -c '...'`) when it suffices; a `python3` script when steps get stateful or multi-hop.
@@ -40,4 +44,3 @@ A one-liner (`rg`, `sed`, `awk`, `python3 -c '...'`) when it suffices; a `python
 - Fail fast: chain with `&&`, or start scripts with `set -euo pipefail`. A dependent `;` chain is where later success can hide earlier failure.
 - For multi-step chains, print brief `STEP:` markers before each major action and its verification.
 - Write large results to a `$TMPDIR` file instead of printing them.
-- Many files: script a transform emitting a diff per file, review, then apply each with `git apply --recount -p0` (concatenated or per file). `diff -Naur old new > "$TMPDIR/change.patch"` generates a reliable diff for one file.
