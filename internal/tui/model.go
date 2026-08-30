@@ -425,7 +425,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tx.setExpandAll(true)
 			return m, nil
 		case "E":
-			if m.composer.Value() != "" {
+			if m.composer.Value() != "" || !m.tx.busy {
 				break // composing: the letter goes to the textarea
 			}
 			m.tx.setCollapseAll(true)

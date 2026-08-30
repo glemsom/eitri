@@ -236,13 +236,13 @@ func TestModel_eExpandsAllECollapseAllHints(t *testing.T) {
 	}
 
 	m = keypress(t, m, "E")
-	if strings.Contains(ansiStrip(view(m)), "hidden reasoning") {
-		t.Errorf("E must collapse the CoT block back to the hint, got: %q", view(m))
+	if got := m.composer.Value(); got != "E" {
+		t.Errorf("Shift+E as the first draft letter must reach the composer, got %q", got)
 	}
 
 	// Typing a letter with a draft must type, not expand.
 	m = typeText(t, m, "again")
-	if got := m.composer.Value(); got != "again" {
+	if got := m.composer.Value(); got != "Eagain" {
 		t.Errorf("typing with a draft must reach the composer, got %q", got)
 	}
 }
