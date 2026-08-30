@@ -96,7 +96,7 @@ func TestSystemPromptGuidesBashChains(t *testing.T) {
 func TestSystemPromptGuidesToolSelection(t *testing.T) {
 	t.Parallel()
 	p := SystemPromptContent()
-	for _, want := range []string{"curl", "bash", "open_in_browser", "--fail", "--max-time", "$TMPDIR", "host path", "not the first that springs to mind"} {
+	for _, want := range []string{"curl", "bash", "open_in_browser", "--fail", "--max-time", "$TMPDIR", "/tmp", "host path", "not the first that springs to mind"} {
 		if !strings.Contains(p, want) {
 			t.Fatalf("system prompt must guide tool selection; missing %q:\n%s", want, p)
 		}
@@ -146,6 +146,16 @@ func TestSystemPromptStaysLeanOnToolPresence(t *testing.T) {
 	for _, banned := range []string{"usually present", "never guaranteed", "git diff", "git apply", "sed -i"} {
 		if strings.Contains(p, banned) {
 			t.Fatalf("system prompt must not hedge non-guaranteed tools or multi-method edits; found %q:\n%s", banned, p)
+		}
+	}
+}
+
+func TestSystemPromptGuidesPatchStrategy(t *testing.T) {
+	t.Parallel()
+	p := SystemPromptContent()
+	for _, want := range []string{"GNU `patch`", "hand-written unified diff", "*** Begin Patch", "Only garbage was found", "Hunk FAILED", "diff -Naur old new"} {
+		if !strings.Contains(p, want) {
+			t.Fatalf("system prompt must guide patch strategy; missing %q:\n%s", want, p)
 		}
 	}
 }
