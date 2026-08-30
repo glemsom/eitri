@@ -342,8 +342,10 @@ func (t Transcript) busyTailIndex() int {
 
 // renderBusyPrefix renders and caches the committed prefix: the workspace
 // header plus every message strictly before the running turn's tail. It uses
-// the same renderMessageRange emitter as the full render, but with no stream
-// clock (now zero — all prefix tool entries are committed and use doneAt).
+// the same renderMessageRange emitter as the full render, so the bytes match a
+// fresh full render exactly. Every prefix tool entry is committed and uses its
+// doneAt timestamp, so the advancing live clock does not affect them and the
+// cached string stays stable across deltas.
 func (t *Transcript) renderBusyPrefix() {
 	var b strings.Builder
 	t.renderMessageRange(&b, nil, nil, 0, t.busyTailIndex(), true, false)
