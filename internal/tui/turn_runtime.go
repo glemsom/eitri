@@ -60,3 +60,25 @@ func (rt *TurnRuntime) Wait() tea.Cmd {
 	}
 	return eventWait(rt.events)
 }
+
+// Observe projects one live event onto the transcript through the Fold:
+// stream deltas grow the streaming assistant message, and tool observations
+// land in the tool log and transcript event log. Stream deltas arriving
+// while no turn runs are dropped, matching the pre-timeline stream
+// behavior. Tool starts arm the busy pulse when thinking is off and motion
+// is enabled, so a thinking-off turn still shows visible progress. Observe
+// never returns a command today; the return type matches the turn runtime's
+// external shape so callers do not need to change if projection later needs
+// to trigger one.
+func (rt *TurnRuntime) Observe(tx *Transcript, u Event) tea.Cmd {
+	if u.Stream != nil && tx.busy {
+		rt.fold.Stream(tx, u.Stream.Kind, u.Stream.Delta)
+	}
+	if u.Tool != nil {
+		rt.fold.Tool(tx, *u.Tool)
+		if u.Tool.Start != nil && !rt.session.ThinkingEnabled() && motionEnabled() {
+			tx.busyPulse = 3
+		}
+	}
+	return nil
+}

@@ -139,7 +139,6 @@ type Dependencies struct {
 type Model struct {
 	composer textarea.Model
 	session  *TurnSession
-	fold     *Fold
 	deps     Dependencies
 	tx       *Transcript
 
@@ -249,8 +248,7 @@ func NewModelCfg(d Dependencies) Model {
 		histIdx:      -1,
 	}
 
-	m.fold = NewFold(m.session)
-	m.runtime = NewTurnRuntime(m.session, m.fold, d.Events)
+	m.runtime = NewTurnRuntime(m.session, NewFold(m.session), d.Events)
 	m.session.SetThinkingEnabled(d.Config.ThinkingEnabled)
 	if !isSupportedTheme(d.Config.Theme) {
 		m.savedMsg = fmt.Sprintf("unknown theme %q, using %s", d.Config.Theme, config.DefaultTheme)
@@ -268,12 +266,11 @@ func newHistoryViewport() viewport.Model {
 // SetTurnSession wires the TurnSession that owns turn start/stop and commits turn completion.
 func (m *Model) SetTurnSession(ts *TurnSession) {
 	m.session = ts
-	m.fold = NewFold(ts)
 	var events *EventFeed
 	if m.runtime != nil {
 		events = m.runtime.events
 	}
-	m.runtime = NewTurnRuntime(m.session, m.fold, events)
+	m.runtime = NewTurnRuntime(m.session, NewFold(m.session), events)
 }
 
 // ContinueHook returns the interactive continuation hook wired to this Model's prompt channels.
@@ -337,12 +334,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.runtime.Wait()
 		}
 		if m.runtime.Accept(msgi.update) {
-			if msgi.update.Stream != nil {
-				m.applyStreamDelta(*msgi.update.Stream)
-			}
-			if msgi.update.Tool != nil {
-				m.applyToolUpdate(*msgi.update.Tool)
-			}
+			m.runtime.Observe(m.tx, msgi.update)
 		}
 		return m, m.runtime.Wait()
 
@@ -809,27 +801,6 @@ func (m *Model) stopTurn() {
 	m.session.Stop()
 }
 
-// appendStreamDelta folds one streamed delta through the Fold, the sole
-// writer of the streaming assistant message and live timeline.
-func (m *Model) appendStreamDelta(kind StreamKind, delta string) {
-	m.fold.Stream(m.tx, kind, delta)
-}
-
-// applyStreamDelta folds one streamed delta from the merged event feed into the live turn; deltas arriving while no turn runs are dropped, matching the pre-timeline stream behavior.
-func (m *Model) applyStreamDelta(u StreamUpdate) {
-	if !m.tx.busy {
-		return
-	}
-	m.appendStreamDelta(u.Kind, u.Delta) // the Fold invalidates the layout itself
-}
-
-// applyToolUpdate folds one tool observation from the merged event feed through the Fold, arming the tool-start pulse for thinking-off turns along the way.
-func (m *Model) applyToolUpdate(u ToolUpdate) {
-	m.fold.Tool(m.tx, u) // tool updates route through the Fold
-	if u.Start != nil && !m.session.ThinkingEnabled() && motionEnabled() {
-		m.tx.busyPulse = 3
-	}
-}
 
 // trackComposer updates both completion surfaces after a composer mutation: the
 // slash surface from the value, and the @ mention surface from the caret position.
