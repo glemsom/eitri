@@ -36,7 +36,7 @@ Flags:
 Eitri creates its data directory (~/.eitri, or EITRI_DIR) on launch and
 refuses to start without its declared toolset — bwrap, bash, rg, curl, lynx,
 patch, python3, git — because its agent prompt promises those tools
-unconditionally (ADR-0002, docs/adr/). Install hints:
+unconditionally. Install hints:
   Debian/Ubuntu: sudo apt install bubblewrap bash ripgrep curl lynx patch python3 git
   Fedora:        sudo dnf install bubblewrap bash ripgrep curl lynx patch python3 git
   Arch:          sudo pacman -S bubblewrap bash ripgrep curl lynx patch python3 git

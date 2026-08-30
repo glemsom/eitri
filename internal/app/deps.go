@@ -11,7 +11,7 @@ import (
 // prompt promises unconditionally. A missing name here is fatal at boot: the
 // run refuses to start rather than let the agent reach for a tool that
 // cannot exist. The browser launcher backing open_in_browser is the one
-// deliberate exception (see ADR-0002): it has zero boot impact and surfaces
+// deliberate exception: it has zero boot impact and surfaces
 // only as a contained runtime error if open_in_browser actually runs.
 
 // dependency is one declared executable and the distro package that provides

@@ -15,8 +15,7 @@
 
 ```sh
 # Install the declared toolset (required; Eitri refuses to start without it,
-# because its agent prompt promises these tools unconditionally — see
-# ADR-0002 under docs/adr/):
+# because its agent prompt promises these tools unconditionally):
 #   Debian/Ubuntu: sudo apt install bubblewrap bash ripgrep curl lynx patch python3 git
 #   Fedora:        sudo dnf install bubblewrap bash ripgrep curl lynx patch python3 git
 #   Arch:          sudo pacman -S bubblewrap bash ripgrep curl lynx patch python3 git
@@ -149,7 +148,7 @@ The `copilot` and `custom_openai` objects are managed by Eitri (via device-flow 
 ## Requirements
 
 - **Linux** (Eitri is a Linux agent).
-- **Declared toolset** (required; fatal at boot) — Eitri verifies every declared dependency at launch and refuses to start without it, because its agent prompt promises these tools unconditionally (see [ADR-0002](docs/adr/0002-git-is-a-declared-dependency.md)):
+- **Declared toolset** (required; fatal at boot) — Eitri verifies every declared dependency at launch and refuses to start without it, because its agent prompt promises these tools unconditionally:
   - Hard substrate: `bwrap` (bubblewrap — Eitri never runs unsandboxed) and `bash`.
   - Declared tools: `rg` (ripgrep), `curl`, `lynx`, `patch`, `python3`, `git`.
   - Install hints (a missing tool aborts the launch naming every miss with its package):

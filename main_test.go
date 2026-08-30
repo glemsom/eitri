@@ -36,7 +36,7 @@ func TestCLISmoke(t *testing.T) {
 		if err != nil {
 			t.Fatalf("eitri --help exit error = %v, output:\n%s", err, out)
 		}
-		// The usage text reflects the full dependency contract (ADR-0001), not just bubblewrap.
+		// The usage text reflects the full dependency contract, not just bubblewrap.
 		for _, name := range []string{"bwrap", "bash", "rg", "curl", "lynx", "patch", "python3"} {
 			if !strings.Contains(string(out), name) {
 				t.Fatalf("usage output %q does not name declared tool %q", out, name)
@@ -47,7 +47,7 @@ func TestCLISmoke(t *testing.T) {
 				t.Fatalf("usage output %q lacks per-distro install hint %q", out, hint)
 			}
 		}
-		for _, want := range []string{"ADR-0001", "Soft dependencies", "coreutils"} {
+		for _, want := range []string{"soft dependency", "coreutils"} {
 			if !strings.Contains(string(out), want) {
 				t.Fatalf("usage output %q lacks the %q dependency-tier marker", out, want)
 			}
