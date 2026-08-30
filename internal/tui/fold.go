@@ -1,9 +1,10 @@
 package tui
 
-// Fold is the sole writer of the streaming assistant message, the live
-// per-turn event log, and its sequence counter: stream deltas and tool
-// observations from a running turn land in arrival order exactly as before,
-// but no code outside the session folds those events directly.
+// Fold routes stream deltas and tool observations into the transcript in
+// arrival order without owning their state itself: streamed text lives in
+// TurnSession's TurnFlow, tool events live in the session's tool log, and
+// Fold only stitches transcript-visible effects (message growth, tool-log
+// entries, layout invalidation) onto those two owners.
 type Fold struct {
 	session *TurnSession
 }
@@ -21,7 +22,7 @@ func (f *Fold) Stream(tx *Transcript, kind StreamKind, delta string) {
 	if !f.session.flow.Observe(kind, delta) {
 		return
 	}
-	f.session.recordLive(TimelineEvent{Kind: streamEventKind(kind), Delta: delta})
+	f.session.recordStream()
 	cur := f.session.curStream
 	if cur >= 0 && cur < len(tx.messages) && tx.messages[cur].streaming {
 		tx.syncStreamSnapshots(cur, f.session.flow.Content(), f.session.flow.Reasoning())

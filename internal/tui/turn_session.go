@@ -17,14 +17,18 @@ type TurnSession struct {
 	cancel          context.CancelFunc
 	thinkingEnabled bool
 	curStream       int
-	// flow owns the turn's streamed reasoning/answer observations and the live
-	// snapshots derived from them.
+	// flow owns the turn's streamed reasoning/answer observations, the live
+	// snapshots derived from them, and their slice of the arrival-ordered
+	// event log.
 	flow TurnFlow
-	// timeline and turnSeq are the live per-turn event log and its arrival
-	// counter — owned by the session alone; the Transcript only reads them
-	// through LiveTimeline.
-	timeline []TimelineEvent
-	turnSeq  int
+	// order interleaves flow's stream events with the session's own tool
+	// events in arrival order without copying the stream events' content: a
+	// true entry marks "next flow event goes here," so the session is never a
+	// second owner of streamed text.
+	order []bool
+	// tools holds the tool-start/tool-result events recorded directly by the
+	// session, in the order they arrived.
+	tools []TimelineEvent
 }
 
 // NewTurnSession creates a disarmed session for the given turn function.
@@ -44,8 +48,8 @@ func (s *TurnSession) Begin(tx *Transcript, prompt, payload string) tea.Cmd {
 	tx.busy = true
 	s.curStream = -1
 	s.flow.Reset()
-	s.timeline = nil
-	s.turnSeq = 0
+	s.order = nil
+	s.tools = nil
 	tx.log.SetAnchor(len(tx.messages) - 1)
 	return tea.Cmd(func() tea.Msg {
 		defer s.Stop()
@@ -64,15 +68,42 @@ func (s *TurnSession) Begin(tx *Transcript, prompt, payload string) tea.Cmd {
 func (s *TurnSession) Context() context.Context { return s.ctx }
 
 // LiveTimeline exposes the in-progress turn's arrival-ordered event log for
-// read-only rendering; the session stays its only writer.
-func (s *TurnSession) LiveTimeline() []TimelineEvent { return s.timeline }
+// read-only rendering; the session stays its only writer. Stream events are
+// pulled fresh from TurnFlow on every call rather than copied, so the flow
+// stays the sole owner of streamed text.
+func (s *TurnSession) LiveTimeline() []TimelineEvent {
+	if len(s.order) == 0 {
+		return nil
+	}
+	flowEvents := s.flow.Events()
+	events := make([]TimelineEvent, len(s.order))
+	fi, ti := 0, 0
+	for i, fromFlow := range s.order {
+		var ev TimelineEvent
+		if fromFlow {
+			ev = flowEvents[fi]
+			fi++
+		} else {
+			ev = s.tools[ti]
+			ti++
+		}
+		ev.Seq = i
+		events[i] = ev
+	}
+	return events
+}
 
-// recordLive appends one event to the live per-turn log in arrival order,
-// stamping it with the turn's next sequence number.
+// recordStream marks that TurnFlow just recorded a stream event, so it takes
+// the next slot in arrival order without the session copying its content.
+func (s *TurnSession) recordStream() {
+	s.order = append(s.order, true)
+}
+
+// recordLive appends one tool observation to the live per-turn log in arrival
+// order; only tool events are stored here, stream events live in TurnFlow.
 func (s *TurnSession) recordLive(ev TimelineEvent) {
-	ev.Seq = s.turnSeq
-	s.turnSeq++
-	s.timeline = append(s.timeline, ev)
+	s.order = append(s.order, false)
+	s.tools = append(s.tools, ev)
 }
 
 func (s *TurnSession) ThinkingEnabled() bool { return s.thinkingEnabled }
@@ -155,11 +186,11 @@ func (s *TurnSession) Commit(tx *Transcript, msg turnDoneMsg) (stopped bool, err
 // record and the next turn starts clean.
 func (s *TurnSession) commitTimeline(tx *Transcript, i int) {
 	if i >= 0 && i < len(tx.messages) {
-		tx.messages[i].events = s.timeline
+		tx.messages[i].events = s.LiveTimeline()
 	}
 	s.flow.Reset()
-	s.timeline = nil
-	s.turnSeq = 0
+	s.order = nil
+	s.tools = nil
 }
 
 // commitNewAssistant attaches the live event log to the freshly appended
@@ -167,11 +198,12 @@ func (s *TurnSession) commitTimeline(tx *Transcript, i int) {
 // resets the live log.
 func (s *TurnSession) commitNewAssistant(tx *Transcript) {
 	idx := len(tx.messages) - 1
-	if len(s.timeline) == 0 {
-		s.timeline = synthAnswerLog(tx.messages[idx].content)
+	events := s.LiveTimeline()
+	if len(events) == 0 {
+		events = synthAnswerLog(tx.messages[idx].content)
 	}
-	tx.messages[idx].events = s.timeline
+	tx.messages[idx].events = events
 	s.flow.Reset()
-	s.timeline = nil
-	s.turnSeq = 0
+	s.order = nil
+	s.tools = nil
 }

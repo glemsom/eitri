@@ -24,14 +24,14 @@ func TestFoldStreamGrowsMessageAndTimeline(t *testing.T) {
 	if m.reasoning != "think" || m.content != "answer" {
 		t.Errorf("snapshots reasoning=%q content=%q, want %q/%q", m.reasoning, m.content, "think", "answer")
 	}
-	if len(s.timeline) != 2 {
-		t.Fatalf("timeline = %d events, want 2", len(s.timeline))
+	if len(s.LiveTimeline()) != 2 {
+		t.Fatalf("timeline = %d events, want 2", len(s.LiveTimeline()))
 	}
-	if s.timeline[0].Kind != EventReasoning || s.timeline[1].Kind != EventAnswer {
-		t.Errorf("event kinds = %v/%v, want reasoning/answer", s.timeline[0].Kind, s.timeline[1].Kind)
+	if s.LiveTimeline()[0].Kind != EventReasoning || s.LiveTimeline()[1].Kind != EventAnswer {
+		t.Errorf("event kinds = %v/%v, want reasoning/answer", s.LiveTimeline()[0].Kind, s.LiveTimeline()[1].Kind)
 	}
-	if s.timeline[0].Seq != 0 || s.timeline[1].Seq != 1 {
-		t.Errorf("seqs = %d/%d, want 0/1", s.timeline[0].Seq, s.timeline[1].Seq)
+	if s.LiveTimeline()[0].Seq != 0 || s.LiveTimeline()[1].Seq != 1 {
+		t.Errorf("seqs = %d/%d, want 0/1", s.LiveTimeline()[0].Seq, s.LiveTimeline()[1].Seq)
 	}
 }
 
@@ -44,8 +44,8 @@ func TestFoldStreamEmptyDeltaNoop(t *testing.T) {
 
 	f.Stream(&tx, AnswerStream, "")
 
-	if len(tx.messages) != 0 || len(s.timeline) != 0 {
-		t.Fatalf("empty delta must not touch transcript; messages=%d timeline=%d", len(tx.messages), len(s.timeline))
+	if len(tx.messages) != 0 || len(s.LiveTimeline()) != 0 {
+		t.Fatalf("empty delta must not touch transcript; messages=%d timeline=%d", len(tx.messages), len(s.LiveTimeline()))
 	}
 }
 
@@ -61,8 +61,8 @@ func TestFoldNewTurnAppendsFreshStreamingMessage(t *testing.T) {
 	tx.messages[0].streaming = false
 	s.curStream = -1
 	s.flow.Reset()
-	s.timeline = nil
-	s.turnSeq = 0
+	s.order = nil
+	s.tools = nil
 
 	f.Stream(&tx, AnswerStream, "second")
 
@@ -87,17 +87,17 @@ func TestFoldToolRoutesToLogAndTimeline(t *testing.T) {
 	if tx.log.Len() != 1 {
 		t.Fatalf("tool log = %d entries, want 1", tx.log.Len())
 	}
-	if len(s.timeline) != 1 || s.timeline[0].Kind != EventToolStart {
-		t.Fatalf("timeline = %+v, want one tool-start event", s.timeline)
+	if len(s.LiveTimeline()) != 1 || s.LiveTimeline()[0].Kind != EventToolStart {
+		t.Fatalf("timeline = %+v, want one tool-start event", s.LiveTimeline())
 	}
-	if s.timeline[0].Seq != 0 {
-		t.Errorf("seq = %d, want 0", s.timeline[0].Seq)
+	if s.LiveTimeline()[0].Seq != 0 {
+		t.Errorf("seq = %d, want 0", s.LiveTimeline()[0].Seq)
 	}
 
 	f.Tool(&tx, ToolUpdate{Result: &ToolResult{Name: "bash", Result: "out"}})
 
-	if len(s.timeline) != 2 || s.timeline[1].Kind != EventToolResult {
-		t.Fatalf("timeline after result = %+v, want tool-result second", s.timeline)
+	if len(s.LiveTimeline()) != 2 || s.LiveTimeline()[1].Kind != EventToolResult {
+		t.Fatalf("timeline after result = %+v, want tool-result second", s.LiveTimeline())
 	}
 }
 

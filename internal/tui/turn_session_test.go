@@ -118,19 +118,15 @@ func TestTurnSessionBeginSetsBusyAndDirty(t *testing.T) {
 func TestTurnSessionBeginResetsLiveTurnState(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	tx := newTestTx()
-	s.timeline = []TimelineEvent{{Kind: EventAnswer, Delta: "stale"}}
-	s.turnSeq = 7
+	s.recordLive(TimelineEvent{Kind: EventAnswer, Delta: "stale"})
 
 	s.Begin(&tx, "hello", "")
 
 	if s.curStream != -1 {
 		t.Errorf("stream cursor = %d, want -1", s.curStream)
 	}
-	if s.timeline != nil {
+	if s.LiveTimeline() != nil {
 		t.Error("Begin did not reset the per-turn timeline")
-	}
-	if s.turnSeq != 0 {
-		t.Errorf("turn sequence = %d, want 0", s.turnSeq)
 	}
 }
 

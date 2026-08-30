@@ -211,7 +211,20 @@ func lineBorderColor(rendered, body string) string {
 }
 
 func wireLive(tx *Transcript, events []TimelineEvent) {
-	tx.live = &TurnSession{timeline: events}
+	s := NewTurnSession(nil)
+	for _, ev := range events {
+		switch ev.Kind {
+		case EventReasoning:
+			s.flow.Observe(ReasoningStream, ev.Delta)
+			s.recordStream()
+		case EventAnswer:
+			s.flow.Observe(AnswerStream, ev.Delta)
+			s.recordStream()
+		default:
+			s.recordLive(ev)
+		}
+	}
+	tx.live = s
 }
 
 // answerInterleaveTranscript builds a completed turn whose answer text streams

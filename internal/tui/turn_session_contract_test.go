@@ -25,10 +25,10 @@ func TestTurnSessionFullTurnContract(t *testing.T) {
 	f.Stream(&tx, AnswerStream, "answer")
 	f.Tool(&tx, ToolUpdate{Result: &ToolResult{Name: "bash", Result: "file.go"}})
 
-	if len(s.timeline) != 5 {
-		t.Fatalf("live event log = %d events, want 5", len(s.timeline))
+	if len(s.LiveTimeline()) != 5 {
+		t.Fatalf("live event log = %d events, want 5", len(s.LiveTimeline()))
 	}
-	for i, ev := range s.timeline {
+	for i, ev := range s.LiveTimeline() {
 		if ev.Seq != i {
 			t.Errorf("event %d seq = %d, want %d (arrival order)", i, ev.Seq, i)
 		}
@@ -52,7 +52,7 @@ func TestTurnSessionFullTurnContract(t *testing.T) {
 	if asst.streaming {
 		t.Error("committed assistant message still marked streaming")
 	}
-	if s.timeline != nil || s.turnSeq != 0 || tx.busy || s.curStream != -1 {
+	if s.LiveTimeline() != nil || tx.busy || s.curStream != -1 {
 		t.Error("session did not reset live state on commit")
 	}
 }

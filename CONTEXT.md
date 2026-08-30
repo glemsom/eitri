@@ -65,11 +65,11 @@ The persistent Ctrl+E mode that renders every tool entry full-size, framing the 
 _Avoid_: detail view, full view
 
 **Fold**:
-The session-owned writer for a running turn's live material: streamed deltas grow the streaming assistant message, and tool observations land in both the tool log and the arrival-ordered event log, with sequence numbers stamped by Fold alone.
+The session-owned writer that stitches a running turn's live material onto the transcript: streamed deltas grow the streaming assistant message and tool observations land in the tool log, but Fold owns neither the streamed text (TurnFlow does) nor the tool events (TurnSession does) itself.
 _Avoid_: stream handler, event appender
 
 **TurnSession**:
-The owner of a turn's whole life: Begin arms a new turn, Stop cancels the in-flight one, and Commit reconciles completion (success, error, stopped) into the transcript. It owns the in-turn event log (timeline), its sequence counter, and the streaming cursor, which the transcript reads through a read-only accessor. The busy flag lives on the transcript, not the session.
+The owner of a turn's whole life: Begin arms a new turn, Stop cancels the in-flight one, and Commit reconciles completion (success, error, stopped) into the transcript. It owns the in-turn tool event log and the arrival order that interleaves it with TurnFlow's stream events, plus the streaming cursor, which the transcript reads through a read-only accessor. The busy flag lives on the transcript, not the session.
 _Avoid_: dispatch, turn state machine
 
 **TurnFlow**:
