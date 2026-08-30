@@ -14,10 +14,11 @@ type TurnRuntime struct {
 	liveRunID int
 }
 
-// NewTurnRuntime builds a runtime bound to the given turn session, fold, and
-// live merged event feed (nil when no engine event stream is wired).
-func NewTurnRuntime(session *TurnSession, fold *Fold, events *EventFeed) *TurnRuntime {
-	return &TurnRuntime{session: session, fold: fold, events: events, liveRunID: -1}
+// NewTurnRuntime builds a runtime bound to the given turn session and live
+// merged event feed (nil when no engine event stream is wired). The transcript
+// projection helper is internal to the runtime seam.
+func NewTurnRuntime(session *TurnSession, events *EventFeed) *TurnRuntime {
+	return &TurnRuntime{session: session, fold: NewFold(session), events: events, liveRunID: -1}
 }
 
 // HasEvents reports whether a live merged event feed is wired.

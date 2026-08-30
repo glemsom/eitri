@@ -9,7 +9,7 @@ import (
 // TurnRuntime.OnTurnStart records the engine-reported run ID, and Accept only
 // admits events matching it.
 func TestTurnRuntimeRecordsRunIDAndAcceptsMatching(t *testing.T) {
-	rt := NewTurnRuntime(NewTurnSession(stubTurn("ok", nil)), nil, nil)
+	rt := NewTurnRuntime(NewTurnSession(stubTurn("ok", nil)), nil)
 	rt.OnTurnStart(7)
 	if !rt.Accept(Event{RunID: 7}) {
 		t.Fatal("expected event matching the started run ID to be accepted")
@@ -18,7 +18,7 @@ func TestTurnRuntimeRecordsRunIDAndAcceptsMatching(t *testing.T) {
 
 // TurnRuntime.Accept rejects events whose run ID does not match the current run.
 func TestTurnRuntimeRejectsMismatchedRunID(t *testing.T) {
-	rt := NewTurnRuntime(NewTurnSession(stubTurn("ok", nil)), nil, nil)
+	rt := NewTurnRuntime(NewTurnSession(stubTurn("ok", nil)), nil)
 	rt.OnTurnStart(7)
 	if rt.Accept(Event{RunID: 8}) {
 		t.Fatal("expected event with mismatched run ID to be rejected")
@@ -28,7 +28,7 @@ func TestTurnRuntimeRejectsMismatchedRunID(t *testing.T) {
 // Direct events with RunID == 0 are always accepted, so package-local tests and
 // callers can deliver events without a live engine run.
 func TestTurnRuntimeAcceptsDirectZeroRunID(t *testing.T) {
-	rt := NewTurnRuntime(NewTurnSession(stubTurn("ok", nil)), nil, nil)
+	rt := NewTurnRuntime(NewTurnSession(stubTurn("ok", nil)), nil)
 	rt.OnTurnStart(7)
 	if !rt.Accept(Event{RunID: 0}) {
 		t.Fatal("expected RunID == 0 event to be accepted regardless of current run")
@@ -41,7 +41,7 @@ func TestTurnRuntimeBeginDrainsEventFeed(t *testing.T) {
 	feed := NewEventFeed()
 	feed.UpdateChan() <- Event{RunID: 99}
 	s := NewTurnSession(stubTurn("ok", nil))
-	rt := NewTurnRuntime(s, NewFold(s), feed)
+	rt := NewTurnRuntime(s, feed)
 
 	tx := newTestTx()
 	cmd := rt.Begin(&tx, "hello", "")
@@ -58,7 +58,7 @@ func TestTurnRuntimeBeginDrainsEventFeed(t *testing.T) {
 // Observe grows the streaming assistant message by one answer delta.
 func TestTurnRuntimeObserveGrowsStreamingMessage(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
-	rt := NewTurnRuntime(s, NewFold(s), nil)
+	rt := NewTurnRuntime(s, nil)
 	tx := newTestTx()
 	rt.Begin(&tx, "hi", "")
 
@@ -73,7 +73,7 @@ func TestTurnRuntimeObserveGrowsStreamingMessage(t *testing.T) {
 // Observe updates the live reasoning snapshot on the streaming message.
 func TestTurnRuntimeObserveUpdatesLiveReasoning(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
-	rt := NewTurnRuntime(s, NewFold(s), nil)
+	rt := NewTurnRuntime(s, nil)
 	tx := newTestTx()
 	rt.Begin(&tx, "hi", "")
 
@@ -89,7 +89,7 @@ func TestTurnRuntimeObserveUpdatesLiveReasoning(t *testing.T) {
 // pre-timeline stream behavior.
 func TestTurnRuntimeObserveDropsStreamWhenIdle(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
-	rt := NewTurnRuntime(s, NewFold(s), nil)
+	rt := NewTurnRuntime(s, nil)
 	tx := newTestTx()
 
 	rt.Observe(&tx, Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "late"}})
@@ -102,7 +102,7 @@ func TestTurnRuntimeObserveDropsStreamWhenIdle(t *testing.T) {
 // Observe folds a tool observation into the transcript's tool log.
 func TestTurnRuntimeObserveFoldsToolIntoLog(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
-	rt := NewTurnRuntime(s, NewFold(s), nil)
+	rt := NewTurnRuntime(s, nil)
 	tx := newTestTx()
 	rt.Begin(&tx, "hi", "")
 
@@ -118,7 +118,7 @@ func TestTurnRuntimeObserveFoldsToolIntoLog(t *testing.T) {
 func TestTurnRuntimeObserveArmsPulseOnToolStartWhenThinkingOff(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	s.SetThinkingEnabled(false)
-	rt := NewTurnRuntime(s, NewFold(s), nil)
+	rt := NewTurnRuntime(s, nil)
 	tx := newTestTx()
 	rt.Begin(&tx, "hi", "")
 	tx.busyPulse = 0
@@ -134,7 +134,7 @@ func TestTurnRuntimeObserveArmsPulseOnToolStartWhenThinkingOff(t *testing.T) {
 func TestTurnRuntimeObserveSkipsPulseOnToolStartWhenThinkingOn(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	s.SetThinkingEnabled(true)
-	rt := NewTurnRuntime(s, NewFold(s), nil)
+	rt := NewTurnRuntime(s, nil)
 	tx := newTestTx()
 	rt.Begin(&tx, "hi", "")
 	tx.busyPulse = 0
@@ -150,7 +150,7 @@ func TestTurnRuntimeObserveSkipsPulseOnToolStartWhenThinkingOn(t *testing.T) {
 // the shape callers always use outside of tests.
 func newTestRuntime(answer string, err error) *TurnRuntime {
 	s := NewTurnSession(stubTurn(answer, err))
-	return NewTurnRuntime(s, NewFold(s), nil)
+	return NewTurnRuntime(s, nil)
 }
 
 // Commit reconciles a streamed success into the streaming assistant message
@@ -230,8 +230,7 @@ func TestTurnRuntimeStopCancelsBegunTurn(t *testing.T) {
 		<-ctx.Done()
 		return TurnResult{}, context.Canceled
 	}
-	rt := NewTurnRuntime(NewTurnSession(cancelSeen), nil, nil)
-	rt.fold = NewFold(rt.session)
+	rt := NewTurnRuntime(NewTurnSession(cancelSeen), nil)
 	tx := newTestTx()
 	cmd := rt.Begin(&tx, "hi", "")
 
@@ -246,7 +245,7 @@ func TestTurnRuntimeStopCancelsBegunTurn(t *testing.T) {
 // SetThinkingEnabled/ThinkingEnabled round-trip through the runtime, which is
 // the shape turn-created messages read.
 func TestTurnRuntimeThinkingEnabledRoundTrips(t *testing.T) {
-	rt := NewTurnRuntime(NewTurnSession(stubTurn("ok", nil)), nil, nil)
+	rt := NewTurnRuntime(NewTurnSession(stubTurn("ok", nil)), nil)
 	rt.SetThinkingEnabled(true)
 	if !rt.ThinkingEnabled() {
 		t.Fatal("expected thinking enabled to round-trip true")

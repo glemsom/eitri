@@ -248,7 +248,7 @@ func NewModelCfg(d Dependencies) Model {
 		histIdx:      -1,
 	}
 
-	m.runtime = NewTurnRuntime(m.session, NewFold(m.session), d.Events)
+	m.runtime = NewTurnRuntime(m.session, d.Events)
 	m.runtime.SetThinkingEnabled(d.Config.ThinkingEnabled)
 	if !isSupportedTheme(d.Config.Theme) {
 		m.savedMsg = fmt.Sprintf("unknown theme %q, using %s", d.Config.Theme, config.DefaultTheme)
@@ -270,7 +270,7 @@ func (m *Model) SetTurnSession(ts *TurnSession) {
 	if m.runtime != nil {
 		events = m.runtime.events
 	}
-	m.runtime = NewTurnRuntime(m.session, NewFold(m.session), events)
+	m.runtime = NewTurnRuntime(m.session, events)
 }
 
 // ContinueHook returns the interactive continuation hook wired to this Model's prompt channels.
