@@ -17,9 +17,8 @@ import (
 
 // Composer caret style policy: the composer's hardware caret is deliberately a steady (non-blinking) block rather than whatever the textarea or terminal defaults would draw.
 const (
-	composerCaretShape      = tea.CursorBlock
-	composerCaretBlink      = false
-	emptyComposerAffordance = "Ask Eitri to fix a bug, explain code, or run tests"
+	composerCaretShape = tea.CursorBlock
+	composerCaretBlink = false
 )
 
 // minComposerRows is how tall the composer rests when the draft is empty, so the input field reads as a multi-line composer rather than a single-line prompt.
@@ -183,9 +182,6 @@ func (m Model) renderBand(b *strings.Builder) {
 		inner.WriteString(renderTitledPanel("Ask Eitri", m.tx.bandWidth(), m.tx.theme.bandSeparatorStyle, m.composer.View()))
 	}
 	inner.WriteString("\n" + m.tx.theme.statusStyle.Render(fitBandLine(m.composerHint(), m.tx.bandWidth())))
-	if m.showEmptyComposerAffordance() {
-		inner.WriteString("\n" + m.tx.theme.statusStyle.Render(fitBandLine(emptyComposerAffordance, m.tx.bandWidth())))
-	}
 	if m.feedback.text != "" {
 		inner.WriteString("\n" + m.renderFeedback())
 	}
@@ -240,10 +236,6 @@ func (m Model) composerPreRows() int {
 	}
 	n++ // titled composer panel top border
 	return n
-}
-
-func (m Model) showEmptyComposerAffordance() bool {
-	return !m.tx.busy && !m.slash.isOpen() && !m.mention.isOpen() && strings.TrimSpace(m.composer.Value()) == ""
 }
 
 func (m Model) composerHint() string {
