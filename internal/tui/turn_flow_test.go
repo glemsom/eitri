@@ -216,12 +216,10 @@ func wireLive(tx *Transcript, events []TimelineEvent) {
 		switch ev.Kind {
 		case EventReasoning:
 			s.flow.Observe(ReasoningStream, ev.Delta)
-			s.recordStream()
 		case EventAnswer:
 			s.flow.Observe(AnswerStream, ev.Delta)
-			s.recordStream()
 		default:
-			s.recordLive(ev)
+			s.flow.ObserveTool(ev)
 		}
 	}
 	tx.live = s

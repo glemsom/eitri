@@ -29,6 +29,17 @@ func (f *TurnFlow) Observe(kind StreamKind, delta string) bool {
 	return true
 }
 
+// ObserveTool records one tool start/result observation in the same
+// arrival-ordered event log as the streamed reasoning/answer observations,
+// stamping it with the next turn sequence number. Tool observations carry no
+// text snapshot of their own, so Content and Reasoning stay untouched; they
+// only delimit the reasoning/answer fragments around them in the log.
+func (f *TurnFlow) ObserveTool(ev TimelineEvent) {
+	ev.Seq = f.turnSeq
+	f.turnSeq++
+	f.events = append(f.events, ev)
+}
+
 // Events returns the ordered streamed text observations.
 func (f *TurnFlow) Events() []TimelineEvent { return f.events }
 

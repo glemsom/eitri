@@ -118,7 +118,7 @@ func TestTurnSessionBeginSetsBusyAndDirty(t *testing.T) {
 func TestTurnSessionBeginResetsLiveTurnState(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	tx := newTestTx()
-	s.recordLive(TimelineEvent{Kind: EventAnswer, Delta: "stale"})
+	s.flow.ObserveTool(TimelineEvent{Kind: EventAnswer, Delta: "stale"})
 
 	s.Begin(&tx, "hello", "")
 
