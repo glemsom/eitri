@@ -8,7 +8,7 @@ Total failing tests: 22
 
 - [x] `TestDragSelect_scrolledViewportMapsRows` — fixed (test now pages far enough up to select a visible answer row)
 - [x] `TestModel_bandPinnedOnResize` — fixed (test now asserts against the rendered bottom band instead of the raw textarea body)
-- `TestModelBandSpansFullTerminalWidthTall`
+- [x] `TestModelBandSpansFullTerminalWidthTall` — fixed (status/feedback band lines now pad to the full band width)
 - `TestModelBandSpansFullWidthUnderRailTallSweep`
 - `TestModelBandSpansFullWidthUnderRailTallSweep/height/26`
 - `TestModelBandSpansFullWidthUnderRailTallSweep/height/30`

@@ -223,10 +223,14 @@ func fitBandLine(s string, width int) string {
 	if width < 1 {
 		width = 1
 	}
-	if lipgloss.Width(s) <= width {
-		return s
+	if lipgloss.Width(s) > width {
+		s = truncateWidth(s, width-1) + g("…", "...")
 	}
-	return truncateWidth(s, width-1) + g("…", "...")
+	pad := width - lipgloss.Width(s)
+	if pad < 0 {
+		pad = 0
+	}
+	return s + strings.Repeat(" ", pad)
 }
 
 // composerPreRows returns how many band rows render above the textarea caret origin: one row per slash-completion candidate, with the composer panel top border already reflected by the rendered band origin.
