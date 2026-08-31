@@ -8,7 +8,7 @@ Total failing tests: 50
 
 - [x] `TestToolEntry_asciiGlyphs` — fixed (passes with `go test ./internal/tui -run '^TestToolEntry_asciiGlyphs$' -count=1`)
 - [x] `TestRenderFlow_liveAnswerDeemphasizedWhileStreaming` — fixed (already passes with `go test ./internal/tui -run '^TestRenderFlow_liveAnswerDeemphasizedWhileStreaming$' -count=1`)
-- `TestRenderFlow_stopRevealsPartialAnswer` (0.00s)
+- [x] `TestRenderFlow_stopRevealsPartialAnswer` — fixed (already passes with `go test ./internal/tui -run '^TestRenderFlow_stopRevealsPartialAnswer$' -count=1`)
 - `TestRenderHistory_streamingAssistantUsesDimmedPane` (0.00s)
 - `TestRenderHistory_completedAssistantUsesAgentPane` (0.00s)
 - `TestRenderHistory_liveReasoningBlockUsesStreamingPane` (0.00s)
