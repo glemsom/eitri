@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -182,6 +183,42 @@ func TestFrameSnapshotsOptInWritesBoundedAnsiStrippedFiles(t *testing.T) {
 	}
 	if !strings.Contains(text, "frame: 2") || !strings.Contains(text, "phase: idle") || !strings.Contains(text, "--- content ---") {
 		t.Fatalf("snapshot missing correlating metadata/content sections:\n%s", text)
+	}
+}
+
+func TestFrameSnapshotsPreserveRenderedTranscriptLayout(t *testing.T) {
+	dir := t.TempDir()
+	m := NewModelCfg(Dependencies{
+		Turn: func(_ context.Context, _ string, _ string) (TurnResult, error) {
+			return TurnResult{
+				Reasoning: "inspect stale row",
+				Answer:    "Unicode: λ ⚒\n\n- first row\n- second row with wide glyph 漢",
+			}, nil
+		},
+		Diagnostics: DiagnosticsConfig{FrameSnapshots: true, FrameSnapshotDir: dir, FrameSnapshotLimit: 3, FrameSnapshotByteLimit: 20_000},
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "render this")
+	m = submitAndWait(t, m)
+
+	_ = m.View()
+
+	snaps := m.RenderDiagnosticFrameSnapshots()
+	if len(snaps) == 0 {
+		t.Fatal("expected frame snapshot after rendering transcript")
+	}
+	body, err := os.ReadFile(snaps[len(snaps)-1].Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(body)
+	if strings.Contains(text, "\x1b[") {
+		t.Fatalf("snapshot must be inspectable after ANSI stripping, got %q", text)
+	}
+	for _, want := range []string{"render this", "Unicode: λ ⚒", "• first row", "• second row with wide glyph 漢", "Ask Eitri"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("snapshot missing rendered transcript layout %q:\n%s", want, text)
+		}
 	}
 }
 
