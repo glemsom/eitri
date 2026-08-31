@@ -7,7 +7,7 @@ Total failing tests: 50
 ## `github.com/glemsom/eitri/internal/tui`
 
 - [x] `TestToolEntry_asciiGlyphs` — fixed (passes with `go test ./internal/tui -run '^TestToolEntry_asciiGlyphs$' -count=1`)
-- `TestRenderFlow_liveAnswerDeemphasizedWhileStreaming` (0.00s)
+- [x] `TestRenderFlow_liveAnswerDeemphasizedWhileStreaming` — fixed (already passes with `go test ./internal/tui -run '^TestRenderFlow_liveAnswerDeemphasizedWhileStreaming$' -count=1`)
 - `TestRenderFlow_stopRevealsPartialAnswer` (0.00s)
 - `TestRenderHistory_streamingAssistantUsesDimmedPane` (0.00s)
 - `TestRenderHistory_completedAssistantUsesAgentPane` (0.00s)
