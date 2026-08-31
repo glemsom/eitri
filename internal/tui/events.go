@@ -81,6 +81,22 @@ func (f *EventFeed) UpdateChan() chan<- Event { return f.updates }
 // Updates exposes the same feed for reading (tests/observation).
 func (f *EventFeed) Updates() <-chan Event { return f.updates }
 
+// TryNext returns the next already-queued event without blocking, and false
+// when the feed is empty right now: the batch-drain path (TurnRuntime.DrainReady)
+// uses this to apply a burst of backlogged deltas in one Update call instead of
+// one render per delta.
+func (f *EventFeed) TryNext() (Event, bool) {
+	select {
+	case u, ok := <-f.updates:
+		if !ok {
+			return Event{}, false
+		}
+		return u, true
+	default:
+		return Event{}, false
+	}
+}
+
 // eventMsg carries one merged event from the engine seam into the UI loop.
 type eventMsg struct {
 	update Event

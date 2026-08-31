@@ -87,6 +87,35 @@ func (rt *TurnRuntime) ThinkingEnabled() bool { return rt.session.ThinkingEnable
 // read-only rendering.
 func (rt *TurnRuntime) LiveTimeline() []TimelineEvent { return rt.session.LiveTimeline() }
 
+// DrainReady applies every additional live event already queued on the feed
+// (non-blocking), so a fast-arriving burst of small deltas (a real reasoning
+// provider often streams one token per SSE event) does not force one
+// render per delta: a render is the expensive step (it re-renders the live
+// turn's markdown from scratch), so while one render is in flight the feed's
+// buffered channel accumulates a backlog, and applying that whole backlog
+// before the next render batches the work instead of paying its cost once per
+// token. Order is preserved: events are still applied one at a time, in
+// arrival order, through the same Accept/Observe path a single event would
+// take.
+func (rt *TurnRuntime) DrainReady(tx *Transcript) {
+	if rt.events == nil {
+		return
+	}
+	for {
+		u, ok := rt.events.TryNext()
+		if !ok {
+			return
+		}
+		if u.TurnStart {
+			rt.OnTurnStart(u.RunID)
+			continue
+		}
+		if rt.Accept(u) {
+			rt.Observe(tx, u)
+		}
+	}
+}
+
 // Observe projects one live event onto the transcript through the Fold:
 // stream deltas grow the streaming assistant message, and tool observations
 // land in the tool log and transcript event log. Stream deltas arriving

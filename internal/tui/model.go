@@ -367,6 +367,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.runtime.Accept(msgi.update) {
 			m.runtime.Observe(m.tx, msgi.update)
 		}
+		// Apply any further events already queued on the feed before yielding to
+		// Bubble Tea's render pass: a fast reasoning stream delivers many tiny
+		// deltas, and rendering is the expensive step, so batching a backlog into
+		// one render keeps per-render cost from being paid once per token.
+		m.runtime.DrainReady(m.tx)
 		return m, m.runtime.Wait()
 
 	case tea.WindowSizeMsg:
