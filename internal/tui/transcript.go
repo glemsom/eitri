@@ -698,7 +698,7 @@ func (t *Transcript) navigateHistory(key string) bool {
 	return t.histFollow
 }
 
-// navigateMouse applies a T2 mouse-wheel scroll to the persisted history viewport owned by the Transcript: wheel up scrolls toward older output and breaks follow; wheel down scrolls toward the newest and re-engages follow once it reaches the bottom. Each notch scrolls a tenth of the visible height so the wheel moves the reading position gently.
+// navigateMouse applies a T2 mouse-wheel scroll to the persisted history viewport owned by the Transcript: wheel up scrolls toward older output and breaks follow; wheel down scrolls toward the newest and re-engages follow once it reaches the bottom. Each notch scrolls a small fixed number of rows so the wheel moves the reading position gently.
 func (t *Transcript) navigateMouse(msg tea.MouseWheelMsg) bool {
 	if !t.inScrollRegion(msg.Y) {
 		return t.histFollow
@@ -728,11 +728,7 @@ func (t *Transcript) pageRows() int {
 }
 
 func (t *Transcript) mouseWheelRows() int {
-	rows := t.histViewport.Height() / 10
-	if rows < 1 {
-		return 1
-	}
-	return rows
+	return 4
 }
 
 // scrollRegion assembles the history-region seam from the persisted viewport's
