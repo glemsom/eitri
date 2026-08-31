@@ -4,6 +4,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -206,11 +208,12 @@ func (t Transcript) surfaceWithRail(pane, rail string, bandHeight int) string {
 	}
 	rows := strings.Split(pane, "\n")
 	railRows := strings.Split(rail, "\n")
+	for i := len(rows); i < vh; i++ {
+		rows = append(rows, "")
+	}
+	leftWidth := t.transcriptWidth()
 	for i := 0; i < vh && i < len(railRows); i++ {
-		if i >= len(rows) {
-			break
-		}
-		rows[i] = rows[i] + railRows[i]
+		rows[i] = ansi.Truncate(rows[i], leftWidth, "") + strings.Repeat(" ", max(0, leftWidth-ansi.StringWidth(rows[i]))) + railRows[i]
 	}
 	return strings.Join(rows, "\n")
 }
