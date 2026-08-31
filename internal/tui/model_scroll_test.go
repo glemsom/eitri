@@ -128,7 +128,7 @@ func TestScroll_mouseWheelNavigatesTranscript(t *testing.T) {
 	}
 }
 
-func TestScroll_mouseWheelMovesFivePercentOfViewport(t *testing.T) {
+func TestScroll_mouseWheelMovesHalfOfPreviousStep(t *testing.T) {
 	t.Parallel()
 	tx := Transcript{
 		histFollow: true,
@@ -140,7 +140,7 @@ func TestScroll_mouseWheelMovesFivePercentOfViewport(t *testing.T) {
 	tx.histViewport.SetContent(strings.Repeat("row\n", 200))
 	tx.histViewport.GotoBottom()
 	start := tx.histViewport.YOffset()
-	want := tx.histViewport.Height() / 20
+	want := tx.histViewport.Height() / 40
 	if want < 1 {
 		want = 1
 	}
