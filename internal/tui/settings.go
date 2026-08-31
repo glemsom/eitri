@@ -25,6 +25,7 @@ const (
 	fieldTheme
 	fieldPaths
 	fieldSave
+	fieldCancel
 	fieldCount
 )
 
@@ -47,6 +48,7 @@ const (
 type settingsForm struct {
 	theme               Theme
 	cfg                 config.Config
+	original            config.Config
 	models              []string
 	field               int
 	pathBuf             string
@@ -58,7 +60,7 @@ type settingsForm struct {
 
 // newSettingsForm seeds the form with the loaded config and the discovered model list.
 func newSettingsForm(cfg config.Config, models []string) settingsForm {
-	f := settingsForm{cfg: cfg, models: models, field: 0, theme: defaultTheme}
+	f := settingsForm{cfg: cfg, original: cfg, models: models, field: 0, theme: defaultTheme}
 	if len(models) == 0 {
 		f.models = []string{cfg.Model}
 	}
@@ -116,7 +118,7 @@ func (f *settingsForm) adjust(d int) {
 		f.theme = themeFor(f.cfg.Theme)
 	case fieldPaths:
 		f.next()
-	case fieldSave:
+	case fieldSave, fieldCancel:
 	}
 }
 
@@ -136,12 +138,67 @@ func (f *settingsForm) draft() config.Config {
 // onSave reports whether the focused field is the Save button.
 func (f settingsForm) onSave() bool { return f.field == fieldSave }
 
+// onCancel reports whether the focused field is the Cancel button.
+func (f settingsForm) onCancel() bool { return f.field == fieldCancel }
+
+func (f settingsForm) dirty() bool {
+	orig := f.original
+	orig.ExtraWritablePaths = splitPaths(strings.Join(orig.ExtraWritablePaths, ","))
+	return !configsEqual(f.draft(), orig)
+}
+
+func configsEqual(a, b config.Config) bool {
+	if a.Provider != b.Provider || a.Model != b.Model || a.ReasoningEffort != b.ReasoningEffort || a.ThinkingEnabled != b.ThinkingEnabled || a.CoTCollapsedByDefault != b.CoTCollapsedByDefault || a.ToolResultsCollapsedByDefault != b.ToolResultsCollapsedByDefault || a.MaxTurns != b.MaxTurns || a.CompactionFraction != b.CompactionFraction || a.Theme != b.Theme || a.RailWidth != b.RailWidth {
+		return false
+	}
+	if len(a.ExtraWritablePaths) != len(b.ExtraWritablePaths) {
+		return false
+	}
+	for i := range a.ExtraWritablePaths {
+		if a.ExtraWritablePaths[i] != b.ExtraWritablePaths[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // thinkingModeLabel renders the reasoning mode value (on/off) for the Settings panel, reflecting the thinking_enabled config.
 func thinkingModeLabel(on bool) string {
 	if on {
 		return "on"
 	}
 	return "off"
+}
+
+func settingsHelp(field int) string {
+	switch field {
+	case fieldProvider:
+		return "Backend used for future turns. Changing this refreshes available models."
+	case fieldModel:
+		return "Model used for the next assistant turn."
+	case fieldThinking:
+		return "Allow model reasoning when the provider supports it."
+	case fieldEffort:
+		return "Reasoning budget: higher can improve hard answers and increase cost/latency."
+	case fieldMaxTurns:
+		return "Safety limit for assistant/tool loop iterations."
+	case fieldFraction:
+		return "When context reaches this fullness, summarize older history. 80% is recommended."
+	case fieldCoTCollapsed:
+		return "Show thinking blocks as compact one-liners until expanded."
+	case fieldToolResultsCollapsed:
+		return "Show tool results as compact one-liners until expanded."
+	case fieldTheme:
+		return "Color palette for the interface."
+	case fieldPaths:
+		return "Comma-separated paths Eitri may write outside the workspace."
+	case fieldSave:
+		return "Save changes to config.json and apply them now."
+	case fieldCancel:
+		return "Discard draft changes and return to chat."
+	default:
+		return ""
+	}
 }
 
 func splitPaths(s string) []string {
@@ -255,6 +312,9 @@ func (o *SettingsOverlay) Key(k tea.KeyPressMsg) (settingsKeyOutcome, tea.Cmd) {
 	case "enter":
 		if s.onSave() {
 			return outcomeSaved, nil
+		}
+		if s.onCancel() {
+			return outcomeClosed, nil
 		}
 		if s.field == fieldPaths {
 			s.cfg.ExtraWritablePaths = splitPaths(s.pathBuf)
@@ -399,21 +459,22 @@ func settingsView(f settingsForm) string {
 		{"Provider", f.cfg.Provider},
 		{"Model", f.Model()},
 		{"Thinking", thinkingModeLabel(f.cfg.ThinkingEnabled)},
-		{"Reasoning", f.cfg.ReasoningEffort},
-		{"Max turns", fmt.Sprintf("%d", f.cfg.MaxTurns)},
-		{"Compaction", fmt.Sprintf("%.2f", f.cfg.CompactionFraction)},
-		{"CoT collapsed", thinkingModeLabel(f.cfg.CoTCollapsedByDefault)},
-		{"Tool results collapsed", thinkingModeLabel(f.cfg.ToolResultsCollapsedByDefault)},
+		{"Reasoning effort", f.cfg.ReasoningEffort},
+		{"Max tool turns", fmt.Sprintf("%d", f.cfg.MaxTurns)},
+		{"Auto-compact at", fmt.Sprintf("%.0f%%", f.cfg.CompactionFraction*100)},
+		{"Collapse thinking", thinkingModeLabel(f.cfg.CoTCollapsedByDefault)},
+		{"Collapse tool results", thinkingModeLabel(f.cfg.ToolResultsCollapsedByDefault)},
 		{"Theme", f.cfg.Theme},
-		{"Writable", f.pathBuf},
+		{"Extra writable paths", f.pathBuf},
 	}
 	sections := []struct {
 		label string
 		start int
 	}{
 		{"model", fieldProvider},
-		{"behavior", fieldThinking},
-		{"appearance", fieldTheme},
+		{"conversation limits", fieldMaxTurns},
+		{"display", fieldCoTCollapsed},
+		{"workspace access", fieldPaths},
 	}
 	emit := func(label string) {
 		b.WriteString(th.statusStyle.Render("   " + hr() + " " + label + " " + hr()))
@@ -466,14 +527,23 @@ func settingsView(f settingsForm) string {
 		b.WriteString("\n")
 	}
 
+	b.WriteString(th.statusStyle.Render("   " + settingsHelp(f.field)))
+	b.WriteString("\n")
+
 	save := "[ Save ]"
+	if f.dirty() {
+		save = "[ Save * ]"
+	}
 	cancel := "[ Cancel ]"
 	if f.field == fieldSave {
-		save = "[" + th.statusStyle.Render(" Save ") + "]"
+		save = "[" + th.statusStyle.Render(strings.Trim(save, "[]")) + "]"
+	}
+	if f.field == fieldCancel {
+		cancel = "[" + th.statusStyle.Render(" Cancel ") + "]"
 	}
 	b.WriteString("\n")
 	b.WriteString(save + "  " + cancel + "\n")
-	b.WriteString(th.statusStyle.Render("up/down: navigate " + g("·", ".") + " left/right/tab: adjust " + g("·", ".") + " enter: next/save " + g("·", ".") + " esc: close"))
+	b.WriteString(th.statusStyle.Render("up/down: navigate " + g("·", ".") + " left/right/tab: adjust " + g("·", ".") + " enter: next/save/cancel " + g("·", ".") + " esc: discard changes"))
 	return b.String()
 }
 

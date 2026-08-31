@@ -202,16 +202,20 @@ func TestSettingsForm_PathsRoundTrip(t *testing.T) {
 	}
 }
 
-func TestSettingsForm_SaveIsAFocusableField(t *testing.T) {
+func TestSettingsForm_SaveAndCancelAreFocusableFields(t *testing.T) {
 	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{})
 	f.field = fieldSave
 	if !f.onSave() {
 		t.Fatal("expected onSave() true when focused on the Save field")
 	}
+	f.next()
+	if !f.onCancel() {
+		t.Fatal("expected onCancel() true after Save field")
+	}
 	f.next() // wraps back to the first field
 	if f.field != fieldProvider {
-		t.Fatalf("field after wrapping past Save = %d, want %d (fieldProvider)", f.field, fieldProvider)
+		t.Fatalf("field after wrapping past Cancel = %d, want %d (fieldProvider)", f.field, fieldProvider)
 	}
 }
 
@@ -219,7 +223,7 @@ func TestSettingsView_RendersKnobsAndSave(t *testing.T) {
 	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{"grok-2"})
 	view := settingsView(f)
-	for _, want := range []string{"Eitri Settings", "opencode-go", "grok-2", "Thinking", "on", "high", "250", "0.80", "Theme", "dark", "[ Save ]", "[ Cancel ]"} {
+	for _, want := range []string{"Eitri Settings", "opencode-go", "grok-2", "Thinking", "on", "high", "250", "80%", "Theme", "dark", "[ Save ]", "[ Cancel ]"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("settings view %q missing %q", view, want)
 		}
@@ -251,25 +255,25 @@ func TestSettingsView_RendersCollapseRows(t *testing.T) {
 	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{})
 	view := settingsView(f)
-	for _, want := range []string{"CoT collapsed", "on", "Tool results collapsed"} {
+	for _, want := range []string{"Collapse thinking", "on", "Collapse tool results"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("settings view %q missing %q", view, want)
 		}
 	}
 }
 
-func TestSettingsView_ThemeRowSitsBetweenCompactionAndWritable(t *testing.T) {
+func TestSettingsView_GroupsDisplayBeforeWorkspaceAccess(t *testing.T) {
 	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{})
 	view := settingsView(f)
-	compaction := strings.Index(view, "Compaction")
+	compact := strings.Index(view, "Auto-compact at")
 	theme := strings.Index(view, "Theme")
-	writable := strings.Index(view, "Writable")
-	if compaction < 0 || theme < 0 || writable < 0 {
-		t.Fatalf("settings view %q missing Compaction/Theme/Writable rows", view)
+	writable := strings.Index(view, "Extra writable paths")
+	if compact < 0 || theme < 0 || writable < 0 {
+		t.Fatalf("settings view %q missing compact/theme/writable rows", view)
 	}
-	if !(compaction < theme && theme < writable) {
-		t.Fatalf("settings view row order wrong: Compaction@%d Theme@%d Writable@%d", compaction, theme, writable)
+	if !(compact < theme && theme < writable) {
+		t.Fatalf("settings view row order wrong: compact@%d Theme@%d writable@%d", compact, theme, writable)
 	}
 }
 
