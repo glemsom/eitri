@@ -294,6 +294,18 @@ func TestSettingsView_HighlightsFocusedRow(t *testing.T) {
 	}
 }
 
+func TestSettingsView_RendersWritableCaretWhenFocused(t *testing.T) {
+	t.Parallel()
+	f := newSettingsForm(cfgFixture(), []string{})
+	f.field = fieldPaths
+	f.pathBuf = "/srv"
+
+	view := ansiStrip(settingsView(f))
+	if !strings.Contains(view, "/srv"+g("█", "|")) {
+		t.Fatalf("settings view %q missing writable field caret", view)
+	}
+}
+
 func TestSettingsView_RendersLiveCacheReadout(t *testing.T) {
 	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "high", true, 250)

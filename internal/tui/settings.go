@@ -426,12 +426,16 @@ func settingsView(f settingsForm) string {
 			}
 		}
 		name := r.name
+		val := r.val
 		if f.field == i {
 			name = "\u25b8 " + name
+			if i == fieldPaths {
+				val += th.statusStyle.Render(g("█", "|"))
+			}
 		} else {
 			name = "   " + name
 		}
-		fmt.Fprintf(&b, "%-2s%-10s %s\n", "", name, r.val)
+		fmt.Fprintf(&b, "%-2s%-10s %s\n", "", name, val)
 	}
 
 	if !f.cfg.ThinkingEnabled && f.thinkingSuppression != nil && !f.thinkingSuppression() {
