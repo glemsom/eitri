@@ -10,7 +10,7 @@ Total failing tests: 50
 - [x] `TestRenderFlow_liveAnswerDeemphasizedWhileStreaming` — fixed (already passes with `go test ./internal/tui -run '^TestRenderFlow_liveAnswerDeemphasizedWhileStreaming$' -count=1`)
 - [x] `TestRenderFlow_stopRevealsPartialAnswer` — fixed (already passes with `go test ./internal/tui -run '^TestRenderFlow_stopRevealsPartialAnswer$' -count=1`)
 - [x] `TestRenderHistory_streamingAssistantUsesDimmedPane` — fixed (already passes with `go test ./internal/tui -run '^TestRenderHistory_streamingAssistantUsesDimmedPane$' -count=1`)
-- `TestRenderHistory_completedAssistantUsesAgentPane` (0.00s)
+- [x] `TestRenderHistory_completedAssistantUsesAgentPane` — fixed (already passes with `go test ./internal/tui -run '^TestRenderHistory_completedAssistantUsesAgentPane$' -count=1`)
 - `TestRenderHistory_liveReasoningBlockUsesStreamingPane` (0.00s)
 - `TestRenderHistory_streamingErrorPrefixUsesDimmedErrorPane` (0.00s)
 - `TestTranscript_flatFlowAnswerKeepsAgentHue` (0.00s)
