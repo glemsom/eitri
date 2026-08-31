@@ -233,3 +233,38 @@ func TestRawFrameCaptureDisabledWhenRenderStatsEnabled(t *testing.T) {
 		t.Fatalf("raw capture dir entries = %d, want none", len(entries))
 	}
 }
+
+func TestDiagnosticsEnabledStreamingUsesBatchedRenderFrame(t *testing.T) {
+	feed := NewEventFeed()
+	m := NewModelCfg(Dependencies{Turn: streamingTurn, Events: feed, Diagnostics: DiagnosticsConfig{RenderStats: true}})
+	m = resizeTo(t, m, 80, 24)
+	m = typeText(t, m, "prompt")
+	m, _ = submitBusy(t, m)
+
+	const deltas = 50
+	for i := 0; i < deltas; i++ {
+		feed.UpdateChan() <- Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "x"}}
+	}
+	first, ok := feed.TryNext()
+	if !ok {
+		t.Fatal("expected a queued stream delta")
+	}
+	nm, _ := m.Update(eventMsg{update: first})
+	m = asModel(t, nm)
+
+	_ = m.View()
+
+	if got := m.tx.messages[len(m.tx.messages)-1].content; len(got) != deltas {
+		t.Fatalf("batched stream content length = %d, want %d", len(got), deltas)
+	}
+	if _, ok := feed.TryNext(); ok {
+		t.Fatal("expected diagnostics-enabled stream update to drain queued deltas before rendering")
+	}
+	frames := m.RenderDiagnosticFrames()
+	if len(frames) != 1 {
+		t.Fatalf("diagnostic render frames = %d, want 1 batched frame after %d deltas", len(frames), deltas)
+	}
+	if frames[0].Phase != "answering" || !frames[0].Busy {
+		t.Fatalf("diagnostic frame should describe the live answering turn: %+v", frames[0])
+	}
+}
