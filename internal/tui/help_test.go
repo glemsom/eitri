@@ -99,6 +99,26 @@ func TestHelpView_renderedHeaders(t *testing.T) {
 	}
 }
 
+func TestHelpView_renderedCommandRowsStayOnSeparateLines(t *testing.T) {
+	out, err := RenderMarkdown(helpView(), 80, "dark")
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+	plain := ansiStrip(out)
+	commands := plain[strings.Index(plain, "COMMANDS"):strings.Index(plain, "KEYBINDINGS")]
+
+	for _, cmd := range []string{"/settings", "/copy", "/new", "/login", "/help"} {
+		if count := strings.Count(commands, cmd); count != 1 {
+			t.Fatalf("rendered help command %q count = %d, want 1\n%s", cmd, count, plain)
+		}
+	}
+	for _, line := range strings.Split(commands, "\n") {
+		if strings.Count(line, "/") > 1 {
+			t.Fatalf("rendered help commands collapsed onto one line: %q\n%s", line, plain)
+		}
+	}
+}
+
 func TestHelpView_commands(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()

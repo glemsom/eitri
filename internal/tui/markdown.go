@@ -34,6 +34,7 @@ func RenderMarkdown(md string, width int, theme string) (string, error) {
 	r, err := glamour.NewTermRenderer(
 		glamour.WithStylePath(glamourStyleFor(theme)),
 		glamour.WithWordWrap(width),
+		glamour.WithPreservedNewLines(),
 	)
 	if err != nil {
 		return "", fmt.Errorf("build markdown renderer: %w", err)
