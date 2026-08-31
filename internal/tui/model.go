@@ -881,7 +881,16 @@ func (m Model) viewString() string {
 		return promptView(m.tx.theme)
 	}
 
-	return m.tx.viewWithRail(m.renderPane(), m.bandHeight())
+	content := m.tx.viewWithRail(m.renderPane(), m.bandHeight())
+	if m.tx.height <= 0 {
+		return content
+	}
+	trimmed := strings.TrimRight(content, "\n")
+	rows := strings.Split(trimmed, "\n")
+	if len(rows) <= m.tx.height {
+		return content
+	}
+	return strings.Join(rows[len(rows)-m.tx.height:], "\n")
 }
 
 // telemetryWait returns a command that blocks until the next live telemetry update arrives on the engine seam channel, then delivers it to the UI loop as a telemetryUpdateMsg.

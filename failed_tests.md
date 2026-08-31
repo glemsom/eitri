@@ -16,7 +16,7 @@ Total failing tests: 22
 - `TestModelBandSpansFullWidthUnderRailTallSweep/height/40`
 - `TestModelBandSpansFullWidthUnderRailTallSweep/height/50`
 - `TestModel_composerLongDraftBandPinned`
-- `TestModel_composerShortTerminalClamp`
+- [x] `TestModel_composerShortTerminalClamp` — fixed (viewString now clips overflow to the terminal height on extremely short terminals)
 - `TestModel_followStaysEngagedThroughPerDeltaBurst`
 - `TestModel_heightAwareClampsHistory`
 - `TestModelRailEndsOneRowAboveBandTallSweep`
