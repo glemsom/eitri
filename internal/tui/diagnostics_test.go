@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"os"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -101,5 +103,34 @@ func TestRenderDiagnosticSummariesArePeriodicBoundedAndContentFree(t *testing.T)
 	}
 	if first.Evidence != "in-memory render diagnostics: RenderDiagnosticFrames and RenderDiagnosticSummaries" {
 		t.Fatalf("evidence = %q", first.Evidence)
+	}
+}
+
+func TestFrameSnapshotsOptInWritesBoundedAnsiStrippedFiles(t *testing.T) {
+	dir := t.TempDir()
+	m := NewModelCfg(Dependencies{Diagnostics: DiagnosticsConfig{FrameSnapshots: true, FrameSnapshotDir: dir, FrameSnapshotLimit: 1, FrameSnapshotByteLimit: 10_000}})
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = nm.(Model)
+
+	_ = m.View()
+	_ = m.View()
+
+	snaps := m.RenderDiagnosticFrameSnapshots()
+	if len(snaps) != 1 {
+		t.Fatalf("snapshots = %d, want bounded last 1", len(snaps))
+	}
+	if snaps[0].Frame != 2 || snaps[0].Path == "" || snaps[0].OutputBytes == 0 {
+		t.Fatalf("snapshot missing frame metadata: %+v", snaps[0])
+	}
+	body, err := os.ReadFile(snaps[0].Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(body)
+	if strings.Contains(text, "\x1b[") {
+		t.Fatalf("snapshot must be ANSI-stripped by default, got %q", text)
+	}
+	if !strings.Contains(text, "frame: 2") || !strings.Contains(text, "phase: idle") || !strings.Contains(text, "--- content ---") {
+		t.Fatalf("snapshot missing correlating metadata/content sections:\n%s", text)
 	}
 }
