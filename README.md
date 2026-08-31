@@ -41,6 +41,32 @@ make build          # 1. build ./bin/eitri
 
 If the workspace root (the directory you launch Eitri from) contains an `AGENTS.md`, Eitri reads it and carries its content to the model as a dedicated system-layer directive headed `## Repository instructions (AGENTS.md)` — both in the TUI and in batch (`-b`) mode. The injected instructions are **additive**: the built-in Eitri persona prompt is preserved unchanged, and the message is excluded from persisted session history so it isn't duplicated on the next turn. Without an `AGENTS.md`, no extra message is sent and the request is byte-identical to the pre-feature case. There is no opt-in or escape-hatch flag; the file is loaded whenever it exists.
 
+### Diagnostics with pprof
+
+Use `pprof` for performance symptoms: slow rendering, stalls while streaming, high CPU, or unexpected allocation pressure. It is disabled by default; enable it only for a diagnostic run and bind it to localhost:
+
+```sh
+eitri --pprof 127.0.0.1:6060
+```
+
+From another shell, collect profiles while reproducing the problem:
+
+```sh
+go tool pprof -seconds 30 http://127.0.0.1:6060/debug/pprof/profile
+curl --fail --max-time 30 -o heap.pprof http://127.0.0.1:6060/debug/pprof/heap
+curl --fail --max-time 30 -o goroutine.txt 'http://127.0.0.1:6060/debug/pprof/goroutine?debug=2'
+```
+
+Mutex and block profiling are available when needed, but are off unless requested because they add overhead:
+
+```sh
+eitri --pprof 127.0.0.1:6060 --pprof-mutex --pprof-block
+go tool pprof -seconds 30 http://127.0.0.1:6060/debug/pprof/mutex
+go tool pprof -seconds 30 http://127.0.0.1:6060/debug/pprof/block
+```
+
+Use pprof to find where time or allocation pressure is spent. To prove a performance fix, measure before and after one focused change with benchmarks; see [`docs/render-diagnostics.md`](docs/render-diagnostics.md) for the full diagnostics workflow.
+
 ### Sessions
 
 Eitri records every session so you can review, replay, and search past work:
