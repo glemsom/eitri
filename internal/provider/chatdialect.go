@@ -263,6 +263,7 @@ type wireChunk struct {
 		Index *int `json:"index"`
 		Delta struct {
 			Content          string              `json:"content"`
+			Reasoning        string              `json:"reasoning"`
 			ReasoningContent string              `json:"reasoning_content"`
 			ToolCalls        []wireToolCallDelta `json:"tool_calls"`
 		} `json:"delta"`
@@ -345,6 +346,9 @@ func parseEvent(data string, acc *toolAccumulator) (Chunk, error) {
 	if len(wc.Choices) > 0 {
 		chunk.Content = wc.Choices[0].Delta.Content
 		chunk.ReasoningContent = wc.Choices[0].Delta.ReasoningContent
+		if chunk.ReasoningContent == "" {
+			chunk.ReasoningContent = wc.Choices[0].Delta.Reasoning
+		}
 		for _, tc := range wc.Choices[0].Delta.ToolCalls {
 			if acc != nil {
 				acc.add(tc)

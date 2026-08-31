@@ -542,3 +542,29 @@ func TestCopilotSendsThinkingEnabledWhenThinkingOn(t *testing.T) {
 		t.Error("request omitted reasoning_effort, want present when thinking on")
 	}
 }
+
+func TestCopilotChatStreamsReasoningDelta(t *testing.T) {
+	t.Parallel()
+	body := []byte(strings.Join([]string{
+		`data: {"choices":[{"delta":{"reasoning":"think from copilot"}}]}`,
+		``,
+		`data: {"choices":[{"delta":{"content":"answer"}}]}`,
+		``,
+		`data: [DONE]`,
+		``,
+	}, "\n"))
+	srv, _ := copilotServer(t, body)
+	cp := NewCopilot(config.CopilotConfig{AccessToken: "stored-access"}, srv.URL+"/chat/completions", srv.Client(), nil, nil)
+
+	s, err := cp.Stream(context.Background(), Request{Model: "gpt-5.5", ThinkingEnabled: true, ReasoningEffort: "low"})
+	if err != nil {
+		t.Fatalf("Stream() error = %v, want nil", err)
+	}
+	content, reasoning, _, err := drainAll(s)
+	if err != nil {
+		t.Fatalf("drainAll() error = %v, want nil", err)
+	}
+	if content != "answer" || reasoning != "think from copilot" {
+		t.Fatalf("content=%q reasoning=%q, want answer / think from copilot", content, reasoning)
+	}
+}
