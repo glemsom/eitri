@@ -11,16 +11,24 @@ import (
 // diagnostics. The zero value keeps diagnostics disabled and preserves normal
 // rendering.
 type DiagnosticsConfig struct {
-	RenderStats            bool
-	FrameSnapshots         bool
-	RawFrameCapture        bool
-	Pprof                  bool
-	RenderSummaryEvery     int
-	RenderSummaryLimit     int
-	FrameSnapshotDir       string
-	FrameSnapshotLimit     int
-	FrameSnapshotByteLimit int
+	RenderStats              bool
+	FrameSnapshots           bool
+	RawFrameCapture          bool
+	Pprof                    bool
+	RenderSummaryEvery       int
+	RenderSummaryLimit       int
+	FrameSnapshotDir         string
+	FrameSnapshotLimit       int
+	FrameSnapshotByteLimit   int
+	RawFrameCaptureDir       string
+	RawFrameCaptureLimit     int
+	RawFrameCaptureByteLimit int
 }
+
+const (
+	defaultRawFrameCaptureLimit     = 20
+	defaultRawFrameCaptureByteLimit = 1 << 20
+)
 
 type RenderFrameStats struct {
 	Frame          int
@@ -60,10 +68,17 @@ type RenderFrameSnapshot struct {
 	OutputBytes int
 }
 
+type RenderRawFrame struct {
+	Frame       int
+	Path        string
+	OutputBytes int
+}
+
 type renderDiagnostics struct {
 	frames    []RenderFrameStats
 	summaries []RenderDiagnosticSummary
 	snapshots []RenderFrameSnapshot
+	rawFrames []RenderRawFrame
 	nextFrame int
 }
 
@@ -82,7 +97,7 @@ func (d *renderDiagnostics) record(f RenderFrameStats, summaryEvery, summaryLimi
 }
 
 func (m *Model) recordRenderFrame(cost time.Duration, content string) {
-	if !m.diagnostics.RenderStats && !m.diagnostics.FrameSnapshots {
+	if !m.diagnostics.RenderStats && !m.diagnostics.FrameSnapshots && !m.diagnostics.RawFrameCapture {
 		return
 	}
 	m.renderDiagnostics.nextFrame++
@@ -103,6 +118,7 @@ func (m *Model) recordRenderFrame(cost time.Duration, content string) {
 		m.renderDiagnostics.record(f, m.diagnostics.RenderSummaryEvery, m.diagnostics.RenderSummaryLimit)
 	}
 	m.recordRenderSnapshot(f, content)
+	m.recordRawFrame(f, content)
 }
 
 func (m Model) RenderDiagnosticFrames() []RenderFrameStats {
@@ -199,4 +215,45 @@ func (m Model) RenderDiagnosticFrameSnapshots() []RenderFrameSnapshot {
 		return nil
 	}
 	return append([]RenderFrameSnapshot(nil), m.renderDiagnostics.snapshots...)
+}
+
+func (m *Model) recordRawFrame(f RenderFrameStats, content string) {
+	if !m.diagnostics.RawFrameCapture || m.diagnostics.RawFrameCaptureDir == "" || m.renderDiagnostics == nil {
+		return
+	}
+	body := content
+	byteLimit := m.diagnostics.RawFrameCaptureByteLimit
+	if byteLimit <= 0 {
+		byteLimit = defaultRawFrameCaptureByteLimit
+	}
+	if len(body) > byteLimit {
+		body = body[:byteLimit]
+	}
+	path := filepath.Join(m.diagnostics.RawFrameCaptureDir, fmt.Sprintf("raw-frame-%06d.txt", f.Frame))
+	text := fmt.Sprintf("frame: %d\nraw_frame_capture: true\nwarning: raw capture may contain terminal escape sequences and transcript content\nphase: %s\nbusy: %t\nfollow: %t\nterminal: %dx%d\nviewport: %dx%d\nscroll_offset: %d\noutput_bytes: %d\n--- raw content ---\n%s", f.Frame, f.Phase, f.Busy, f.Follow, f.TerminalWidth, f.TerminalHeight, f.ViewportWidth, f.ViewportHeight, f.ScrollOffset, f.OutputBytes, body)
+	if err := os.MkdirAll(m.diagnostics.RawFrameCaptureDir, 0o755); err != nil {
+		return
+	}
+	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+		return
+	}
+	m.renderDiagnostics.rawFrames = append(m.renderDiagnostics.rawFrames, RenderRawFrame{Frame: f.Frame, Path: path, OutputBytes: f.OutputBytes})
+	frameLimit := m.diagnostics.RawFrameCaptureLimit
+	if frameLimit <= 0 {
+		frameLimit = defaultRawFrameCaptureLimit
+	}
+	if len(m.renderDiagnostics.rawFrames) > frameLimit {
+		stale := m.renderDiagnostics.rawFrames[:len(m.renderDiagnostics.rawFrames)-frameLimit]
+		for _, snap := range stale {
+			_ = os.Remove(snap.Path)
+		}
+		m.renderDiagnostics.rawFrames = append([]RenderRawFrame(nil), m.renderDiagnostics.rawFrames[len(m.renderDiagnostics.rawFrames)-frameLimit:]...)
+	}
+}
+
+func (m Model) RenderDiagnosticRawFrames() []RenderRawFrame {
+	if !m.diagnostics.RawFrameCapture || m.renderDiagnostics == nil {
+		return nil
+	}
+	return append([]RenderRawFrame(nil), m.renderDiagnostics.rawFrames...)
 }

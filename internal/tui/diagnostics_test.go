@@ -134,3 +134,52 @@ func TestFrameSnapshotsOptInWritesBoundedAnsiStrippedFiles(t *testing.T) {
 		t.Fatalf("snapshot missing correlating metadata/content sections:\n%s", text)
 	}
 }
+
+func TestRawFrameCaptureOptInWritesSeparateBoundedMarkedFiles(t *testing.T) {
+	dir := t.TempDir()
+	m := NewModelCfg(Dependencies{Diagnostics: DiagnosticsConfig{RawFrameCapture: true, RawFrameCaptureDir: dir, RawFrameCaptureLimit: 1, RawFrameCaptureByteLimit: 10_000}})
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = nm.(Model)
+
+	_ = m.View()
+	_ = m.View()
+
+	frames := m.RenderDiagnosticRawFrames()
+	if len(frames) != 1 {
+		t.Fatalf("raw captures = %d, want bounded last 1", len(frames))
+	}
+	if frames[0].Frame != 2 || frames[0].Path == "" || frames[0].OutputBytes == 0 {
+		t.Fatalf("raw capture missing frame metadata: %+v", frames[0])
+	}
+	body, err := os.ReadFile(frames[0].Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(body)
+	if !strings.Contains(text, "raw_frame_capture: true") || !strings.Contains(text, "warning: raw capture may contain terminal escape sequences and transcript content") {
+		t.Fatalf("raw capture missing warning marker:\n%s", text)
+	}
+	if !strings.Contains(text, "--- raw content ---") || strings.Contains(text, "--- content ---") {
+		t.Fatalf("raw capture must be separate from ANSI-stripped snapshots:\n%s", text)
+	}
+}
+
+func TestRawFrameCaptureDisabledWhenRenderStatsEnabled(t *testing.T) {
+	dir := t.TempDir()
+	m := NewModelCfg(Dependencies{Diagnostics: DiagnosticsConfig{RenderStats: true, RawFrameCaptureDir: dir}})
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = nm.(Model)
+
+	_ = m.View()
+
+	if got := m.RenderDiagnosticRawFrames(); len(got) != 0 {
+		t.Fatalf("raw captures = %d, want disabled by default", len(got))
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("raw capture dir entries = %d, want none", len(entries))
+	}
+}
