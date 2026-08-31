@@ -52,10 +52,11 @@ func TestRenderRegions_HistoryVsBandSeparation(t *testing.T) {
 		t.Errorf("status strip leaked into the scroll region, got:\n%s", hs)
 	}
 
-	if !strings.Contains(bs, "ctrl+s settings") {
-		t.Errorf("band missing status strip, got:\n%s", bs)
+	plainBand := ansiStrip(bs)
+	if !strings.Contains(plainBand, "↑/↓ navigate") {
+		t.Errorf("band missing slash status strip, got:\n%s", bs)
 	}
-	if !strings.Contains(bs, m.composer.View()) {
+	if !strings.Contains(plainBand, "Ask Eitri") || !strings.Contains(plainBand, "/") {
 		t.Errorf("band missing composer, got:\n%s", bs)
 	}
 	if strings.Contains(bs, "plain") {

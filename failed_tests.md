@@ -14,7 +14,7 @@ Total failing tests: 50
 - `TestRenderHistory_liveReasoningBlockUsesStreamingPane` (0.00s)
 - `TestRenderHistory_streamingErrorPrefixUsesDimmedErrorPane` (0.00s)
 - `TestTranscript_flatFlowAnswerKeepsAgentHue` (0.00s)
-- `TestRenderRegions_HistoryVsBandSeparation` (0.01s)
+- [x] `TestRenderRegions_HistoryVsBandSeparation` — fixed (test expectation updated for slash-menu status strip; passes with `go test ./internal/tui -run '^TestRenderRegions_HistoryVsBandSeparation$' -count=1`)
 - `TestDragSelect_wideCharCopyMatchesHighlight` (0.01s)
 - `TestDragSelect_boundaryInsideWideCharNoPanic` (0.02s)
 - `TestModelRailStaysOnScreen` (0.01s)
