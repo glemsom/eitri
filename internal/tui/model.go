@@ -177,8 +177,9 @@ type Model struct {
 	skillCancel  context.CancelFunc
 	skillSeq     int
 
-	telemetry   *Telemetry
-	diagnostics DiagnosticsConfig
+	telemetry         *Telemetry
+	diagnostics       DiagnosticsConfig
+	renderDiagnostics *renderDiagnostics
 
 	runtime *TurnRuntime
 
@@ -247,20 +248,21 @@ func NewModelCfg(d Dependencies) Model {
 	}
 
 	m := Model{
-		composer:     comp,
-		session:      NewTurnSession(d.Turn),
-		deps:         d,
-		tx:           transcript,
-		continueReq:  make(chan struct{}, 1),
-		continueResp: make(chan bool, 1),
-		slash:        NewSkillActivation(d),
-		mention:      NewMention(d.WorkspacePath),
-		telemetry:    d.Telemetry,
-		diagnostics:  d.Diagnostics,
-		liveKey:      d.LiveKey,
-		clipboard:    newClipboard(d),
-		history:      newModelHistory(d.HistoryPath),
-		histIdx:      -1,
+		composer:          comp,
+		session:           NewTurnSession(d.Turn),
+		deps:              d,
+		tx:                transcript,
+		continueReq:       make(chan struct{}, 1),
+		continueResp:      make(chan bool, 1),
+		slash:             NewSkillActivation(d),
+		mention:           NewMention(d.WorkspacePath),
+		telemetry:         d.Telemetry,
+		diagnostics:       d.Diagnostics,
+		renderDiagnostics: &renderDiagnostics{},
+		liveKey:           d.LiveKey,
+		clipboard:         newClipboard(d),
+		history:           newModelHistory(d.HistoryPath),
+		histIdx:           -1,
 	}
 
 	m.runtime = NewTurnRuntime(m.session, d.Events)
@@ -863,7 +865,9 @@ func (m *Model) completeSlashCommand() {
 
 // View renders the conversation plus composer as a tea.View (bubbletea v2).
 func (m Model) View() tea.View {
+	start := time.Now()
 	content := m.viewString()
+	m.recordRenderFrame(time.Since(start), content)
 	v := tea.NewView(content)
 	v.AltScreen = true
 	// Cell-motion mode turns on SGR mouse reporting so wheel events (scroll)
