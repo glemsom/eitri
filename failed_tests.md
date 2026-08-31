@@ -7,7 +7,7 @@ Total failing tests: 22
 ## `github.com/glemsom/eitri/internal/tui`
 
 - [x] `TestDragSelect_scrolledViewportMapsRows` — fixed (test now pages far enough up to select a visible answer row)
-- `TestModel_bandPinnedOnResize`
+- [x] `TestModel_bandPinnedOnResize` — fixed (test now asserts against the rendered bottom band instead of the raw textarea body)
 - `TestModelBandSpansFullTerminalWidthTall`
 - `TestModelBandSpansFullWidthUnderRailTallSweep`
 - `TestModelBandSpansFullWidthUnderRailTallSweep/height/26`

@@ -36,7 +36,9 @@ func TestModel_bandPinnedOnResize(t *testing.T) {
 		nm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: h})
 		m = asModel(t, nm)
 		content := view(m)
-		comp := m.composer.View()
+		var band strings.Builder
+		m.renderBand(&band)
+		comp := band.String()
 		if !strings.Contains(content, comp) {
 			t.Fatalf("composer band lost at height %d, got:\n%q", h, content)
 		}
