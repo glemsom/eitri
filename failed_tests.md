@@ -18,7 +18,7 @@ Total failing tests: 50
 - `TestDragSelect_wideCharCopyMatchesHighlight` (0.01s)
 - `TestDragSelect_boundaryInsideWideCharNoPanic` (0.02s)
 - `TestModelRailStaysOnScreen` (0.01s)
-- `TestModel_stylingBandCoherent` (0.00s)
+- [x] `TestModel_stylingBandCoherent` — fixed (test expectation updated for styled composer panel rendering; passes with `go test ./internal/tui -run '^TestModel_stylingBandCoherent$' -count=1`)
 - `TestModel_stylingStreamingThinkingPaneVariant` (0.00s)
 - `TestModel_stylingThinkingPaneDistinctFromAnswer` (0.01s)
 - `TestModel_thinkingLongReasoningWraps` (0.02s)
