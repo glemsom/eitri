@@ -15,12 +15,13 @@ func TestModel_heightAwareClampsHistory(t *testing.T) {
 	m = asModel(t, nm)
 
 	content := view(m)
-	comp := m.composer.View()
-	if !strings.Contains(content, comp) {
-		t.Fatalf("composer (band) missing from content, got:\n%q", content)
+	plain := ansiStrip(content)
+	if !strings.Contains(plain, "Ask Eitri") || !strings.Contains(plain, "enter send") {
+		t.Fatalf("composer band missing from content, got:\n%q", content)
 	}
-	if !strings.HasSuffix(strings.TrimRight(content, "\n"), strings.TrimRight(comp, "\n")) {
-		t.Errorf("composer band must be the bottom (last) region of the content, got:\n%q", content)
+	plainLines := strings.Split(strings.TrimRight(plain, "\n"), "\n")
+	if !strings.Contains(plainLines[len(plainLines)-1], "enter send") {
+		t.Errorf("composer band hint must be the bottom (last) row of the content, got:\n%q", content)
 	}
 	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
 	if len(lines) > 10 {

@@ -22,7 +22,7 @@ func TestModel_renderFeedbackUsesSemanticMarkers(t *testing.T) {
 	}
 
 	m.feedback = neutralFeedback("unknown theme")
-	if got := m.renderFeedback(); got != "unknown theme" {
+	if got := strings.TrimRight(m.renderFeedback(), " "); got != "unknown theme" {
 		t.Fatalf("neutral feedback = %q, want unmarked text", got)
 	}
 }

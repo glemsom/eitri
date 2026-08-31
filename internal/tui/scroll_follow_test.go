@@ -14,7 +14,7 @@ import (
 func longStreamModel(t *testing.T) Model {
 	t.Helper()
 	m := busyStreamingModel(t)
-	m = resizeTo(t, m, 60, 7)
+	m = resizeTo(t, m, 60, 10)
 	for i := 0; i < 40; i++ {
 		m = applyDelta(t, m, fmt.Sprintf("token%d %s", i, strings.Repeat("w", 30)))
 	}

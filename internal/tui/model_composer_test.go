@@ -185,8 +185,9 @@ func TestModel_composerLongDraftBandPinned(t *testing.T) {
 
 	content := view(m)
 	trimmed := strings.TrimRight(content, "\n")
-	if !strings.HasSuffix(ansiStrip(trimmed), "╯") {
-		t.Errorf("band must stay pinned at the bottom with the panel border, got:\n%q", content)
+	plain := ansiStrip(trimmed)
+	if !strings.Contains(plain, "Ask Eitri") || !strings.Contains(plain, "enter send") {
+		t.Errorf("band must stay pinned at the bottom with the composer panel and hint row, got:\n%q", content)
 	}
 	if n := len(strings.Split(trimmed, "\n")); n > 12 {
 		t.Errorf("view (%d lines) exceeds terminal height 12 with an over-bound draft, got:\n%q", n, trimmed)

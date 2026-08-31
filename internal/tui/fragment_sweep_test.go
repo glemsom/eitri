@@ -233,7 +233,7 @@ func TestModel_liveReasoningPinsWholeCoalescedBlockThroughBurst(t *testing.T) {
 // output while the burst streams.
 func TestModel_followStaysEngagedThroughPerDeltaBurst(t *testing.T) {
 	m := newStreamingModel()
-	m = resizeTo(t, m, 60, 7)
+	m = resizeTo(t, m, 60, 10)
 	m = typeText(t, m, "hi")
 	m, _ = submitBusy(t, m)
 
