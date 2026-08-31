@@ -1,58 +1,30 @@
 # Failing tests
 
-Collected with `make test` / `go test ./...`.
+Collected with `make test`.
 
-Total failing tests: 50
+Total failing tests: 22
 
 ## `github.com/glemsom/eitri/internal/tui`
 
-- [x] `TestToolEntry_asciiGlyphs` — fixed (passes with `go test ./internal/tui -run '^TestToolEntry_asciiGlyphs$' -count=1`)
-- [x] `TestRenderFlow_liveAnswerDeemphasizedWhileStreaming` — fixed (already passes with `go test ./internal/tui -run '^TestRenderFlow_liveAnswerDeemphasizedWhileStreaming$' -count=1`)
-- [x] `TestRenderFlow_stopRevealsPartialAnswer` — fixed (already passes with `go test ./internal/tui -run '^TestRenderFlow_stopRevealsPartialAnswer$' -count=1`)
-- [x] `TestRenderHistory_streamingAssistantUsesDimmedPane` — fixed (already passes with `go test ./internal/tui -run '^TestRenderHistory_streamingAssistantUsesDimmedPane$' -count=1`)
-- [x] `TestRenderHistory_completedAssistantUsesAgentPane` — fixed (already passes with `go test ./internal/tui -run '^TestRenderHistory_completedAssistantUsesAgentPane$' -count=1`)
-- [x] `TestRenderHistory_liveReasoningBlockUsesStreamingPane` — fixed (already passes with `go test ./internal/tui -run '^TestRenderHistory_liveReasoningBlockUsesStreamingPane$' -count=1`)
-- [x] `TestRenderHistory_streamingErrorPrefixUsesDimmedErrorPane` — fixed (already passes with `go test ./internal/tui -run '^TestRenderHistory_streamingErrorPrefixUsesDimmedErrorPane$' -count=1`)
-- [x] `TestTranscript_flatFlowAnswerKeepsAgentHue` — fixed (already passes with `go test ./internal/tui -run '^TestTranscript_flatFlowAnswerKeepsAgentHue$' -count=1`)
-- [x] `TestRenderRegions_HistoryVsBandSeparation` — fixed (test expectation updated for slash-menu status strip; passes with `go test ./internal/tui -run '^TestRenderRegions_HistoryVsBandSeparation$' -count=1`)
-- [x] `TestDragSelect_wideCharCopyMatchesHighlight` — fixed (already passes with `go test ./internal/tui -run '^TestDragSelect_wideCharCopyMatchesHighlight$' -count=1`)
-- [x] `TestDragSelect_boundaryInsideWideCharNoPanic` — fixed (already passes with `go test ./internal/tui -run '^TestDragSelect_boundaryInsideWideCharNoPanic$' -count=1`)
-- `TestModelRailStaysOnScreen` (0.01s)
-- [x] `TestModel_stylingBandCoherent` — fixed (test expectation updated for styled composer panel rendering; passes with `go test ./internal/tui -run '^TestModel_stylingBandCoherent$' -count=1`)
-- `TestModel_stylingStreamingThinkingPaneVariant` (0.00s)
-- `TestModel_stylingThinkingPaneDistinctFromAnswer` (0.01s)
-- `TestModel_thinkingLongReasoningWraps` (0.02s)
-- `TestModel_stylingErrorMarker` (0.01s)
-- `TestModel_stylingPaletteCentralized` (0.02s)
-- `TestModel_stylingAgentPaneBordered` (0.02s)
-- `TestModel_thinkingMarkdownStructure` (0.04s)
-- `TestTheme_thinkingPanePresentAcrossPalettes` (0.00s)
-- `TestComposer_CaretTracksWrappedDraft` (0.01s)
-- `TestModel_userBubbleFillsFullWidth` (0.07s)
-- `TestModel_composerShortTerminalClamp` (0.00s)
-- `TestModel_statusAndSlashPinnedAboveComposer` (0.00s)
-- `TestModel_bandPinnedOnResize` (0.04s)
-- `TestModel_heightAwareClampsHistory` (0.04s)
-- `TestModel_composerLongDraftBandPinned` (0.05s)
-- `TestTheme_thinkingPaneDistinctFromAgent` (0.00s)
-- `TestTheme_streamingPaneDistinctAcrossThemes` (0.00s)
-- `TestModel_liveFollowPersistsThroughResize` (0.02s)
-- `TestTheme_pinkPalette` (0.00s)
-- `TestTheme_tokyoNightPalette` (0.00s)
-- `TestTheme_draculaPalette` (0.00s)
-- `TestModelRailEndsOneRowAboveBandTallSweep/height/26` (0.02s)
-- `TestModelComposerCaretStaysCorrectWithRail` (0.03s)
-- `TestModelRailEndsOneRowAboveBandTallSweep/height/30` (0.01s)
-- `TestTheme_defaultPalette` (0.00s)
-- `TestModelBandSpansFullWidthUnderRailTallSweep/height/26` (0.02s)
-- `TestModelBandSpansFullWidthUnderRailTallSweep/height/30` (0.01s)
-- `TestModelBandSpansFullTerminalWidthTall` (0.01s)
-- `TestModelRailEndsOneRowAboveBandTallSweep/height/35` (0.01s)
-- `TestModelBandSpansFullWidthUnderRailTallSweep/height/35` (0.01s)
-- `TestModelRailEndsOneRowAboveBandTallSweep/height/40` (0.01s)
-- `TestModelComposerCaretStaysCorrectWithRailWrapped` (0.01s)
-- `TestModelBandSpansFullWidthUnderRailTallSweep/height/40` (0.01s)
-- `TestModelRailEndsOneRowAboveBandTallSweep/height/50` (0.00s)
-- `TestModelRailEndsOneRowAboveBandTallSweep` (0.05s)
-- `TestModelBandSpansFullWidthUnderRailTallSweep/height/50` (0.01s)
-- `TestModelBandSpansFullWidthUnderRailTallSweep` (0.04s)
+- `TestDragSelect_scrolledViewportMapsRows`
+- `TestModel_bandPinnedOnResize`
+- `TestModelBandSpansFullTerminalWidthTall`
+- `TestModelBandSpansFullWidthUnderRailTallSweep`
+- `TestModelBandSpansFullWidthUnderRailTallSweep/height/26`
+- `TestModelBandSpansFullWidthUnderRailTallSweep/height/30`
+- `TestModelBandSpansFullWidthUnderRailTallSweep/height/35`
+- `TestModelBandSpansFullWidthUnderRailTallSweep/height/40`
+- `TestModelBandSpansFullWidthUnderRailTallSweep/height/50`
+- `TestModel_composerLongDraftBandPinned`
+- `TestModel_composerShortTerminalClamp`
+- `TestModel_followStaysEngagedThroughPerDeltaBurst`
+- `TestModel_heightAwareClampsHistory`
+- `TestModelRailEndsOneRowAboveBandTallSweep`
+- `TestModelRailEndsOneRowAboveBandTallSweep/height/26`
+- `TestModelRailEndsOneRowAboveBandTallSweep/height/30`
+- `TestModelRailEndsOneRowAboveBandTallSweep/height/35`
+- `TestModelRailEndsOneRowAboveBandTallSweep/height/40`
+- `TestModelRailEndsOneRowAboveBandTallSweep/height/50`
+- `TestModel_statusAndSlashPinnedAboveComposer`
+- `TestModel_userBubbleFillsFullWidth`
+- `TestScrollFollow_longStreamViewportStaysPinned`
