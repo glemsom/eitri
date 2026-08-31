@@ -93,6 +93,28 @@ func TestCLISmoke(t *testing.T) {
 	})
 }
 
+func TestRenderDiagnosticsDocsGiveBenchmarkComparisonWorkflow(t *testing.T) {
+	b, err := os.ReadFile("docs/render-diagnostics.md")
+	if err != nil {
+		t.Fatalf("read render diagnostics docs: %v", err)
+	}
+	doc := string(b)
+
+	for _, seam := range []string{"Model view", "Transcript render", "live turn rendering", "markdown rendering", "viewport rendering"} {
+		if !strings.Contains(doc, seam) {
+			t.Fatalf("render diagnostics docs do not identify benchmark seam %q", seam)
+		}
+	}
+	for _, guidance := range []string{"go test -run '^$' -bench", "-count=10", "benchstat", "pprof alone"} {
+		if !strings.Contains(doc, guidance) {
+			t.Fatalf("render diagnostics docs lack benchmark comparison guidance %q", guidance)
+		}
+	}
+	if !strings.Contains(doc, "Existing render benchmarks remain the starting point") {
+		t.Fatalf("render diagnostics docs must keep existing render benchmarks as the starting point")
+	}
+}
+
 func TestCLIBatchWithStubProvider(t *testing.T) {
 	fixture, err := os.ReadFile("internal/provider/testdata/hello.sse")
 	if err != nil {
