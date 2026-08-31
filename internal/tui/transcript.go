@@ -734,7 +734,7 @@ func (t *Transcript) pageRows() int {
 }
 
 func (t *Transcript) mouseWheelRows() int {
-	rows := t.histViewport.Height() / 10
+	rows := t.histViewport.Height() / 20
 	if rows < 1 {
 		return 1
 	}

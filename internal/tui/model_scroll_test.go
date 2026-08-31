@@ -128,17 +128,25 @@ func TestScroll_mouseWheelNavigatesTranscript(t *testing.T) {
 	}
 }
 
-func TestScroll_mouseWheelMovesTenPercentOfViewport(t *testing.T) {
+func TestScroll_mouseWheelMovesFivePercentOfViewport(t *testing.T) {
 	t.Parallel()
-	m := scrollOverflowModel(t)
-	start := scrollOffset(m)
-	want := mustVpHeight(m) / 10
+	tx := Transcript{
+		histFollow: true,
+		width:      80,
+		height:     80,
+	}
+	tx.histViewport.SetHeight(40)
+	tx.histViewport.SetWidth(80)
+	tx.histViewport.SetContent(strings.Repeat("row\n", 200))
+	tx.histViewport.GotoBottom()
+	start := tx.histViewport.YOffset()
+	want := tx.histViewport.Height() / 20
 	if want < 1 {
 		want = 1
 	}
 
-	m = mustUpdate(t, m, wheelMsg(true))
-	if got := start - scrollOffset(m); got != want {
+	tx.navigateMouse(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
+	if got := start - tx.histViewport.YOffset(); got != want {
 		t.Fatalf("one wheel tick moved %d rows, want %d", got, want)
 	}
 }
