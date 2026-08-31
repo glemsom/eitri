@@ -546,6 +546,7 @@ func TestDragSelect_scrolledViewportMapsRows(t *testing.T) {
 	m = resizeTo(t, m, 120, 12)
 	view(m) // hydrate
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyPgUp})
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyPgUp})
 	view(m)
 	if m.tx.histViewport.YOffset() <= 0 {
 		t.Fatalf("test needs a scrolled viewport, got offset %d", m.tx.histViewport.YOffset())
