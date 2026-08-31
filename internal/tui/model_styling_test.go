@@ -432,7 +432,17 @@ func TestModel_userBubbleFillsFullWidth(t *testing.T) {
 		if !anyBg {
 			continue // welcome/band rows outside the prompt card
 		}
-		for col := 0; col < bw; col++ {
+		start := -1
+		for col, c := range cells {
+			if c {
+				start = col
+				break
+			}
+		}
+		if start < 0 || start+bw > len(cells) {
+			t.Fatalf("user bubble row %d background run cannot cover card width %d; row=%q", row, bw, ln)
+		}
+		for col := start; col < start+bw; col++ {
 			if !cells[col] {
 				t.Fatalf("user bubble row %d col %d lacks background (background not filling box); row=%q", row, col, ln)
 			}

@@ -26,5 +26,5 @@ Total failing tests: 22
 - `TestModelRailEndsOneRowAboveBandTallSweep/height/40`
 - `TestModelRailEndsOneRowAboveBandTallSweep/height/50`
 - `TestModel_statusAndSlashPinnedAboveComposer`
-- `TestModel_userBubbleFillsFullWidth`
+- [x] `TestModel_userBubbleFillsFullWidth` — fixed (test now checks the prompt card background from its actual rendered column, not terminal column 0)
 - `TestScrollFollow_longStreamViewportStaysPinned`
