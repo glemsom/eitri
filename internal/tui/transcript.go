@@ -734,7 +734,11 @@ func (t *Transcript) pageRows() int {
 }
 
 func (t *Transcript) mouseWheelRows() int {
-	return 4
+	rows := t.histViewport.Height() / 10
+	if rows < 1 {
+		return 1
+	}
+	return rows
 }
 
 // scrollRegion assembles the history-region seam from the persisted viewport's

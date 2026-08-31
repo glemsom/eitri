@@ -128,14 +128,18 @@ func TestScroll_mouseWheelNavigatesTranscript(t *testing.T) {
 	}
 }
 
-func TestScroll_mouseWheelMovesFourRows(t *testing.T) {
+func TestScroll_mouseWheelMovesTenPercentOfViewport(t *testing.T) {
 	t.Parallel()
 	m := scrollOverflowModel(t)
 	start := scrollOffset(m)
+	want := mustVpHeight(m) / 10
+	if want < 1 {
+		want = 1
+	}
 
 	m = mustUpdate(t, m, wheelMsg(true))
-	if got := start - scrollOffset(m); got != 4 {
-		t.Fatalf("one wheel tick moved %d rows, want 4", got)
+	if got := start - scrollOffset(m); got != want {
+		t.Fatalf("one wheel tick moved %d rows, want %d", got, want)
 	}
 }
 
