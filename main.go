@@ -31,6 +31,9 @@ Flags:
   -b <prompt>    run once in batch mode with the given prompt and exit
   -v             in batch mode, print the model's thinking/reasoning to stdout
   -d             enable debug mode (writes full HTTP traces to/from the provider)
+  --pprof <addr> enable localhost pprof diagnostics (example: 127.0.0.1:6060)
+  --pprof-mutex  include mutex profile evidence when --pprof is enabled
+  --pprof-block  include block profile evidence when --pprof is enabled
   --version      print the version and exit
 
 Eitri creates its data directory (~/.eitri, or EITRI_DIR) on launch and
@@ -55,10 +58,13 @@ func main() {
 	}
 
 	var (
-		prompt   = flag.String("b", "", "run once in batch mode with the given prompt and exit")
-		verbose  = flag.Bool("v", false, "print the model's thinking to stdout in batch mode")
-		debug    = flag.Bool("d", false, "enable debug mode")
-		showVers = flag.Bool("version", false, "print the version and exit")
+		prompt     = flag.String("b", "", "run once in batch mode with the given prompt and exit")
+		verbose    = flag.Bool("v", false, "print the model's thinking to stdout in batch mode")
+		debug      = flag.Bool("d", false, "enable debug mode")
+		pprofAddr  = flag.String("pprof", "", "enable localhost pprof diagnostics, optionally with an address")
+		pprofMutex = flag.Bool("pprof-mutex", false, "include mutex profile evidence when --pprof is enabled")
+		pprofBlock = flag.Bool("pprof-block", false, "include block profile evidence when --pprof is enabled")
+		showVers   = flag.Bool("version", false, "print the version and exit")
 	)
 	flag.Usage = func() { fmt.Fprint(os.Stderr, usage) }
 	flag.Parse()
@@ -75,6 +81,12 @@ func main() {
 		Debug:   *debug,
 		Prompt:  *prompt,
 		Verbose: *verbose,
+		Pprof: app.PprofOptions{
+			Enabled: *pprofAddr != "",
+			Addr:    *pprofAddr,
+			Mutex:   *pprofMutex,
+			Block:   *pprofBlock,
+		},
 	}
 
 	if err := app.Run(opts); err != nil {

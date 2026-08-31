@@ -3,8 +3,10 @@ package app
 import (
 	"encoding/json"
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -145,6 +147,61 @@ func TestBootDebugCreatesTraceCapableSession(t *testing.T) {
 	if _, err := os.Stat(sessions); err != nil {
 		t.Fatalf("sessions dir %s not created in debug mode: %v", sessions, err)
 	}
+}
+
+func TestPprofDisabledDoesNotListen(t *testing.T) {
+	stubTUI(t)
+	dir := t.TempDir()
+
+	if err := Run(Options{DataDir: filepath.Join(dir, ".eitri"), LookPath: okLookPath}); err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if got := activePprofAddr(); got != "" {
+		t.Fatalf("activePprofAddr() = %q, want disabled", got)
+	}
+}
+
+func TestPprofEnabledBindsLocalhostAndServesProfiles(t *testing.T) {
+	stubTUI(t)
+	dir := t.TempDir()
+
+	if err := Run(Options{DataDir: filepath.Join(dir, ".eitri"), LookPath: okLookPath, Pprof: PprofOptions{Enabled: true, Addr: "127.0.0.1:0"}}); err != nil {
+		t.Fatalf("Run(pprof) error = %v, want nil", err)
+	}
+	addr := activePprofAddr()
+	if !strings.HasPrefix(addr, "127.0.0.1:") {
+		t.Fatalf("activePprofAddr() = %q, want localhost bind", addr)
+	}
+	resp, err := http.Get("http://" + addr + "/debug/pprof/goroutine?debug=1")
+	if err != nil {
+		t.Fatalf("GET goroutine profile: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("goroutine profile status = %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestPprofRejectsNonLocalhostBind(t *testing.T) {
+	dir := t.TempDir()
+	err := Run(Options{DataDir: filepath.Join(dir, ".eitri"), LookPath: okLookPath, Pprof: PprofOptions{Enabled: true, Addr: "0.0.0.0:0"}})
+	if err == nil || !strings.Contains(err.Error(), "localhost") {
+		t.Fatalf("Run(non-localhost pprof) error = %v, want localhost refusal", err)
+	}
+}
+
+func TestPprofEnablesMutexAndBlockProfiling(t *testing.T) {
+	stubTUI(t)
+	dir := t.TempDir()
+
+	if err := Run(Options{DataDir: filepath.Join(dir, ".eitri"), LookPath: okLookPath, Pprof: PprofOptions{Enabled: true, Addr: "localhost:0", Mutex: true, Block: true}}); err != nil {
+		t.Fatalf("Run(pprof profiles) error = %v, want nil", err)
+	}
+	if runtime.SetMutexProfileFraction(0) == 0 {
+		t.Fatal("mutex profiling was disabled, want enabled")
+	}
+	runtime.SetMutexProfileFraction(0)
+	runtime.SetBlockProfileRate(0)
 }
 
 func TestBootUsesDataDirForConfig(t *testing.T) {

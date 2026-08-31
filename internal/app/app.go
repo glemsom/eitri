@@ -98,6 +98,8 @@ type Options struct {
 	LookPath func(name string) (string, error)
 
 	Browser tools.BrowserLauncher
+
+	Pprof PprofOptions
 }
 
 // Run performs the Eitri boot sequence and returns the first error it hits, so a caller can map it to an exit status.
@@ -105,6 +107,9 @@ func Run(opts Options) error {
 	if opts.Version {
 		fmt.Println(Version)
 		return nil
+	}
+	if err := startPprof(opts.Pprof); err != nil {
+		return err
 	}
 
 	dir, err := resolveDataDir(opts.DataDir)
