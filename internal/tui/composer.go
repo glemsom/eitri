@@ -168,8 +168,6 @@ func (m *Model) syncComposerRail() {
 // renderBand renders the fixed bottom band: completion candidates above the composer panel, then contextual composer hints and transient feedback below it.
 func (m Model) renderBand(b *strings.Builder) {
 	var inner strings.Builder
-	inner.WriteString(m.tx.theme.bandSeparatorStyle.Render(strings.Repeat(g("─", "-"), m.tx.bandWidth())))
-	inner.WriteByte('\n')
 	if m.tx.busy {
 		body := busyLine(m.tx.spinner, m.tx.phase()) + "\n" + m.tx.theme.statusStyle.Render("composer locked")
 		style := lipgloss.NewStyle().Foreground(dimmed(m.tx.theme.accent, 0.45))
@@ -235,7 +233,7 @@ func fitBandLine(s string, width int) string {
 
 // composerPreRows returns how many band rows render above the textarea caret origin: one row per slash-completion candidate, with the composer panel top border already reflected by the rendered band origin.
 func (m Model) composerPreRows() int {
-	n := 1 // band separator row
+	n := 0
 	if m.slash.isOpen() {
 		n += m.slash.CandidateCount() + 2 // slash popover borders
 	} else if m.mention.isOpen() {

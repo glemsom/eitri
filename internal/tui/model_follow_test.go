@@ -68,7 +68,7 @@ func TestModel_liveFollowPersistsThroughResize(t *testing.T) {
 	for _, h := range []int{6, 12, 14, 10} {
 		m = resizeTo(t, m, 80, h)
 		got, _, vh := followRendered(m)
-		if vh <= 0 {
+		if vh <= 1 {
 			continue
 		}
 		if row := newestNonBlank(got); row != "⠋ Answering\n" {

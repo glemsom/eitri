@@ -21,23 +21,19 @@ func railBandModel(t *testing.T, w, h int) Model {
 	return asModel(t, nm)
 }
 
-func bandRowsFrom(plain string) (sep int, rows []string) {
+func bandRowsFrom(plain string) (top int, rows []string) {
 	lines := strings.Split(plain, "\n")
-	sep = -1
+	top = -1
 	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.Trim(trimmed, "─") != "" {
-			continue
-		}
-		if i+1 < len(lines) && strings.Contains(lines[i+1], "Ask Eitri") {
-			sep = i
+		if strings.Contains(line, "Ask Eitri") {
+			top = i
 			break
 		}
 	}
-	if sep < 0 {
+	if top < 0 {
 		return -1, nil
 	}
-	return sep, lines[sep:]
+	return top, lines[top:]
 }
 
 func TestModelBandSpansFullTerminalWidthTall(t *testing.T) {
@@ -56,7 +52,7 @@ func TestModelBandSpansFullTerminalWidthTall(t *testing.T) {
 	plain := plain(view(m))
 	sep, band := bandRowsFrom(plain)
 	if sep < 0 {
-		t.Fatalf("band separator row not found in frame:\n%q", view(m))
+		t.Fatalf("composer band not found in frame:\n%q", view(m))
 	}
 
 	for i, r := range band {
@@ -98,7 +94,7 @@ func TestModelRailEndsOneRowAboveBand(t *testing.T) {
 	plain := plain(view(m))
 	sep, _ := bandRowsFrom(plain)
 	if sep < 0 {
-		t.Fatalf("band separator row not found in frame:\n%q", view(m))
+		t.Fatalf("composer band not found in frame:\n%q", view(m))
 	}
 
 	lastRail := -1
@@ -131,7 +127,7 @@ func TestModelRailEndsOneRowAboveBandTall(t *testing.T) {
 	plain := plain(view(m))
 	sep, _ := bandRowsFrom(plain)
 	if sep < 0 {
-		t.Fatalf("band separator row not found in frame:\n%q", view(m))
+		t.Fatalf("composer band not found in frame:\n%q", view(m))
 	}
 
 	lastRail := -1
@@ -187,14 +183,10 @@ func TestModelComposerCaretStaysCorrectWithRailWrapped(t *testing.T) {
 var tallBandHeights = []int{26, 30, 35, 40, 50}
 
 func rowRole(i int) string {
-	switch i {
-	case 0:
-		return "separator"
-	case 1:
-		return "status strip"
-	default:
-		return "composer"
+	if i == 0 {
+		return "composer top border"
 	}
+	return "composer/status"
 }
 
 func bandRowsForHeight(t *testing.T, h int) (sep int, rows []string) {
@@ -206,10 +198,10 @@ func bandRowsForHeight(t *testing.T, h int) (sep int, rows []string) {
 	plain := plain(view(m))
 	sep, rows = bandRowsFrom(plain)
 	if sep < 0 {
-		t.Fatalf("band separator row not found in frame:\n%q", view(m))
+		t.Fatalf("composer band not found in frame:\n%q", view(m))
 	}
-	if len(rows) < 3 {
-		t.Fatalf("band has %d rows, want separator+status+composer >= 3:\n%s", len(rows), plain)
+	if len(rows) < 4 {
+		t.Fatalf("band has %d rows, want composer panel + hint >= 4:\n%s", len(rows), plain)
 	}
 	return sep, rows
 }

@@ -281,11 +281,11 @@ func TestModelRailStaysOnScreen(t *testing.T) {
 		}
 	}
 	for _, ln := range strings.Split(content, "\n") {
-		if strings.HasPrefix(ln, "─") {
-			return // separator on its own row, rail intact
+		if strings.Contains(ln, "Ask Eitri") && !strings.Contains(ln, "opencode-go") {
+			return // composer panel starts on its own row, rail intact
 		}
 	}
-	t.Errorf("band separator is not on its own row; rail+separator overflow right edge:\n%q", content)
+	t.Errorf("composer panel is not on its own row; rail+composer overflow right edge:\n%q", content)
 }
 
 func TestModelRailNoPanicWithoutFeed(t *testing.T) {

@@ -39,7 +39,7 @@ type Theme struct {
 	outcomeErrStyle            lipgloss.Style // the ✗ tool-outcome tag
 	slashSelectStyle           lipgloss.Style // the selected slash-completion candidate
 	focusStyle                 lipgloss.Style // the focused collapsible block's head/hint marker
-	bandSeparatorStyle         lipgloss.Style // the separator row framing the bottom band
+	bandSeparatorStyle         lipgloss.Style // the border style for bottom-band panels
 	bandStatusStyle            lipgloss.Style
 
 	railHeaderStyles [3]lipgloss.Style
