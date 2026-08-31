@@ -351,10 +351,10 @@ func TestSettingsView_ThinkingSuppressionWarning(t *testing.T) {
 			f := newSettingsForm(tc.cfg, []string{})
 			f.thinkingSuppression = tc.thinkingSuppression
 			view := settingsView(f)
-			if tc.wantWarning && !strings.Contains(view, "reasoning cannot be disabled on this provider") {
+			if tc.wantWarning && !strings.Contains(view, "This provider always uses reasoning") {
 				t.Fatalf("settings view %q missing the thinking-suppression warning", view)
 			}
-			if !tc.wantWarning && strings.Contains(view, "reasoning cannot be disabled on this provider") {
+			if !tc.wantWarning && strings.Contains(view, "This provider always uses reasoning") {
 				t.Fatalf("settings view %q rendered a warning, want none", view)
 			}
 		})
@@ -382,7 +382,7 @@ func TestModel_SettingsWiringSurfacesThinkingSuppression(t *testing.T) {
 	if m.settings.thinkingSuppression() {
 		t.Fatal("seeded thinkingSuppression() = true, want false (unsupported provider)")
 	}
-	if !strings.Contains(view(m), "reasoning cannot be disabled on this provider") {
+	if !strings.Contains(view(m), "This provider always uses reasoning") {
 		t.Fatalf("settings view %q missing the thinking-suppression warning", view(m))
 	}
 }

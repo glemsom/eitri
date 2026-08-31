@@ -223,7 +223,7 @@ func TestSettingsView_RendersKnobsAndSave(t *testing.T) {
 	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{"grok-2"})
 	view := settingsView(f)
-	for _, want := range []string{"Eitri Settings", "opencode-go", "grok-2", "Thinking", "on", "high", "250", "80%", "Theme", "dark", "[ Save ]", "[ Cancel ]"} {
+	for _, want := range []string{"Eitri Settings", "opencode-go", "grok-2", "Deep thinking", "✓ on", "high", "250", "80%", "Theme", "dark", "[ Save ]", "[ Cancel ]"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("settings view %q missing %q", view, want)
 		}
@@ -255,7 +255,7 @@ func TestSettingsView_RendersCollapseRows(t *testing.T) {
 	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{})
 	view := settingsView(f)
-	for _, want := range []string{"Collapse thinking", "on", "Collapse tool results"} {
+	for _, want := range []string{"Collapse thinking", "✓ on", "Collapse tool output"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("settings view %q missing %q", view, want)
 		}
@@ -266,9 +266,9 @@ func TestSettingsView_GroupsDisplayBeforeWorkspaceAccess(t *testing.T) {
 	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{})
 	view := settingsView(f)
-	compact := strings.Index(view, "Auto-compact at")
+	compact := strings.Index(view, "Summarize history at")
 	theme := strings.Index(view, "Theme")
-	writable := strings.Index(view, "Extra writable paths")
+	writable := strings.Index(view, "Writable paths")
 	if compact < 0 || theme < 0 || writable < 0 {
 		t.Fatalf("settings view %q missing compact/theme/writable rows", view)
 	}
@@ -341,7 +341,7 @@ func TestSettingsView_PaletteSwatchTracksTheme(t *testing.T) {
 	f.field = fieldTheme
 
 	view := settingsView(f)
-	if !strings.Contains(view, "palette") || !strings.Contains(view, "\u2588\u2588") {
+	if !strings.Contains(view, "Palette") || !strings.Contains(view, "\u2588\u2588") {
 		t.Fatalf("settings view %q missing the palette swatch row", view)
 	}
 	if !strings.Contains(view, "\x1b[38;2;122;162;247m") {

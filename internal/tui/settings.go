@@ -20,9 +20,9 @@ const (
 	fieldEffort
 	fieldMaxTurns
 	fieldFraction
+	fieldTheme
 	fieldCoTCollapsed
 	fieldToolResultsCollapsed
-	fieldTheme
 	fieldPaths
 	fieldSave
 	fieldCancel
@@ -165,9 +165,9 @@ func configsEqual(a, b config.Config) bool {
 // thinkingModeLabel renders the reasoning mode value (on/off) for the Settings panel, reflecting the thinking_enabled config.
 func thinkingModeLabel(on bool) string {
 	if on {
-		return "on"
+		return g("✓ on", "on")
 	}
-	return "off"
+	return g("○ off", "off")
 }
 
 func settingsHelp(field int) string {
@@ -177,19 +177,19 @@ func settingsHelp(field int) string {
 	case fieldModel:
 		return "Model used for the next assistant turn."
 	case fieldThinking:
-		return "Allow model reasoning when the provider supports it."
+		return "Allow deeper model reasoning when the provider supports it."
 	case fieldEffort:
-		return "Reasoning budget: higher can improve hard answers and increase cost/latency."
+		return "Reasoning depth: higher can improve hard answers and increase cost/latency."
 	case fieldMaxTurns:
 		return "Safety limit for assistant/tool loop iterations."
 	case fieldFraction:
 		return "When context reaches this fullness, summarize older history. 80% is recommended."
+	case fieldTheme:
+		return "Color palette for Eitri’s interface."
 	case fieldCoTCollapsed:
 		return "Show thinking blocks as compact one-liners until expanded."
 	case fieldToolResultsCollapsed:
-		return "Show tool results as compact one-liners until expanded."
-	case fieldTheme:
-		return "Color palette for the interface."
+		return "Show tool output as compact one-liners until expanded."
 	case fieldPaths:
 		return "Comma-separated paths Eitri may write outside the workspace."
 	case fieldSave:
@@ -449,7 +449,11 @@ func (o *SettingsOverlay) Save() (config.Config, string, bool) {
 func settingsView(f settingsForm) string {
 	th := f.theme
 	var b strings.Builder
-	b.WriteString(th.headerStyle.Render("Eitri Settings"))
+	title := "Eitri Settings"
+	if f.dirty() {
+		title += th.statusStyle.Render(" • unsaved changes")
+	}
+	b.WriteString(th.headerStyle.Render(title))
 	b.WriteString("\n")
 
 	rows := []struct {
@@ -458,26 +462,39 @@ func settingsView(f settingsForm) string {
 	}{
 		{"Provider", f.cfg.Provider},
 		{"Model", f.Model()},
-		{"Thinking", thinkingModeLabel(f.cfg.ThinkingEnabled)},
-		{"Reasoning effort", f.cfg.ReasoningEffort},
-		{"Max tool turns", fmt.Sprintf("%d", f.cfg.MaxTurns)},
-		{"Auto-compact at", fmt.Sprintf("%.0f%%", f.cfg.CompactionFraction*100)},
-		{"Collapse thinking", thinkingModeLabel(f.cfg.CoTCollapsedByDefault)},
-		{"Collapse tool results", thinkingModeLabel(f.cfg.ToolResultsCollapsedByDefault)},
+		{"Deep thinking", thinkingModeLabel(f.cfg.ThinkingEnabled)},
+		{"Reasoning depth", f.cfg.ReasoningEffort},
+		{"Tool loop limit", fmt.Sprintf("%d", f.cfg.MaxTurns)},
+		{"Summarize history at", fmt.Sprintf("%.0f%%", f.cfg.CompactionFraction*100)},
 		{"Theme", f.cfg.Theme},
-		{"Extra writable paths", f.pathBuf},
+		{"Collapse thinking", thinkingModeLabel(f.cfg.CoTCollapsedByDefault)},
+		{"Collapse tool output", thinkingModeLabel(f.cfg.ToolResultsCollapsedByDefault)},
+		{"Writable paths", f.pathBuf},
 	}
 	sections := []struct {
 		label string
 		start int
 	}{
-		{"model", fieldProvider},
-		{"conversation limits", fieldMaxTurns},
-		{"display", fieldCoTCollapsed},
-		{"workspace access", fieldPaths},
+		{g("🤖 model", "model"), fieldProvider},
+		{g("🧠 reasoning & limits", "reasoning & limits"), fieldThinking},
+		{g("🎨 appearance", "appearance"), fieldTheme},
+		{g("🛡 workspace access", "workspace access"), fieldPaths},
 	}
 	emit := func(label string) {
 		b.WriteString(th.statusStyle.Render("   " + hr() + " " + label + " " + hr()))
+		b.WriteString("\n")
+	}
+	writePalette := func(focused bool) {
+		name := "Palette"
+		if focused {
+			name = "▸ " + name
+		} else {
+			name = "   " + name
+		}
+		fmt.Fprintf(&b, "%-2s%-22s", "", name)
+		for _, c := range []color.Color{th.accent, th.ok, th.error, th.shell, th.file, th.web, th.skill} {
+			b.WriteString(" " + lipgloss.NewStyle().Foreground(c).Render(g("██", "##")))
+		}
 		b.WriteString("\n")
 	}
 	for i, r := range rows {
@@ -489,26 +506,22 @@ func settingsView(f settingsForm) string {
 		name := r.name
 		val := r.val
 		if f.field == i {
-			name = "\u25b8 " + name
+			name = "▸ " + name
 			if i == fieldPaths {
 				val += th.statusStyle.Render(g("█", "|"))
 			}
 		} else {
 			name = "   " + name
 		}
-		fmt.Fprintf(&b, "%-2s%-10s %s\n", "", name, val)
+		fmt.Fprintf(&b, "%-2s%-22s %s\n", "", name, val)
+		if i == fieldTheme {
+			writePalette(false)
+		}
+		if i == fieldThinking && !f.cfg.ThinkingEnabled && f.thinkingSuppression != nil && !f.thinkingSuppression() {
+			b.WriteString(th.statusStyle.Render("   " + g("⚠", "!") + " This provider always uses reasoning"))
+			b.WriteString("\n")
+		}
 	}
-
-	if !f.cfg.ThinkingEnabled && f.thinkingSuppression != nil && !f.thinkingSuppression() {
-		b.WriteString(th.statusStyle.Render("   " + g("⚠", "!") + " reasoning cannot be disabled on this provider"))
-		b.WriteString("\n")
-	}
-
-	b.WriteString(th.statusStyle.Render("   palette"))
-	for _, c := range []color.Color{th.accent, th.ok, th.error, th.shell, th.file, th.web, th.skill} {
-		b.WriteString(" " + lipgloss.NewStyle().Foreground(c).Render(g("██", "##")))
-	}
-	b.WriteString("\n")
 
 	switch f.discoverState {
 	case discoverLoading:
@@ -543,7 +556,7 @@ func settingsView(f settingsForm) string {
 	}
 	b.WriteString("\n")
 	b.WriteString(save + "  " + cancel + "\n")
-	b.WriteString(th.statusStyle.Render("up/down: navigate " + g("·", ".") + " left/right/tab: adjust " + g("·", ".") + " enter: next/save/cancel " + g("·", ".") + " esc: discard changes"))
+	b.WriteString(th.statusStyle.Render(g("↑/↓ navigate", "up/down navigate") + " " + g("·", ".") + " " + g("←/→ adjust", "left/right adjust") + " " + g("·", ".") + " tab next " + g("·", ".") + " enter select/save " + g("·", ".") + " esc discard"))
 	return b.String()
 }
 
