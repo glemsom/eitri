@@ -21,7 +21,7 @@ func forgeBusyLine(idx int, p Phase) string {
 	if !motionEnabled() || len(busySpinnerFrames) == 0 {
 		return "… forging"
 	}
-	return string(busySpinnerFrames[idx%len(busySpinnerFrames)]) + " " + forgeVerb(p)
+	return string(busySpinnerFrames[idx%len(busySpinnerFrames)]) + "  " + forgeVerb(p)
 }
 
 func forgeVerb(p Phase) string {
@@ -35,6 +35,16 @@ func forgeVerb(p Phase) string {
 	}
 }
 
+func forgePhaseDetail(p Phase) string {
+	switch p {
+	case PhaseReasoning:
+		return "planning next strike"
+	case PhaseAnswering:
+		return "writing reply"
+	default:
+		return "running tools"
+	}
+}
 
 // formatElapsed renders a duration in the tool-timer vocabulary (Codex-style): seconds under a minute, minutes+seconds under an hour, hours+minutes beyond.
 func formatElapsed(d time.Duration) string {

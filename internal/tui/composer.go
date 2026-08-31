@@ -2,6 +2,7 @@ package tui
 
 import (
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
@@ -169,9 +170,9 @@ func (m *Model) syncComposerRail() {
 func (m Model) renderBand(b *strings.Builder) {
 	var inner strings.Builder
 	if m.tx.busy {
-		body := forgeBusyLine(m.tx.spinner, m.tx.phase()) + "\n" + m.tx.theme.statusStyle.Render("composer locked")
+		body := forgeBusyLine(m.tx.spinner, m.tx.phase()) + " · " + m.tx.theme.statusStyle.Render(m.forgeDetailLine()) + "\n" + m.tx.theme.statusStyle.Render("Hold steady — composer locked during forging")
 		style := lipgloss.NewStyle().Foreground(dimmed(m.tx.theme.accent, 0.45))
-		inner.WriteString(renderTitledPanel("⚒ Eitri is forging", m.tx.bandWidth(), style, body))
+		inner.WriteString(renderTitledPanel("⚒  Eitri is forging", m.tx.bandWidth(), style, body))
 	} else {
 		if m.slash.isOpen() {
 			inner.WriteString(renderTitledPanel("Commands", m.tx.bandWidth(), m.tx.theme.bandSeparatorStyle, m.slash.RenderCompletionBody(m.tx.theme)))
@@ -188,7 +189,6 @@ func (m Model) renderBand(b *strings.Builder) {
 	}
 	b.WriteString(inner.String())
 }
-
 
 // composerCursor returns the composer's hardware caret for the current frame, or nil when the composer is not the active editing surface .
 func (m Model) composerCursor(content string) *tea.Cursor {
@@ -242,6 +242,17 @@ func (m Model) composerPreRows() int {
 	}
 	n++ // titled composer panel top border
 	return n
+}
+
+func (m Model) forgeDetailLine() string {
+	parts := []string{forgePhaseDetail(m.tx.phase())}
+	if e, ok := m.tx.activeTool(); ok {
+		parts = append(parts, "running "+e.name)
+	}
+	if !m.tx.busyStartedAt.IsZero() {
+		parts = append(parts, formatElapsed(time.Since(m.tx.busyStartedAt))+" elapsed")
+	}
+	return strings.Join(parts, " · ")
 }
 
 func (m Model) composerHint() string {

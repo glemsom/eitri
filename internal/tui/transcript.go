@@ -18,6 +18,7 @@ type Transcript struct {
 	theme           Theme
 	messages        []message
 	busy            bool
+	busyStartedAt   time.Time
 	spinner         int
 	busyPulse       int
 	reasoningEffort string
@@ -114,6 +115,16 @@ const (
 // hasContent reports whether any turn material (committed messages or a live timeline) exists, i.e. the transcript is no longer showing the empty welcome state.
 func (t Transcript) hasContent() bool {
 	return len(t.messages) > 0 || t.LiveTimeline() != nil || t.busy
+}
+
+func (t Transcript) activeTool() (toolEntry, bool) {
+	for i := len(t.log.entries) - 1; i >= 0; i-- {
+		e := t.log.entries[i]
+		if !e.complete {
+			return e, true
+		}
+	}
+	return toolEntry{}, false
 }
 
 // Reset clears all turn material so the transcript returns to the empty

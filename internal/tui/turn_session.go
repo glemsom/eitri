@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -39,6 +40,7 @@ func (s *TurnSession) Begin(tx *Transcript, prompt, payload string) tea.Cmd {
 	tx.live = s
 	tx.appendUserMsg(prompt)
 	tx.busy = true
+	tx.busyStartedAt = time.Now()
 	s.curStream = -1
 	s.flow.Reset()
 	tx.log.SetAnchor(len(tx.messages) - 1)

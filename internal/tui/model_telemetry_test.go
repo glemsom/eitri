@@ -98,14 +98,17 @@ func TestModelStatusStripBusySpinner(t *testing.T) {
 	var band strings.Builder
 	m.renderBand(&band)
 	bs := band.String()
-	if !strings.Contains(bs, " Hammering the plan") {
-		t.Errorf("busy status strip missing spinner, got: %q", bs)
+	if !strings.Contains(bs, "  Hammering the plan") {
+		t.Errorf("busy status strip missing spinner with double-spaced label, got: %q", bs)
 	}
-	if !strings.Contains(bs, "Eitri is forging") {
-		t.Errorf("busy band missing locked panel title, got: %q", bs)
+	if !strings.Contains(bs, "⚒  Eitri is forging") {
+		t.Errorf("busy band missing double-spaced locked panel title, got: %q", bs)
 	}
-	if !strings.Contains(bs, "composer locked") {
-		t.Errorf("busy band missing locked composer copy, got: %q", bs)
+	if !strings.Contains(bs, "running tools") || !strings.Contains(bs, "elapsed") {
+		t.Errorf("busy band missing live forge detail line, got: %q", bs)
+	}
+	if !strings.Contains(bs, "Hold steady — composer locked during forging") {
+		t.Errorf("busy band missing warm locked composer copy, got: %q", bs)
 	}
 	if !strings.Contains(bs, "ctrl+c stop") || !strings.Contains(bs, "pgup read history") || !strings.Contains(bs, "end follow") {
 		t.Errorf("busy status strip missing busy keybinding hints, got: %q", bs)
