@@ -274,7 +274,7 @@ func themeFor(name string) Theme {
 	case "light-daltonized":
 		return newLightDaltonizedTheme()
 	}
-	return defaultTheme
+	return newDefaultTheme()
 }
 
 // newTheme builds a Theme from its seven palette entries; the derived styles draw from them.
@@ -358,8 +358,10 @@ func dimmed(c color.Color, f float64) color.Color {
 // borderedPane builds the shared assistant pane style with one-cell left padding and the given accent color, keeping answer, reasoning, streaming, and error panes visually related without adding copy-hostile border glyphs.
 func borderedPane(c color.Color) lipgloss.Style {
 	return lipgloss.NewStyle().
-		PaddingLeft(1).
-		Foreground(c)
+		Border(lipgloss.Border{Left: g("│", "|")}).
+		BorderLeft(true).
+		BorderForeground(c).
+		PaddingLeft(1)
 }
 
 // toolCategoryStyle returns the theme style for a tool category: the per-category hue for shell/file/web/skill, and the generic faint tool line for anything else.

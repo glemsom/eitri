@@ -59,7 +59,7 @@ func TestComposer_CaretStylePolicy(t *testing.T) {
 func TestComposer_CaretTracksTyping(t *testing.T) {
 	t.Parallel()
 	m := caretModel(t)
-	composerTop := lineCount(view(m)) - minComposerRows - 1
+	composerTop := lineCount(view(m)) - minComposerRows - 2
 	if c := caret(t, m); c.X != 3 || c.Y != composerTop {
 		t.Errorf("empty-composer caret = (%d,%d), want (3,%d)", c.X, c.Y, composerTop)
 	}
@@ -167,10 +167,20 @@ func caretAtEndOfVisibleRow(t *testing.T, m Model, needle string) {
 	t.Helper()
 	lines := frameLines(m)
 	row := -1
+	composerTop := -1
 	for i := len(lines) - 1; i >= 0; i-- {
-		if strings.Contains(ansiStrip(lines[i]), needle) {
-			row = i
+		if strings.Contains(ansiStrip(lines[i]), "Ask Eitri") {
+			composerTop = i
 			break
+		}
+	}
+	for i := composerTop + 1; i < len(lines); i++ {
+		plain := ansiStrip(lines[i])
+		if strings.Contains(plain, "╰") || strings.Contains(plain, "+") {
+			break
+		}
+		if strings.Contains(plain, needle) {
+			row = i
 		}
 	}
 	if row < 0 {

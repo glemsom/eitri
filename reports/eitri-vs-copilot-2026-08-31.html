@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Eitri vs. Copilot — Agent Harness Comparison</title>
+<style>
+  :root{
+    --eitri:#c0392b;
+    --copilot:#2980b9;
+    --bg:#0f1115;
+    --card:#171a21;
+    --text:#e6e6e6;
+    --muted:#9aa0a8;
+    --border:#2a2f3a;
+  }
+  *{box-sizing:border-box}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);color:var(--text);margin:0;padding:0 0 4rem;
+  }
+  header{
+    padding:2.5rem 2rem 1.5rem;border-bottom:1px solid var(--border);
+    background:linear-gradient(180deg,#1a1d26,#0f1115);
+    text-align:center;
+  }
+  header h1{margin:0 0 .3rem;font-size:1.8rem}
+  header p{margin:.2rem 0;color:var(--muted)}
+  main{max-width:1100px;margin:0 auto;padding:2rem}
+  section{margin-bottom:2.5rem}
+  h2{border-bottom:1px solid var(--border);padding-bottom:.5rem;font-size:1.3rem}
+  table{width:100%;border-collapse:collapse;margin:1rem 0;font-size:.92rem}
+  th,td{padding:.55rem .7rem;border-bottom:1px solid var(--border);text-align:left}
+  th{color:var(--muted);font-weight:600}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  .badge{display:inline-block;padding:.15rem .55rem;border-radius:1rem;font-size:.78rem;font-weight:600}
+  .badge.eitri{background:rgba(192,57,43,.18);color:#ff8b7a}
+  .badge.copilot{background:rgba(41,128,185,.18);color:#7ec6ff}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1rem 1.2rem}
+  .card .label{color:var(--muted);font-size:.8rem;text-transform:uppercase;letter-spacing:.04em}
+  .card .row{display:flex;justify-content:space-between;align-items:baseline;margin-top:.4rem}
+  .card .val{font-size:1.4rem;font-weight:700}
+  .card .val.eitri{color:#ff8b7a}
+  .card .val.copilot{color:#7ec6ff}
+  .bar-wrap{margin:.9rem 0}
+  .bar-label{display:flex;justify-content:space-between;font-size:.85rem;margin-bottom:.25rem;color:var(--muted)}
+  .bar-track{height:14px;border-radius:7px;background:#1e222c;overflow:hidden;position:relative}
+  .bar-fill{height:100%;border-radius:7px 0 0 7px}
+  .bar-fill.eitri{background:var(--eitri)}
+  .bar-fill.copilot{background:var(--copilot)}
+  .note{font-size:.85rem;color:var(--muted);margin-top:.4rem}
+  ul{margin:.4rem 0;padding-left:1.3rem}
+  li{margin:.25rem 0}
+  code{background:#1e222c;padding:.1rem .35rem;border-radius:4px;font-size:.85em}
+  .verdict{background:var(--card);border:1px solid var(--border);border-left:4px solid var(--eitri);border-radius:8px;padding:1rem 1.2rem}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem}
+  @media(max-width:700px){.grid2{grid-template-columns:1fr}}
+  .metric-source{font-size:.78rem;color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Agent Harness Comparison — Eitri vs. GitHub Copilot CLI</h1>
+  <p>Task: analyze HPE CSI Driver Helm chart, diff current (2.3.0) vs target (3.2.0), produce upgrade plan.</p>
+  <p>Eitri session <code>a01e43f1…bb84a6</code> (model <span class="badge eitri">gpt-5.5</span>) · Copilot session <code>7693ff6f…21cd85</code> (model <span class="badge copilot">gpt-5.5</span>)</p>
+</header>
+
+<main>
+
+<section>
+  <h2>Headline numbers</h2>
+  <div class="cards">
+    <div class="card">
+      <div class="label">Assistant turns</div>
+      <div class="row"><span class="badge eitri">Eitri</span><span class="val eitri">8</span></div>
+      <div class="row"><span class="badge copilot">Copilot</span><span class="val copilot">21</span></div>
+    </div>
+    <div class="card">
+      <div class="label">Tool calls</div>
+      <div class="row"><span class="badge eitri">Eitri</span><span class="val eitri">9</span></div>
+      <div class="row"><span class="badge copilot">Copilot</span><span class="val copilot">46</span></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Relative scale (Eitri vs Copilot, longer bar = more)</h2>
+
+  <div class="bar-wrap">
+    <div class="bar-label"><span>Assistant turns</span><span>8 vs 21</span></div>
+    <div class="bar-track"><div class="bar-fill eitri" style="width:38%"></div></div>
+    <div class="bar-track"><div class="bar-fill copilot" style="width:100%"></div></div>
+  </div>
+
+  <div class="bar-wrap">
+    <div class="bar-label"><span>Tool calls</span><span>9 vs 46</span></div>
+    <div class="bar-track"><div class="bar-fill eitri" style="width:20%"></div></div>
+    <div class="bar-track"><div class="bar-fill copilot" style="width:100%"></div></div>
+  </div>
+
+  <div class="bar-wrap">
+    <div class="bar-label"><span>Final-turn cumulative prompt/context tokens</span><span>19,412 vs 81,319</span></div>
+    <div class="bar-track"><div class="bar-fill eitri" style="width:24%"></div></div>
+    <div class="bar-track"><div class="bar-fill copilot" style="width:100%"></div></div>
+  </div>
+  <p class="note">"Final-turn context tokens" = size of the prompt sent on the <em>last</em> model call (i.e. full accumulated conversation). This is the only apples-to-apples token figure both logs expose (see token accounting note below).</p>
+</section>
+
+<section>
+  <h2>Token accounting</h2>
+  <p class="metric-source">Eitri logs raw OpenAI-style <code>usage</code> per API call (prompt/completion, plus cache hit/miss) in <code>messages.jsonl</code>. Copilot's <code>events.jsonl</code> only surfaces one cumulative <code>session.usage_checkpoint</code> for the whole session, plus a stray gpt-4o-mini call for auto-generating the session title — the actual gpt-5.5 conversation's completion (output) tokens are not exposed in the log, only cumulative prompt/context size and a billing proxy (<code>totalNanoAiu</code>, <code>totalPremiumRequests</code>). Copilot's own <code>/usage</code> command reports session totals directly (screenshot-sourced, not log-derived) and is the most reliable figure available for that harness: <strong>986.2k tokens in / 7.5k tokens out</strong>.</p>
+
+  <div class="cards" style="margin-bottom:1rem">
+    <div class="card">
+      <div class="label">Total tokens in (session)</div>
+      <div class="row"><span class="badge eitri">Eitri</span><span class="val eitri">84,829</span></div>
+      <div class="row"><span class="badge copilot">Copilot</span><span class="val copilot">986,200</span></div>
+      <div class="note">Copilot via <code>/usage</code>; Eitri via summed per-call <code>prompt_tokens</code>.</div>
+    </div>
+    <div class="card">
+      <div class="label">Total tokens out (session)</div>
+      <div class="row"><span class="badge eitri">Eitri</span><span class="val eitri">5,232</span></div>
+      <div class="row"><span class="badge copilot">Copilot</span><span class="val copilot">7,500</span></div>
+      <div class="note">Copilot via <code>/usage</code>; Eitri via summed per-call <code>completion_tokens</code>.</div>
+    </div>
+  </div>
+
+  <div class="bar-wrap">
+    <div class="bar-label"><span>Total tokens in (session)</span><span>84,829 vs 986,200</span></div>
+    <div class="bar-track"><div class="bar-fill eitri" style="width:8.6%"></div></div>
+    <div class="bar-track"><div class="bar-fill copilot" style="width:100%"></div></div>
+  </div>
+
+  <div class="bar-wrap">
+    <div class="bar-label"><span>Total tokens out (session)</span><span>5,232 vs 7,500</span></div>
+    <div class="bar-track"><div class="bar-fill eitri" style="width:69.8%"></div></div>
+    <div class="bar-track"><div class="bar-fill copilot" style="width:100%"></div></div>
+  </div>
+  <p class="note">Copilot's 986.2k tokens-in is ~11.6x Eitri's summed input, despite Copilot needing only ~2.6x the tool calls and ~2.6x the turns — consistent with its heavier <code>web_fetch</code>/<code>web_search</code> tool surface (larger tool schemas, larger fetched-page payloads) pushing far more raw content through the context window per turn than Eitri's curated <code>curl | lynx</code> pulls.</p>
+
+  <table>
+    <thead><tr><th>Metric</th><th>Eitri</th><th>Copilot</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr><td>Model</td><td>gpt-5.5</td><td>gpt-5.5</td><td>both logs</td></tr>
+      <tr><td>Total tokens in (session, via <code>/usage</code> for Copilot)</td><td class="num">84,829</td><td class="num">986,200</td><td>messages.jsonl (summed) / Copilot <code>/usage</code></td></tr>
+      <tr><td>Total tokens out (session, via <code>/usage</code> for Copilot)</td><td class="num">5,232</td><td class="num">7,500</td><td>messages.jsonl (summed) / Copilot <code>/usage</code></td></tr>
+      <tr><td>Final-turn cumulative prompt/context size</td><td class="num">19,412</td><td class="num">81,319</td><td>last usage entry / session.usage_checkpoint</td></tr>
+      <tr><td>Prompt-cache hit tokens (final turn)</td><td class="num">18,944 (97.6%)</td><td class="num">78,848 (97.0%)</td><td>same</td></tr>
+      <tr><td>Billing proxy</td><td class="num">—</td><td class="num">106.34B nanoAIU / 7.5 premium requests</td><td>session.usage_checkpoint</td></tr>
+      <tr><td>Final answer length</td><td class="num">15,513 chars</td><td class="num">8,780 chars</td><td>last message content</td></tr>
+    </tbody>
+  </table>
+  <p class="note">*Eitri's per-call <code>prompt_tokens</code> is the full accumulated context at that call (not a delta), so summing across calls is a proxy for total context re-processed, not unique tokens — same caveat applies conceptually to Copilot, whose logs just don't give us that series at all. Both harnesses show heavy prompt-cache reuse (~97%) by the final call, so raw token count materially overstates actual billed/fresh tokens for both.</p>
+</section>
+
+<section>
+  <h2>Tool-call breakdown</h2>
+  <div class="grid2">
+    <div>
+      <h3><span class="badge eitri">Eitri</span> — 9 calls, 1 tool type</h3>
+      <table>
+        <thead><tr><th>Tool</th><th class="num">Calls</th></tr></thead>
+        <tbody>
+          <tr><td><code>bash</code> (grep/rg, cat, curl+lynx, curl+jq/sed)</td><td class="num">9</td></tr>
+        </tbody>
+      </table>
+      <ul>
+        <li>1 local repo scan (<code>rg</code> across whole tree)</li>
+        <li>1 local file dump (<code>Chart.yaml</code> + <code>values.yaml</code>)</li>
+        <li>7 remote fetches via <code>curl</code>/<code>lynx</code> (GitHub raw files, GitHub API releases, SCOD docs, published Helm chart tarballs for both versions)</li>
+      </ul>
+    </div>
+    <div>
+      <h3><span class="badge copilot">Copilot</span> — 46 calls, 7 tool types</h3>
+      <table>
+        <thead><tr><th>Tool</th><th class="num">Calls</th></tr></thead>
+        <tbody>
+          <tr><td><code>web_fetch</code></td><td class="num">31</td></tr>
+          <tr><td><code>web_search</code></td><td class="num">5</td></tr>
+          <tr><td><code>bash</code></td><td class="num">5</td></tr>
+          <tr><td><code>view</code></td><td class="num">2</td></tr>
+          <tr><td><code>rg</code></td><td class="num">1</td></tr>
+          <tr><td><code>glob</code></td><td class="num">1</td></tr>
+          <tr><td><code>github-mcp-server-search_code</code></td><td class="num">1</td></tr>
+        </tbody>
+      </table>
+      <ul>
+        <li>Copilot required per-call human permission prompts (URL fetch / shell command approval) for some of its 46 tool calls, adding interactive friction on top of model latency — a workflow/sandboxing difference not reflected in the tool-call count itself.</li>
+        <li>Heavy <code>web_fetch</code> use (31 calls) suggests more exploratory/retry fetching vs. Eitri's single curated pass per source.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Outcome</h2>
+  <p>Both agents converged on the <strong>same core finding</strong>: the repo's Helm chart is pinned to HPE CSI Driver <code>2.3.0</code>, and <code>3.2.0</code> is confirmed as the current/latest upstream release. Both produced a version-diff table and an upgrade plan with risk callouts (CHAP config migration, new CSP flags defaulting off, sidecar/K8s compatibility, etc.).</p>
+  <div class="verdict">
+    <strong>Efficiency verdict:</strong> Eitri reached an equivalent (longer, more detailed) answer with <strong>~1/5 the tool calls</strong> and <strong>~1/12 the total input tokens</strong> (84.8k vs 986.2k per Copilot's own <code>/usage</code>). Eitri's narrower, curated tool surface (raw <code>curl</code>/<code>lynx</code>/<code>rg</code> via one <code>bash</code> tool) let it go straight to primary sources (GitHub raw Chart.yaml/values.yaml, release-notes, published chart tarballs) in a handful of calls, whereas Copilot's broader tool set (<code>web_search</code> + <code>web_fetch</code> + MCP GitHub search) drove up turn count and token spend without producing a materially different conclusion.
+  </div>
+</section>
+
+<section>
+  <h2>Caveats on this comparison</h2>
+  <ul>
+    <li>Copilot's <code>events.jsonl</code> log does not itself expose per-turn output token counts for the primary model — only one end-of-session cumulative checkpoint plus a billing proxy. The 986.2k in / 7.5k out figures come from Copilot's own <code>/usage</code> command (user-supplied screenshot), not from parsing the log, so they aren't independently cross-checked against the raw event stream the way Eitri's figures are.</li>
+    <li>Final answer length differs (Eitri ~76% longer) — more content is not automatically "better"; both plans should be judged on correctness/completeness by a human reviewer too.</li>
+  </ul>
+</section>
+
+</main>
+</body>
+</html>

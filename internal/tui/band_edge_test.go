@@ -150,20 +150,20 @@ func TestModelRailEndsOneRowAboveBandTall(t *testing.T) {
 func TestModelComposerCaretStaysCorrectWithRail(t *testing.T) {
 	t.Parallel()
 	m := railBandModel(t, 120, 40)
-	composerTop := lineCount(view(m)) - minComposerRows
+	composerTop := lineCount(view(m)) - minComposerRows - 2
 
 	c := m.View().Cursor
 	if c == nil {
 		t.Fatal("hardware caret must be attached while the composer is the active surface")
 	}
-	if c.X != 2 || c.Y != composerTop {
-		t.Errorf("empty-composer caret with rail = (%d,%d), want (2,%d)", c.X, c.Y, composerTop)
+	if c.X != 3 || c.Y != composerTop {
+		t.Errorf("empty-composer caret with rail = (%d,%d), want (3,%d)", c.X, c.Y, composerTop)
 	}
 
 	m = typeText(t, m, "hi")
 	after := caret(t, m)
-	if after.X != 4 || after.Y != composerTop {
-		t.Errorf("caret after typing %q with rail = (%d,%d), want (4,%d)", "hi", after.X, after.Y, composerTop)
+	if after.X != 5 || after.Y != composerTop {
+		t.Errorf("caret after typing %q with rail = (%d,%d), want (5,%d)", "hi", after.X, after.Y, composerTop)
 	}
 }
 

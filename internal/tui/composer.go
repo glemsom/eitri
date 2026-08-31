@@ -109,16 +109,17 @@ func renderTitledPanel(title string, width int, style lipgloss.Style, body strin
 	if inner < 0 {
 		inner = 0
 	}
-	titleText := "─ " + title + " "
+	h := g("─", "-")
+	titleText := h + " " + title + " "
 	if lipgloss.Width(titleText) > width-2 {
-		titleText = "─"
+		titleText = h
 	}
 	topFill := width - 2 - lipgloss.Width(titleText)
 	if topFill < 0 {
 		topFill = 0
 	}
 	var b strings.Builder
-	b.WriteString(style.Render("╭" + titleText + strings.Repeat("─", topFill) + "╮"))
+	b.WriteString(style.Render(g("╭", "+") + titleText + strings.Repeat(h, topFill) + g("╮", "+")))
 	for _, line := range strings.Split(body, "\n") {
 		plainLine := ansiStrip(line)
 		if lipgloss.Width(plainLine) > inner {
@@ -129,13 +130,13 @@ func renderTitledPanel(title string, width int, style lipgloss.Style, body strin
 			pad = 0
 		}
 		b.WriteByte('\n')
-		b.WriteString(style.Render("│"))
+		b.WriteString(style.Render(g("│", "|")))
 		b.WriteString(line)
 		b.WriteString(strings.Repeat(" ", pad))
-		b.WriteString(style.Render("│"))
+		b.WriteString(style.Render(g("│", "|")))
 	}
 	b.WriteByte('\n')
-	b.WriteString(style.Render("╰" + strings.Repeat("─", inner) + "╯"))
+	b.WriteString(style.Render(g("╰", "+") + strings.Repeat(h, inner) + g("╯", "+")))
 	return b.String()
 }
 
@@ -167,6 +168,8 @@ func (m *Model) syncComposerRail() {
 // renderBand renders the fixed bottom band: completion candidates above the composer panel, then contextual composer hints and transient feedback below it.
 func (m Model) renderBand(b *strings.Builder) {
 	var inner strings.Builder
+	inner.WriteString(m.tx.theme.bandSeparatorStyle.Render(strings.Repeat(g("─", "-"), m.tx.bandWidth())))
+	inner.WriteByte('\n')
 	if m.tx.busy {
 		body := busyLine(m.tx.spinner, m.tx.phase()) + "\n" + m.tx.theme.statusStyle.Render("composer locked")
 		style := lipgloss.NewStyle().Foreground(dimmed(m.tx.theme.accent, 0.45))
@@ -228,7 +231,7 @@ func fitBandLine(s string, width int) string {
 
 // composerPreRows returns how many band rows render above the textarea caret origin: one row per slash-completion candidate, with the composer panel top border already reflected by the rendered band origin.
 func (m Model) composerPreRows() int {
-	n := 0
+	n := 1 // band separator row
 	if m.slash.isOpen() {
 		n += m.slash.CandidateCount() + 2 // slash popover borders
 	} else if m.mention.isOpen() {
