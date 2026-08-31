@@ -329,7 +329,7 @@ func parseResponsesEvent(data string, rs *responsesStream) (Chunk, error) {
 		rs.sawText = true
 		return Chunk{Content: env.Delta}, nil
 
-	case "response.reasoning_summary_text.delta":
+	case "response.reasoning_text.delta", "response.reasoning_summary_text.delta":
 		rs.sawReason = true
 		return Chunk{ReasoningContent: env.Delta}, nil
 

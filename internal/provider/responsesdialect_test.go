@@ -84,6 +84,32 @@ func TestResponsesDialectBuildOmitsUnsetControls(t *testing.T) {
 	}
 }
 
+func TestResponsesDialectStreamCarriesReasoningTextDeltas(t *testing.T) {
+	t.Parallel()
+	sse := strings.Join([]string{
+		`data: {"type":"response.reasoning_text.delta","delta":"actual chain "}`,
+		`data: {"type":"response.reasoning_text.delta","delta":"of thought"}`,
+		`data: {"type":"response.output_text.delta","delta":"final"}`,
+		`data: {"type":"response.completed","response":{"id":"resp_reason","model":"gpt-5.4-mini","created_at":2,"usage":{"input_tokens":5,"output_tokens":3},"output":[{"type":"message","content":[{"type":"output_text","text":"final"}]}]}}`,
+	}, "\n\n\n")
+
+	stream := NewResponsesDialect().Stream(strings.NewReader(sse + "\n\n\n"))
+	var reasoning string
+	for {
+		ch, err := stream.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatalf("Next() error = %v, want nil", err)
+		}
+		reasoning += ch.ReasoningContent
+	}
+	if reasoning != "actual chain of thought" {
+		t.Fatalf("streamed reasoning = %q, want actual chain of thought", reasoning)
+	}
+}
+
 func TestResponsesDialectStreamReassemblesToolCallsAndText(t *testing.T) {
 	t.Parallel()
 	sse := strings.Join([]string{
