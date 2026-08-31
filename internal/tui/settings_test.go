@@ -2,9 +2,12 @@ package tui
 
 import (
 	"math"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
 	"github.com/glemsom/eitri/internal/config"
@@ -298,15 +301,16 @@ func TestSettingsView_HighlightsFocusedRow(t *testing.T) {
 	}
 }
 
-func TestSettingsView_RendersWritableCaretWhenFocused(t *testing.T) {
+func TestSettingsView_RendersWritableListWhenFocused(t *testing.T) {
 	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{})
 	f.field = fieldPaths
-	f.pathBuf = "/srv"
 
 	view := ansiStrip(settingsView(f))
-	if !strings.Contains(view, "/srv"+g("█", "|")) {
-		t.Fatalf("settings view %q missing writable field caret", view)
+	for _, want := range []string{"1 folder(s)", "› /srv", "+ Add folder", "Delete: remove selected"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("settings view %q missing %q", view, want)
+		}
 	}
 }
 
@@ -352,5 +356,64 @@ func TestSettingsView_PaletteSwatchTracksTheme(t *testing.T) {
 	view = settingsView(f)
 	if !strings.Contains(view, "\x1b[38;2;0;95;255m") {
 		t.Fatalf("light swatch must carry the light accent chip, got: %q", view)
+	}
+}
+
+func TestSettingsForm_RemoveSelectedPath(t *testing.T) {
+	t.Parallel()
+	cfg := cfgFixture()
+	cfg.ExtraWritablePaths = []string{"/srv", "/opt"}
+	f := newSettingsForm(cfg, []string{})
+	f.selectedPath = 1
+
+	f.removeSelectedPath()
+
+	got := f.draft().ExtraWritablePaths
+	if len(got) != 1 || got[0] != "/srv" {
+		t.Fatalf("paths after remove = %v, want [/srv]", got)
+	}
+}
+
+func TestSettingsOverlay_FilePickerCanNavigateBackToParent(t *testing.T) {
+	dir := t.TempDir()
+	child := dir + "/child"
+	if err := os.Mkdir(child, 0o755); err != nil {
+		t.Fatalf("mkdir child: %v", err)
+	}
+	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, Dependencies{})
+	o.field = fieldPaths
+	outcome, cmd := o.Key(tea.KeyPressMsg{Text: "+", Code: '+'})
+	if outcome != outcomeContinue || cmd == nil {
+		t.Fatalf("start picker outcome/cmd = %v/%v, want continue/init cmd", outcome, cmd)
+	}
+	o.picker.CurrentDirectory = child
+	o.Handle(tea.KeyPressMsg{Text: "u", Code: 'u'})
+	if got := filepath.Clean(o.picker.CurrentDirectory); got != filepath.Clean(dir) {
+		t.Fatalf("picker current dir after u = %q, want parent %q", got, dir)
+	}
+}
+
+func TestSettingsOverlay_FilePickerSelectClosesPickerBeforeTab(t *testing.T) {
+	dir := t.TempDir()
+	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, Dependencies{})
+	o.field = fieldPaths
+	o.addingPath = true
+	o.pickerActive = true
+	o.picker.Path = dir
+	o.Handle(tea.KeyPressMsg{Text: "s", Code: 's', Mod: tea.ModCtrl})
+	o.Handle(tea.KeyPressMsg{Code: tea.KeyTab})
+
+	got := o.draft().ExtraWritablePaths
+	count := 0
+	for _, p := range got {
+		if p == dir {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("selected path count after tab = %d in %v, want 1", count, got)
+	}
+	if o.addingPath || o.pickerActive {
+		t.Fatalf("picker active after selection: adding=%v active=%v, want closed", o.addingPath, o.pickerActive)
 	}
 }

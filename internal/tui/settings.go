@@ -4,8 +4,12 @@ import (
 	"context"
 	"fmt"
 	"image/color"
+	"os"
 	"strings"
+	"unicode/utf8"
 
+	"charm.land/bubbles/v2/filepicker"
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
@@ -52,6 +56,11 @@ type settingsForm struct {
 	models              []string
 	field               int
 	pathBuf             string
+	pathCursor          int
+	selectedPath        int
+	addingPath          bool
+	pickerActive        bool
+	picker              filepicker.Model
 	telemetry           *Telemetry
 	discoverState       discoverState
 	discoverErr         string
@@ -65,6 +74,8 @@ func newSettingsForm(cfg config.Config, models []string) settingsForm {
 		f.models = []string{cfg.Model}
 	}
 	f.pathBuf = strings.Join(cfg.ExtraWritablePaths, ",")
+	f.pathCursor = len(f.pathBuf)
+	f.normalizeSelectedPath()
 	return f
 }
 
@@ -117,7 +128,7 @@ func (f *settingsForm) adjust(d int) {
 		f.cfg.Theme = cycle(f.cfg.Theme, supportedThemes, d)
 		f.theme = themeFor(f.cfg.Theme)
 	case fieldPaths:
-		f.next()
+		f.stepPathSelection(d)
 	case fieldSave, fieldCancel:
 	}
 }
@@ -125,13 +136,130 @@ func (f *settingsForm) adjust(d int) {
 // SetPathBuf replaces the extra_writable_paths draft and parses it back into the config's slice (comma-separated, trimmed, empties dropped).
 func (f *settingsForm) SetPathBuf(s string) {
 	f.pathBuf = s
+	f.pathCursor = len(s)
 	f.cfg.ExtraWritablePaths = splitPaths(s)
+	f.normalizeSelectedPath()
+}
+
+func (f *settingsForm) beginAddPath() tea.Cmd {
+	f.addingPath = true
+	f.pathBuf = ""
+	f.pathCursor = 0
+	f.pickerActive = true
+	f.picker = filepicker.New()
+	if wd, err := os.Getwd(); err == nil {
+		f.picker.CurrentDirectory = wd
+	}
+	f.picker.DirAllowed = true
+	f.picker.FileAllowed = false
+	f.picker.ShowSize = false
+	f.picker.ShowPermissions = false
+	f.picker.SetHeight(10)
+	f.picker.KeyMap.Back = key.NewBinding(key.WithKeys("h", "u", "backspace", "left"), key.WithHelp("u/left", "parent"))
+	f.picker.KeyMap.Open = key.NewBinding(key.WithKeys("l", "right", "enter", "ctrl+s"), key.WithHelp("enter", "open"))
+	f.picker.KeyMap.Select = key.NewBinding(key.WithKeys("ctrl+s"), key.WithHelp("ctrl+s", "select folder"))
+	return f.picker.Init()
+}
+
+func (f *settingsForm) cancelAddPath() {
+	f.addingPath = false
+	f.pickerActive = false
+	f.pathBuf = strings.Join(f.cfg.ExtraWritablePaths, ",")
+	f.pathCursor = len(f.pathBuf)
+}
+
+func (f *settingsForm) commitPathBuf() {
+	p := strings.TrimSpace(f.pathBuf)
+	if p != "" {
+		f.cfg.ExtraWritablePaths = append(f.cfg.ExtraWritablePaths, p)
+		f.selectedPath = len(f.cfg.ExtraWritablePaths) - 1
+	}
+	f.addingPath = false
+	f.pickerActive = false
+	f.pathBuf = strings.Join(f.cfg.ExtraWritablePaths, ",")
+	f.pathCursor = len(f.pathBuf)
+}
+
+func (f *settingsForm) addPath(p string) {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return
+	}
+	for i, existing := range f.cfg.ExtraWritablePaths {
+		if existing == p {
+			f.selectedPath = i
+			f.addingPath = false
+			f.pickerActive = false
+			f.pathBuf = strings.Join(f.cfg.ExtraWritablePaths, ",")
+			f.pathCursor = len(f.pathBuf)
+			return
+		}
+	}
+	f.cfg.ExtraWritablePaths = append(f.cfg.ExtraWritablePaths, p)
+	f.selectedPath = len(f.cfg.ExtraWritablePaths) - 1
+	f.addingPath = false
+	f.pickerActive = false
+	f.pathBuf = strings.Join(f.cfg.ExtraWritablePaths, ",")
+	f.pathCursor = len(f.pathBuf)
+}
+
+func (f *settingsForm) removeSelectedPath() {
+	if len(f.cfg.ExtraWritablePaths) == 0 {
+		return
+	}
+	f.normalizeSelectedPath()
+	f.cfg.ExtraWritablePaths = append(f.cfg.ExtraWritablePaths[:f.selectedPath], f.cfg.ExtraWritablePaths[f.selectedPath+1:]...)
+	f.normalizeSelectedPath()
+	f.pathBuf = strings.Join(f.cfg.ExtraWritablePaths, ",")
+	f.pathCursor = len(f.pathBuf)
+}
+
+func (f *settingsForm) editSelectedPath(op, text string) {
+	if len(f.cfg.ExtraWritablePaths) == 0 {
+		return
+	}
+	f.normalizeSelectedPath()
+	p := f.cfg.ExtraWritablePaths[f.selectedPath]
+	switch op {
+	case "backspace":
+		if len(p) > 0 {
+			_, size := utf8.DecodeLastRuneInString(p)
+			p = p[:len(p)-size]
+		}
+	case "insert":
+		p += text
+	}
+	f.cfg.ExtraWritablePaths[f.selectedPath] = p
+	f.pathBuf = strings.Join(f.cfg.ExtraWritablePaths, ",")
+	f.pathCursor = len(f.pathBuf)
+}
+
+func (f *settingsForm) normalizeSelectedPath() {
+	if len(f.cfg.ExtraWritablePaths) == 0 {
+		f.selectedPath = 0
+		return
+	}
+	if f.selectedPath < 0 {
+		f.selectedPath = 0
+	}
+	if f.selectedPath >= len(f.cfg.ExtraWritablePaths) {
+		f.selectedPath = len(f.cfg.ExtraWritablePaths) - 1
+	}
+}
+
+func (f *settingsForm) stepPathSelection(d int) {
+	if len(f.cfg.ExtraWritablePaths) == 0 {
+		return
+	}
+	f.selectedPath = (f.selectedPath + d + len(f.cfg.ExtraWritablePaths)) % len(f.cfg.ExtraWritablePaths)
 }
 
 // draft returns the current edited config (parses the path field fresh).
 func (f *settingsForm) draft() config.Config {
 	c := f.cfg
-	c.ExtraWritablePaths = splitPaths(f.pathBuf)
+	if f.addingPath {
+		c.ExtraWritablePaths = append(append([]string{}, c.ExtraWritablePaths...), splitPaths(f.pathBuf)...)
+	}
 	return c
 }
 
@@ -170,8 +298,8 @@ func thinkingModeLabel(on bool) string {
 	return g("○ off", "off")
 }
 
-func settingsHelp(field int) string {
-	switch field {
+func settingsHelp(f settingsForm) string {
+	switch f.field {
 	case fieldProvider:
 		return "Backend used for future turns. Changing this refreshes available models."
 	case fieldModel:
@@ -191,7 +319,10 @@ func settingsHelp(field int) string {
 	case fieldToolResultsCollapsed:
 		return "Show tool output as compact one-liners until expanded."
 	case fieldPaths:
-		return "Comma-separated paths Eitri may write outside the workspace."
+		if f.addingPath {
+			return "Choose a folder with ↑/↓, Enter opens, Left/Backspace/u goes to parent, Ctrl+S adds, Esc cancels."
+		}
+		return "Press + or a to add a folder. ←/→ selects an existing path. Delete removes the selected path."
 	case fieldSave:
 		return "Save changes to config.json and apply them now."
 	case fieldCancel:
@@ -256,6 +387,47 @@ func stepFrac(v float64, d int) float64 {
 	return nv
 }
 
+func pathSummary(f settingsForm) string {
+	if f.addingPath {
+		return "adding folder…"
+	}
+	if len(f.cfg.ExtraWritablePaths) == 0 {
+		return "none"
+	}
+	return fmt.Sprintf("%d folder(s)", len(f.cfg.ExtraWritablePaths))
+}
+
+func caretString(s string, cursor int, th Theme) string {
+	if cursor < 0 {
+		cursor = 0
+	}
+	if cursor > len(s) {
+		cursor = len(s)
+	}
+	return s[:cursor] + th.statusStyle.Render(g("█", "|")) + s[cursor:]
+}
+
+func writePathList(b *strings.Builder, f settingsForm, th Theme) {
+	if len(f.cfg.ExtraWritablePaths) == 0 && !f.addingPath {
+		b.WriteString(th.statusStyle.Render("     no extra writable folders configured"))
+		b.WriteString("\n")
+	}
+	for i, p := range f.cfg.ExtraWritablePaths {
+		marker := "  "
+		if f.field == fieldPaths && i == f.selectedPath && !f.addingPath {
+			marker = "› "
+		}
+		fmt.Fprintf(b, "     %s%s\n", marker, p)
+	}
+	if f.addingPath {
+		b.WriteString(th.statusStyle.Render("     Folder picker — Enter opens, Left/Backspace/u parent, Ctrl+S selects, Esc cancels"))
+		b.WriteString("\n")
+		b.WriteString(f.picker.View())
+	}
+	b.WriteString(th.statusStyle.Render("     [ + Add folder ] [ Delete: remove selected ]"))
+	b.WriteString("\n")
+}
+
 // SettingsOverlay owns the open Settings surface: the draft form, its
 // on-demand model-discovery lifecycle, and persistence of the draft through
 // the save seams.
@@ -303,9 +475,12 @@ func openSettingsOverlay(cfg config.Config, models []string, theme Theme, teleme
 
 // Key routes one key press into the overlay. It returns what the caller
 // should do next plus any follow-up command (model discovery after a
-// provider change).
+// provider change, or folder picker after Add folder).
 func (o *SettingsOverlay) Key(k tea.KeyPressMsg) (settingsKeyOutcome, tea.Cmd) {
 	s := &o.settingsForm
+	if s.addingPath {
+		return o.keyAddPath(k)
+	}
 	switch k.String() {
 	case "esc", "ctrl+c":
 		return outcomeClosed, nil
@@ -316,20 +491,23 @@ func (o *SettingsOverlay) Key(k tea.KeyPressMsg) (settingsKeyOutcome, tea.Cmd) {
 		if s.onCancel() {
 			return outcomeClosed, nil
 		}
-		if s.field == fieldPaths {
-			s.cfg.ExtraWritablePaths = splitPaths(s.pathBuf)
-		}
 		s.next()
 	case "up", "shift+up":
-		if s.field == fieldPaths {
-			s.cfg.ExtraWritablePaths = splitPaths(s.pathBuf)
-		}
 		s.step(-1)
 	case "down", "shift+down":
-		if s.field == fieldPaths {
-			s.cfg.ExtraWritablePaths = splitPaths(s.pathBuf)
-		}
 		s.step(1)
+	case "a", "+":
+		if s.field == fieldPaths {
+			return outcomeContinue, s.beginAddPath()
+		}
+	case "delete":
+		if s.field == fieldPaths {
+			s.removeSelectedPath()
+		}
+	case "backspace":
+		if s.field == fieldPaths {
+			s.editSelectedPath("backspace", "")
+		}
 	case "left":
 		before := s.cfg.Provider
 		s.adjust(-1)
@@ -343,12 +521,58 @@ func (o *SettingsOverlay) Key(k tea.KeyPressMsg) (settingsKeyOutcome, tea.Cmd) {
 			return outcomeContinue, o.beginDiscovery()
 		}
 	default:
-		if s.field == fieldPaths {
-			if k.String() == "backspace" && len(s.pathBuf) > 0 {
-				s.SetPathBuf(s.pathBuf[:len(s.pathBuf)-1])
-			} else if k.String() != "backspace" {
-				s.SetPathBuf(s.pathBuf + k.Text)
-			}
+		if s.field == fieldPaths && k.Text != "" {
+			s.editSelectedPath("insert", k.Text)
+		}
+	}
+	return outcomeContinue, nil
+}
+
+func (o *SettingsOverlay) keyAddPath(k tea.KeyPressMsg) (settingsKeyOutcome, tea.Cmd) {
+	s := &o.settingsForm
+	if s.pickerActive {
+		if k.String() == "esc" || k.String() == "ctrl+c" {
+			s.cancelAddPath()
+			return outcomeContinue, nil
+		}
+		var cmd tea.Cmd
+		s.picker, cmd = s.picker.Update(k)
+		if s.picker.Path != "" {
+			s.addPath(s.picker.Path)
+			return outcomeContinue, nil
+		}
+		return outcomeContinue, cmd
+	}
+	switch k.String() {
+	case "esc", "ctrl+c":
+		s.cancelAddPath()
+	case "enter":
+		s.commitPathBuf()
+	case "left":
+		if s.pathCursor > 0 {
+			_, size := utf8.DecodeLastRuneInString(s.pathBuf[:s.pathCursor])
+			s.pathCursor -= size
+		}
+	case "right":
+		if s.pathCursor < len(s.pathBuf) {
+			_, size := utf8.DecodeRuneInString(s.pathBuf[s.pathCursor:])
+			s.pathCursor += size
+		}
+	case "backspace":
+		if s.pathCursor > 0 {
+			_, size := utf8.DecodeLastRuneInString(s.pathBuf[:s.pathCursor])
+			s.pathBuf = s.pathBuf[:s.pathCursor-size] + s.pathBuf[s.pathCursor:]
+			s.pathCursor -= size
+		}
+	case "delete":
+		if s.pathCursor < len(s.pathBuf) {
+			_, size := utf8.DecodeRuneInString(s.pathBuf[s.pathCursor:])
+			s.pathBuf = s.pathBuf[:s.pathCursor] + s.pathBuf[s.pathCursor+size:]
+		}
+	default:
+		if k.Text != "" {
+			s.pathBuf = s.pathBuf[:s.pathCursor] + k.Text + s.pathBuf[s.pathCursor:]
+			s.pathCursor += len(k.Text)
 		}
 	}
 	return outcomeContinue, nil
@@ -388,6 +612,11 @@ func (o *SettingsOverlay) Handle(msg tea.Msg) settingsResult {
 		o.ApplyDiscovery(msgi)
 		return settingsResult{outcome: outcomeContinue, handled: true, models: o.models}
 	default:
+		if o.pickerActive {
+			var cmd tea.Cmd
+			o.picker, cmd = o.picker.Update(msgi)
+			return settingsResult{outcome: outcomeContinue, handled: true, cmd: cmd}
+		}
 		return settingsResult{outcome: outcomeContinue}
 	}
 }
@@ -469,7 +698,7 @@ func settingsView(f settingsForm) string {
 		{"Theme", f.cfg.Theme},
 		{"Collapse thinking", thinkingModeLabel(f.cfg.CoTCollapsedByDefault)},
 		{"Collapse tool output", thinkingModeLabel(f.cfg.ToolResultsCollapsedByDefault)},
-		{"Writable paths", f.pathBuf},
+		{"Writable paths", pathSummary(f)},
 	}
 	sections := []struct {
 		label string
@@ -507,13 +736,13 @@ func settingsView(f settingsForm) string {
 		val := r.val
 		if f.field == i {
 			name = "▸ " + name
-			if i == fieldPaths {
-				val += th.statusStyle.Render(g("█", "|"))
-			}
 		} else {
 			name = "   " + name
 		}
 		fmt.Fprintf(&b, "%-2s%-22s %s\n", "", name, val)
+		if i == fieldPaths {
+			writePathList(&b, f, th)
+		}
 		if i == fieldTheme {
 			writePalette(false)
 		}
@@ -540,7 +769,7 @@ func settingsView(f settingsForm) string {
 		b.WriteString("\n")
 	}
 
-	b.WriteString(th.statusStyle.Render("   " + settingsHelp(f.field)))
+	b.WriteString(th.statusStyle.Render("   " + settingsHelp(f)))
 	b.WriteString("\n")
 
 	save := "[ Save ]"
@@ -568,8 +797,8 @@ func (m Model) startSettings() (tea.Model, tea.Cmd) {
 }
 
 // updateSettings routes one message through the open Settings overlay and applies its outcome.
-func (m Model) updateSettings(msgi tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	res := m.settings.Handle(msgi)
+func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
+	res := m.settings.Handle(msg)
 	switch res.outcome {
 	case outcomeClosed:
 		m.settings = nil

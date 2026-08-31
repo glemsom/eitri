@@ -372,6 +372,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.tx.SetSize(msgi.Width, msgi.Height)
 		m.syncWidths()
+		if m.settings != nil {
+			return m.updateSettings(msgi)
+		}
 		return m, nil
 
 	case tea.KeyPressMsg:
@@ -577,6 +580,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.tx.appendMsg("login saved")
 		return m, nil
+	}
+
+	if m.settings != nil {
+		return m.updateSettings(msg)
 	}
 
 	nm, cmd := m.composer.Update(msg)
