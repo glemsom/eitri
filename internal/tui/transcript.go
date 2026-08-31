@@ -291,14 +291,13 @@ func (t *Transcript) renderPane(band string) string {
 }
 
 // renderHistoryPane renders the scroll region for this frame, choosing between
-// the busy+follow fast path and the plain content-then-viewport path.
+// bounded busy paths and the plain content-then-viewport path.
 // renderPaneContent's concatenation of the cached committed prefix with the
 // live tail is itself an O(len(history)) copy — affordable once per commit,
-// unaffordable once per streamed token — so the fast path never calls it: the
-// reader following a running turn only ever needs the bounded busyPrefixTail
-// composed with the fresh live tail. Every other state (not busy, or busy but
-// the reader scrolled away) needs the true full content anyway for correct
-// scrollback, and takes the plain path unchanged.
+// unaffordable once per streamed token. Following readers take the tail-window
+// fast path. Readers who wheel-pause during a stream keep the already-synced
+// viewport unchanged across later deltas, so their reading position holds
+// without re-feeding the full transcript every token.
 func (t *Transcript) renderHistoryPane(reserved int) string {
 	vh := t.scrollRegionHeight(reserved)
 	if vh > 0 && t.busy && t.histFollow && !t.weaver.active {
@@ -309,6 +308,11 @@ func (t *Transcript) renderHistoryPane(reserved int) string {
 			t.renderBusyPrefix()
 		}
 		return t.renderTailWindow(t.busyPrefixTail+t.renderLiveTail(), vh)
+	}
+	if vh > 0 && t.busy && !t.histFollow && !t.weaver.active && !t.viewportStale && !t.busyPrefixDirty {
+		t.histViewport.SetWidth(t.transcriptWidth())
+		t.histViewport.SetHeight(vh)
+		return t.histViewport.View()
 	}
 	return t.renderHistoryViewport(t.renderPaneContent(), reserved)
 }
