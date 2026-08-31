@@ -99,6 +99,29 @@ func TestCopilotStreamsWithValidStoredToken(t *testing.T) {
 	}
 }
 
+func TestCopilotStreamSendsIntegrationIdentityHeaders(t *testing.T) {
+	t.Parallel()
+	var integrationID, editorVersion string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		integrationID = r.Header.Get("Copilot-Integration-Id")
+		editorVersion = r.Header.Get("Editor-Version")
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write(sseFixture(t))
+	}))
+	defer srv.Close()
+
+	cp := NewCopilot(config.CopilotConfig{AccessToken: "stored-access"}, srv.URL+"/chat/completions", srv.Client(), nil, nil)
+	if _, err := cp.Stream(context.Background(), Request{Model: "gpt-4o"}); err != nil {
+		t.Fatalf("Stream() error = %v, want nil", err)
+	}
+	if integrationID != copilotIntegrationID {
+		t.Errorf("Copilot-Integration-Id = %q, want %q", integrationID, copilotIntegrationID)
+	}
+	if editorVersion == "" {
+		t.Error("Editor-Version header missing, want non-empty")
+	}
+}
+
 func TestCopilotBearerConcurrentRefreshIsRaceFree(t *testing.T) {
 	t.Parallel()
 	refresh := func(_ context.Context, refreshToken string) (config.CopilotConfig, error) {
@@ -218,10 +241,12 @@ func TestCopilotDiscoversResponsesOnlyModelEndpoint(t *testing.T) {
 	chatReqs := 0
 	responsesReqs := 0
 	modelsReqs := 0
+	var modelsIntegrationID string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/models":
 			modelsReqs++
+			modelsIntegrationID = r.Header.Get("Copilot-Integration-Id")
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"gpt-5.4-mini","endpoints":["responses"]}]}`))
 		case "/chat/completions":
@@ -260,6 +285,9 @@ func TestCopilotDiscoversResponsesOnlyModelEndpoint(t *testing.T) {
 	}
 	if modelsReqs != 1 || chatReqs != 0 || responsesReqs != 1 {
 		t.Fatalf("path counts models=%d chat=%d responses=%d, want 1/0/1", modelsReqs, chatReqs, responsesReqs)
+	}
+	if modelsIntegrationID != copilotIntegrationID {
+		t.Errorf("models request Copilot-Integration-Id = %q, want %q", modelsIntegrationID, copilotIntegrationID)
 	}
 }
 

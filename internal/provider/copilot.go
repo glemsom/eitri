@@ -18,6 +18,18 @@ import (
 // ErrReauthRequired is returned by a Copilot batch run when no usable credential is available — a valid access token nor a refresh path.
 var ErrReauthRequired = errors.New("copilot: no valid credential; re-authenticate in the TUI, which saves a fresh token to config")
 
+// copilotIntegrationID identifies Eitri to GitHub's Copilot backend as a chat
+// surface. GitHub's Copilot API gates response shape (including whether
+// reasoning/CoT deltas are included in the stream) on this header; requests
+// that omit it can still succeed with 200s while silently missing reasoning
+// content. copilot-developer-cli is accepted for both OAuth device-flow
+// tokens and PATs (unlike vscode-chat, which PATs reject).
+const copilotIntegrationID = "copilot-developer-cli"
+
+// copilotEditorVersion is the paired Editor-Version identity header GitHub's
+// Copilot API expects alongside Copilot-Integration-Id.
+const copilotEditorVersion = "Eitri/1.0.0"
+
 // RefreshFunc renews a Copilot credential from a refresh token, non-interactively, returning a fresh token set.
 type RefreshFunc func(ctx context.Context, refreshToken string) (config.CopilotConfig, error)
 
@@ -133,6 +145,7 @@ func (cp *CopilotProvider) do(ctx context.Context, tok, url string, body []byte)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+tok)
+	setCopilotIdentityHeaders(httpReq)
 	client := resolveClient(cp.http)
 	resp, err := client.Do(httpReq)
 	if err != nil {
@@ -144,6 +157,14 @@ func (cp *CopilotProvider) do(ctx context.Context, tok, url string, body []byte)
 		return nil, &HTTPError{Code: resp.StatusCode, Body: string(body)}
 	}
 	return resp, nil
+}
+
+// setCopilotIdentityHeaders stamps the client-identity headers GitHub's
+// Copilot API expects on every request (chat/completions, responses, and
+// model discovery alike).
+func setCopilotIdentityHeaders(httpReq *http.Request) {
+	httpReq.Header.Set("Copilot-Integration-Id", copilotIntegrationID)
+	httpReq.Header.Set("Editor-Version", copilotEditorVersion)
 }
 
 func (cp *CopilotProvider) responsesURL() string {
@@ -185,6 +206,7 @@ func (cp *CopilotProvider) Models(ctx context.Context) ([]ModelInfo, error) {
 		return nil, err
 	}
 	httpReq.Header.Set("Authorization", "Bearer "+tok)
+	setCopilotIdentityHeaders(httpReq)
 	client := resolveClient(cp.http)
 	resp, err := client.Do(httpReq)
 	if err != nil {
