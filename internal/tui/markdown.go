@@ -20,6 +20,18 @@ var supportedThemes = []string{
 	"dark-daltonized", "light-daltonized", "notty", "auto",
 }
 
+type markdownRendererCacheKey struct {
+	theme string
+	width int
+}
+
+type cachedMarkdownRenderer struct {
+	mu sync.Mutex
+	r  *glamour.TermRenderer
+}
+
+var markdownRendererCache sync.Map
+
 // RenderMarkdown converts Markdown source to ANSI-styled terminal output at the given width, using the given theme.
 func RenderMarkdown(md string, width int, theme string) (string, error) {
 	if width <= 0 {
@@ -31,20 +43,35 @@ func RenderMarkdown(md string, width int, theme string) (string, error) {
 	if theme == "auto" {
 		theme = autoTheme()
 	}
-	r, err := glamour.NewTermRenderer(
-		glamour.WithStylePath(glamourStyleFor(theme)),
-		glamour.WithWordWrap(width),
-		glamour.WithPreservedNewLines(),
-	)
+	r, err := markdownRendererFor(markdownRendererCacheKey{theme: theme, width: width})
 	if err != nil {
-		return "", fmt.Errorf("build markdown renderer: %w", err)
+		return "", err
 	}
-	out, err := r.Render(md)
+	r.mu.Lock()
+	out, err := r.r.Render(md)
+	r.mu.Unlock()
 	if err != nil {
 		return "", fmt.Errorf("render markdown: %w", err)
 	}
 	out = remapMarkdownColors(out, themeFor(theme))
 	return strings.TrimSuffix(out, "\n"), nil
+}
+
+func markdownRendererFor(key markdownRendererCacheKey) (*cachedMarkdownRenderer, error) {
+	if r, ok := markdownRendererCache.Load(key); ok {
+		return r.(*cachedMarkdownRenderer), nil
+	}
+	r, err := glamour.NewTermRenderer(
+		glamour.WithStylePath(glamourStyleFor(key.theme)),
+		glamour.WithWordWrap(key.width),
+		glamour.WithPreservedNewLines(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("build markdown renderer: %w", err)
+	}
+	cached := &cachedMarkdownRenderer{r: r}
+	actual, _ := markdownRendererCache.LoadOrStore(key, cached)
+	return actual.(*cachedMarkdownRenderer), nil
 }
 
 // glamourStyleFor maps a supported theme to the glamour style that renders its markdown body.
