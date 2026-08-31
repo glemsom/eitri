@@ -11,7 +11,7 @@ Total failing tests: 50
 - [x] `TestRenderFlow_stopRevealsPartialAnswer` — fixed (already passes with `go test ./internal/tui -run '^TestRenderFlow_stopRevealsPartialAnswer$' -count=1`)
 - [x] `TestRenderHistory_streamingAssistantUsesDimmedPane` — fixed (already passes with `go test ./internal/tui -run '^TestRenderHistory_streamingAssistantUsesDimmedPane$' -count=1`)
 - [x] `TestRenderHistory_completedAssistantUsesAgentPane` — fixed (already passes with `go test ./internal/tui -run '^TestRenderHistory_completedAssistantUsesAgentPane$' -count=1`)
-- `TestRenderHistory_liveReasoningBlockUsesStreamingPane` (0.00s)
+- [x] `TestRenderHistory_liveReasoningBlockUsesStreamingPane` — fixed (already passes with `go test ./internal/tui -run '^TestRenderHistory_liveReasoningBlockUsesStreamingPane$' -count=1`)
 - `TestRenderHistory_streamingErrorPrefixUsesDimmedErrorPane` (0.00s)
 - `TestTranscript_flatFlowAnswerKeepsAgentHue` (0.00s)
 - [x] `TestRenderRegions_HistoryVsBandSeparation` — fixed (test expectation updated for slash-menu status strip; passes with `go test ./internal/tui -run '^TestRenderRegions_HistoryVsBandSeparation$' -count=1`)
