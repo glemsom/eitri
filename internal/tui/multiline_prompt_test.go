@@ -52,3 +52,14 @@ func TestRenderPromptMarkdownPreservesExactNewlines(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderPromptMarkdownPreservesTaskListMarker(t *testing.T) {
+	md, err := RenderPromptMarkdown("- [ ] Give me a a line of random text", 80, "dark")
+	if err != nil {
+		t.Fatalf("RenderPromptMarkdown: %v", err)
+	}
+	plain := ansiStrip(md)
+	if !strings.Contains(plain, "- [ ] Give me a a line of random text") {
+		t.Fatalf("prompt card must echo the user's literal task-list marker, got:\n%q\n%s", plain, plain)
+	}
+}

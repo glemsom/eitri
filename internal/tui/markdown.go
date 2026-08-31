@@ -166,25 +166,9 @@ func reattachBubbleBackground(s string, th Theme) string {
 	})
 }
 
-// RenderPromptMarkdown converts a user-entered prompt to ANSI-styled terminal output while preserving literal newlines. Glamour treats single newlines inside a paragraph as soft breaks and collapses them to spaces, which is correct for Markdown answers but wrong for echoing the user's prompt back to them. Render each entered line independently so the prompt card mirrors the submitted shape.
+// RenderPromptMarkdown returns a user-entered prompt for the prompt card while preserving the literal text the user submitted. Assistant text renders as Markdown, but the prompt echo is a record of input; rendering it through glamour would turn Markdown-looking input such as "- [ ] task" into a list item and drop the leading dash.
 func RenderPromptMarkdown(prompt string, width int, theme string) (string, error) {
-	parts := strings.Split(prompt, "\n")
-	for i, part := range parts {
-		if part == "" {
-			continue
-		}
-		rendered, err := RenderMarkdown(part, width, theme)
-		if err != nil {
-			return "", err
-		}
-		// glamour wraps each independently-rendered paragraph in a leading and a
-		// trailing blank row (RenderMarkdown trims only the one trailing newline), so
-		// every part comes back carrying a phantom blank line above and below. Strip
-		// both edges so each part contributes exactly its entered rows and the join
-		// below introduces precisely the newlines the user typed — no more, no fewer.
-		parts[i] = strings.Trim(rendered, "\n")
-	}
-	return strings.Join(parts, "\n"), nil
+	return lipgloss.NewStyle().Width(width).Render(prompt), nil
 }
 
 // renderUserPromptCard renders a user prompt as the carded bubble. glamour's per-token SGR resets would clear the card's Background, so reattachBubbleBackground re-asserts the bubble tint after every reset. glamour also pre-pads rows and lipgloss's Width() alignment then emits a couple of unstyled trailing cells at the right edge, so every glamour row is padded to the content width (w-4) with the bubble background and Width() is not used — lipgloss's 2-col padding closes the box with no extra width-fill left to trip on (benchmark §4.1).
