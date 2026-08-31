@@ -56,11 +56,7 @@ func scriptedBashCatTurn(t *testing.T) *provider.Scripted {
 
 func TestDispatchBashThenCatReturnsSandboxOutput(t *testing.T) {
 	t.Parallel()
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatalf("home dir: %v", err)
-	}
-	workspace := filepath.Join(home, ".eitri-engine-ws")
+	workspace := filepath.Join(t.TempDir(), ".eitri-engine-ws")
 	if err := os.MkdirAll(workspace, 0o700); err != nil {
 		t.Fatalf("mkdir workspace: %v", err)
 	}

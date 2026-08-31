@@ -42,11 +42,7 @@ func scriptedBashOnly() *provider.Scripted {
 }
 
 func TestBatchDispatchesToolThroughRegistry(t *testing.T) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatalf("home dir: %v", err)
-	}
-	ws := filepath.Join(home, ".eitri-app-ws")
+	ws := filepath.Join(t.TempDir(), ".eitri-app-ws")
 	if err := os.MkdirAll(ws, 0o700); err != nil {
 		t.Fatalf("mkdir workspace: %v", err)
 	}
@@ -110,11 +106,7 @@ func scriptedBrowserTurn() *provider.Scripted {
 }
 
 func TestBatchOpenInBrowserThroughEngineSeam(t *testing.T) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatalf("home dir: %v", err)
-	}
-	ws := filepath.Join(home, ".eitri-app-br")
+	ws := filepath.Join(t.TempDir(), ".eitri-app-br")
 	if err := os.MkdirAll(ws, 0o700); err != nil {
 		t.Fatalf("mkdir workspace: %v", err)
 	}

@@ -113,11 +113,7 @@ func bashHeredocSedTurn(t *testing.T) *provider.Scripted {
 }
 
 func TestBatchHeredocWriteAndSedEditRoundTrip(t *testing.T) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatalf("home dir: %v", err)
-	}
-	ws := filepath.Join(home, ".eitri-app-heredoc-sed")
+	ws := filepath.Join(t.TempDir(), ".eitri-app-heredoc-sed")
 	if err := os.MkdirAll(ws, 0o700); err != nil {
 		t.Fatalf("mkdir workspace: %v", err)
 	}

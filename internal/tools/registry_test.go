@@ -11,16 +11,11 @@ import (
 
 func newTestRegistry(t *testing.T, rr Runner) (*Registry, string) {
 	t.Helper()
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatalf("home dir: %v", err)
-	}
-	top := filepath.Join(home, ".eitri-test-reg-"+strings.ReplaceAll(t.Name(), "/", "_"))
+	top := filepath.Join(t.TempDir(), ".eitri-test-reg-"+strings.ReplaceAll(t.Name(), "/", "_"))
 	ws := filepath.Join(top, "proj")
 	if err := os.MkdirAll(ws, 0o700); err != nil {
 		t.Fatalf("mkdir workspace: %v", err)
 	}
-	t.Cleanup(func() { _ = os.RemoveAll(top) })
 	if rr == nil {
 		rr = &recordingRunner{out: &Output{Stdout: "ls-output\n"}}
 	}

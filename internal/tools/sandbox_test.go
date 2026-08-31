@@ -72,7 +72,7 @@ func TestSandboxBuildsBwrapArgv(t *testing.T) {
 func TestSandboxRunPropagatesOutput(t *testing.T) {
 	t.Parallel()
 	rr := &recordingRunner{out: &Output{Stdout: "hello\n", Stderr: "warn\n"}}
-	sb := NewSandbox("/ws", "/tmp/eitri-z", rr)
+	sb := NewSandbox("/ws", t.TempDir(), rr)
 	o, err := sb.Run(context.Background(), "ls")
 	if err != nil {
 		t.Fatalf("Run() error = %v, want nil", err)
@@ -86,7 +86,7 @@ func TestSandboxRunPropagatesError(t *testing.T) {
 	t.Parallel()
 	sentinel := errors.New("boom")
 	rr := &recordingRunner{err: sentinel}
-	sb := NewSandbox("/ws", "/tmp/eitri-z", rr)
+	sb := NewSandbox("/ws", t.TempDir(), rr)
 	_, err := sb.Run(context.Background(), "false")
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("Run() error = %v, want sentinel", err)
@@ -221,15 +221,10 @@ func TestSandboxRealBwrapIntegration(t *testing.T) {
 
 func newNonRemappedWorkspace(t *testing.T) string {
 	t.Helper()
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatalf("home dir: %v", err)
-	}
-	ws := filepath.Join(home, ".eitri-test-ws-"+strings.ReplaceAll(t.Name(), "/", "_"))
+	ws := filepath.Join(t.TempDir(), ".eitri-test-ws-"+strings.ReplaceAll(t.Name(), "/", "_"))
 	if err := os.MkdirAll(ws, 0o700); err != nil {
 		t.Fatalf("create workspace: %v", err)
 	}
-	t.Cleanup(func() { _ = os.RemoveAll(ws) })
 	return ws
 }
 
