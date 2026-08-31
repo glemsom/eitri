@@ -231,9 +231,22 @@ func TestModel_statusAndSlashPinnedAboveComposer(t *testing.T) {
 		t.Fatalf("precondition: grown composer should span >= 2 rows, got %d", len(compLines))
 	}
 
-	compStart := len(lines) - len(compLines)
-	if !strings.HasSuffix(strings.TrimRight(content, "\n"), strings.TrimRight(comp, "\n")) {
-		t.Fatalf("composer must be the bottom region, got:\n%q", content)
+	compStart := -1
+	for i, ln := range lines {
+		if strings.Contains(ln, "Ask Eitri") {
+			compStart = i
+			break
+		}
+	}
+	if compStart == -1 {
+		t.Fatalf("composer panel missing from content, got:\n%q", content)
+	}
+	compEnd := compStart + len(compLines) + 2 // titled panel borders around textarea rows
+	if compEnd > len(lines) {
+		t.Fatalf("composer panel extends past rendered content (start %d, composer rows %d, total %d):\n%q", compStart, len(compLines), len(lines), content)
+	}
+	if !strings.Contains(ansiStrip(lines[compEnd-1]), "╯") {
+		t.Fatalf("composer panel must end with its bottom border, got:\n%q", content)
 	}
 
 	statusIdx, slashIdx := -1, -1
