@@ -16,7 +16,7 @@ Total failing tests: 50
 - [x] `TestTranscript_flatFlowAnswerKeepsAgentHue` — fixed (already passes with `go test ./internal/tui -run '^TestTranscript_flatFlowAnswerKeepsAgentHue$' -count=1`)
 - [x] `TestRenderRegions_HistoryVsBandSeparation` — fixed (test expectation updated for slash-menu status strip; passes with `go test ./internal/tui -run '^TestRenderRegions_HistoryVsBandSeparation$' -count=1`)
 - `TestDragSelect_wideCharCopyMatchesHighlight` (0.01s)
-- `TestDragSelect_boundaryInsideWideCharNoPanic` (0.02s)
+- [x] `TestDragSelect_boundaryInsideWideCharNoPanic` — fixed (already passes with `go test ./internal/tui -run '^TestDragSelect_boundaryInsideWideCharNoPanic$' -count=1`)
 - `TestModelRailStaysOnScreen` (0.01s)
 - [x] `TestModel_stylingBandCoherent` — fixed (test expectation updated for styled composer panel rendering; passes with `go test ./internal/tui -run '^TestModel_stylingBandCoherent$' -count=1`)
 - `TestModel_stylingStreamingThinkingPaneVariant` (0.00s)
