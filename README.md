@@ -108,9 +108,7 @@ Full detail lives in [`docs/sessions.md`](docs/sessions.md).
 
 | Key | Action |
 | --- | --- |
-| `e` | Expand all blocks |
-| `E` | Collapse all blocks |
-| `ctrl+e` | Toggle expanded view |
+| `ctrl+e` | Toggle expanded/collapsed view |
 | `ctrl+x` | Narrow the right pane |
 | `ctrl+z` | Widen the right pane |
 
@@ -135,7 +133,7 @@ Full detail lives in [`docs/sessions.md`](docs/sessions.md).
 
 | Term | Meaning |
 | --- | --- |
-| `expanded mode` | `e`/`E` or `ctrl+e` expand or collapse all blocks |
+| `expanded mode` | `ctrl+e` toggles all tool and chain-of-thought blocks |
 | `block focus` | `tab` to focus, `enter` to expand one block |
 | `drag-select` | Click and drag to select text |
 | `right rail` | Stats, context, and model info |

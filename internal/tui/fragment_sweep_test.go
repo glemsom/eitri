@@ -276,8 +276,8 @@ func TestTranscript_gatedLiveTurnEnumeratesNoReasoningBlocks(t *testing.T) {
 }
 
 // TestModel_collapseAllAndExpandAllCoverCoalescedReasoning locks AC3 of
-// live reasoning block — collapse-all (E) hides its body, Enter on the focused
-// block re-expands it against the mode, and expand-all (ctrl+e) shows it again.
+// live reasoning block — ctrl+e collapse-all hides its body, Enter on the focused
+// block re-expands it against the mode, and ctrl+e again shows it all.
 func TestModel_collapseAllAndExpandAllCoverCoalescedReasoning(t *testing.T) {
 	m := newStreamingModel()
 	m = resize(t, m)
@@ -289,8 +289,9 @@ func TestModel_collapseAllAndExpandAllCoverCoalescedReasoning(t *testing.T) {
 		t.Fatalf("precondition: one coalesced reasoning block expanded, got %d headers:\n%s", n, view(m))
 	}
 
-	// E: collapse-all hides the reasoning body, one hint remains.
-	m = keypress(t, m, "E")
+	// ctrl+e enters expanded mode; ctrl+e again collapses all, leaving one hint.
+	m = keypress(t, m, "ctrl+e")
+	m = keypress(t, m, "ctrl+e")
 	plain := ansiStrip(view(m))
 	if strings.Contains(plain, "alpha1 beta2 gamma3") {
 		t.Errorf("collapse-all must hide the reasoning body, got:\n%s", plain)
@@ -307,7 +308,7 @@ func TestModel_collapseAllAndExpandAllCoverCoalescedReasoning(t *testing.T) {
 		t.Errorf("Enter on the focused reasoning block must re-expand it in collapse-all, got:\n%s", plain)
 	}
 
-	// ctrl+e: expand-all shows the reasoning again.
+	// ctrl+e again: expand-all shows the reasoning again.
 	m = keypress(t, m, "ctrl+e")
 	plain = ansiStrip(view(m))
 	if !strings.Contains(plain, "alpha1 beta2 gamma3") {

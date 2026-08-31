@@ -886,7 +886,16 @@ func (t *Transcript) toggleExpandAll() bool {
 	return t.expandAll
 }
 
-// setExpandAll enters or leaves the e / Ctrl+E expand-all mode directly.
+func (t *Transcript) toggleExpandedMode() bool {
+	if t.expandAll {
+		t.setCollapseAll(true)
+		return false
+	}
+	t.setExpandAll(true)
+	return true
+}
+
+// setExpandAll enters or leaves the Ctrl+E expand-all mode directly.
 // Entering clears the per-block collapse forces so every block expands;
 // leaving returns to the default mode with per-block state intact.
 func (t *Transcript) setExpandAll(v bool) {
@@ -899,7 +908,7 @@ func (t *Transcript) setExpandAll(v bool) {
 	t.busyPrefixDirty = true
 }
 
-// setCollapseAll enters or leaves the E collapse-all-to-hints mode: every
+// setCollapseAll enters or leaves the collapse-all-to-hints mode: every
 // collapsible block collapses to its hint/one-liner regardless of the defaults.
 // Entering clears the per-block expand forces so the collapse is total; a
 // fresh per-block toggle (Enter on the focused block) can still re-expand one.

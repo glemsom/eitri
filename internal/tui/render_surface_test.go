@@ -113,7 +113,7 @@ func TestRender_bandHints(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 
 	got := bandHints()
-	want := "ctrl+s settings . ctrl+o copy . e expand . E collapse . shift+enter newline"
+	want := "ctrl+s settings . ctrl+o copy . ctrl+e expand/collapse . shift+enter newline"
 	if got != want {
 		t.Errorf("bandHints() = %q, want %q", got, want)
 	}

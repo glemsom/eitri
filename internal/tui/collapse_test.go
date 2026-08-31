@@ -231,9 +231,14 @@ func TestModel_eExpandsAllECollapseAllHints(t *testing.T) {
 		t.Fatalf("completed turn must start collapsed, got: %q", view(m))
 	}
 
-	m = keypress(t, m, "e")
+	m = keypress(t, m, "ctrl+e")
 	if !strings.Contains(ansiStrip(view(m)), "hidden reasoning") {
-		t.Errorf("e must expand the CoT block, got: %q", view(m))
+		t.Errorf("ctrl+e must expand the CoT block, got: %q", view(m))
+	}
+
+	m = keypress(t, m, "ctrl+e")
+	if strings.Contains(ansiStrip(view(m)), "hidden reasoning") {
+		t.Errorf("second ctrl+e must collapse the CoT block, got: %q", view(m))
 	}
 
 	nm, _ := m.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModShift})
@@ -242,9 +247,14 @@ func TestModel_eExpandsAllECollapseAllHints(t *testing.T) {
 		t.Errorf("Shift+E as the first draft letter must reach the composer, got %q", got)
 	}
 
+	m = keypress(t, m, "e")
+	if got := m.composer.Value(); got != "Ee" {
+		t.Errorf("plain e must reach the composer, got %q", got)
+	}
+
 	// Typing a letter with a draft must type, not expand.
 	m = typeText(t, m, "again")
-	if got := m.composer.Value(); got != "Eagain" {
+	if got := m.composer.Value(); got != "Eeagain" {
 		t.Errorf("typing with a draft must reach the composer, got %q", got)
 	}
 }

@@ -19,9 +19,7 @@
   `?`          show help
   `pgup/pgdn`  scroll history
   p PANES
-  `e`       expand all blocks
-  `E`       collapse all blocks
-  `ctrl+e`  toggle expanded view
+  `ctrl+e`  toggle expanded/collapsed view
   `ctrl+x`  narrow pane
   `ctrl+z`  widen pane
   a ACTIONS
@@ -30,7 +28,7 @@
 
 # CONCEPTS
 
-  `expanded mode`  e/E or ctrl+e expand or collapse all blocks
+  `expanded mode`  ctrl+e toggles all tool and reasoning blocks
   `block focus`    tab to focus, enter to expand one block
   `drag-select`    click and drag to select text
   `right rail`     stats, context, and model info

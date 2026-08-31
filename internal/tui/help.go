@@ -37,9 +37,7 @@ func helpView() string {
 		{"`pgup/pgdn`", "scroll history"},
 	})
 	writeHelpCategory(&b, "PANES", []helpRow{
-		{"`e`", "expand all blocks"},
-		{"`E`", "collapse all blocks"},
-		{"`ctrl+e`", "toggle expanded view"},
+		{"`ctrl+e`", "toggle expanded/collapsed view"},
 		{"`ctrl+x`", "narrow pane"},
 		{"`ctrl+z`", "widen pane"},
 	})
@@ -50,7 +48,7 @@ func helpView() string {
 
 	b.WriteString("\n# CONCEPTS\n\n")
 	writeHelpRows(&b, []helpRow{
-		{"`expanded mode`", "e/E or ctrl+e expand or collapse all blocks"},
+		{"`expanded mode`", "ctrl+e toggles all tool and reasoning blocks"},
 		{"`block focus`", "tab to focus, enter to expand one block"},
 		{"`drag-select`", "click and drag to select text"},
 		{"`right rail`", "stats, context, and model info"},

@@ -448,19 +448,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.copyTranscript()
 			return m, nil
 		case "ctrl+e":
-			m.tx.toggleExpandAll()
-			return m, nil
-		case "e":
-			if m.composer.Value() != "" {
-				break // composing: the letter goes to the textarea
-			}
-			m.tx.setExpandAll(true)
-			return m, nil
-		case "E":
-			if m.composer.Value() != "" || !m.tx.busy {
-				break // composing: the letter goes to the textarea
-			}
-			m.tx.setCollapseAll(true)
+			m.tx.toggleExpandedMode()
 			return m, nil
 		case "ctrl+j", "shift+enter":
 			if m.tx.busy {
