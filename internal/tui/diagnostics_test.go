@@ -75,3 +75,31 @@ func TestRenderStatsRecordFrameMetadataWithoutContent(t *testing.T) {
 		t.Fatalf("stats must include phase without transcript content: %+v", f)
 	}
 }
+
+func TestRenderDiagnosticSummariesArePeriodicBoundedAndContentFree(t *testing.T) {
+	m := NewModelCfg(Dependencies{Diagnostics: DiagnosticsConfig{RenderStats: true, RenderSummaryEvery: 2, RenderSummaryLimit: 2}})
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = nm.(Model)
+
+	for range 5 {
+		_ = m.View()
+	}
+
+	summaries := m.RenderDiagnosticSummaries()
+	if len(summaries) != 2 {
+		t.Fatalf("summaries = %d, want bounded last 2", len(summaries))
+	}
+	first := summaries[0]
+	if first.StartFrame != 1 || first.EndFrame != 2 || first.FrameCount != 2 || first.FrameRate <= 0 {
+		t.Fatalf("first summary missing frame count/rate window: %+v", first)
+	}
+	if first.AverageRenderDuration <= 0 || first.MaxRenderDuration <= 0 || first.AverageOutputBytes == 0 || first.MaxOutputBytes == 0 {
+		t.Fatalf("summary missing render cost/output size: %+v", first)
+	}
+	if first.Phase != "idle" || first.Busy || !first.Follow || first.ViewportWidth <= 0 || first.ViewportHeight <= 0 || first.ScrollOffset != 0 {
+		t.Fatalf("summary missing phase/viewport/follow facts: %+v", first)
+	}
+	if first.Evidence != "in-memory render diagnostics: RenderDiagnosticFrames and RenderDiagnosticSummaries" {
+		t.Fatalf("evidence = %q", first.Evidence)
+	}
+}
