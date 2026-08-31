@@ -56,6 +56,8 @@ type RenderDiagnosticSummary struct {
 	Phase                 string
 	Busy                  bool
 	Follow                bool
+	TerminalWidth         int
+	TerminalHeight        int
 	ViewportWidth         int
 	ViewportHeight        int
 	ScrollOffset          int
@@ -167,6 +169,8 @@ func summarizeRenderFrames(frames []RenderFrameStats) RenderDiagnosticSummary {
 		Phase:                 last.Phase,
 		Busy:                  last.Busy,
 		Follow:                last.Follow,
+		TerminalWidth:         last.TerminalWidth,
+		TerminalHeight:        last.TerminalHeight,
 		ViewportWidth:         last.ViewportWidth,
 		ViewportHeight:        last.ViewportHeight,
 		ScrollOffset:          last.ScrollOffset,

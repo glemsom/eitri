@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -76,6 +77,55 @@ func TestRenderStatsRecordFrameMetadataWithoutContent(t *testing.T) {
 	if f.Phase == "" {
 		t.Fatalf("stats must include phase without transcript content: %+v", f)
 	}
+}
+
+func TestRenderStatsTrackResizeScrollAndFollowThroughModel(t *testing.T) {
+	m := NewModelCfg(Dependencies{Turn: streamingTurn, Events: NewEventFeed(), Diagnostics: DiagnosticsConfig{RenderStats: true, RenderSummaryEvery: 2}})
+	m = resizeTo(t, m, 80, 24)
+	_ = m.View()
+
+	m = resizeTo(t, m, 60, 10)
+	m = longStreamModelWithDiagnostics(t, m)
+	_ = m.View()
+
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyPgUp})
+	_ = m.View()
+
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyEnd})
+	_ = m.View()
+
+	frames := m.RenderDiagnosticFrames()
+	if len(frames) != 4 {
+		t.Fatalf("render diagnostic frames = %d, want 4", len(frames))
+	}
+	streaming := frames[1]
+	if streaming.TerminalWidth != 60 || streaming.TerminalHeight != 10 || streaming.ViewportHeight <= 0 {
+		t.Fatalf("resized terminal/viewport facts missing: %+v", streaming)
+	}
+	paused := frames[2]
+	if paused.Follow || paused.ScrollOffset == streaming.ScrollOffset {
+		t.Fatalf("scroll diagnostics must show paused follow and changed scroll offset: before=%+v paused=%+v", streaming, paused)
+	}
+	resumed := frames[3]
+	if !resumed.Follow || resumed.ScrollOffset <= paused.ScrollOffset {
+		t.Fatalf("End diagnostics must show resumed follow at newer scroll offset: paused=%+v resumed=%+v", paused, resumed)
+	}
+
+	summaries := m.RenderDiagnosticSummaries()
+	last := summaries[len(summaries)-1]
+	if last.TerminalWidth != 60 || last.TerminalHeight != 10 || !last.Follow || last.ViewportWidth <= 0 || last.ViewportHeight <= 0 || last.ScrollOffset != resumed.ScrollOffset {
+		t.Fatalf("summary must carry latest terminal, viewport, and follow facts: %+v", last)
+	}
+}
+
+func longStreamModelWithDiagnostics(t *testing.T, m Model) Model {
+	t.Helper()
+	m = typeText(t, m, "prompt")
+	m, _ = submitBusy(t, m)
+	for i := 0; i < 40; i++ {
+		m = applyDelta(t, m, fmt.Sprintf("token%d %s", i, strings.Repeat("w", 30)))
+	}
+	return m
 }
 
 func TestRenderDiagnosticSummariesArePeriodicBoundedAndContentFree(t *testing.T) {
