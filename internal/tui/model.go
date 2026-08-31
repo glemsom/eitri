@@ -113,6 +113,7 @@ type Dependencies struct {
 	Login               func(ctx context.Context, onCode func(LoginCode)) (config.Config, error)
 	Skills              *SkillsSurface
 	Telemetry           *Telemetry
+	Diagnostics         DiagnosticsConfig
 	Events              *EventFeed
 	Rail                *Rail
 	ThinkingSuppression func() bool
@@ -176,7 +177,8 @@ type Model struct {
 	skillCancel  context.CancelFunc
 	skillSeq     int
 
-	telemetry *Telemetry
+	telemetry   *Telemetry
+	diagnostics DiagnosticsConfig
 
 	runtime *TurnRuntime
 
@@ -254,6 +256,7 @@ func NewModelCfg(d Dependencies) Model {
 		slash:        NewSkillActivation(d),
 		mention:      NewMention(d.WorkspacePath),
 		telemetry:    d.Telemetry,
+		diagnostics:  d.Diagnostics,
 		liveKey:      d.LiveKey,
 		clipboard:    newClipboard(d),
 		history:      newModelHistory(d.HistoryPath),
