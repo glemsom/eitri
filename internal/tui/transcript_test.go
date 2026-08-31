@@ -160,8 +160,8 @@ func TestTranscript_ownsRailSurface(t *testing.T) {
 		t.Fatalf("Transcript with a wired rail must report it visible")
 	}
 
-	if bw := tx.bandWidth(); bw != presizeTerminalWidth-2 {
-		t.Errorf("bandWidth = %d, want %d", bw, presizeTerminalWidth-2)
+	if bw := tx.bandWidth(); bw != presizeTerminalWidth {
+		t.Errorf("bandWidth = %d, want %d", bw, presizeTerminalWidth)
 	}
 
 	if bw, tw := tx.bandWidth(), tx.transcriptWidth(); tw >= bw {

@@ -173,13 +173,16 @@ func (t Transcript) transcriptWidth() int {
 	return w
 }
 
-// bandWidth returns the column width the bottom band renders at: the terminal width (or a sane non-composer default before the first resize lands) minus the 2-col gutter.
+// bandWidth returns the column width the bottom band renders at: the terminal width, or a sane non-composer default before the first resize lands.
 func (t Transcript) bandWidth() int {
 	base := t.width
 	if base == 0 {
 		base = presizeTerminalWidth // no resize yet; use a sane full-width start
 	}
-	return base - 2
+	if base < 1 {
+		base = 1
+	}
+	return base
 }
 
 // scrollRegionHeight returns the height in rows of the history scroll region — the rows left over by the fixed bottom band.

@@ -36,6 +36,21 @@ func bandRowsFrom(plain string) (top int, rows []string) {
 	return top, lines[top:]
 }
 
+func TestModelComposerBandReachesRightTerminalEdge(t *testing.T) {
+	t.Parallel()
+	m := railBandModel(t, 80, 20)
+	plain := plain(view(m))
+	_, band := bandRowsFrom(plain)
+	if len(band) == 0 {
+		t.Fatalf("composer band not found in frame:\n%q", view(m))
+	}
+	for i, row := range band {
+		if w := plainWidth(row); w != 80 {
+			t.Errorf("composer band row %d width = %d, want 80 so a width-80 terminal has no extra right gutter cell", i, w)
+		}
+	}
+}
+
 func TestModelBandSpansFullTerminalWidthTall(t *testing.T) {
 	t.Parallel()
 	m := railBandModel(t, 120, 40)
@@ -45,8 +60,8 @@ func TestModelBandSpansFullTerminalWidthTall(t *testing.T) {
 	if bw, tw := m.tx.bandWidth(), m.tx.transcriptWidth(); bw <= tw {
 		t.Errorf("bandWidth = %d must exceed rail-shrunk transcriptWidth = %d (band spans full terminal width, history stays rail-shrunk)", bw, tw)
 	}
-	if w := m.tx.bandWidth(); w != 120-2 {
-		t.Errorf("bandWidth = %d, want full terminal width minus gutter = %d", w, 120-2)
+	if w := m.tx.bandWidth(); w != 120 {
+		t.Errorf("bandWidth = %d, want full terminal width = %d", w, 120)
 	}
 
 	plain := plain(view(m))
@@ -56,8 +71,8 @@ func TestModelBandSpansFullTerminalWidthTall(t *testing.T) {
 	}
 
 	for i, r := range band {
-		if w := plainWidth(r); w != 120-2 {
-			t.Errorf("band row %d (frame row %d) is %d wide, want full terminal width %d (blank corner must be gone)", i, sep+i, w, 120-2)
+		if w := plainWidth(r); w != 120 {
+			t.Errorf("band row %d (frame row %d) is %d wide, want full terminal width %d", i, sep+i, w, 120)
 		}
 	}
 }
@@ -218,12 +233,12 @@ func TestModelBandSpansFullWidthUnderRailTallSweep(t *testing.T) {
 			if bw, tw := m.tx.bandWidth(), m.tx.transcriptWidth(); bw <= tw {
 				t.Errorf("h=%d bandWidth=%d must exceed rail-shrunk transcriptWidth=%d across the tall range", h, bw, tw)
 			}
-			if w := m.tx.bandWidth(); w != 120-2 {
-				t.Errorf("h=%d bandWidth=%d, want full terminal width minus gutter=%d", h, w, 120-2)
+			if w := m.tx.bandWidth(); w != 120 {
+				t.Errorf("h=%d bandWidth=%d, want full terminal width=%d", h, w, 120)
 			}
 
 			sep, rows := bandRowsForHeight(t, h)
-			want := 120 - 2
+			want := 120
 			for i, r := range rows {
 				if got := plainWidth(r); got != want {
 					t.Errorf("h=%d %s row (frame row %d) is %d wide, want full terminal width %d (dead corner under rail must be gone)", h, rowRole(i), sep+i, got, want)
