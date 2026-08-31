@@ -350,8 +350,8 @@ func TestDragSelect_wideCharCopyMatchesHighlight(t *testing.T) {
 	var copied string
 	m, _, _, answerRow := newWideAnswerModel(t, &copied)
 
-	m = mustUpdate(t, m, dragMsg("press", 4, answerRow))
-	m = mustUpdate(t, m, dragMsg("motion", 9, answerRow))
+	m = mustUpdate(t, m, dragMsg("press", 3, answerRow))
+	m = mustUpdate(t, m, dragMsg("motion", 8, answerRow))
 	if spans := selectionSpans(view(m), defaultTheme.selectionBgSGR()); strings.Join(spans, "") != "ab你de" {
 		t.Errorf("during-drag highlight spans = %q, want %q", spans, "ab你de")
 	}
@@ -367,9 +367,9 @@ func TestDragSelect_boundaryInsideWideCharNoPanic(t *testing.T) {
 	var copied string
 	m, _, _, answerRow := newWideAnswerModel(t, &copied)
 
-	m = mustUpdate(t, m, dragMsg("press", 5, answerRow))
-	m = mustUpdate(t, m, dragMsg("motion", 7, answerRow))
-	mustUpdate(t, m, dragMsg("release", 7, answerRow))
+	m = mustUpdate(t, m, dragMsg("press", 4, answerRow))
+	m = mustUpdate(t, m, dragMsg("motion", 6, answerRow))
+	mustUpdate(t, m, dragMsg("release", 6, answerRow))
 	if copied != "b你" {
 		t.Errorf("boundary-inside-wide-char copy = %q, want %q", copied, "b你")
 	}

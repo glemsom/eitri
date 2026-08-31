@@ -350,7 +350,7 @@ func TestModel_themeSeam(t *testing.T) {
 
 	alt := defaultTheme
 	alt.accent = lipgloss.Color("#FF0000")
-	alt.agentPaneStyle = borderedPane(alt.accent)
+	alt.agentPaneStyle = answerPane(alt.accent)
 	m.tx.theme = alt
 	m.tx.layout.dirty = true
 

@@ -296,13 +296,13 @@ func newTheme(accent, err, ok, shell, file, web, skill, bubble, selectionBg colo
 		userBubbleStyle: lipgloss.NewStyle().
 			Background(bubble).
 			PaddingLeft(2).PaddingRight(2).PaddingTop(1).PaddingBottom(1),
-		agentPaneStyle:             borderedPane(accent),
+		agentPaneStyle:             answerPane(accent),
 		thinkingPaneStyle:          borderedPane(dimmed(accent, 0.6)).Italic(true),
 		streamingThinkingPaneStyle: borderedPane(dimmed(accent, 0.45)).Italic(true),
-		errorPaneStyle:             borderedPane(err),
-		stoppedPaneStyle:           borderedPane(dimmed(accent, 0.6)),
-		streamingPaneStyle:         borderedPane(dimmed(accent, 0.45)),
-		streamingErrorPaneStyle:    borderedPane(dimmed(err, 0.45)),
+		errorPaneStyle:             answerPane(err),
+		stoppedPaneStyle:           answerPane(dimmed(accent, 0.6)),
+		streamingPaneStyle:         answerPane(dimmed(accent, 0.45)),
+		streamingErrorPaneStyle:    answerPane(dimmed(err, 0.45)),
 		thinkingStyle:              lipgloss.NewStyle().Faint(true).Italic(true).Foreground(accent),
 		toolStyle:                  lipgloss.NewStyle().Faint(true),
 		toolShellStyle:             lipgloss.NewStyle().Foreground(shell),
@@ -355,7 +355,16 @@ func dimmed(c color.Color, f float64) color.Color {
 		uint8(float64(r>>8)*f), uint8(float64(g>>8)*f), uint8(float64(b>>8)*f)))
 }
 
-// borderedPane builds the shared assistant pane style with one-cell left padding and the given accent color, keeping answer, reasoning, streaming, and error panes visually related without adding copy-hostile border glyphs.
+// answerPane builds the shared assistant answer style with one-cell left padding
+// and the given accent color, without adding copy-hostile border glyphs.
+func answerPane(c color.Color) lipgloss.Style {
+	return lipgloss.NewStyle().
+		Foreground(c).
+		BorderForeground(c).
+		PaddingLeft(1)
+}
+
+// borderedPane builds the shared reasoning pane style with one-cell left padding and the given accent color.
 func borderedPane(c color.Color) lipgloss.Style {
 	return lipgloss.NewStyle().
 		Border(lipgloss.Border{Left: g("│", "|")}).

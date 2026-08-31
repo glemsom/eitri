@@ -603,7 +603,7 @@ func TestRenderHistory_streamingAssistantUsesDimmedPane(t *testing.T) {
 	}
 }
 
-func TestRenderHistory_completedAssistantUsesAgentPane(t *testing.T) {
+func TestRenderHistory_completedAssistantHasNoCopyHostileLeftBar(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 	var hist strings.Builder
@@ -611,14 +611,12 @@ func TestRenderHistory_completedAssistantUsesAgentPane(t *testing.T) {
 	tx.renderHistory(&hist, nil, nil)
 	rendered := hist.String()
 
-	if !strings.Contains(ansiStrip(rendered), "done") {
+	line := lineContaining(rendered, "done")
+	if line == "" {
 		t.Fatalf("completed render must contain message content, got: %q", rendered)
 	}
-
-	gotColor := borderColorCode(rendered)
-	expectedColor := borderColorStr(th.agentPaneStyle)
-	if gotColor != expectedColor {
-		t.Errorf("completed assistant border must use agentPaneStyle color %q, got %q", expectedColor, gotColor)
+	if strings.Contains(ansiStrip(line), g("│", "|")) {
+		t.Errorf("completed assistant reply must not render a left bar, got line: %q", line)
 	}
 }
 
@@ -777,17 +775,15 @@ func TestRenderHistory_streamingErrorPrefixUsesDimmedErrorPane(t *testing.T) {
 
 func borderColorCode(s string) string {
 	for _, line := range strings.Split(s, "\n") {
-		if strings.Contains(line, g("\u2502", "|")) {
-			start := strings.Index(line, "\x1b[38;2;")
-			if start == -1 {
-				continue
-			}
-			end := strings.IndexByte(line[start+len("\x1b[38;2;"):], 'm')
-			if end == -1 {
-				continue
-			}
-			return line[start+len("\x1b[38;2;") : start+len("\x1b[38;2;")+end]
+		start := strings.Index(line, "\x1b[38;2;")
+		if start == -1 {
+			continue
 		}
+		end := strings.IndexByte(line[start+len("\x1b[38;2;"):], 'm')
+		if end == -1 {
+			continue
+		}
+		return line[start+len("\x1b[38;2;") : start+len("\x1b[38;2;")+end]
 	}
 	return ""
 }
