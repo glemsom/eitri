@@ -227,7 +227,6 @@ const (
 
 // openSettingsOverlay seeds the overlay from the loaded config + discovery,
 // borrowing the live theme and telemetry for rendering (the cost readout was
-// removed in issue #374). When no models are known yet and discovery is
 // available it arms the loading state and returns the discovery command.
 func openSettingsOverlay(cfg config.Config, models []string, theme Theme, telemetry *Telemetry, thinkingSuppressed func() bool, deps Dependencies) (*SettingsOverlay, tea.Cmd) {
 	if cfg.Provider == "" {

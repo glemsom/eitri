@@ -15,7 +15,6 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// supportedThemes lists the render themes the user can pick from (issue #129).
 var supportedThemes = []string{
 	"dark", "light", "dracula", "tokyo-night", "pink", "nord", "gruvbox", "solarized",
 	"dark-daltonized", "light-daltonized", "notty", "auto",

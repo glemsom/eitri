@@ -7,7 +7,6 @@ import (
 // TestTurnSessionFullTurnContract drives one complete turn — submit → stream →
 // tool calls → complete — through Begin/Fold/Commit alone. No Bubble Tea loop,
 // no direct transcript writes: the contract that the four verbs are the only
-// way a turn's life touches the transcript (issue #528).
 func TestTurnSessionFullTurnContract(t *testing.T) {
 	s := NewTurnSession(stubTurn("final answer", nil))
 	tx := newTestTx()

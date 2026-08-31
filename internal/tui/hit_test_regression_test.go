@@ -5,7 +5,6 @@ import (
 	"testing"
 )
 
-// This test locks the deepened transcript invariant (issue #537) end to end:
 // a full turn driven through the TurnSession verbs and Fold, followed by
 // non-turn message appends and a resize, must leave the row->tool-entry /
 // row->message hit-test correct — rebuilt lazily by ensureLayout alone, with

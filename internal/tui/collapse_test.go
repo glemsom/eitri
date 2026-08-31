@@ -13,7 +13,6 @@ import (
 // largeCotFlowTranscript builds a completed turn whose event flow carries a
 // large chain-of-thought before a tool call and the answer — the file that
 // used to push tool calls out of view and that the collapse-by-default change
-// (issue #432) locks down.
 func largeCotFlowTranscript() *Transcript {
 	th := themeFor(config.DefaultTheme)
 	var log toolLog

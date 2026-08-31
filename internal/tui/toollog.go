@@ -24,7 +24,6 @@ type toolLog struct {
 	// expansion owns every tool entry's per-block expansion force (keyed by the
 	// entry's log index) and the open/collapsed decision, so the per-entry
 	// expanded / force-collapse flags live behind the ExpansionState seam rather
-	// than on each entry (issue #470).
 	expansion ExpansionState
 }
 

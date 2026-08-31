@@ -18,7 +18,6 @@ import (
 )
 
 // defaultPromptHistoryCap is how many submitted prompts the Model's in-memory
-// history ring retains at most (issue #610, part of #608).
 const defaultPromptHistoryCap = 100
 
 // Turn runs one agent conversation turn (user prompt -> assistant answer) over the shared engine seam.
@@ -41,10 +40,8 @@ type message struct {
 	streaming         bool            // true while this assistant reply is still growing from the answer stream
 	thinkingRequested bool
 	// expansion owns the reasoning block's expansion forces on the ExpansionState
-	// seam (issue #469): the whole-block force keyed on reasoningWholeID (the
 	// migrated thinkingExpanded / thinkingCollapsed flags) plus a per-fragment
 	// force for each interleaved fragment on a turn whose chain-of-thought
-	// renders as multiple blocks (issue #449), keyed by the fragment's emission
 	// order index. It replaces the scattered thinkingExpanded / thinkingCollapsed
 	// / fragmentForces leaf flags; the open/collapsed decision and every toggle
 	// read and write through the seam instead.
@@ -122,11 +119,8 @@ type Dependencies struct {
 	Clipboard           func(text string) error
 	OSC52Out            io.Writer
 	// HistoryPath is the path of the prompt-history file to persist submitted
-	// prompts to (a sibling of config.json in the data directory, issue #612,
-	// part of #608). Empty leaves the ring in-memory only.
 	HistoryPath string
 	// LiveKey is the shared mutable session key the engine-turn seam and the rail
-	// read per turn (issue #609). `/new` mints a fresh GUID onto it so the next
 	// turn opens a clean engine session history while the old GUID's on-disk
 	// session stays orphaned and auditable.
 	LiveKey *LiveSessionKey
@@ -189,7 +183,6 @@ type Model struct {
 	clipboard func(text string) error
 
 	// history is the Model-owned in-memory ring of submitted user prompts
-	// (issue #610, part of #608); it is the data source the arrow-key recall
 	// reads from and survives a `/new` because it lives on the Model, not the
 	// transcript or session.
 	history *PromptHistory
@@ -197,15 +190,12 @@ type Model struct {
 	// histIdx is the arrow-recall cursor into the history ring, or -1 while no
 	// prompt is being recalled. histDraft pins the composer draft that recall
 	// displaced (the node the `down` key returns to), or the empty string when
-	// recall started from an empty composer. See handleArrowRecall (issue #611,
-	// part of #608).
 	histIdx   int
 	histDraft string
 }
 
 // NewModel builds a bare chat-only model (no Settings surface), the historical default signature.
 // newModelHistory builds the Model's prompt-history ring: file-backed when a
-// HistoryPath is wired (loading any persisted entries, issue #612), else a plain
 // in-memory ring.
 func newModelHistory(path string) *PromptHistory {
 	if path == "" {
@@ -602,7 +592,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // updatePrompt handles a keypress on the engine's max-turns continuation
-// prompt (issue #613): `y`/enter continues the run, `n`/esc stops it.
 func (m Model) updatePrompt(msgi tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msgi.String() {
 	case "y", "Y", "enter":
@@ -714,7 +703,6 @@ func (m *Model) startTurn(prompt string, payload string) tea.Cmd {
 }
 
 // handleArrowRecall implements readline-style prompt recall on the composer
-// (issue #611, part of #608). `up`/`down` recall a prior/following prompt into
 // the draft only while the caret rests on the top (up) or bottom (down) line;
 // elsewhere the key falls through to the textarea caret motion, so in-draft
 // navigation and the shift variants are untouched. Recall is suppressed while

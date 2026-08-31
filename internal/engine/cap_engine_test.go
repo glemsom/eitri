@@ -259,7 +259,6 @@ func TestAgentByteCapPreservesLookLikeMarkerContent(t *testing.T) {
 	}
 }
 
-
 func hugeExecutor(results map[string]string) ToolExecutor {
 	return ExecutorFunc(func(_ context.Context, name, _ string) (ToolExecResult, error) {
 		if r, ok := results[name]; ok {

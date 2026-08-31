@@ -1,6 +1,5 @@
 package tui
 
-// T6 integration verification (issue #614, part of #608): the arrows-across-
 // `/new`, restart-persistence, fresh-context, and rail-identity behaviors are
 // each covered individually by the T2/T3/T4/T5 seams, but these tests verify
 // the wiring works as one integrated whole.

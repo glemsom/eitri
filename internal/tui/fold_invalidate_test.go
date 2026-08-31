@@ -3,7 +3,6 @@ package tui
 import "testing"
 
 // These tests lock the "mutations invalidate" invariant for the Fold
-// (issue #535): Stream and Tool leave the transcript layout cache stale by
 // themselves, so no caller — the Model's stream-delta or tool-update handler
 // included — ever writes the dirty flag around a Fold call.
 

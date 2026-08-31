@@ -179,7 +179,6 @@ func TestSnapshot_frames(t *testing.T) {
 
 	_ = context.Background // keep the import honest
 
-	// Issue #493: a prompt whose turn produced no events still renders as a
 	// flow — the empty pre-stream gap while busy, and the instant-error turn.
 	gm := scriptedChat(t, config.Config{
 		Theme: "dark", Provider: "deepseek", Model: "deepseek-v4-flash", ReasoningEffort: "high",

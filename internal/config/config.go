@@ -41,7 +41,6 @@ type Config struct {
 	ReasoningEffort string `json:"reasoning_effort"`
 	ThinkingEnabled bool   `json:"thinking_enabled"`
 	// CoTCollapsedByDefault and ToolResultsCollapsedByDefault are the
-	// collapsed-by-default flags (issue #432): true means chain-of-thought and
 	// tool results render as hints/one-liners until expanded, so a large CoT
 	// never pushes tool calls out of view.
 	CoTCollapsedByDefault         bool          `json:"cot_collapsed_by_default"`

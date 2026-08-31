@@ -3,7 +3,6 @@ package tui
 import "testing"
 
 // These tests lock the "mutations invalidate" invariant for the TurnSession
-// verbs (issue #534): every transcript mutation a verb performs leaves the
 // layout cache marked stale itself, so no caller — the Model included — ever
 // writes the dirty flag by hand around a turn-life call.
 

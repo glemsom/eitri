@@ -8,7 +8,6 @@ import (
 
 // renderViaFlow renders the log's anchored entries through the FlowRenderer —
 // the only tool-entry renderer since the legacy tool-log render path was
-// deleted (issue #493). It mirrors the Transcript's flowInput assembly: one
 // start event per anchored entry, expansion read through the ExpansionState
 // seam.
 func renderViaFlow(l toolLog, mode viewMode, defaultCollapsed bool, now time.Time, width, anchor int, pulse bool) (string, []toolRowRange) {
@@ -91,7 +90,6 @@ func TestToolLog_ExpandForceCollapseBoundsChecks(t *testing.T) {
 	}
 }
 
-// TestToolLog_ExpansionSeamOwnsForces locks issue #470's migration: the per-entry
 // expand / force-collapse operations route through the ExpansionState seam, so
 // the per-block force lives on l.expansion (keyed by the flat log index) and
 // every open/collapsed decision reads through it.

@@ -25,7 +25,6 @@ type Transcript struct {
 	expandAll       bool
 	collapseAll     bool
 	// cotExpanded and toolResultsExpanded are the render defaults flipped by
-	// the Settings toggles (issue #432): false means the block collapses to its
 	// hint/one-liner by default; true renders the full body by default.
 	cotExpanded         bool
 	toolResultsExpanded bool
@@ -116,7 +115,6 @@ func (t Transcript) hasContent() bool {
 }
 
 // Reset clears all turn material so the transcript returns to the empty
-// welcome state — the `/new` surface (issue #613). It drops committed messages,
 // the tool log, the live session, and the focused block; configuration, the
 // prompt-history ring, and the settings overlay all live outside the
 // transcript and are untouched.
@@ -240,7 +238,6 @@ func (t *Transcript) SetSize(width, height int) {
 	t.busyPrefixDirty = true
 }
 
-// applySettings applies the Settings-save outcomes that affect the transcript — theme, and the expand/collapse render defaults (issue #432) — and marks the layout cache dirty in the same step, since the flip can re-wrap the transcript.
 func (t *Transcript) applySettings(cfg config.Config) {
 	t.theme = themeFor(cfg.Theme)
 	t.configTheme = cfg.Theme
@@ -863,7 +860,6 @@ func (t *Transcript) endTurn() {
 	t.busyPrefixDirty = true
 }
 
-// toggleExpandAll flips the persistent Ctrl+E expanded-view mode: Ctrl+E on the Model routes here, and it marks the shared layout dirty because showing or hiding all tool results re-wraps the log. Turning the mode on clears the collapse-all mode; turning it off returns to the defaults (issue #432).
 func (t *Transcript) toggleExpandAll() bool {
 	t.setExpandAll(!t.expandAll)
 	return t.expandAll
@@ -959,7 +955,6 @@ func (t Transcript) collapsibleBlocks() []collapsibleBlock {
 				// fragment per tool-delimited run (so token-size SSE deltas never
 				// paint a card per token), and the focus owns one block per such
 				// run in emission order — fragments on both sides of a tool entry
-				// included (issue #658 AC1). A turn that never asked for reasoning
 				// emits none; its blocks stay unfocusable.
 				if m.thinkingRequested {
 					for k := range reasoningFragments(t.flowEventsFor(m)) {
@@ -1082,7 +1077,6 @@ func thinkingExpandedForBlock(msg message, cfg expansionConfig) bool {
 		// a live streamed block auto-expands unless pinned force-collapsed, so
 		// the user watches chain-of-thought arrive; the collapse-all mode's hide-
 		// every-body request wins over the auto-expand so E covers every fragment
-		// of a live coalesced burst too (issue #658 AC3).
 		if f, ok := msg.expansion.forceFor(blockReasoning, reasoningWholeID); ok && !f {
 			return false
 		}
@@ -1115,7 +1109,6 @@ func (t Transcript) thinkingExpandedForFragment(msg message, fragIdx int) bool {
 // toggleThinkingFragment flips the expansion of one reasoning fragment (Enter on
 // a focused interleaved fragment), targeting only that fragment's rendering while
 // the others keep their own state — the independent per-fragment collapse of
-// issue #449 user story 3. The per-fragment force routes through the seam.
 func (t *Transcript) toggleThinkingFragment(i, fragIdx int) {
 	if i < 0 || i >= len(t.messages) {
 		return

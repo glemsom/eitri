@@ -158,7 +158,6 @@ func mustFocused(tx *Transcript) collapsibleBlock {
 }
 
 // TestTranscript_enterTogglesSingleInterleavedRunIndependently keeps AC2 of
-// issue #658 scoped to tool-delimited runs (the coalescing granularity): Enter on
 // a focused interleaved reasoning run collapses exactly that run's body and
 // leaves its streamed siblings expanded; Enter again re-expands only it.
 func TestTranscript_enterTogglesSingleInterleavedRunIndependently(t *testing.T) {
@@ -229,7 +228,6 @@ func TestModel_liveReasoningPinsWholeCoalescedBlockThroughBurst(t *testing.T) {
 	}
 }
 
-// TestModel_followStaysEngagedThroughPerDeltaBurst locks AC4 of issue #658: a
 // burst of per-delta reasoning fragments — many small blocks arriving in quick
 // succession — never drops follow: the viewport stays pinned to the newest
 // output while the burst streams.
@@ -278,7 +276,6 @@ func TestTranscript_gatedLiveTurnEnumeratesNoReasoningBlocks(t *testing.T) {
 }
 
 // TestModel_collapseAllAndExpandAllCoverCoalescedReasoning locks AC3 of
-// issue #658 at the coalescing granularity: the global modes cover the single
 // live reasoning block — collapse-all (E) hides its body, Enter on the focused
 // block re-expands it against the mode, and expand-all (ctrl+e) shows it again.
 func TestModel_collapseAllAndExpandAllCoverCoalescedReasoning(t *testing.T) {

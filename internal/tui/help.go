@@ -6,7 +6,6 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// helpView renders a formatted, sectioned help message as escape-free plain text using Markdown syntax the transcript's Markdown→ANSI pass already understands (issue #387): `#` headers for section titles (rendered in the theme's accent color) and backtick code spans around command/key names (rendered with code styling, distinct from their descriptions) — while the KEYBINDINGS categories (issue #386) keep their grouped glyph labels.
 type helpRow struct {
 	key  string
 	desc string
@@ -60,7 +59,6 @@ func helpView() string {
 	return b.String()
 }
 
-// writeHelpCategory writes one labeled KEYBINDINGS category: an indented emoji-prefixed category header followed by its aligned rows (issue #386).
 func writeHelpCategory(b *strings.Builder, name string, rows []helpRow) {
 	b.WriteString("  " + categoryEmoji(name) + " " + name + "\n")
 	writeHelpRows(b, rows)

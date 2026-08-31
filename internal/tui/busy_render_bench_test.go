@@ -9,7 +9,6 @@ import (
 )
 
 // BenchmarkBusyRender_* is the regression guard for the lazy-CoT fix
-// (issue #661): while a turn is busy, per-delta rendering must scale with the
 // live turn's size, not with total history size. Before the fix the busy path
 // re-rendered the whole committed history each delta (~quadratic); after it the
 // committed prefix is cached and only the live tail re-renders. The 800-turn

@@ -24,7 +24,6 @@ func (s *blockUntilCancel) Next() (provider.Chunk, error) {
 
 // TestRunEngineTurnCancelsStreamedTurn guards the regression where runAgent dropped the
 // caller's per-turn context and replaced it with context.Background(), so Ctrl+C while a
-// turn streamed never reached the engine (issue #427). The TUI-side stop path
 // (TurnSession.Stop -> turnCmd) bottoms out at the tui.Turn seam, which tests there
 // fake out; the context-drop lived in internal/app, so this test sits at the runEngineTurn
 // boundary where the turn's cancelable context is handed to the shared engine seam.

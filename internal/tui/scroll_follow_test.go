@@ -21,7 +21,6 @@ func longStreamModel(t *testing.T) Model {
 	return m
 }
 
-// TestScrollFollow_longStreamViewportStaysPinned locks AC1 of issue #435: during
 // a long stream the viewport stays on the active content — every appended delta,
 // not just the first few, keeps the newest output pinned to the bottom of the
 // history region while auto-follow is on.
@@ -63,7 +62,6 @@ func TestScrollFollow_longStreamViewportStaysPinned(t *testing.T) {
 	}
 }
 
-// TestScrollFollow_scrollUpPausesAndHoldsWhileStreaming locks AC2 of issue #435:
 // scrolling up to read pauses auto-follow for the rest of the turn, the reading
 // position holds while the stream keeps producing below, and a keypress (End)
 // resumes follow to the newest content.

@@ -7,7 +7,6 @@ import (
 )
 
 // These tests lock the "mutations invalidate" invariant for the remaining
-// transcript mutation paths (issue #536): resize, the Settings save flip, and
 // the user-message appends for slash/skill/login activations each leave the
 // layout cache stale from the Transcript method alone, so no caller — the
 // Model included — ever writes the dirty flag by hand around them.

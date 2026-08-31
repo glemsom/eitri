@@ -340,7 +340,6 @@ func TestTranscript_liveReasoningInterleavesWithToolsInEmissionOrder(t *testing.
 }
 
 // TestTranscript_liveReasoningFocusTogglesSingleFragmentIndependently pins
-// issue #449 user story 3: a live turn that reasons, calls a tool, then reasons
 // again exposes each reasoning fragment as its own focusable block, so Tab + Enter
 // collapses just the fragment under the cursor and leaves the others expanded.
 func TestTranscript_liveReasoningFocusTogglesSingleFragmentIndependently(t *testing.T) {

@@ -231,7 +231,6 @@ func TestToolPulse_runningEntryRendersAccent(t *testing.T) {
 	}
 }
 
-// TestToolPulse_busyBandFlashesWithCollapsedCoT locks AC2 of issue #436 (retain
 // busy band, Phase, tool-start pulse): on a thinking-off turn the chain of
 // thought is collapsed away entirely, so the brief tool-start pulse in the
 // bottom busy band is the only "something started" signal. While the pulse is

@@ -54,7 +54,6 @@ func (t Transcript) phase() Phase {
 	return derivePhase(t.busy, streaming, hasReasoning, hasAnswer)
 }
 
-// phaseVerb maps a busy Phase to the status verb rendered under the busy spinner (issue #365): Reasoning while chain-of-thought streams, Working in the tool-heavy gap (or pre/post-stream silence), Answering once answer text flows.
 func phaseVerb(p Phase) string {
 	switch p {
 	case PhaseReasoning:

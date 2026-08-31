@@ -730,7 +730,6 @@ func TestTranscript_liveReasoningBlockTogglesViaTab(t *testing.T) {
 	}
 
 	// A completed (finalized) turn collapses its reasoning to the hint by
-	// default, so it can never push tool calls out of view (issue #432 lock).
 	done := committedReasoningFlowTranscript("visible reasoning", "final answer")
 	var doneStr strings.Builder
 	done.renderHistory(&doneStr, nil, nil)

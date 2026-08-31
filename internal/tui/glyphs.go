@@ -44,7 +44,6 @@ func promptHint() string { return g("💬", ">") }
 // keyHint returns the ⌨ glyph for the keybinding hint line.
 func keyHint() string { return g("⌨", "k") }
 
-// categoryEmoji returns the emoji prefix for a KEYBINDINGS category header (issue #386), with its ASCII fallback, so the labeled sub-groups share the repository's glyph conventions.
 func categoryEmoji(name string) string {
 	switch name {
 	case "COMPOSER":

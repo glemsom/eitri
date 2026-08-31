@@ -8,8 +8,6 @@ import (
 	"strings"
 )
 
-// PromptHistory is the Model-owned ring of submitted user prompts (issue #610,
-// part of #608). It is the data source the arrow-key recall reads from: it
 // records every real user prompt and `/skill ...` activation, but never control
 // slash commands and never empty drafts, capped at a fixed depth with consecutive
 // duplicates stored once. It lives on the Model rather than the transcript or
@@ -46,8 +44,6 @@ func (h *PromptHistory) push(prompt string) bool {
 // Push records a submitted prompt onto the ring. Empty prompts are ignored,
 // and a prompt equal to the most recent entry (a consecutive duplicate) is not
 // stored twice. When the ring is full, the oldest entry is dropped. When the
-// ring is backed by a file, the whole ring is saved on change (issue #612,
-// part of #608); a failed save is ignored so prompt history never blocks a turn.
 func (h *PromptHistory) Push(prompt string) {
 	if !h.push(prompt) {
 		return
@@ -76,7 +72,6 @@ func (h *PromptHistory) restore(entries []string) {
 }
 
 // NewPersistedPromptHistory builds a history ring with the given capacity backed
-// by the file at path (issue #612, part of #608): any previously persisted
 // entries are restored at construction, and every successful Push rewrites the
 // file. A missing or corrupt file falls back to an empty ring rather than error.
 func NewPersistedPromptHistory(capacity int, path string) *PromptHistory {
@@ -89,14 +84,12 @@ func NewPersistedPromptHistory(capacity int, path string) *PromptHistory {
 
 // PromptHistoryPath returns the on-disk JSON file for persisted submitted
 // prompts. It lives as a sibling of config.json in the data directory (issue
-// #612, part of #608), so it survives a `/new` and a program restart.
 func PromptHistoryPath(dataDir string) string {
 	return filepath.Join(dataDir, "prompt_history.json")
 }
 
 // loadPromptHistory reads the persisted ring from path. A missing file yields an
 // empty ring with no error; an unreadable or corrupt file yields an error so the
-// TUI can fall back to an empty ring (issue #612).
 func loadPromptHistory(path string) ([]string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

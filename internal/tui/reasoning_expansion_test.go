@@ -20,7 +20,6 @@ func expansionWithReasoningForces(forceExpand, forceCollapse bool) ExpansionStat
 	return e
 }
 
-// TestThinkingExpandedForFrag_OwnsForcesOnSeam locks issue #469's reasoning
 // migration: the whole-block and per-fragment reasoning forces live on the
 // message's ExpansionState seam, and the open/collapsed decision reads through
 // it rather than from scattered leaf flags. A pinned whole-block force beats

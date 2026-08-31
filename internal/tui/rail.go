@@ -12,7 +12,6 @@ import (
 	"github.com/glemsom/eitri/internal/constants"
 )
 
-// Rail enables a fixed-width right pane in the TUI surface: the "true right now" state — STATS (cache hit %, turns, token in/out; the cost readout was removed in issue #374), CONTEXT (session id, session temp path), and MODEL (provider/model/effort) — rendered alongside, not into, the transcript so the conversation log stays clean.
 type Rail struct {
 	provider    string
 	model       string
