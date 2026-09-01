@@ -412,7 +412,23 @@ func TestRailRenderCtxWarnAboveThreshold(t *testing.T) {
 	}
 }
 
-func TestRailRenderCtxPostCompactionRollback(t *testing.T) {
+func TestRailRenderStatsShowsContextOverflowRecovery(t *testing.T) {
+	t.Parallel()
+	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te.apply(TelemetryUpdate{Kind: TelemetryCompacted})
+
+	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
+	view := r.render(te, defaultTheme, defaultRailWidth)
+
+	if !strings.Contains(view, "recovery context overflow") {
+		t.Fatalf("rail STATS missing context overflow recovery marker, got: %q", view)
+	}
+	if strings.Contains(view, "state compacted") {
+		t.Fatalf("rail STATS still uses compaction marker, got: %q", view)
+	}
+}
+
+func TestRailRenderCtxPostRecoveryRollback(t *testing.T) {
 	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000, Ctx: 160_000})
@@ -423,10 +439,10 @@ func TestRailRenderCtxPostCompactionRollback(t *testing.T) {
 	view := r.render(te, defaultTheme, defaultRailWidth)
 
 	if !strings.Contains(view, "ctx 48.0k") {
-		t.Errorf("rail STATS ctx did not roll back to 48.0k after compaction, got: %q", view)
+		t.Errorf("rail STATS ctx did not roll back to 48.0k after recovery, got: %q", view)
 	}
 	if line := lineContaining(view, "ctx 48.0k"); strings.Contains(line, "\x1b[38;2;247;118;142m") {
-		t.Errorf("ctx line after compaction %q must not carry the warning hue", line)
+		t.Errorf("ctx line after recovery %q must not carry the warning hue", line)
 	}
 }
 

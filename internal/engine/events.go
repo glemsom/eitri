@@ -66,7 +66,7 @@ type UsageEvent struct {
 	Usage provider.Usage
 }
 
-// CompactedEvent fires when the session is compacted: the eviction-and-summary happened between two turns, and the TUI surfaces a read-only "[compacted]" marker without blocking the run.
+// CompactedEvent fires when context overflow recovery summarized or evicted older history before retrying the provider request.
 type CompactedEvent struct {
 	RunID int
 	Turn  int

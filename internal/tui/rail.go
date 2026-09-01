@@ -168,7 +168,7 @@ func (r *Rail) renderStats(te *Telemetry, th Theme, railWidth int) string {
 	r.lineAligned(&body, "tokens", fmt.Sprintf("%s in/%s out", formatTokens(totalIn), formatTokens(out)), kw, railWidth)
 	body.WriteString(renderStatsCtxLine(r, th, liveCtx, railWidth) + "\n")
 	if compacted {
-		r.line(&body, "state", "compacted", railWidth)
+		r.line(&body, "recovery", "context overflow", railWidth)
 	}
 	return b.String() + th.railBody(railStats, strings.TrimRight(body.String(), "\n"))
 }

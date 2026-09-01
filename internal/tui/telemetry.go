@@ -4,7 +4,7 @@ import (
 	"time"
 )
 
-// TelemetryKind discriminates a live status-strip update: a turn boundary, per-turn token usage, or the one-shot compaction marker.
+// TelemetryKind discriminates a live status-strip update: a turn boundary, per-turn token usage, or the one-shot context overflow recovery marker.
 type TelemetryKind int
 
 const (

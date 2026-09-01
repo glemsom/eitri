@@ -34,13 +34,13 @@ func TestTelemetryTurnCounting(t *testing.T) {
 	}
 }
 
-func TestTelemetryCompactionMarker(t *testing.T) {
+func TestTelemetryContextOverflowRecoveryMarker(t *testing.T) {
 	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryCompacted})
 
 	if !te.compacted {
-		t.Fatal("compacted flag not set after compaction event")
+		t.Fatal("context overflow recovery marker not set after recovery event")
 	}
 }
 

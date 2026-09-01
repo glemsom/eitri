@@ -27,7 +27,8 @@ Request record:
 - `messages` is exactly what went over the wire this cycle: system prompt,
   user messages, assistant messages (including `reasoning_content` when the
   model produced reasoning), assistant `tool_calls`, and role `tool` results.
-  This includes post-compaction histories, so you can see what the model saw.
+  If context overflow recovery ran, the next request shows the summarized or
+  evicted history that was retried, so you can see what the model saw.
 - `tools` is name-only to keep records compact; full schemas live in the
   engine's tool manifest.
 
