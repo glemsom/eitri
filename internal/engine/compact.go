@@ -48,7 +48,7 @@ func shouldCompact(cfg *CompactionConfig, usage *provider.Usage) bool {
 	return usage.PromptTokens >= int(float64(cfg.ContextWindow)*cfg.Fraction)
 }
 
-// maybeCompact runs the unified compaction engine on messages when the proactive threshold has been crossed (or force is set for the emergency overflow path).
+// maybeCompact runs the unified compaction engine for the emergency overflow path.
 func (e *Engine) maybeCompact(ctx context.Context, req RunRequest, opts AgentOptions, messages []provider.Message, force bool, turn int) ([]provider.Message, bool) {
 	cfg := opts.Compaction
 	if cfg == nil {

@@ -268,10 +268,6 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 			turn = 0 // a granted continuation resets the turn budget
 		}
 
-		if opts.Compaction != nil {
-			messages, _ = e.maybeCompact(ctx, req, opts, messages, false, turn)
-		}
-
 		s, err := e.provider.Stream(ctx, provider.Request{
 			Model:                 req.Model,
 			Messages:              messages,

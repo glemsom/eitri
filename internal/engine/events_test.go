@@ -219,24 +219,29 @@ func TestSetListenerNilStopsDelivery(t *testing.T) {
 	}
 }
 
-func TestRunAgentEmitsCompactionEvent(t *testing.T) {
+func TestMaybeCompactEmitsCompactionEvent(t *testing.T) {
 	t.Parallel()
 	col := &eventCollector{}
-	h := &compactHandler{}
-	e := New(provider.NewScripted(h.stream), &mockTranscript{})
+	e := New(provider.NewScripted(func(_ context.Context, _ provider.Request) (provider.Stream, error) {
+		return provider.StreamFunc(provider.Chunk{Content: "## Objective\nRecovered.\n## Next Move\nRetry.", FinishReason: "stop", Done: true}), nil
+	}), &mockTranscript{})
 	e.SetListener(col.on)
+	messages := []provider.Message{
+		{Role: provider.RoleSystem, Content: SystemPromptContent()},
+		{Role: provider.RoleUser, Content: "old prompt"},
+		{Role: provider.RoleAssistant, Content: "old answer"},
+		{Role: provider.RoleTool, ToolCallID: "t1", Content: "tool result"},
+		{Role: provider.RoleUser, Content: "mid prompt"},
+		{Role: provider.RoleAssistant, Content: "mid answer"},
+		{Role: provider.RoleUser, Content: "latest prompt"},
+	}
 
-	_, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "compact me"},
-		AgentOptions{
-			Tools:       strictToolDefs(),
-			ToolChoice:  "auto",
-			Executor:    &mockToolRecorder{},
-			Compaction:  compactCfg(),
-			OnCompacted: func() {},
-			MaxTurns:    10,
-		})
-	if err != nil {
-		t.Fatalf("RunAgent() error = %v, want nil", err)
+	_, ok := e.maybeCompact(context.Background(), RunRequest{Model: "deepseek-v4-flash"}, AgentOptions{
+		Compaction:  compactCfg(),
+		OnCompacted: func() {},
+	}, messages, true, 1)
+	if !ok {
+		t.Fatal("forced compaction did not run")
 	}
 
 	var sawCompacted bool

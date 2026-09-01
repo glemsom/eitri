@@ -175,40 +175,31 @@ func TestCompactionSummaryHonorsGenerationBudget(t *testing.T) {
 	t.Parallel()
 	h := &compactHandler{}
 	e := New(&budgetScripted{Scripted: *provider.NewScripted(h.stream)}, &mockTranscript{})
-
-	_, err := e.RunAgent(context.Background(), RunRequest{
-		Model:      "deepseek-v4-flash",
-		Prompt:     "go",
-		SessionKey: "sess-budget",
-	}, AgentOptions{
-		Tools:       strictToolDefs(),
-		ToolChoice:  "auto",
-		Executor:    &mockToolRecorder{},
-		MaxTurns:    10,
-		Compaction:  compactCfg(),
-		OnCompacted: func() {},
-	})
-	if err != nil {
-		t.Fatalf("RunAgent error = %v, want nil", err)
+	messages := []provider.Message{
+		{Role: provider.RoleSystem, Content: SystemPromptContent()},
+		{Role: provider.RoleUser, Content: "old prompt"},
+		{Role: provider.RoleAssistant, Content: strings.Repeat("old answer ", 20)},
+		{Role: provider.RoleTool, ToolCallID: "t1", Content: "tool result"},
+		{Role: provider.RoleUser, Content: "mid prompt"},
+		{Role: provider.RoleAssistant, Content: strings.Repeat("mid answer ", 20)},
+		{Role: provider.RoleUser, Content: "latest prompt"},
 	}
 
-	if len(h.requests) != 4 {
-		t.Fatalf("provider requests = %d, want 4 (t1, t2, summary, final)", len(h.requests))
+	_, ok := e.maybeCompact(context.Background(), RunRequest{Model: "deepseek-v4-flash", SessionKey: "sess-budget"}, AgentOptions{
+		Compaction: compactCfg(),
+	}, messages, true, 1)
+	if !ok {
+		t.Fatal("forced compaction did not run")
 	}
-	summary := h.requests[2]
+	if len(h.requests) != 1 {
+		t.Fatalf("provider requests = %d, want 1 summary request", len(h.requests))
+	}
+	summary := h.requests[0]
 	if len(summary.Tools) != 0 {
 		t.Fatalf("summary request carried tools, want a non-tool special turn")
 	}
 	if summary.MaxOutputTokens != constants.DefaultSummaryMaxTokens {
 		t.Fatalf("summary MaxOutputTokens = %d, want %d (SummaryMaxTokens)", summary.MaxOutputTokens, constants.DefaultSummaryMaxTokens)
-	}
-	for i, r := range h.requests {
-		if i == 2 {
-			continue
-		}
-		if r.MaxOutputTokens != 0 {
-			t.Errorf("ordinary turn %d carried MaxOutputTokens=%d, want 0 (no budget)", i, r.MaxOutputTokens)
-		}
 	}
 }
 
@@ -242,7 +233,7 @@ func TestCompactionSkipsSummaryWhenBudgetUnsupported(t *testing.T) {
 	}
 }
 
-func TestRunAgentCompactsAtThreshold(t *testing.T) {
+func TestRunAgentDoesNotCompactAtThreshold(t *testing.T) {
 	t.Parallel()
 	h := &compactHandler{}
 	var compacted bool
@@ -264,53 +255,29 @@ func TestRunAgentCompactsAtThreshold(t *testing.T) {
 		t.Fatalf("RunAgent error = %v, want nil", err)
 	}
 
-	if !compacted {
-		t.Fatal("expected OnCompacted to fire when the session crossed the 80% threshold")
+	if compacted {
+		t.Fatal("OnCompacted fired for high prompt-token usage; proactive compaction should be disabled")
 	}
 
-	if len(h.requests) != 4 {
-		t.Fatalf("provider requests = %d, want 4 (t1, t2, summary, final)", len(h.requests))
+	if len(h.requests) != 3 {
+		t.Fatalf("provider requests = %d, want 3 (t1, t2, final with no summary request)", len(h.requests))
 	}
-	summaryReq := h.requests[2]
-	if len(summaryReq.Tools) != 0 {
-		t.Fatalf("summary generation request carried tools, want a non-tool call")
-	}
-
-	final := h.requests[3]
-	if len(final.Messages) < 4 {
-		t.Fatalf("final request has %d messages, want >= 4 (base + summary head + tail floor)", len(final.Messages))
-	}
-	base := final.Messages[0]
-	if base.Role != provider.RoleSystem || base.Content != SystemPromptContent() {
-		t.Errorf("final request base = role %q, want the embedded system prompt at [0]", base.Role)
-	}
-	summary := final.Messages[1]
-	if summary.Role != provider.RoleSystem || !strings.Contains(summary.Content, "Objective") {
-		t.Errorf("final request summary = role %q content %q, want a system summary anchored on Objective immediately after the base prompt", summary.Role, summary.Content)
-	}
-
-	tailAssistants := 0
-	for _, m := range final.Messages {
-		if m.Role == provider.RoleAssistant {
-			tailAssistants++
-			if m.ReasoningContent == "" {
-				t.Errorf("tail assistant message lost reasoning: %q", m.Content)
-			}
+	for i, req := range h.requests {
+		if len(req.Tools) == 0 {
+			t.Fatalf("request %d was a summary-generation request; proactive compaction should be disabled", i)
 		}
-	}
-	if tailAssistants < 2 {
-		t.Errorf("final request kept %d assistant legs, want the tail floor of >= 2 with reasoning", tailAssistants)
-	}
-
-	for i, r := range h.requests {
-		if len(r.Tools) > 0 && !reflect.DeepEqual(r.Tools, strictToolDefs()) {
-			t.Errorf("request %d tools drifted from the canonical manifest (cache-prefix break): %v", i, r.Tools)
+		if !reflect.DeepEqual(req.Tools, strictToolDefs()) {
+			t.Errorf("request %d tools drifted from the canonical manifest (cache-prefix break): %v", i, req.Tools)
+		}
+		if !req.SetCacheKey || req.SessionKey != "sess-compact" {
+			t.Errorf("request lost session cache key: SetCacheKey=%v SessionKey=%q", req.SetCacheKey, req.SessionKey)
 		}
 	}
 
-	for _, r := range h.requests {
-		if !r.SetCacheKey || r.SessionKey != "sess-compact" {
-			t.Errorf("request lost session cache key: SetCacheKey=%v SessionKey=%q", r.SetCacheKey, r.SessionKey)
+	final := h.requests[2]
+	for _, msg := range final.Messages {
+		if strings.Contains(msg.Content, "## Conversation Summary") {
+			t.Fatalf("final request included compaction summary despite no context overflow; messages=%v", final.Messages)
 		}
 	}
 }
