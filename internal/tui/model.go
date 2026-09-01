@@ -773,8 +773,8 @@ func (m *Model) applyRecall(entries []string) {
 	} else {
 		m.composer.SetValue(entries[m.histIdx])
 	}
-	m.composer.MoveToEnd()
 	m.syncComposerHeight()
+	m.composer.MoveToEnd()
 	m.trackComposer()
 }
 

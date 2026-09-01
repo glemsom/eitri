@@ -233,6 +233,19 @@ func TestArrowRecall_notRecordedItself(t *testing.T) {
 	}
 }
 
+func TestArrowRecall_multilinePromptShowsStart(t *testing.T) {
+	t.Parallel()
+	m := arrowHistoryModel(t)
+	prompt := "first recalled line\nsecond recalled line\nthird recalled line"
+	m = pushHistory(t, m, prompt)
+
+	m = keypress(t, m, "up")
+	composer := m.composer.View()
+	if !strings.Contains(composer, "first recalled line") {
+		t.Fatalf("recalled multiline prompt should show its start, composer view:\n%s", composer)
+	}
+}
+
 func TestArrowRecall_wrappedDraftTopEdge(t *testing.T) {
 	t.Parallel()
 	m := arrowHistoryModel(t)
