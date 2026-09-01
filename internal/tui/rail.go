@@ -346,22 +346,19 @@ func styledRailWithFace(content string, maxHeight, railWidth int) string {
 	if maxHeight < reservedRows || !kittyGraphicsLikelySupported() {
 		return styledRail(content, maxHeight, railWidth)
 	}
-	return styledRail(content, textRows+railFaceTopGap+1, railWidth) + "\n" + styledFaceRail(faceRows, railWidth) +
-		"\n" + styledFaceRail(maxHeight-reservedRows, railWidth)
+	var b strings.Builder
+	b.WriteString(strings.TrimRight(content, "\n"))
+	for range railFaceTopGap {
+		b.WriteString("\n ")
+	}
+	cols, _ := railFaceRows(railWidth)
+	for row := range faceRows {
+		b.WriteString("\n  ")
+		b.WriteString(kittyFacePlaceholderRow(row, cols))
+	}
+	return styledRail(b.String(), maxHeight+1, railWidth)
 }
 
 func railContentRows(content string) int {
 	return len(strings.Split(strings.TrimRight(content, "\n"), "\n"))
-}
-
-func styledFaceRail(faceRows, railWidth int) string {
-	var b strings.Builder
-	row := g("│", "|") + strings.Repeat(" ", max(0, railWidth-1))
-	for i := 0; i < faceRows; i++ {
-		if i > 0 {
-			b.WriteByte('\n')
-		}
-		b.WriteString(row)
-	}
-	return b.String()
 }

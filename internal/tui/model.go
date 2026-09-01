@@ -925,10 +925,7 @@ func (m Model) drawFaceCmd() tea.Cmd {
 		return nil
 	}
 	railWidth := m.tx.railWidthOrDefault()
-	content := m.tx.rail.renderLiveWithTools(m.tx.telemetry, m.tx.theme, railWidth, m.tx.phase(), m.tx.spinner, &m.tx.log)
-	x := max(1, m.tx.transcriptWidth()+6)
-	y := railContentRows(content) + railFaceTopGap + 1
-	seq := kittyFacePlacement(x, y, railWidth)
+	seq := kittyFaceUpload(railWidth)
 	if seq == "" {
 		return nil
 	}

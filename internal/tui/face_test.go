@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi/kitty"
 )
 
 func TestKittyImageEncodesEmbeddedFaceAtRailWidth(t *testing.T) {
@@ -20,7 +21,7 @@ func TestKittyImageEncodesEmbeddedFaceAtRailWidth(t *testing.T) {
 		t.Fatalf("kittyFaceFile returned empty path")
 	}
 	img := kittyImageFile(path, cols, rows)
-	if !strings.HasPrefix(img, "\x1b_Ga=T,f=100,t=f,i=1162433618,c=24,r=12,z=1;") {
+	if !strings.HasPrefix(img, "\x1b_Ga=T,f=100,t=f,i=1162433618,c=24,r=12,U=1,z=-1,q=2;") {
 		t.Fatalf("kitty image header missing file-transfer constraints: %q", img[:min(len(img), 100)])
 	}
 	if !strings.HasSuffix(img, "\x1b\\") {
@@ -39,6 +40,20 @@ func TestStyledRailBottomReservesFaceRailWithoutInlineImage(t *testing.T) {
 	}
 	if got := strings.Count(rail, "\n│"); got < 14 {
 		t.Fatalf("styled rail reserved %d face-border rows, want at least 12: %q", got, rail)
+	}
+}
+
+func TestStyledRailWithFaceHasContinuousLeftBorder(t *testing.T) {
+	t.Setenv("EITRI_KITTY_IMAGES", "1")
+	rail := styledRailWithFace("STATS\nCONTEXT\nMODEL", 24, 30)
+	lines := strings.Split(rail, "\n")
+	for row, line := range lines {
+		if row == 0 || row == len(lines)-1 {
+			continue
+		}
+		if !strings.HasPrefix(line, "│") {
+			t.Fatalf("rail row %d has no left border: %q", row, line)
+		}
 	}
 }
 
@@ -94,12 +109,21 @@ func TestMouseWheelDoesNotRedrawProtectedFace(t *testing.T) {
 	}
 }
 
-func TestKittyFaceRedrawDeletesPreviousImageBeforePlacement(t *testing.T) {
+func TestKittyFaceUsesVirtualUploadAndInBandPlaceholders(t *testing.T) {
 	t.Setenv("EITRI_KITTY_IMAGES", "1")
-	seq := kittyFacePlacement(90, 12, 30)
-	deleteAt := strings.Index(seq, "\x1b_Ga=d,d=I,i=1162433618;\x1b\\")
-	placeAt := strings.Index(seq, "\x1b_Ga=T,f=100,t=f,i=1162433618,")
-	if deleteAt < 0 || placeAt < 0 || deleteAt > placeAt {
-		t.Fatalf("face redraw must delete its prior image before placing the replacement: %q", seq)
+	upload := kittyFaceUpload(30)
+	if !strings.Contains(upload, ",U=1,z=-1,") {
+		t.Fatalf("face upload is not virtual and behind text: %q", upload)
+	}
+	if strings.Contains(upload, "\x1b[") {
+		t.Fatalf("face upload uses absolute cursor positioning: %q", upload)
+	}
+
+	rail := styledRailWithFace("STATS\nCONTEXT\nMODEL", 24, 30)
+	if !strings.ContainsRune(rail, kitty.Placeholder) {
+		t.Fatal("rail does not contain in-band Kitty placeholders")
+	}
+	if strings.Contains(rail, "\x1b_G") {
+		t.Fatal("rail frame contains out-of-band Kitty graphics commands")
 	}
 }
