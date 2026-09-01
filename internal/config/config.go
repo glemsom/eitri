@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/glemsom/eitri/internal/constants"
 )
 
 // Defaults for session and provider behavior.
@@ -46,7 +44,7 @@ type Config struct {
 	CoTCollapsedByDefault         bool          `json:"cot_collapsed_by_default"`
 	ToolResultsCollapsedByDefault bool          `json:"tool_results_collapsed_by_default"`
 	MaxTurns                      int           `json:"max_turns"`
-	CompactionFraction            float64       `json:"compaction_fraction"`
+	ContextOverflowRecovery       bool          `json:"context_overflow_recovery"`
 	ExtraWritablePaths            []string      `json:"extra_writable_paths,omitempty"`
 	Theme                         string        `json:"theme"`
 	RailWidth                     int           `json:"rail_width,omitempty"`
@@ -64,7 +62,7 @@ func Default() Config {
 		CoTCollapsedByDefault:         true,
 		ToolResultsCollapsedByDefault: true,
 		MaxTurns:                      DefaultMaxTurns,
-		CompactionFraction:            constants.DefaultCompactionFraction,
+		ContextOverflowRecovery:       true,
 		Theme:                         DefaultTheme,
 	}
 }
@@ -103,9 +101,13 @@ func Load(path string) (Config, error) {
 		if _, ok := raw["tool_results_collapsed_by_default"]; !ok {
 			cfg.ToolResultsCollapsedByDefault = true
 		}
+		if _, ok := raw["context_overflow_recovery"]; !ok {
+			cfg.ContextOverflowRecovery = true
+		}
 	} else {
 		cfg.CoTCollapsedByDefault = true
 		cfg.ToolResultsCollapsedByDefault = true
+		cfg.ContextOverflowRecovery = true
 	}
 	return cfg, nil
 }

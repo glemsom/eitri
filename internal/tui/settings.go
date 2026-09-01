@@ -23,7 +23,7 @@ const (
 	fieldThinking
 	fieldEffort
 	fieldMaxTurns
-	fieldFraction
+	fieldContextOverflowRecovery
 	fieldTheme
 	fieldCoTCollapsed
 	fieldToolResultsCollapsed
@@ -122,8 +122,10 @@ func (f *settingsForm) adjust(d int) {
 		f.cfg.ReasoningEffort = cycle(f.cfg.ReasoningEffort, effortTiers, d)
 	case fieldMaxTurns:
 		f.cfg.MaxTurns = stepInt(f.cfg.MaxTurns, d, 25, 0, 10000)
-	case fieldFraction:
-		f.cfg.CompactionFraction = stepFrac(f.cfg.CompactionFraction, d)
+	case fieldContextOverflowRecovery:
+		if d != 0 {
+			f.cfg.ContextOverflowRecovery = !f.cfg.ContextOverflowRecovery
+		}
 	case fieldTheme:
 		f.cfg.Theme = cycle(f.cfg.Theme, supportedThemes, d)
 		f.theme = themeFor(f.cfg.Theme)
@@ -276,7 +278,7 @@ func (f settingsForm) dirty() bool {
 }
 
 func configsEqual(a, b config.Config) bool {
-	if a.Provider != b.Provider || a.Model != b.Model || a.ReasoningEffort != b.ReasoningEffort || a.ThinkingEnabled != b.ThinkingEnabled || a.CoTCollapsedByDefault != b.CoTCollapsedByDefault || a.ToolResultsCollapsedByDefault != b.ToolResultsCollapsedByDefault || a.MaxTurns != b.MaxTurns || a.CompactionFraction != b.CompactionFraction || a.Theme != b.Theme || a.RailWidth != b.RailWidth {
+	if a.Provider != b.Provider || a.Model != b.Model || a.ReasoningEffort != b.ReasoningEffort || a.ThinkingEnabled != b.ThinkingEnabled || a.CoTCollapsedByDefault != b.CoTCollapsedByDefault || a.ToolResultsCollapsedByDefault != b.ToolResultsCollapsedByDefault || a.MaxTurns != b.MaxTurns || a.ContextOverflowRecovery != b.ContextOverflowRecovery || a.Theme != b.Theme || a.RailWidth != b.RailWidth {
 		return false
 	}
 	if len(a.ExtraWritablePaths) != len(b.ExtraWritablePaths) {
@@ -310,8 +312,8 @@ func settingsHelp(f settingsForm) string {
 		return "Reasoning depth: higher can improve hard answers and increase cost/latency."
 	case fieldMaxTurns:
 		return "Safety limit for assistant/tool loop iterations."
-	case fieldFraction:
-		return "When context reaches this fullness, summarize older history. 80% is recommended."
+	case fieldContextOverflowRecovery:
+		return "If the provider rejects an oversized request, summarize older history and retry once."
 	case fieldTheme:
 		return "Color palette for Eitri’s interface."
 	case fieldCoTCollapsed:
@@ -373,18 +375,6 @@ func stepInt(v, d, step, min, max int) int {
 		v = max
 	}
 	return v
-}
-
-func stepFrac(v float64, d int) float64 {
-	const step = 0.05
-	nv := v + float64(d)*step
-	if nv < 0 {
-		nv = 0
-	}
-	if nv > 1 {
-		nv = 1
-	}
-	return nv
 }
 
 func pathSummary(f settingsForm) string {
@@ -694,7 +684,7 @@ func settingsView(f settingsForm) string {
 		{"Deep thinking", thinkingModeLabel(f.cfg.ThinkingEnabled)},
 		{"Reasoning depth", f.cfg.ReasoningEffort},
 		{"Tool loop limit", fmt.Sprintf("%d", f.cfg.MaxTurns)},
-		{"Summarize history at", fmt.Sprintf("%.0f%%", f.cfg.CompactionFraction*100)},
+		{"Context overflow recovery", thinkingModeLabel(f.cfg.ContextOverflowRecovery)},
 		{"Theme", f.cfg.Theme},
 		{"Collapse thinking", thinkingModeLabel(f.cfg.CoTCollapsedByDefault)},
 		{"Collapse tool output", thinkingModeLabel(f.cfg.ToolResultsCollapsedByDefault)},

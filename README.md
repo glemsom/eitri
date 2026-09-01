@@ -160,7 +160,7 @@ Full detail lives in [`docs/sessions.md`](docs/sessions.md).
 | `cot_collapsed_by_default` | bool | `true` | Render chain-of-thought collapsed until expanded |
 | `tool_results_collapsed_by_default` | bool | `true` | Render tool results collapsed until expanded |
 | `max_turns` | int | `250` | Maximum turns per run |
-| `compaction_fraction` | float | `0.8` | Fraction of the context at which compaction triggers |
+| `context_overflow_recovery` | bool | `true` | Summarize older history and retry once if the provider rejects an oversized request |
 | `extra_writable_paths` | array of strings | *(empty)* | Additional paths the agent may write to |
 | `theme` | string | `dark` | UI theme |
 | `rail_width` | int | `30` | Width of the right rail/pane |

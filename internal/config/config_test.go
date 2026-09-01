@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -12,8 +13,8 @@ func TestDefaults(t *testing.T) {
 	if cfg.MaxTurns != 250 {
 		t.Fatalf("MaxTurns = %d, want default 250", cfg.MaxTurns)
 	}
-	if cfg.CompactionFraction != 0.8 {
-		t.Fatalf("CompactionFraction = %v, want default 0.8", cfg.CompactionFraction)
+	if !cfg.ContextOverflowRecovery {
+		t.Fatal("ContextOverflowRecovery = false, want default true")
 	}
 	if cfg.ReasoningEffort != "low" {
 		t.Fatalf("ReasoningEffort = %q, want default \"low\"", cfg.ReasoningEffort)
@@ -165,7 +166,7 @@ func TestLoadReadsPersistedConfig(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
-	if err := Save(Config{MaxTurns: 7, CompactionFraction: 0.5, ReasoningEffort: "max", Provider: "custom", Model: "m", ExtraWritablePaths: []string{"/tmp/x"}}, path); err != nil {
+	if err := Save(Config{MaxTurns: 7, ContextOverflowRecovery: true, ReasoningEffort: "max", Provider: "custom", Model: "m", ExtraWritablePaths: []string{"/tmp/x"}}, path); err != nil {
 		t.Fatalf("Save() error = %v, want nil", err)
 	}
 
@@ -173,9 +174,9 @@ func TestLoadReadsPersistedConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
-	if cfg.MaxTurns != 7 || cfg.CompactionFraction != 0.5 || cfg.ReasoningEffort != "max" ||
+	if cfg.MaxTurns != 7 || !cfg.ContextOverflowRecovery || cfg.ReasoningEffort != "max" ||
 		cfg.Provider != "custom" || cfg.Model != "m" {
-		t.Fatalf("Load() = %+v, want persisted values {7 0.5 max custom m}", cfg)
+		t.Fatalf("Load() = %+v, want persisted values {7 true max custom m}", cfg)
 	}
 	if len(cfg.ExtraWritablePaths) != 1 || cfg.ExtraWritablePaths[0] != "/tmp/x" {
 		t.Fatalf("Load() ExtraWritablePaths = %v, want [/tmp/x]", cfg.ExtraWritablePaths)
@@ -294,5 +295,45 @@ func TestRailWidthAbsentFromOldConfig(t *testing.T) {
 	}
 	if got.RailWidth != 0 {
 		t.Fatalf("Load() RailWidth = %d, want 0 for absent field", got.RailWidth)
+	}
+}
+
+func TestContextOverflowRecoveryAbsentFromOldConfigDefaultsOn(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(path, []byte(`{"provider":"opencode-go","compaction_fraction":0.5}`), 0o600); err != nil {
+		t.Fatalf("WriteFile error = %v", err)
+	}
+
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if !got.ContextOverflowRecovery {
+		t.Fatal("Load() ContextOverflowRecovery = false, want default true for absent field")
+	}
+}
+
+func TestSaveWritesContextOverflowRecoveryAndDropsCompactionFraction(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	cfg := Default()
+	cfg.ContextOverflowRecovery = false
+	if err := Save(cfg, path); err != nil {
+		t.Fatalf("Save() error = %v, want nil", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, `"context_overflow_recovery": false`) {
+		t.Fatalf("saved config %s missing context_overflow_recovery false", text)
+	}
+	if strings.Contains(text, "compaction_fraction") {
+		t.Fatalf("saved config %s still contains compaction_fraction", text)
 	}
 }

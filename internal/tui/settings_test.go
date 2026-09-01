@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,15 +19,13 @@ func cfgFixture() config.Config {
 		ReasoningEffort:               "high",
 		ThinkingEnabled:               true,
 		MaxTurns:                      250,
-		CompactionFraction:            0.8,
+		ContextOverflowRecovery:       true,
 		ExtraWritablePaths:            []string{"/srv"},
 		Theme:                         config.DefaultTheme,
 		CoTCollapsedByDefault:         true,
 		ToolResultsCollapsedByDefault: true,
 	}
 }
-
-func nearEq(a, b float64) bool { return math.Abs(a-b) < 1e-9 }
 
 func TestSettingsForm_ModelStartsWithConfigured(t *testing.T) {
 	t.Parallel()
@@ -76,8 +73,7 @@ func TestSettingsForm_AdjustsKnobs(t *testing.T) {
 		{"effort+", fieldEffort, 1, func(c config.Config) bool { return c.ReasoningEffort == "max" }},
 		{"maxTurns+", fieldMaxTurns, 1, func(c config.Config) bool { return c.MaxTurns == 275 }},
 		{"maxTurns-", fieldMaxTurns, -1, func(c config.Config) bool { return c.MaxTurns == 225 }},
-		{"fraction+", fieldFraction, 1, func(c config.Config) bool { return nearEq(c.CompactionFraction, 0.85) }},
-		{"fraction-", fieldFraction, -1, func(c config.Config) bool { return nearEq(c.CompactionFraction, 0.75) }},
+		{"contextOverflowRecovery", fieldContextOverflowRecovery, 1, func(c config.Config) bool { return !c.ContextOverflowRecovery }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -226,7 +222,7 @@ func TestSettingsView_RendersKnobsAndSave(t *testing.T) {
 	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{"grok-2"})
 	view := settingsView(f)
-	for _, want := range []string{"Eitri Settings", "opencode-go", "grok-2", "Deep thinking", "✓ on", "high", "250", "80%", "Theme", "dark", "[ Save ]", "[ Cancel ]"} {
+	for _, want := range []string{"Eitri Settings", "opencode-go", "grok-2", "Deep thinking", "✓ on", "high", "250", "Context overflow recovery", "Theme", "dark", "[ Save ]", "[ Cancel ]"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("settings view %q missing %q", view, want)
 		}
@@ -269,14 +265,17 @@ func TestSettingsView_GroupsDisplayBeforeWorkspaceAccess(t *testing.T) {
 	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{})
 	view := settingsView(f)
-	compact := strings.Index(view, "Summarize history at")
+	recovery := strings.Index(view, "Context overflow recovery")
 	theme := strings.Index(view, "Theme")
 	writable := strings.Index(view, "Writable paths")
-	if compact < 0 || theme < 0 || writable < 0 {
-		t.Fatalf("settings view %q missing compact/theme/writable rows", view)
+	if recovery < 0 || theme < 0 || writable < 0 {
+		t.Fatalf("settings view %q missing recovery/theme/writable rows", view)
 	}
-	if !(compact < theme && theme < writable) {
-		t.Fatalf("settings view row order wrong: compact@%d Theme@%d writable@%d", compact, theme, writable)
+	if strings.Contains(view, "Summarize history at") {
+		t.Fatalf("settings view %q still renders proactive compaction row", view)
+	}
+	if !(recovery < theme && theme < writable) {
+		t.Fatalf("settings view row order wrong: recovery@%d Theme@%d writable@%d", recovery, theme, writable)
 	}
 }
 

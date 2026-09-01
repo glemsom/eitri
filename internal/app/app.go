@@ -225,7 +225,7 @@ func (stderrWarner) Warnf(format string, args ...any) {
 
 // runAgent drives one agent turn (user prompt → assistant answer) over the shared run engine, session transcript, and tool registry that both the TUI and batch use. The model-visible index and the per-run workspace directive are each carried as their own system message so they reach the model without perturbing the byte-stable system prompt; a catalog with none renders to a nil index that keeps the no-index wire bytes intact. ctx is threaded through to the engine so the TUI's per-turn cancellation (Ctrl+C/Esc) reaches an in-flight run; batch passes context.Background() (no stop binding).
 func runAgent(ctx context.Context, e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey, prompt string, catalog *tools.Catalog, skillInject *string, canContinue func() bool) (engine.Result, error) {
-	compaction := &engine.CompactionConfig{Fraction: cfg.CompactionFraction}
+	compaction := &engine.CompactionConfig{}
 	var skillIndex *string
 	if catalog != nil {
 		if idx := catalog.RenderIndex(); idx != "" {
