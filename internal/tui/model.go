@@ -375,7 +375,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// deltas, and rendering is the expensive step, so batching a backlog into
 		// one render keeps per-render cost from being paid once per token.
 		m.runtime.DrainReady(m.tx)
-		return m, m.runtime.Wait()
+		return m, tea.Batch(m.queueFaceDrawCmd(), m.runtime.Wait())
 
 	case tea.WindowSizeMsg:
 		m.tx.SetSize(msgi.Width, msgi.Height)
@@ -532,7 +532,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncComposerRail()
 		return m, nil
 	case clockTickMsg:
-		return m, tea.Batch(clockTick(), m.queueFaceDrawCmd())
+		return m, clockTick()
 
 	case faceDrawMsg:
 		return m, m.drawFaceCmd()
