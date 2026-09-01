@@ -236,7 +236,7 @@ func (t Transcript) viewWithRail(pane string, bandHeight int) string {
 		return pane
 	}
 	rw := t.railWidthOrDefault()
-	right := styledRail(t.rail.renderLiveWithTools(t.telemetry, t.theme, rw, t.phase(), t.spinner, &t.log), t.railClampHeight(bandHeight), rw)
+	right := styledRailWithFace(t.rail.renderLiveWithTools(t.telemetry, t.theme, rw, t.phase(), t.spinner, &t.log), t.railClampHeight(bandHeight), rw)
 	return t.surfaceWithRail(pane, right, bandHeight)
 }
 

@@ -303,15 +303,23 @@ func internalContinue(req chan struct{}, resp chan bool) bool {
 
 // clockTickMsg re-renders the surface once per second so the statusline's live session-elapsed timer advances even with no input or stream activity.
 type clockTickMsg struct{}
+type faceDrawMsg struct{}
 
 // clockTick returns the command that delivers the next one-second clock tick.
 func clockTick() tea.Cmd {
 	return tea.Tick(time.Second, func(time.Time) tea.Msg { return clockTickMsg{} })
 }
 
+func faceDrawTick() tea.Cmd {
+	return tea.Tick(50*time.Millisecond, func(time.Time) tea.Msg { return faceDrawMsg{} })
+}
+
 // Init returns any startup commands.
 func (m Model) Init() tea.Cmd {
 	var cmds []tea.Cmd
+	if cmd := m.queueFaceDrawCmd(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
 	if m.telemetry != nil {
 		cmds = append(cmds, telemetryWait(m.telemetry))
 	}
@@ -373,9 +381,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.tx.SetSize(msgi.Width, msgi.Height)
 		m.syncWidths()
 		if m.settings != nil {
-			return m.updateSettings(msgi)
+			next, cmd := m.updateSettings(msgi)
+			return next, cmd
 		}
-		return m, nil
+		return m, m.queueFaceDrawCmd()
 
 	case tea.KeyPressMsg:
 		msgi = normalizeShiftPrintable(msgi)
@@ -523,7 +532,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncComposerRail()
 		return m, nil
 	case clockTickMsg:
-		return m, clockTick()
+		return m, tea.Batch(clockTick(), m.queueFaceDrawCmd())
+
+	case faceDrawMsg:
+		return m, m.drawFaceCmd()
 
 	case spinnerTickMsg:
 		if !m.tx.busy || !motionEnabled() {
@@ -914,4 +926,37 @@ func telemetryWait(te *Telemetry) tea.Cmd {
 		}
 		return telemetryUpdateMsg{update: u}
 	}
+}
+
+func (m Model) queueFaceDrawCmd() tea.Cmd {
+	if !m.canDrawFace() {
+		return nil
+	}
+	return faceDrawTick()
+}
+
+func (m Model) drawFaceCmd() tea.Cmd {
+	if !m.canDrawFace() {
+		return nil
+	}
+	railWidth := m.tx.railWidthOrDefault()
+	_, faceRows := railFaceRows(railWidth)
+	bandHeight := m.bandHeight()
+	railHeight := m.tx.railClampHeight(bandHeight)
+	x := max(1, m.tx.transcriptWidth()+6)
+	y := max(1, railHeight-faceRows+1)
+	seq := kittyFacePlacement(x, y, railWidth)
+	if seq == "" {
+		return nil
+	}
+	return tea.Raw(seq)
+}
+
+func (m Model) canDrawFace() bool {
+	if m.settings != nil || m.prompting || !m.tx.railVisible() || m.tx.width <= 0 || m.tx.height <= 0 {
+		return false
+	}
+	_, faceRows := railFaceRows(m.tx.railWidthOrDefault())
+	railHeight := m.tx.railClampHeight(m.bandHeight())
+	return faceRows > 0 && railHeight > faceRows+1
 }

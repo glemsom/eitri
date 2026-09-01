@@ -336,3 +336,24 @@ func styledRail(content string, maxHeight, railWidth int) string {
 		BorderLeft(true).
 		Render(strings.TrimRight(content, "\n"))
 }
+
+func styledRailWithFace(content string, maxHeight, railWidth int) string {
+	_, faceRows := railFaceRows(railWidth)
+	if maxHeight <= faceRows+1 || !kittyGraphicsLikelySupported() {
+		return styledRail(content, maxHeight, railWidth)
+	}
+	textRows := maxHeight - faceRows
+	return styledRail(content, textRows+1, railWidth) + "\n" + styledFaceRail(faceRows, railWidth)
+}
+
+func styledFaceRail(faceRows, railWidth int) string {
+	var b strings.Builder
+	row := g("│", "|") + strings.Repeat(" ", max(0, railWidth-1))
+	for i := 0; i < faceRows; i++ {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString(row)
+	}
+	return b.String()
+}
