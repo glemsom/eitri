@@ -37,10 +37,11 @@ type Transcript struct {
 	focus collapseFocus
 	// live is the TurnSession owning the in-progress turn, wired at Begin so
 	// render paths can read the live event log; a bare Transcript has none.
-	live      *TurnSession
-	layout    transcriptLayout
-	telemetry *Telemetry
-	weaver    selectionWeaver
+	live              *TurnSession
+	layout            transcriptLayout
+	telemetry         *Telemetry
+	weaver            selectionWeaver
+	liveMarkdownCache liveMarkdownCache
 
 	// busyPrefix caches the rendered committed-history prefix (workspace header + every
 	// message before the running turn's prompt) so busy-path per-delta frames re-render
@@ -438,7 +439,7 @@ func lastNLines(s string, n int) string {
 // renderLiveTail renders only the running turn's flow (its prompt, its
 // streamed/tool timeline through the shared FlowRenderer) plus the busy
 // indicator line — the only bytes that change while a turn streams.
-func (t Transcript) renderLiveTail() string {
+func (t *Transcript) renderLiveTail() string {
 	var b strings.Builder
 	t.renderMessageRange(&b, nil, nil, t.busyTailIndex(), len(t.messages), false, true)
 	return b.String()
@@ -450,7 +451,7 @@ func (t Transcript) renderLiveTail() string {
 // indexes for the rendered span, offset so the caller can concat spans. This is
 // the single emission path behind the full-history render, the committed-prefix
 // cache, and the per-delta live tail, so no two code paths can drift.
-func (t Transcript) renderMessageRange(b *strings.Builder, toolRows *[]toolRowRange, msgRows *[]msgRowRange, startMsg, endMsg int, withHeader, withBusyLine bool) {
+func (t *Transcript) renderMessageRange(b *strings.Builder, toolRows *[]toolRowRange, msgRows *[]msgRowRange, startMsg, endMsg int, withHeader, withBusyLine bool) {
 	if toolRows != nil {
 		*toolRows = (*toolRows)[:0]
 	}
@@ -545,7 +546,7 @@ func (t Transcript) renderMessageRange(b *strings.Builder, toolRows *[]toolRowRa
 // It returns the rendered text and the tool-entry row ranges in the same shape
 // as toolLog.Render, so the shared row->entry hit-test keeps working on the
 // merged stream.
-func (t Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg message, msgIdx int, now time.Time) (string, []toolRowRange) {
+func (t *Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg message, msgIdx int, now time.Time) (string, []toolRowRange) {
 	tools := make([]flowTool, 0)
 	for _, idx := range t.log.anchoredIndices(anchor) {
 		tools = append(tools, flowTool{
@@ -555,18 +556,19 @@ func (t Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg mess
 		})
 	}
 	return RenderFlow(flowInput{
-		Events:      events,
-		Msg:         msg,
-		MsgIdx:      msgIdx,
-		Theme:       t.theme,
-		ConfigTheme: t.configTheme,
-		Width:       t.transcriptWidth(),
-		Pulse:       t.busyPulse > 0,
-		Effort:      t.reasoningEffort,
-		Cfg:         t.expansionConfig(),
-		Now:         now,
-		Tools:       tools,
-		IsFocused:   t.focusedBlockIs,
+		Events:        events,
+		Msg:           msg,
+		MsgIdx:        msgIdx,
+		Theme:         t.theme,
+		ConfigTheme:   t.configTheme,
+		Width:         t.transcriptWidth(),
+		Pulse:         t.busyPulse > 0,
+		Effort:        t.reasoningEffort,
+		Cfg:           t.expansionConfig(),
+		Now:           now,
+		Tools:         tools,
+		IsFocused:     t.focusedBlockIs,
+		MarkdownCache: &t.liveMarkdownCache,
 	})
 }
 

@@ -30,10 +30,11 @@ type flowInput struct {
 	// Cfg is the explicit expansion config bundle (mode plus the per-kind
 	// collapsed-by-default flags) every reasoning open/collapsed decision in
 	// this flow reads; the Transcript supplies its own bundle, tests theirs.
-	Cfg       expansionConfig
-	Now       time.Time
-	Tools     []flowTool
-	IsFocused func(kind blockKind, msgIdx, toolIdx, fragIdx int) bool
+	Cfg           expansionConfig
+	Now           time.Time
+	Tools         []flowTool
+	IsFocused     func(kind blockKind, msgIdx, toolIdx, fragIdx int) bool
+	MarkdownCache *liveMarkdownCache
 }
 
 // flowTool is one tool entry the flow renderer emits: the log entry plus its
@@ -73,14 +74,15 @@ type flowItem struct {
 // passes, so they are threaded through as values rather than captured in each
 // closure.
 type flowRenderer struct {
-	theme  Theme
-	config string
-	width  int
-	pulse  bool
-	effort string
-	cfg    expansionConfig
-	now    time.Time
-	tools  []flowTool
+	theme         Theme
+	config        string
+	width         int
+	pulse         bool
+	effort        string
+	cfg           expansionConfig
+	now           time.Time
+	tools         []flowTool
+	markdownCache *liveMarkdownCache
 }
 
 // RenderFlow renders one turn's event log as a single continuous merged flow:
@@ -91,14 +93,15 @@ type flowRenderer struct {
 // the merged stream unchanged.
 func RenderFlow(in flowInput) (string, []toolRowRange) {
 	r := flowRenderer{
-		theme:  in.Theme,
-		config: in.ConfigTheme,
-		width:  in.Width,
-		pulse:  in.Pulse,
-		effort: in.Effort,
-		cfg:    in.Cfg,
-		now:    in.Now,
-		tools:  in.Tools,
+		theme:         in.Theme,
+		config:        in.ConfigTheme,
+		width:         in.Width,
+		pulse:         in.Pulse,
+		effort:        in.Effort,
+		cfg:           in.Cfg,
+		now:           in.Now,
+		tools:         in.Tools,
+		markdownCache: in.MarkdownCache,
 	}
 	items := r.fold(in.Events, in.Msg)
 	return r.render(items, in.Msg, in.MsgIdx, in.IsFocused)
@@ -278,7 +281,7 @@ func (r flowRenderer) render(items []flowItem, msg message, msgIdx int, isFocuse
 // then the body only when expanded — collapsed, the hint is the whole block.
 func (r flowRenderer) reasoningBlock(msg message, msgIdx int, it flowItem, isFocused func(blockKind, int, int, int) bool) string {
 	focused := isFocused != nil && isFocused(blockReasoning, msgIdx, 0, it.fragIdx)
-	return renderReasoningBlock(r.theme, r.config, r.width, r.effort, msg, msgIdx, it.fragIdx, it.text, it.expanded, focused)
+	return renderReasoningBlockCached(r.markdownCache, r.theme, r.config, r.width, r.effort, msg, msgIdx, it.fragIdx, it.text, it.expanded, focused)
 }
 
 // renderReasoningBlock renders one whole reasoning fragment as its header line
@@ -287,6 +290,10 @@ func (r flowRenderer) reasoningBlock(msg message, msgIdx int, it flowItem, isFoc
 // The FlowRenderer routes through this one emitter, so the reasoning block's
 // header/pane rendering has exactly one implementation.
 func renderReasoningBlock(theme Theme, config string, width int, effort string, msg message, msgIdx, fragIdx int, text string, expanded, focused bool) string {
+	return renderReasoningBlockCached(nil, theme, config, width, effort, msg, msgIdx, fragIdx, text, expanded, focused)
+}
+
+func renderReasoningBlockCached(cache *liveMarkdownCache, theme Theme, config string, width int, effort string, msg message, msgIdx, fragIdx int, text string, expanded, focused bool) string {
 	var b strings.Builder
 	h := thinkingHeader(theme, text, effort)
 	if focused {
@@ -296,7 +303,7 @@ func renderReasoningBlock(theme Theme, config string, width int, effort string, 
 	if !expanded {
 		return b.String() // collapsed: the hint is the block
 	}
-	md, _ := RenderMarkdown(text, width-2, config)
+	md, _ := renderCachedMarkdown(cache, text, width-2, config)
 	pane := theme.thinkingPaneStyle
 	if msg.streaming {
 		pane = theme.streamingThinkingPaneStyle
@@ -309,7 +316,7 @@ func renderReasoningBlock(theme Theme, config string, width int, effort string, 
 // the pane chosen from the message's flags, and the stopped marker when it is
 // the turn's final block.
 func (r flowRenderer) answerBlock(msg message, it flowItem) string {
-	return renderAnswerBlock(r.theme, r.config, r.width, msg, it.text, it.final)
+	return renderAnswerBlockCached(r.markdownCache, r.theme, r.config, r.width, msg, it.text, it.final)
 }
 
 // renderAnswerBlock renders one answer fragment with the pane chosen from the
@@ -319,10 +326,14 @@ func (r flowRenderer) answerBlock(msg message, it flowItem) string {
 // renderHistory route through this one emitter, so the answer pane/stopped
 // rendering cannot drift between them.
 func renderAnswerBlock(theme Theme, config string, width int, msg message, text string, final bool) string {
+	return renderAnswerBlockCached(nil, theme, config, width, msg, text, final)
+}
+
+func renderAnswerBlockCached(cache *liveMarkdownCache, theme Theme, config string, width int, msg message, text string, final bool) string {
 	if text == "" {
 		return ""
 	}
-	md, _ := RenderMarkdown(text, width-2, config)
+	md, _ := renderCachedMarkdown(cache, text, width-2, config)
 	pane := theme.agentPaneStyle
 	if msg.stopped {
 		pane = theme.stoppedPaneStyle
