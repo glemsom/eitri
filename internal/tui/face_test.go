@@ -64,7 +64,7 @@ func TestStreamingFollowReanchorsFaceAfterRendererScroll(t *testing.T) {
 		Events: NewEventFeed(),
 		Rail:   NewRail("provider", "model", "low", true, "session", "/tmp/session"),
 	})
-	m = resizeTo(t, m, 120, 30)
+	m = resizeTo(t, m, 120, 31)
 	m = typeText(t, m, "hi")
 	m, _ = submitBusy(t, m)
 

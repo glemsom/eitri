@@ -925,11 +925,9 @@ func (m Model) drawFaceCmd() tea.Cmd {
 		return nil
 	}
 	railWidth := m.tx.railWidthOrDefault()
-	_, faceRows := railFaceRows(railWidth)
-	bandHeight := m.bandHeight()
-	railHeight := m.tx.railClampHeight(bandHeight)
+	content := m.tx.rail.renderLiveWithTools(m.tx.telemetry, m.tx.theme, railWidth, m.tx.phase(), m.tx.spinner, &m.tx.log)
 	x := max(1, m.tx.transcriptWidth()+6)
-	y := max(1, railHeight-faceRows+1)
+	y := railContentRows(content) + railFaceTopGap + 1
 	seq := kittyFacePlacement(x, y, railWidth)
 	if seq == "" {
 		return nil
@@ -941,9 +939,11 @@ func (m Model) canDrawFace() bool {
 	if m.settings != nil || m.prompting || !m.tx.railVisible() || m.tx.width <= 0 || m.tx.height <= 0 {
 		return false
 	}
-	_, faceRows := railFaceRows(m.tx.railWidthOrDefault())
+	railWidth := m.tx.railWidthOrDefault()
+	_, faceRows := railFaceRows(railWidth)
 	railHeight := m.tx.railClampHeight(m.bandHeight())
-	return faceRows > 0 && railHeight > faceRows+1
+	content := m.tx.rail.renderLiveWithTools(m.tx.telemetry, m.tx.theme, railWidth, m.tx.phase(), m.tx.spinner, &m.tx.log)
+	return faceRows > 0 && railHeight >= railContentRows(content)+railFaceTopGap+faceRows
 }
 
 func (m Model) applyEvent(update Event) (tea.Model, tea.Cmd) {

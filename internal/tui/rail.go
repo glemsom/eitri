@@ -337,13 +337,21 @@ func styledRail(content string, maxHeight, railWidth int) string {
 		Render(strings.TrimRight(content, "\n"))
 }
 
+const railFaceTopGap = 1
+
 func styledRailWithFace(content string, maxHeight, railWidth int) string {
 	_, faceRows := railFaceRows(railWidth)
-	if maxHeight <= faceRows+1 || !kittyGraphicsLikelySupported() {
+	textRows := railContentRows(content)
+	reservedRows := textRows + railFaceTopGap + faceRows
+	if maxHeight < reservedRows || !kittyGraphicsLikelySupported() {
 		return styledRail(content, maxHeight, railWidth)
 	}
-	textRows := maxHeight - faceRows
-	return styledRail(content, textRows+1, railWidth) + "\n" + styledFaceRail(faceRows, railWidth)
+	return styledRail(content, textRows+railFaceTopGap+1, railWidth) + "\n" + styledFaceRail(faceRows, railWidth) +
+		"\n" + styledFaceRail(maxHeight-reservedRows, railWidth)
+}
+
+func railContentRows(content string) int {
+	return len(strings.Split(strings.TrimRight(content, "\n"), "\n"))
 }
 
 func styledFaceRail(faceRows, railWidth int) string {
