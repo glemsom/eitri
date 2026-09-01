@@ -342,3 +342,41 @@ func TestRunAgentOverflowTrigger(t *testing.T) {
 		t.Fatalf("overflow went through %d provider requests, want >= 5 (2 tool turns, overflow, summary, retry)", h.requests)
 	}
 }
+
+func TestRunAgentOverflowDisabledReturnsClearError(t *testing.T) {
+	t.Parallel()
+	e := New(provider.NewScripted(func(_ context.Context, _ provider.Request) (provider.Stream, error) {
+		return nil, provider.ErrContextOverflow
+	}), &mockTranscript{})
+
+	_, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "go"}, AgentOptions{})
+	if err == nil || err.Error() != "Provider rejected the request because the context is too large. Context overflow recovery is disabled; enable it or start a new session." {
+		t.Fatalf("RunAgent error = %v, want disabled-recovery guidance", err)
+	}
+}
+
+func TestRunAgentOverflowRecoveryOnlyOncePerRun(t *testing.T) {
+	t.Parallel()
+	h := &overflowHandler{}
+	e := New(&budgetScripted{Scripted: *provider.NewScripted(func(ctx context.Context, req provider.Request) (provider.Stream, error) {
+		if h.requests >= 4 {
+			h.requests++
+			return nil, provider.ErrContextOverflow
+		}
+		return h.stream(ctx, req)
+	})}, &mockTranscript{})
+
+	_, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "go"}, AgentOptions{
+		Tools:      strictToolDefs(),
+		ToolChoice: "auto",
+		Executor:   &mockToolRecorder{},
+		MaxTurns:   5,
+		Compaction: compactCfg(),
+	})
+	if err == nil || err.Error() != "Provider rejected the request because the context is too large. Eitri summarized older history and retried once, but the request is still too large. Start a new session or reduce attached/tool output." {
+		t.Fatalf("RunAgent error = %v, want failed-recovery guidance", err)
+	}
+	if h.requests != 5 {
+		t.Fatalf("provider requests = %d, want 5 (2 tool turns, overflow, summary, retry overflow)", h.requests)
+	}
+}

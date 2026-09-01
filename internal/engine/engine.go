@@ -253,6 +253,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		}
 	}
 
+	recoveredContextOverflow := false
 	for turn := 0; ; turn++ {
 		var content, reasoning string
 		if ctx.Err() != nil {
@@ -281,8 +282,13 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 			ProviderID:            req.ProviderID,
 		})
 		if err != nil {
-			if opts.Compaction != nil && provider.IsContextOverflow(err) {
-				if next, ok := e.maybeCompact(ctx, req, opts, messages, true, turn); ok {
+			if provider.IsContextOverflow(err) {
+				if opts.Compaction == nil {
+					err = errors.New("Provider rejected the request because the context is too large. Context overflow recovery is disabled; enable it or start a new session.")
+				} else if recoveredContextOverflow {
+					err = errors.New("Provider rejected the request because the context is too large. Eitri summarized older history and retried once, but the request is still too large. Start a new session or reduce attached/tool output.")
+				} else if next, ok := e.maybeCompact(ctx, req, opts, messages, true, turn); ok {
+					recoveredContextOverflow = true
 					messages = next
 					continue
 				}
