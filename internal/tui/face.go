@@ -39,11 +39,17 @@ func kittyFaceFile() string {
 	return kittyFacePath
 }
 
+const kittyFaceImageID = 1162433618 // "EITR" as a stable Kitty image ID.
+
+func kittyFaceDelete() string {
+	return "\x1b_Ga=d,d=I,i=" + strconv.Itoa(kittyFaceImageID) + ";\x1b\\"
+}
+
 func kittyImageFile(path string, cols, rows int) string {
 	if path == "" || cols <= 0 || rows <= 0 || !kittyGraphicsLikelySupported() {
 		return ""
 	}
-	return "\x1b_Ga=T,f=100,t=f,c=" + strconv.Itoa(cols) + ",r=" + strconv.Itoa(rows) + ",z=1;" + base64.StdEncoding.EncodeToString([]byte(path)) + "\x1b\\"
+	return "\x1b_Ga=T,f=100,t=f,i=" + strconv.Itoa(kittyFaceImageID) + ",c=" + strconv.Itoa(cols) + ",r=" + strconv.Itoa(rows) + ",z=1;" + base64.StdEncoding.EncodeToString([]byte(path)) + "\x1b\\"
 }
 
 func kittyGraphicsLikelySupported() bool {
@@ -77,6 +83,7 @@ func kittyFacePlacement(x, y, railWidth int) string {
 	}
 	var b strings.Builder
 	b.WriteString("\x1b7")
+	b.WriteString(kittyFaceDelete())
 	b.WriteString("\x1b[")
 	b.WriteString(strconv.Itoa(y))
 	b.WriteString(";")

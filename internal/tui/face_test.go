@@ -20,7 +20,7 @@ func TestKittyImageEncodesEmbeddedFaceAtRailWidth(t *testing.T) {
 		t.Fatalf("kittyFaceFile returned empty path")
 	}
 	img := kittyImageFile(path, cols, rows)
-	if !strings.HasPrefix(img, "\x1b_Ga=T,f=100,t=f,c=24,r=12,z=1;") {
+	if !strings.HasPrefix(img, "\x1b_Ga=T,f=100,t=f,i=1162433618,c=24,r=12,z=1;") {
 		t.Fatalf("kitty image header missing file-transfer constraints: %q", img[:min(len(img), 100)])
 	}
 	if !strings.HasSuffix(img, "\x1b\\") {
@@ -57,7 +57,7 @@ func TestClockTickDoesNotRedrawFace(t *testing.T) {
 	}
 }
 
-func TestStreamingFollowRedrawsFaceAfterAutoScroll(t *testing.T) {
+func TestStreamingFollowReanchorsFaceAfterRendererScroll(t *testing.T) {
 	t.Setenv("EITRI_KITTY_IMAGES", "1")
 	m := NewModelCfg(Dependencies{
 		Turn:   streamingTurn,
@@ -67,21 +67,39 @@ func TestStreamingFollowRedrawsFaceAfterAutoScroll(t *testing.T) {
 	m = resizeTo(t, m, 120, 30)
 	m = typeText(t, m, "hi")
 	m, _ = submitBusy(t, m)
-	if !m.tx.histFollow {
-		t.Fatalf("precondition: streaming turn should start in follow mode")
-	}
 
-	nm, cmd := m.Update(eventMsg{update: Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: strings.Repeat("word ", 200)}}})
-	m = asModel(t, nm)
-	if cmd == nil {
-		t.Fatalf("streaming auto-follow must schedule a face redraw after content moves")
+	feed := m.runtime.events
+	_, cmd := m.Update(eventMsg{update: Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: strings.Repeat("word ", 200)}}})
+	close(feed.updates)
+	batch, ok := cmd().(tea.BatchMsg)
+	if !ok {
+		t.Fatalf("streaming event command = %T, want redraw and event wait batch", cmd())
 	}
-	if batch, ok := cmd().(tea.BatchMsg); ok {
-		for _, batched := range batch {
-			if _, ok := batched().(faceDrawMsg); ok {
-				return
-			}
+	for _, batched := range batch {
+		if _, ok := batched().(faceDrawMsg); ok {
+			return
 		}
 	}
-	t.Fatalf("streaming auto-follow did not schedule a face redraw")
+	t.Fatal("streaming follow must re-anchor the face after the renderer may scroll")
+}
+
+func TestMouseWheelDoesNotRedrawProtectedFace(t *testing.T) {
+	t.Setenv("EITRI_KITTY_IMAGES", "1")
+	m := NewModelCfg(Dependencies{Rail: NewRail("provider", "model", "low", true, "session", "/tmp/session")})
+	m = resizeTo(t, m, 120, 30)
+
+	_, cmd := m.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown, X: 2, Y: 2})
+	if cmd != nil {
+		t.Fatalf("mouse-wheel command = %T, want no corrective face redraw", cmd())
+	}
+}
+
+func TestKittyFaceRedrawDeletesPreviousImageBeforePlacement(t *testing.T) {
+	t.Setenv("EITRI_KITTY_IMAGES", "1")
+	seq := kittyFacePlacement(90, 12, 30)
+	deleteAt := strings.Index(seq, "\x1b_Ga=d,d=I,i=1162433618;\x1b\\")
+	placeAt := strings.Index(seq, "\x1b_Ga=T,f=100,t=f,i=1162433618,")
+	if deleteAt < 0 || placeAt < 0 || deleteAt > placeAt {
+		t.Fatalf("face redraw must delete its prior image before placing the replacement: %q", seq)
+	}
 }

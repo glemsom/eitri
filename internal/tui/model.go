@@ -360,22 +360,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, telemetryWait(m.telemetry)
 
 	case eventMsg:
-		if !m.runtime.HasEvents() {
-			return m, nil
-		}
-		if msgi.update.TurnStart {
-			m.runtime.OnTurnStart(msgi.update.RunID)
-			return m, m.runtime.Wait()
-		}
-		if m.runtime.Accept(msgi.update) {
-			m.runtime.Observe(m.tx, msgi.update)
-		}
-		// Apply any further events already queued on the feed before yielding to
-		// Bubble Tea's render pass: a fast reasoning stream delivers many tiny
-		// deltas, and rendering is the expensive step, so batching a backlog into
-		// one render keeps per-render cost from being paid once per token.
-		m.runtime.DrainReady(m.tx)
-		return m, tea.Batch(m.queueFaceDrawCmd(), m.runtime.Wait())
+		return m.applyEvent(msgi.update)
 
 	case tea.WindowSizeMsg:
 		m.tx.SetSize(msgi.Width, msgi.Height)
@@ -959,4 +944,19 @@ func (m Model) canDrawFace() bool {
 	_, faceRows := railFaceRows(m.tx.railWidthOrDefault())
 	railHeight := m.tx.railClampHeight(m.bandHeight())
 	return faceRows > 0 && railHeight > faceRows+1
+}
+
+func (m Model) applyEvent(update Event) (tea.Model, tea.Cmd) {
+	if !m.runtime.HasEvents() {
+		return m, nil
+	}
+	if update.TurnStart {
+		m.runtime.OnTurnStart(update.RunID)
+		return m, m.runtime.Wait()
+	}
+	if m.runtime.Accept(update) {
+		m.runtime.Observe(m.tx, update)
+	}
+	m.runtime.DrainReady(m.tx)
+	return m, tea.Batch(m.queueFaceDrawCmd(), m.runtime.Wait())
 }
