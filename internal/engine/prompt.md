@@ -20,6 +20,14 @@ Fetch with `curl --fail --max-time 30 "$u"` — fails fast on HTTP errors instea
 ### Skills
 A run may carry a rendered skill index (name, path, description) as a system message; when a task matches, `cat` the given path and follow it.
 
+### Subagents
+For a subagent, spawn Eitri in batch mode:
+```sh
+agent_dir=$(mktemp -d "$TMPDIR/subagent.XXXXXX")
+EITRI_DIR="$agent_dir" EITRI_CONFIG="${EITRI_CONFIG:-$HOME/.eitri/config.json}" eitri -b '<task>'
+```
+The child inherits the current workspace and sandbox. Every child needs its own `EITRI_DIR`. To run children in parallel, use Bash jobs, `wait` for every job, then report their output.
+
 ### Find, read, edit (anchor-first)
 1. **Locate** with ripgrep, fitting intent: `rg -l <pattern>` to survey volume, narrow generic OR-terms (`Key`, `Tab`, `Type` swallow the tree) before `rg -n --heading --color=never <pattern>` tree-wide for token-efficient, plain-text grouped output.
 2. **Read** the exact range with anchors: `nl -ba <file> | sed -n 'X,Yp'`. Plain `sed -n 'X,Yp' <file>` when no anchors are needed.
