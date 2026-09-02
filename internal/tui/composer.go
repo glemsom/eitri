@@ -172,7 +172,7 @@ func (m Model) renderBand(b *strings.Builder) {
 	if m.tx.busy {
 		body := forgeBusyLine(m.tx.spinner, m.tx.phase()) + " · " + m.tx.theme.statusStyle.Render(m.forgeDetailLine()) + "\n" + m.tx.theme.statusStyle.Render("Hold steady — composer locked during forging")
 		style := lipgloss.NewStyle().Foreground(dimmed(m.tx.theme.accent, 0.45))
-		inner.WriteString(renderTitledPanel("⚒  Eitri is forging", m.tx.bandWidth(), style, body))
+		inner.WriteString(renderTitledPanel(m.forgeTitle(), m.tx.bandWidth(), style, body))
 	} else {
 		if m.slash.isOpen() {
 			inner.WriteString(renderTitledPanel("Commands", m.tx.bandWidth(), m.tx.theme.bandSeparatorStyle, m.slash.RenderCompletionBody(m.tx.theme)))
@@ -264,4 +264,61 @@ func (m Model) composerHint() string {
 		return g("↑/↓", "up/down") + " navigate" + sep + "tab/enter select" + sep + "esc close"
 	}
 	return "enter send" + sep + "shift+enter newline" + sep + "ctrl+e expand/collapse" + sep + "ctrl+s settings"
+}
+
+// forgeTitle gives the busy state a restrained metallic glint. The spinner's
+// existing cadence drives a slower back-and-forth sweep, while reduced-motion
+// keeps the stronger static hierarchy without animation.
+func (m Model) forgeTitle() string {
+	accent := m.tx.theme.accent
+	muted := lipgloss.NewStyle().Foreground(dimmed(accent, 0.65))
+	strong := lipgloss.NewStyle().Foreground(accent)
+	title := []rune("⚒  Eitri is forging")
+	if !motionEnabled() {
+		return muted.Render("⚒  Eitri is ") + strong.Bold(true).Render("forging")
+	}
+
+	// Sweep over visible glyphs rather than spaces so the three-cell glint keeps
+	// its shape as it crosses the whole title.
+	var glyphs []int
+	for i, r := range title {
+		if r != ' ' {
+			glyphs = append(glyphs, i)
+		}
+	}
+	path := len(glyphs)*2 - 2
+	step := (m.tx.forgeFrame / 2) % path
+	pos := step
+	forward := pos < len(glyphs)
+	if !forward {
+		pos = path - pos
+	}
+	start := pos - 1
+	if start < 0 {
+		start = 0
+	} else if start > len(glyphs)-3 {
+		start = len(glyphs) - 3
+	}
+
+	levels := []float64{0.82, 0.92, 1.0}
+	if !forward {
+		levels = []float64{1.0, 0.92, 0.82}
+	}
+	highlights := make(map[int]float64, 3)
+	for i := range 3 {
+		highlights[glyphs[start+i]] = levels[i]
+	}
+
+	var b strings.Builder
+	for i, r := range title {
+		style := muted
+		if level, ok := highlights[i]; ok {
+			style = lipgloss.NewStyle().Foreground(dimmed(accent, level))
+			if level == 1 {
+				style = style.Bold(true)
+			}
+		}
+		b.WriteString(style.Render(string(r)))
+	}
+	return b.String()
 }

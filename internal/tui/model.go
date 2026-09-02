@@ -525,9 +525,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case spinnerTickMsg:
 		if !m.tx.busy || !motionEnabled() {
 			m.tx.spinner = 0
+			m.tx.forgeFrame = 0
 			return m, nil
 		}
 		m.tx.spinner = (m.tx.spinner + 1) % len(busySpinnerFrames)
+		m.tx.forgeFrame++
 		if m.tx.busyPulse > 0 {
 			m.tx.busyPulse--
 		}

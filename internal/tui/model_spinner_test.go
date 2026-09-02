@@ -417,3 +417,36 @@ func TestBusySpinner_pulseRendersBright(t *testing.T) {
 		t.Fatalf("busy line must still render after pulse, got: %q", content)
 	}
 }
+
+func TestForgeTitle_glintMovesAndPreservesText(t *testing.T) {
+	m := newStreamingModel()
+	m = resize(t, m)
+	m.tx.busy = true
+	m.tx.forgeFrame = 0
+	first := m.forgeTitle()
+	m.tx.forgeFrame = 20
+	second := m.forgeTitle()
+
+	if ansiStrip(first) != "⚒  Eitri is forging" {
+		t.Fatalf("forge title text = %q", ansiStrip(first))
+	}
+	if first == second {
+		t.Fatal("forge title glint did not move with spinner cadence")
+	}
+}
+
+func TestForgeTitle_reducedMotionIsStatic(t *testing.T) {
+	t.Setenv("EITRI_NO_MOTION", "1")
+	m := newStreamingModel()
+	m.tx.forgeFrame = 0
+	first := m.forgeTitle()
+	m.tx.forgeFrame = 20
+	second := m.forgeTitle()
+
+	if first != second {
+		t.Fatal("reduced-motion forge title must remain static")
+	}
+	if ansiStrip(first) != "⚒  Eitri is forging" {
+		t.Fatalf("static forge title text = %q", ansiStrip(first))
+	}
+}

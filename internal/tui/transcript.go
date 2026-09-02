@@ -20,6 +20,7 @@ type Transcript struct {
 	busy            bool
 	busyStartedAt   time.Time
 	spinner         int
+	forgeFrame      int
 	busyPulse       int
 	reasoningEffort string
 	configTheme     string
@@ -893,6 +894,7 @@ func (t *Transcript) applyTool(u ToolUpdate) {
 func (t *Transcript) endTurn() {
 	t.busy = false
 	t.spinner = 0
+	t.forgeFrame = 0
 	t.layout.dirty = true
 	t.busyPrefixDirty = true
 }
