@@ -53,7 +53,7 @@ func reasoningPaneRows(t *testing.T, content string) []string {
 	return rows
 }
 
-func TestModel_stylingNoRoleLabels(t *testing.T) {
+func TestModel_stylingRoleHeadersRender(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -68,8 +68,8 @@ func TestModel_stylingNoRoleLabels(t *testing.T) {
 	if !strings.Contains(content, "hi") || !strings.Contains(content, "plain") {
 		t.Errorf("expected prompt and answer in view, got: %q", content)
 	}
-	if strings.Contains(content, "you") || strings.Contains(content, "eitri") {
-		t.Errorf("role labels must not render in the transcript, got: %q", content)
+	if !strings.Contains(content, "You") || !strings.Contains(content, "Eitri") {
+		t.Errorf("each turn block must open with its role header (You / Eitri), got: %q", content)
 	}
 }
 

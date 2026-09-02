@@ -583,7 +583,7 @@ func TestTranscript_emptyTimelineGapRendersThroughFlowRenderer(t *testing.T) {
 	// The rendered history must be exactly the prompt card plus what the one
 	// FlowRenderer emitter produces for the synthesized (empty) log — no
 	// legacy tool-log branch output beneath the card.
-	want := ""
+	want := tx.turnHeader(tx.messages[0], 0, -1) + "\n"
 	md, _ := RenderPromptMarkdown("run it", tx.transcriptWidth()-4, tx.configTheme)
 	want += renderUserPromptCard(tx.theme, md, tx.transcriptWidth()) + "\n"
 	flow, _ := tx.renderEventFlow(nil, 0, message{}, 0, time.Time{})

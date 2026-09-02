@@ -92,6 +92,10 @@ func (s *TurnSession) SetThinkingEnabled(v bool) { s.thinkingEnabled = v }
 // Timeline-commit vs fresh-assistant bookkeeping stays internal so callers
 // see a single completion verb.
 func (s *TurnSession) Commit(tx *Transcript, msg turnDoneMsg) (stopped bool, err error) {
+	turnElapsed := time.Duration(0)
+	if !tx.busyStartedAt.IsZero() {
+		turnElapsed = time.Since(tx.busyStartedAt)
+	}
 	tx.endTurn()
 	s.End()
 	wasStreaming := s.curStream >= 0 && s.curStream < len(tx.messages)
@@ -111,6 +115,7 @@ func (s *TurnSession) Commit(tx *Transcript, msg turnDoneMsg) (stopped bool, err
 			tx.messages = append(tx.messages, message{role: "eitri", content: content, reasoning: reasoning, stopped: true, thinkingRequested: s.thinkingEnabled})
 			s.commitNewAssistant(tx)
 		}
+		tx.applyTurnElapsed(turnElapsed)
 		return true, nil
 	}
 	if msg.err != nil {
@@ -122,6 +127,7 @@ func (s *TurnSession) Commit(tx *Transcript, msg turnDoneMsg) (stopped bool, err
 		s.curStream = -1
 		tx.messages = append(tx.messages, message{role: "eitri", content: failurePrefix() + msg.err.Error(), thinkingRequested: s.thinkingEnabled})
 		s.commitNewAssistant(tx)
+		tx.applyTurnElapsed(turnElapsed)
 		return false, msg.err
 	}
 	if wasStreaming {
@@ -139,6 +145,7 @@ func (s *TurnSession) Commit(tx *Transcript, msg turnDoneMsg) (stopped bool, err
 		tx.messages = append(tx.messages, message{role: "eitri", content: content, reasoning: reasoning, thinkingRequested: s.thinkingEnabled})
 		s.commitNewAssistant(tx)
 	}
+	tx.applyTurnElapsed(turnElapsed)
 	return false, nil
 }
 

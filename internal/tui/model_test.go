@@ -30,8 +30,8 @@ func TestModel_greetingRoundTrip(t *testing.T) {
 	if !strings.Contains(content, "hello") || !strings.Contains(content, "glad") {
 		t.Errorf("expected prompt and answer in view, got: %q", content)
 	}
-	if strings.Contains(content, "you") || strings.Contains(content, "eitri") {
-		t.Errorf("role labels must not render in the transcript, got: %q", content)
+	if !strings.Contains(content, "You") || !strings.Contains(content, "Eitri") {
+		t.Errorf("each turn block must open with its role header (You / Eitri), got: %q", content)
 	}
 	if !strings.Contains(content, "glad") {
 		t.Errorf("expected assistant answer text in view, got: %q", content)

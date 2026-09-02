@@ -348,6 +348,32 @@ func (th Theme) selectionBgSGR() string {
 	return fmt.Sprintf("\x1b[48;2;%d;%d;%dm", r>>8, g>>8, b>>8)
 }
 
+// turnHeaderStyle is the style for the one-row role-and-elapsed header that
+// opens each turn block in the merged transcript flow: the faint secondary
+// status style once a turn is committed (settled), and the phase-tinted style
+// while the turn is still streaming so the live block reads as in-progress.
+func (th Theme) turnHeaderStyle(phase Phase, live bool) lipgloss.Style {
+	if !live {
+		return th.statusStyle
+	}
+	return lipgloss.NewStyle().Bold(true).Foreground(th.phaseHue(phase))
+}
+
+// phaseHue returns the hue the live turn's header is tinted to while a turn
+// streams, keyed to the derived phase: the agent accent while answering, the
+// thinking (dimmed-accent) hue while reasoning, and the working/shell hue
+// otherwise, so an in-progress turn is legible at a glance.
+func (th Theme) phaseHue(p Phase) color.Color {
+	switch p {
+	case PhaseReasoning:
+		return dimmed(th.accent, 0.6)
+	case PhaseAnswering:
+		return th.accent
+	default: // PhaseWorking, PhaseIdle
+		return th.shell
+	}
+}
+
 // dimmed scales a color's RGB toward black by the given factor, for use as a same-hue background fill (diff lines, subtle cards).
 func dimmed(c color.Color, f float64) color.Color {
 	r, g, b, _ := c.RGBA() // 16-bit channels per image/color

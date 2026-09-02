@@ -460,6 +460,28 @@ func (t *Transcript) renderLiveTail() string {
 	return b.String()
 }
 
+// turnHeader renders the one-row role-and-elapsed header opening each turn
+// block in the merged transcript flow: "You · <elapsed>" for a user prompt,
+// "Eitri ⚒ · <elapsed>" for an answer (brand + middle dot fall back to ASCII).
+// It is the faint secondary style once committed (settled) and the phase tint
+// while the turn is still streaming (busyTail is the running turn's prompt
+// index, or -1 when no turn is busy, so the live-clock decision is O(1) per
+// message instead of rescanning the transcript). Its text is part of the
+// rendered surface, so a drag-select crossing it copies the role + elapsed;
+// /copy and Ctrl+O build a separate plain serializer and are unaffected.
+func (t Transcript) turnHeader(msg message, i, busyTail int) string {
+	role := "You"
+	if msg.role == "eitri" {
+		role = "Eitri " + brandMark()
+	}
+	live := t.busy && busyTail >= 0 && i >= busyTail && !t.busyStartedAt.IsZero()
+	elapsed := msg.elapsed
+	if live {
+		elapsed = time.Since(t.busyStartedAt)
+	}
+	return t.theme.turnHeaderStyle(t.phase(), live).Render(role + g(" · ", " . ") + formatElapsed(elapsed))
+}
+
 // renderMessageRange renders messages [startMsg, endMsg) plus the workspace
 // header (when withHeader) and, for a busy turn, the trailing busy indicator
 // line (when withBusyLine). toolRows/msgRows receive the message/tool row
@@ -512,9 +534,17 @@ func (t *Transcript) renderMessageRange(b *strings.Builder, toolRows *[]toolRowR
 		emit(block)
 		recordToolRows(rows, base)
 	}
+	busyTail := -1
+	if t.busy {
+		busyTail = t.busyTailIndex()
+	}
 	for i := startMsg; i < endMsg; i++ {
 		msg := t.messages[i]
 		msgStart := nl // content row where this message's block begins
+		// Each turn's block in the merged flow opens with its one-row
+		// role-and-elapsed header, stable across settled/streaming/stopped.
+		emit(t.turnHeader(msg, i, busyTail))
+		emit("\n")
 		w := t.transcriptWidth()
 
 		if msg.role == "you" {
@@ -897,6 +927,20 @@ func (t *Transcript) endTurn() {
 	t.forgeFrame = 0
 	t.layout.dirty = true
 	t.busyPrefixDirty = true
+}
+
+// applyTurnElapsed stamps the just-committed turn's elapsed onto its messages —
+// the user prompt and every assistant block of that turn — so the committed
+// headers settle to the same one-row shape they had while streaming. The elapsed
+// is a property of the turn, shared by its You and Eitri headers.
+func (t *Transcript) applyTurnElapsed(elapsed time.Duration) {
+	tail := t.busyTailIndex()
+	if tail < 0 || tail >= len(t.messages) {
+		return
+	}
+	for i := tail; i < len(t.messages); i++ {
+		t.messages[i].elapsed = elapsed
+	}
 }
 
 func (t *Transcript) toggleExpandAll() bool {
