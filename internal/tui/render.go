@@ -46,6 +46,49 @@ func forgePhaseDetail(p Phase) string {
 	}
 }
 
+// phaseBadge renders the band status row's phase marker: the pinned ● glyph with
+// the phase name. The marker degrades to an ASCII "o" under the existing glyph
+// and motion gates (reduced-motion or non-UTF-8 locales), consistent with the
+// rest of the surface.
+func phaseBadge(p Phase) string {
+	marker := "●"
+	if !motionEnabled() {
+		marker = "o"
+	} else {
+		marker = g(marker, "o")
+	}
+	return marker + " " + p.String()
+}
+
+// truncateFront keeps the longest suffix of s whose display width is at most w,
+// prefixed with an ellipsis when trimming occurred, so an over-long workspace
+// keeps its readable path tail rather than a dangling head.
+func truncateFront(s string, w int) string {
+	if w <= 0 {
+		return ""
+	}
+	runes := []rune(s)
+	cw := 0
+	keep := 0
+	for i := len(runes) - 1; i >= 0; i-- {
+		rw := ansi.StringWidth(string(runes[i]))
+		if cw+rw > w {
+			break
+		}
+		keep++
+		cw += rw
+	}
+	if keep == len(runes) {
+		return s
+	}
+	tail := string(runes[len(runes)-keep:])
+	ell := g("…", "...")
+	if ansi.StringWidth(ell+tail) > w {
+		tail = truncateWidth(tail, w-ansi.StringWidth(ell))
+	}
+	return ell + tail
+}
+
 // formatElapsed renders a duration in the tool-timer vocabulary (Codex-style): seconds under a minute, minutes+seconds under an hour, hours+minutes beyond.
 func formatElapsed(d time.Duration) string {
 	s := int(d.Seconds())

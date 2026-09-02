@@ -7,6 +7,7 @@ import (
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // Composer + bottom band: the fixed-height input surface the Model renders
@@ -183,7 +184,8 @@ func (m Model) renderBand(b *strings.Builder) {
 		}
 		inner.WriteString(renderTitledPanel("Ask Eitri", m.tx.bandWidth(), m.tx.theme.bandSeparatorStyle, m.composer.View()))
 	}
-	inner.WriteString("\n" + m.tx.theme.statusStyle.Render(fitBandLine(m.composerHint(), m.tx.bandWidth())))
+	inner.WriteByte('\n')
+	inner.WriteString(m.renderBandStatusRow())
 	if m.feedback.text != "" {
 		inner.WriteString("\n" + m.renderFeedback())
 	}
@@ -207,6 +209,32 @@ func (m Model) composerCursor(content string) *tea.Cursor {
 	return cur
 }
 
+// renderBandStatusRow renders the band's single two-zone status row underneath
+// the composer (or forge) panel in both idle and busy states: the contextual
+// key hints on the left (unchanged) and the pinned phase badge + workspace path
+// right-aligned on the right. It duplicates nothing the right rail owns — no
+// provider/model, no elapsed counter, no token stats.
+func (m Model) renderBandStatusRow() string {
+	sep := g(" · ", " . ")
+	w := m.tx.bandWidth()
+	badge := phaseBadge(m.tx.phase())
+	// Cap the right zone so the left hints keep room; an over-long workspace is
+	// trimmed from its head so the path tail survives.
+	budget := w / 2
+	if budget < 1 {
+		budget = 1
+	}
+	right := badge
+	if ws := m.deps.WorkspacePath; ws != "" {
+		if ansi.StringWidth(right+sep+ws) > budget {
+			ws = truncateFront(ws, budget-ansi.StringWidth(right+sep))
+		}
+		right += sep + ws
+	}
+	left := fitBandLine(m.composerHint(), w-ansi.StringWidth(right))
+	return m.tx.theme.statusStyle.Render(left + right)
+}
+
 func (m Model) renderFeedback() string {
 	switch m.feedback.kind {
 	case feedbackSuccess:
@@ -223,7 +251,14 @@ func fitBandLine(s string, width int) string {
 		width = 1
 	}
 	if lipgloss.Width(s) > width {
-		s = truncateWidth(s, width-1) + g("…", "...")
+		// Reserve the ellipsis's own width so the filled line stays exactly
+		// width columns even when the ASCII ellipsis is wider than one rune.
+		ell := g("…", "...")
+		keep := width - lipgloss.Width(ell)
+		if keep < 1 {
+			keep = 1
+		}
+		s = truncateWidth(s, keep) + ell
 	}
 	pad := width - lipgloss.Width(s)
 	if pad < 0 {

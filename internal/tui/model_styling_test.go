@@ -329,8 +329,8 @@ func TestModel_stylingBandCoherent(t *testing.T) {
 	if !strings.Contains(ansiStrip(borderRow), "Ask Eitri") {
 		t.Errorf("band must open with the composer panel, got first line: %q", borderRow)
 	}
-	if !strings.Contains(bs, "ctrl+s settings") {
-		t.Errorf("band missing live status strip, got: %q", bs)
+	if !strings.Contains(ansiStrip(bs), phaseBadge(PhaseIdle)) {
+		t.Errorf("band missing live status strip (phase badge %q), got: %q", phaseBadge(PhaseIdle), bs)
 	}
 	plainBand := ansiStrip(bs)
 	if !strings.Contains(plainBand, "Ask Eitri") {
