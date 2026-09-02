@@ -223,3 +223,43 @@ func TestSettingsOverlay_ProviderChangeArmsDiscoveryForDraftProvider(t *testing.
 		t.Fatalf("model after discovery = %q, want gpt-4o", got)
 	}
 }
+
+func TestSettingsOverlay_DirtyEscapeRequiresExplicitDiscard(t *testing.T) {
+	cfg := cfgFixture()
+	o, _ := openSettingsOverlay(cfg, []string{cfg.Model}, defaultTheme, nil, nil, Dependencies{})
+	o.cfg.ThinkingEnabled = !o.cfg.ThinkingEnabled
+
+	res := o.Handle(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if res.outcome == outcomeClosed || !strings.Contains(ansiStrip(o.View()), "Discard unsaved changes?") {
+		t.Fatalf("dirty escape outcome/view = %v/%q, want confirmation", res.outcome, ansiStrip(o.View()))
+	}
+	res = o.Handle(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if res.outcome != outcomeContinue {
+		t.Fatalf("default confirmation action = %v, want keep editing", res.outcome)
+	}
+}
+
+func TestSettingsOverlay_CtrlSSavesFromAnyField(t *testing.T) {
+	cfg := cfgFixture()
+	saved := false
+	o, _ := openSettingsOverlay(cfg, []string{cfg.Model}, defaultTheme, nil, nil, Dependencies{Save: func(config.Config) error { saved = true; return nil }})
+	o.cfg.ThinkingEnabled = !o.cfg.ThinkingEnabled
+
+	res := o.Handle(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+	if res.outcome != outcomeSaved || !saved {
+		t.Fatalf("ctrl+s outcome/saved = %v/%v, want saved", res.outcome, saved)
+	}
+}
+
+func TestSettingsOverlay_UserCanExplicitlyDiscardDirtyDraft(t *testing.T) {
+	cfg := cfgFixture()
+	o, _ := openSettingsOverlay(cfg, []string{cfg.Model}, defaultTheme, nil, nil, Dependencies{})
+	o.cfg.ThinkingEnabled = !o.cfg.ThinkingEnabled
+
+	o.Handle(tea.KeyPressMsg{Code: tea.KeyEscape})
+	o.Handle(tea.KeyPressMsg{Code: tea.KeyRight})
+	res := o.Handle(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if res.outcome != outcomeClosed {
+		t.Fatalf("explicit discard outcome = %v, want closed", res.outcome)
+	}
+}

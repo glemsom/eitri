@@ -65,6 +65,8 @@ type settingsForm struct {
 	discoverState       discoverState
 	discoverErr         string
 	thinkingSuppression func() bool
+	confirmDiscard      bool
+	discardSelected     bool
 }
 
 // newSettingsForm seeds the form with the loaded config and the discovered model list.
@@ -432,6 +434,8 @@ type SettingsOverlay struct {
 	save func(config.Config) error
 	// saveBack mirrors an accepted draft back to the caller (engine-side apply).
 	saveBack func(config.Config)
+	status   string
+	height   int
 }
 
 // settingsKeyOutcome reports what the Model must do after one key press
@@ -468,11 +472,35 @@ func openSettingsOverlay(cfg config.Config, models []string, theme Theme, teleme
 // provider change, or folder picker after Add folder).
 func (o *SettingsOverlay) Key(k tea.KeyPressMsg) (settingsKeyOutcome, tea.Cmd) {
 	s := &o.settingsForm
+	if s.confirmDiscard {
+		switch k.String() {
+		case "left", "right", "tab":
+			s.discardSelected = !s.discardSelected
+		case "esc":
+			s.confirmDiscard = false
+			s.discardSelected = false
+		case "enter":
+			if s.discardSelected {
+				return outcomeClosed, nil
+			}
+			s.confirmDiscard = false
+		}
+		return outcomeContinue, nil
+	}
 	if s.addingPath {
 		return o.keyAddPath(k)
 	}
 	switch k.String() {
+	case "ctrl+s":
+		if s.dirty() {
+			return outcomeSaved, nil
+		}
 	case "esc", "ctrl+c":
+		if s.dirty() {
+			s.confirmDiscard = true
+			s.discardSelected = false
+			return outcomeContinue, nil
+		}
 		return outcomeClosed, nil
 	case "enter":
 		if s.onSave() {
@@ -587,6 +615,9 @@ type settingsResult struct {
 // Unrelated messages are ignored.
 func (o *SettingsOverlay) Handle(msg tea.Msg) settingsResult {
 	switch msgi := msg.(type) {
+	case tea.WindowSizeMsg:
+		o.height = msgi.Height
+		return settingsResult{outcome: outcomeContinue, handled: true}
 	case tea.KeyPressMsg:
 		outcome, cmd := o.Key(msgi)
 		res := settingsResult{outcome: outcome, handled: true, cmd: cmd}
@@ -612,7 +643,22 @@ func (o *SettingsOverlay) Handle(msg tea.Msg) settingsResult {
 }
 
 // View renders the open Settings surface.
-func (o *SettingsOverlay) View() string { return settingsView(o.settingsForm) }
+func (o *SettingsOverlay) View() string {
+	view := settingsView(o.settingsForm)
+	if o.status != "" {
+		view += "\n" + o.theme.statusStyle.Render("   "+o.status)
+	}
+	if o.height <= 0 {
+		return view
+	}
+	lines := strings.Split(view, "\n")
+	if len(lines) <= o.height {
+		return view
+	}
+	footerRows := min(4, o.height)
+	bodyRows := o.height - footerRows
+	return strings.Join(append(lines[:bodyRows], lines[len(lines)-footerRows:]...), "\n")
+}
 
 // beginDiscovery arms the loading state for the draft config and returns the
 // discovery command; nil when discovery is unavailable.
@@ -658,8 +704,14 @@ func (o *SettingsOverlay) Save() (config.Config, string, bool) {
 		status = "saved"
 		applied = true
 	}
-	if applied && o.saveBack != nil {
-		o.saveBack(cfg)
+	if applied {
+		o.original = cfg
+		o.status = "Settings saved"
+		if o.saveBack != nil {
+			o.saveBack(cfg)
+		}
+	} else {
+		o.status = status
 	}
 	return cfg, status, applied
 }
@@ -667,6 +719,15 @@ func (o *SettingsOverlay) Save() (config.Config, string, bool) {
 // settingsView renders the Settings surface: a focused row per settable knob, the focused row highlighted, a Save/Cancel footer.
 func settingsView(f settingsForm) string {
 	th := f.theme
+	if f.confirmDiscard {
+		keep, discard := "[ Keep editing ]", "[ Discard ]"
+		if f.discardSelected {
+			discard = lipgloss.NewStyle().Bold(true).Reverse(true).Render("  Discard  ")
+		} else {
+			keep = lipgloss.NewStyle().Bold(true).Reverse(true).Render("  Keep editing  ")
+		}
+		return th.headerStyle.Render("Discard unsaved changes?") + "\n\nYour changes have not been saved.\n\n" + keep + "  " + discard + "\n" + th.statusStyle.Render("←/→ choose · enter confirm · esc keep editing")
+	}
 	var b strings.Builder
 	title := "Eitri Settings"
 	if f.dirty() {
@@ -762,26 +823,32 @@ func settingsView(f settingsForm) string {
 	b.WriteString(th.statusStyle.Render("   " + settingsHelp(f)))
 	b.WriteString("\n")
 
-	save := "[ Save ]"
-	if f.dirty() {
-		save = "[ Save * ]"
+	dirty := f.dirty()
+	state := g("✓", "OK") + " Settings are up to date"
+	save := "[ Save changes ]"
+	if dirty {
+		state = g("●", "*") + " Unsaved changes"
 	}
 	cancel := "[ Cancel ]"
+	focusButton := func(label string) string {
+		return lipgloss.NewStyle().Bold(true).Reverse(true).Render(" " + label + " ")
+	}
 	if f.field == fieldSave {
-		save = "[" + th.statusStyle.Render(strings.Trim(save, "[]")) + "]"
+		save = focusButton("Save changes")
 	}
 	if f.field == fieldCancel {
-		cancel = "[" + th.statusStyle.Render(" Cancel ") + "]"
+		cancel = focusButton("Cancel")
 	}
-	b.WriteString("\n")
-	b.WriteString(save + "  " + cancel + "\n")
-	b.WriteString(th.statusStyle.Render(g("↑/↓ navigate", "up/down navigate") + " " + g("·", ".") + " " + g("←/→ adjust", "left/right adjust") + " " + g("·", ".") + " tab next " + g("·", ".") + " enter select/save " + g("·", ".") + " esc discard"))
+	b.WriteString("\n" + th.statusStyle.Render(strings.Repeat(hr(), 58)) + "\n")
+	b.WriteString(state + "   " + save + "  " + cancel + "\n")
+	b.WriteString(th.statusStyle.Render(g("↑/↓ navigate", "up/down navigate") + " " + g("·", ".") + " " + g("←/→ adjust", "left/right adjust") + " " + g("·", ".") + " ctrl+s save " + g("·", ".") + " esc close"))
 	return b.String()
 }
 
 // startSettings opens the Settings surface and returns the command to run.
 func (m Model) startSettings() (tea.Model, tea.Cmd) {
 	o, cmd := openSettingsOverlay(m.deps.Config, m.deps.Models, m.tx.theme, m.telemetry, m.deps.ThinkingSuppression, m.deps)
+	o.height = m.tx.height
 	m.settings = o
 	return m, cmd
 }
@@ -806,7 +873,6 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tx.reasoningEffort = res.saved.ReasoningEffort
 			m.runtime.SetThinkingEnabled(res.saved.ThinkingEnabled)
 		}
-		m.settings = nil
 	}
 	return m, res.cmd
 }

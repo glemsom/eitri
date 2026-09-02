@@ -222,7 +222,7 @@ func TestSettingsView_RendersKnobsAndSave(t *testing.T) {
 	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{"grok-2"})
 	view := settingsView(f)
-	for _, want := range []string{"Eitri Settings", "opencode-go", "grok-2", "Deep thinking", "✓ on", "high", "250", "Context overflow recovery", "Theme", "dark", "[ Save ]", "[ Cancel ]"} {
+	for _, want := range []string{"Eitri Settings", "opencode-go", "grok-2", "Deep thinking", "✓ on", "high", "250", "Context overflow recovery", "Theme", "dark", "[ Save changes ]", "[ Cancel ]"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("settings view %q missing %q", view, want)
 		}

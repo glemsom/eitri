@@ -97,6 +97,7 @@ func TestModel_settingsThemeSaveReskinsChrome(t *testing.T) {
 	if got := m.tx.theme.accent; got != lipgloss.Color("#BD93F9") {
 		t.Fatalf("model theme accent after save = %v, want dracula accent", got)
 	}
+	m = keypress(t, m, "esc")
 	if pane := lineContaining(view(m), "plain"); !strings.Contains(pane, "\x1b[38;2;189;147;249m") {
 		t.Errorf("chrome must re-skin to dracula after save, got: %q", pane)
 	}

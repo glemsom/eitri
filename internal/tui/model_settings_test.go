@@ -32,7 +32,7 @@ func TestModel_OpenSettingsRendersSurface(t *testing.T) {
 	}
 }
 
-func TestModel_SettingsSavePersistsAndCloses(t *testing.T) {
+func TestModel_SettingsSavePersistsAndRemainsOpen(t *testing.T) {
 	t.Parallel()
 	var saved config.Config
 	m := NewModelCfg(Dependencies{
@@ -53,8 +53,11 @@ func TestModel_SettingsSavePersistsAndCloses(t *testing.T) {
 	if saved.Provider != "opencode-go" || saved.MaxTurns != 250 || saved.Model != "deepseek-v4-flash" {
 		t.Fatalf("saved config = %+v, want the seeded draft values", saved)
 	}
-	if m.settings != nil {
-		t.Fatal("settings surface did not close after Save")
+	if m.settings == nil {
+		t.Fatal("settings surface closed after Save")
+	}
+	if content := ansiStrip(view(m)); !strings.Contains(content, "Settings saved") || strings.Contains(content, "Unsaved changes") {
+		t.Fatalf("settings content after Save = %q, want saved acknowledgement and clean draft", content)
 	}
 }
 
@@ -457,5 +460,19 @@ func namedKey(name string) tea.Msg {
 		return tea.KeyPressMsg{Code: 'n', Text: "n"}
 	default:
 		return tea.KeyPressMsg{Code: tea.KeyExtended, Text: name}
+	}
+}
+
+func TestModel_SettingsActionsRemainVisibleAtConstrainedHeight(t *testing.T) {
+	m := NewModelCfg(Dependencies{Config: cfgFixture(), Models: []string{"deepseek-v4-flash"}})
+	m = resizeTo(t, m, 80, 12)
+	m = keypress(t, m, "ctrl+s")
+
+	lines := strings.Split(ansiStrip(view(m)), "\n")
+	if len(lines) > 12 {
+		t.Fatalf("settings rendered %d rows in a 12-row terminal", len(lines))
+	}
+	if !strings.Contains(strings.Join(lines, "\n"), "Save changes") {
+		t.Fatalf("settings actions not visible at constrained height: %q", lines)
 	}
 }
