@@ -111,15 +111,8 @@ func TestToolElapsed_timerRenders(t *testing.T) {
 	m2 = toolStart(t, m2, "bash", `{"command":"true"}`)
 	m2 = toolResult(t, m2, ToolResult{Name: "bash", Result: "ok (1ms)", Lines: 1})
 	content2 := view(m2)
-	// The sub-second TOOL must not render a timer on its head row. (The turn
-	// header may still show the turn's own "0s" elapsed; this assertion is
-	// scoped to the tool head alone.)
-	head := lineContaining(content2, "true") // the bash head row ("🔧 bash  true")
-	if head == "" {
-		t.Fatalf("expected the bash tool head row in the view, got: %q", content2)
-	}
-	if strings.Contains(ansiStrip(head), "0s") {
-		t.Errorf("sub-second tool must not render a timer on its head row, got: %q", ansiStrip(head))
+	if strings.Contains(content2, "0s") {
+		t.Errorf("sub-second tool must not render a timer, got: %q", content2)
 	}
 }
 

@@ -46,20 +46,6 @@ func forgePhaseDetail(p Phase) string {
 	}
 }
 
-// phaseBadge renders the band status row's phase marker: the pinned ● glyph with
-// the phase name. The marker degrades to an ASCII "o" under the existing glyph
-// and motion gates (reduced-motion or non-UTF-8 locales), consistent with the
-// rest of the surface.
-func phaseBadge(p Phase) string {
-	marker := "●"
-	if !motionEnabled() {
-		marker = "o"
-	} else {
-		marker = g(marker, "o")
-	}
-	return marker + " " + p.String()
-}
-
 // truncateFront keeps the longest suffix of s whose display width is at most w,
 // prefixed with an ellipsis when trimming occurred, so an over-long workspace
 // keeps its readable path tail rather than a dangling head.

@@ -8,9 +8,8 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// bandStatusRow returns the band's single status row: the lowest non-empty
-// rendered line, which sits at the base of the bottom band in both idle and
-// busy states.
+// bandStatusRow returns the band's status row: the lowest non-empty rendered
+// line, which sits at the base of the bottom band in both idle and busy states.
 func bandStatusRow(m Model) string {
 	rows := strings.Split(strings.TrimRight(view(m), "\n"), "\n")
 	for i := len(rows) - 1; i >= 0; i-- {
@@ -33,30 +32,24 @@ func bandModel() Model {
 	})
 }
 
-func TestBandStatusRow_idleShowsPhaseAndWorkspace(t *testing.T) {
+func TestBandStatusRow_idleShowsWorkspace(t *testing.T) {
 	m := bandModel()
 	m = resize(t, m)
 
 	row := bandStatusRow(m)
-	if !strings.Contains(row, "idle") {
-		t.Errorf("idle status row must show the idle phase, got: %q", row)
-	}
 	if !strings.Contains(row, testWorkspace) {
 		t.Errorf("idle status row must show the workspace path, got: %q", row)
 	}
-	if !strings.Contains(row, phaseBadge(PhaseIdle)) {
-		t.Errorf("idle status row must carry the phase badge %q, got: %q", phaseBadge(PhaseIdle), row)
-	}
-	// The right zone duplicates nothing the rail owns: no provider/model, no
-	// elapsed counter, no token stats.
-	for _, forbidden := range []string{"opencode-go", "deepseek-v4-flash", "elapsed", " tok"} {
-		if strings.Contains(row, forbidden) {
-			t.Errorf("idle status row must not carry %q, got: %q", forbidden, row)
+	// No phase badge, and the right zone duplicates nothing the rail owns: no
+	// provider/model, no elapsed counter, no token stats.
+	for _, gone := range []string{"idle", "working", "reasoning", "answering", "opencode-go", "deepseek-v4-flash", "elapsed", " tok"} {
+		if strings.Contains(row, gone) {
+			t.Errorf("idle status row must not carry %q, got: %q", gone, row)
 		}
 	}
 }
 
-func TestBandStatusRow_busyShowsPhaseAndWorkspaceBelowForge(t *testing.T) {
+func TestBandStatusRow_busyShowsWorkspaceBelowForge(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn:          streamingTurn,
 		Events:        NewEventFeed(),
@@ -69,9 +62,6 @@ func TestBandStatusRow_busyShowsPhaseAndWorkspaceBelowForge(t *testing.T) {
 
 	content := ansiStrip(view(m))
 	row := bandStatusRow(m)
-	if !strings.Contains(row, "working") {
-		t.Errorf("busy status row must show the working phase, got: %q", row)
-	}
 	if !strings.Contains(row, testWorkspace) {
 		t.Errorf("busy status row must keep the workspace path, got: %q", row)
 	}
@@ -84,24 +74,18 @@ func TestBandStatusRow_busyShowsPhaseAndWorkspaceBelowForge(t *testing.T) {
 	if rowIdx <= forgeIdx {
 		t.Errorf("busy status row must sit below the forge panel (forge %d, row %d):\n%s", forgeIdx, rowIdx, content)
 	}
-	// The right zone stays free of the rail's counters even mid-turn.
-	for _, forbidden := range []string{"opencode-go", "deepseek-v4-flash", "elapsed", " tok"} {
-		if strings.Contains(row, forbidden) {
-			t.Errorf("busy status row must not carry %q, got: %q", forbidden, row)
-		}
-	}
 }
 
-func TestBandStatusRow_asciiFallback(t *testing.T) {
+func TestBandStatusRow_asciiStable(t *testing.T) {
 	t.Setenv("EITRI_NO_MOTION", "1")
 	m := bandModel()
 	m = resize(t, m)
 
 	row := bandStatusRow(m)
-	if strings.Contains(row, "●") {
-		t.Errorf("reduced-motion status row must drop the ● marker, got: %q", row)
+	if !strings.Contains(row, testWorkspace) {
+		t.Errorf("status row must show the workspace path under reduced motion, got: %q", row)
 	}
-	if !strings.Contains(row, "o idle") {
-		t.Errorf("reduced-motion status row must carry the ASCII phase marker, got: %q", row)
+	if strings.Contains(row, "●") || strings.Contains(row, "idle") {
+		t.Errorf("status row must carry no glyph or phase marker, got: %q", row)
 	}
 }

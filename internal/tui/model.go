@@ -38,7 +38,6 @@ type message struct {
 	reasoning         string          // derived snapshot of the turn's chain-of-thought
 	events            []TimelineEvent // arrival-ordered event log the turn's snapshots derive from
 	streaming         bool            // true while this assistant reply is still growing from the answer stream
-	elapsed           time.Duration   // the owning turn's elapsed time (set at commit; live-rendered while streaming)
 	thinkingRequested bool
 	// expansion owns the reasoning block's expansion forces on the ExpansionState
 	// migrated thinkingExpanded / thinkingCollapsed flags) plus a per-fragment

@@ -161,16 +161,22 @@ func TestDragSelect_copiesSelectedRange(t *testing.T) {
 	if top != 0 {
 		t.Fatalf("test assumes offset 0, got %d (rows: %q)", top, rows)
 	}
-	row := rows[0]
-	col := strings.Index(row, "You")
-	if col < 0 {
-		t.Fatalf("expected a turn header on row 0, got %q", row)
+	row, rowY := "", 0
+	for i, r := range rows {
+		if strings.Contains(r, "answer") {
+			row, rowY = r, i
+			break
+		}
 	}
-	want := "You"
+	col := strings.Index(row, "answer")
+	if col < 0 {
+		t.Fatalf("could not locate the answer word in the history rows, got: %q", rows)
+	}
+	want := "answer"
 
-	m = mustUpdate(t, m, dragMsg("press", col, 0))
-	m = mustUpdate(t, m, dragMsg("motion", col+len(want)-1, 0))
-	m = mustUpdate(t, m, dragMsg("release", col+len(want)-1, 0))
+	m = mustUpdate(t, m, dragMsg("press", col, rowY))
+	m = mustUpdate(t, m, dragMsg("motion", col+len(want)-1, rowY))
+	m = mustUpdate(t, m, dragMsg("release", col+len(want)-1, rowY))
 
 	if copied != want {
 		t.Errorf("drag copy = %q, want %q", copied, want)
@@ -443,15 +449,22 @@ func TestDragSelect_backwardsDragCopiesSameRange(t *testing.T) {
 	if top != 0 {
 		t.Fatalf("test assumes offset 0, got %d", top)
 	}
-	col := strings.Index(rows[0], "You")
-	if col < 0 {
-		t.Fatalf("expected a turn header on the first history row, got: %q", rows[0])
+	row, rowY := "", 0
+	for i, r := range rows {
+		if strings.Contains(r, "answer") {
+			row, rowY = r, i
+			break
+		}
 	}
-	want := "You"
+	col := strings.Index(row, "answer")
+	if col < 0 {
+		t.Fatalf("could not locate the answer word in the history rows, got: %q", rows)
+	}
+	want := "answer"
 
-	m = mustUpdate(t, m, dragMsg("press", col+len(want)-1, 0))
-	m = mustUpdate(t, m, dragMsg("motion", col, 0))
-	mustUpdate(t, m, dragMsg("release", col, 0))
+	m = mustUpdate(t, m, dragMsg("press", col+len(want)-1, rowY))
+	m = mustUpdate(t, m, dragMsg("motion", col, rowY))
+	mustUpdate(t, m, dragMsg("release", col, rowY))
 
 	if copied != want {
 		t.Errorf("backwards drag copy = %q, want %q", copied, want)
@@ -465,13 +478,20 @@ func TestDragSelect_highlightsDuringDrag(t *testing.T) {
 	if top != 0 {
 		t.Fatalf("test assumes offset 0, got %d", top)
 	}
-	col := strings.Index(rows[0], "You")
+	row, rowY := "", 0
+	for i, r := range rows {
+		if strings.Contains(r, "answer") {
+			row, rowY = r, i
+			break
+		}
+	}
+	col := strings.Index(row, "answer")
 	if col < 0 {
-		t.Fatalf("expected a turn header on the first history row, got: %q", rows[0])
+		t.Fatalf("could not locate the answer word in the history rows, got: %q", rows)
 	}
 
-	m = mustUpdate(t, m, dragMsg("press", col, 0))
-	m = mustUpdate(t, m, dragMsg("motion", col+len("You"), 0))
+	m = mustUpdate(t, m, dragMsg("press", col, rowY))
+	m = mustUpdate(t, m, dragMsg("motion", col+len("answer"), rowY))
 
 	content := view(m)
 	sel := defaultTheme.selectionBgSGR()

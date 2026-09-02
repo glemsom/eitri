@@ -39,13 +39,10 @@ func TestModelStatusStripHintsOnly(t *testing.T) {
 	var band strings.Builder
 	m.renderBand(&band)
 	bs := band.String()
-	// The status strip is now the two-zone band status row: hints on the left,
-	// the pinned phase badge on the right. Assert both zones.
+	// The status strip is the band status row: key hints on the left; the right
+	// rail stays the only home for provider/model/elapsed/token readouts.
 	if !strings.Contains(bs, "ctrl+e expand") {
 		t.Errorf("status strip missing keybinding hints, got: %q", bs)
-	}
-	if !strings.Contains(ansiStrip(bs), phaseBadge(PhaseIdle)) {
-		t.Errorf("status strip missing the live phase badge, got: %q", bs)
 	}
 	for _, gone := range []string{"cache:", "cost:", "0/", "elapsed", "effort:", "thinking:"} {
 		if strings.Contains(bs, gone) {

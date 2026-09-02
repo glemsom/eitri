@@ -209,27 +209,27 @@ func (m Model) composerCursor(content string) *tea.Cursor {
 	return cur
 }
 
-// renderBandStatusRow renders the band's single two-zone status row underneath
-// the composer (or forge) panel in both idle and busy states: the contextual
-// key hints on the left (unchanged) and the pinned phase badge + workspace path
-// right-aligned on the right. It duplicates nothing the right rail owns — no
-// provider/model, no elapsed counter, no token stats.
+// renderBandStatusRow renders the band's status row underneath the composer (or
+// forge) panel in both idle and busy states: the contextual key hints on the
+// left and the workspace path right-aligned on the right. It duplicates nothing
+// the right rail owns — no provider/model, no elapsed counter, no token stats —
+// and no phase badge: the phase already reads from the forge and the busy copy,
+// so this row pins only the workspace, the one global path not otherwise
+// surfaced.
 func (m Model) renderBandStatusRow() string {
-	sep := g(" · ", " . ")
 	w := m.tx.bandWidth()
-	badge := phaseBadge(m.tx.phase())
-	// Cap the right zone so the left hints keep room; an over-long workspace is
-	// trimmed from its head so the path tail survives.
-	budget := w / 2
-	if budget < 1 {
-		budget = 1
-	}
-	right := badge
+	right := ""
 	if ws := m.deps.WorkspacePath; ws != "" {
-		if ansi.StringWidth(right+sep+ws) > budget {
-			ws = truncateFront(ws, budget-ansi.StringWidth(right+sep))
+		// Cap the right zone so the left hints keep room; an over-long workspace
+		// is trimmed from its head so the path tail survives.
+		budget := w / 2
+		if budget < 1 {
+			budget = 1
 		}
-		right += sep + ws
+		if ansi.StringWidth(ws) > budget {
+			ws = truncateFront(ws, budget)
+		}
+		right = ws
 	}
 	left := fitBandLine(m.composerHint(), w-ansi.StringWidth(right))
 	return m.tx.theme.statusStyle.Render(left + right)
