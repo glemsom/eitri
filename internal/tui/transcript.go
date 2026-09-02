@@ -72,6 +72,13 @@ type Transcript struct {
 	railWidth int
 
 	rail *Rail
+	// The styled rail is stable across mouse and stream frames unless its text or
+	// dimensions change. Caching it avoids rebuilding Kitty placeholder graphemes;
+	// BenchmarkPausedStreamViewWithFace measured 936 -> 187 allocs per frame.
+	railRenderInput  string
+	railRenderOutput string
+	railRenderHeight int
+	railRenderWidth  int
 }
 
 type toolRowRange struct {
@@ -231,13 +238,20 @@ func (t Transcript) surfaceWithRail(pane, rail string, bandHeight int) string {
 }
 
 // viewWithRail composes the final surface content for a rail-visible pane: it renders the wired rail through styledRail at the rail's clamp height and floats it above the full-width band via surfaceWithRail.
-func (t Transcript) viewWithRail(pane string, bandHeight int) string {
+func (t *Transcript) viewWithRail(pane string, bandHeight int) string {
 	if !t.railVisible() {
 		return pane
 	}
 	rw := t.railWidthOrDefault()
-	right := styledRailWithFace(t.rail.renderLiveWithTools(t.telemetry, t.theme, rw, t.phase(), t.spinner, &t.log), t.railClampHeight(bandHeight), rw)
-	return t.surfaceWithRail(pane, right, bandHeight)
+	height := t.railClampHeight(bandHeight)
+	content := t.rail.renderLiveWithTools(t.telemetry, t.theme, rw, t.phase(), t.spinner, &t.log)
+	if content != t.railRenderInput || height != t.railRenderHeight || rw != t.railRenderWidth {
+		t.railRenderInput = content
+		t.railRenderHeight = height
+		t.railRenderWidth = rw
+		t.railRenderOutput = styledRailWithFace(content, height, rw)
+	}
+	return t.surfaceWithRail(pane, t.railRenderOutput, bandHeight)
 }
 
 // railWidthOrDefault returns the rail width in effect: the mutable field when set, else the default.
