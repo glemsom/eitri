@@ -8,6 +8,8 @@ import (
 
 	"image/color"
 
+	"charm.land/lipgloss/v2"
+
 	"github.com/glemsom/eitri/internal/config"
 )
 
@@ -477,4 +479,19 @@ func TestModel_stylingPaletteCentralized(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m = submitAndWait(t, m)
 	_ = view(m)
+}
+
+// TestRenderTitledPanel_keepsBorderColorAcrossStyledTitle guards against the
+// forged title's own inline color reset stripping the panel color from the top
+// border's trailing fill: the whole top border must read the same color as the
+// sides and bottom.
+func TestRenderTitledPanel_keepsBorderColorAcrossStyledTitle(t *testing.T) {
+	panel := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
+	coloredTitle := lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("forge")
+	got := renderTitledPanel(coloredTitle, 20, panel, "body")
+	border := strings.Split(got, "\n")[0]
+	code := strings.SplitN(panel.Render("M"), "M", 2)[0]
+	if strings.Count(border, code) != 2 {
+		t.Fatalf("top border must re-apply the panel color after the title reset (want 2 panel-color segments: opening + trailing fill, got %d): %q", strings.Count(border, code), border)
+	}
 }

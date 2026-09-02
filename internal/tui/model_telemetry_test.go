@@ -106,8 +106,11 @@ func TestModelStatusStripBusySpinner(t *testing.T) {
 	if !strings.Contains(ansiStrip(bs), "⚒  Eitri is forging") {
 		t.Errorf("busy band missing double-spaced locked panel title, got: %q", bs)
 	}
-	if !strings.Contains(bs, "running tools") || !strings.Contains(bs, "elapsed") {
+	if !strings.Contains(bs, "running tools") {
 		t.Errorf("busy band missing live forge detail line, got: %q", bs)
+	}
+	if !strings.Contains(ansiStrip(bs), "elapsed") {
+		t.Errorf("busy title missing live elapsed readout, got: %q", bs)
 	}
 	if !strings.Contains(bs, "Hold steady — composer locked during forging") {
 		t.Errorf("busy band missing warm locked composer copy, got: %q", bs)

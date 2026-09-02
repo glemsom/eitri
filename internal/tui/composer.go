@@ -120,8 +120,13 @@ func renderTitledPanel(title string, width int, style lipgloss.Style, body strin
 	if topFill < 0 {
 		topFill = 0
 	}
+	// Render the top border in two passes: the title carries its own inline
+	// styling (the forge glint), whose closing reset would otherwise strip the
+	// panel color from the trailing fill and corner. Re-applying the panel style
+	// to the tail keeps the top border the same color as the sides and bottom.
 	var b strings.Builder
-	b.WriteString(style.Render(g("╭", "+") + titleText + strings.Repeat(h, topFill) + g("╮", "+")))
+	b.WriteString(style.Render(g("╭", "+") + titleText))
+	b.WriteString(style.Render(strings.Repeat(h, topFill) + g("╮", "+")))
 	for _, line := range strings.Split(body, "\n") {
 		plainLine := ansiStrip(line)
 		if lipgloss.Width(plainLine) > inner {
@@ -279,13 +284,20 @@ func (m Model) composerPreRows() int {
 	return n
 }
 
+// forgeElapsed renders the busy timer suffix (" · 1m 05s elapsed") once the turn
+// is underway, empty before the first busy frame so a freshly forged title still
+// reads plainly.
+func forgeElapsed(m Model) string {
+	if m.tx.busyStartedAt.IsZero() {
+		return ""
+	}
+	return " · " + formatElapsed(time.Since(m.tx.busyStartedAt)) + " elapsed"
+}
+
 func (m Model) forgeDetailLine() string {
 	parts := []string{forgePhaseDetail(m.tx.phase())}
 	if e, ok := m.tx.activeTool(); ok {
 		parts = append(parts, "running "+e.name)
-	}
-	if !m.tx.busyStartedAt.IsZero() {
-		parts = append(parts, formatElapsed(time.Since(m.tx.busyStartedAt))+" elapsed")
 	}
 	return strings.Join(parts, " · ")
 }
@@ -308,13 +320,16 @@ func (m Model) forgeTitle() string {
 	accent := m.tx.theme.accent
 	muted := lipgloss.NewStyle().Foreground(dimmed(accent, 0.65))
 	strong := lipgloss.NewStyle().Foreground(accent)
-	title := []rune("⚒  Eitri is forging")
+	elapsed := forgeElapsed(m)
 	if !motionEnabled() {
-		return muted.Render("⚒  Eitri is ") + strong.Bold(true).Render("forging")
+		return muted.Render("⚒  Eitri is ") + strong.Bold(true).Render("forging") + muted.Render(elapsed)
 	}
 
 	// Sweep over visible glyphs rather than spaces so the three-cell glint keeps
-	// its shape as it crosses the whole title.
+	// its shape as it crosses the whole title; the elapsed readout rides the
+	// same sweep so the timer moves with the forge cadence instead of drifting.
+	title := []rune("⚒  Eitri is forging" + elapsed)
+
 	var glyphs []int
 	for i, r := range title {
 		if r != ' ' {

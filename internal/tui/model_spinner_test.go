@@ -450,3 +450,21 @@ func TestForgeTitle_reducedMotionIsStatic(t *testing.T) {
 		t.Fatalf("static forge title text = %q", ansiStrip(first))
 	}
 }
+
+func TestForgeTitle_carriesElapsedReadout(t *testing.T) {
+	m := newStreamingModel()
+	m.tx.busy = true
+	m.tx.busyStartedAt = time.Now().Add(-time.Minute)
+	if got := ansiStrip(m.forgeTitle()); !strings.Contains(got, "elapsed") {
+		t.Fatalf("forge title must carry the elapsed readout, got: %q", got)
+	}
+}
+
+func TestForgeTitle_reducedMotionCarriesElapsedReadout(t *testing.T) {
+	t.Setenv("EITRI_NO_MOTION", "1")
+	m := newStreamingModel()
+	m.tx.busyStartedAt = time.Now().Add(-time.Minute)
+	if got := ansiStrip(m.forgeTitle()); !strings.Contains(got, "elapsed") {
+		t.Fatalf("reduced-motion forge title must carry the elapsed readout, got: %q", got)
+	}
+}
