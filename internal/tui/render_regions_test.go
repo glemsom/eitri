@@ -37,7 +37,7 @@ func TestRenderRegions_HistoryVsBandSeparation(t *testing.T) {
 	m.renderBand(&band)
 	hs, bs := hist.String(), band.String()
 
-	for _, want := range []string{"workspace: /tmp/acme-project", "🔧 bash", "ls -la"} {
+	for _, want := range []string{"🔧 bash", "ls -la"} {
 		if !strings.Contains(hs, want) {
 			t.Errorf("scroll region missing %q, got:\n%s", want, hs)
 		}
@@ -53,6 +53,9 @@ func TestRenderRegions_HistoryVsBandSeparation(t *testing.T) {
 	}
 
 	plainBand := ansiStrip(bs)
+	if !strings.Contains(plainBand, "/tmp/acme-project") {
+		t.Errorf("band status row must surface the workspace path (top-of-screen header removed), got band:\n%s", bs)
+	}
 	if !strings.Contains(plainBand, "↑/↓ navigate") {
 		t.Errorf("band missing slash status strip, got:\n%s", bs)
 	}

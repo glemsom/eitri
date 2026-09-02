@@ -18,7 +18,6 @@ func TestTranscript_rendersStandalone(t *testing.T) {
 		theme:           th,
 		messages:        []message{{role: "you", content: "hello"}},
 		configTheme:     config.DefaultTheme,
-		workspacePath:   "/tmp/acme",
 		reasoningEffort: "medium",
 		width:           80,
 		height:          12,
@@ -32,8 +31,8 @@ func TestTranscript_rendersStandalone(t *testing.T) {
 	if !strings.Contains(content, "hello") {
 		t.Errorf("standalone Transcript must render its messages, got: %q", content)
 	}
-	if !strings.Contains(content, "workspace: /tmp/acme") {
-		t.Errorf("standalone Transcript must render the workspace header, got: %q", content)
+	if strings.Contains(content, "workspace:") {
+		t.Errorf("workspace must not render in the transcript header (it lives in the band status row), got: %q", content)
 	}
 
 	region := tx.renderHistoryViewport(content, 2) // reserve 2 rows (a synthetic band)
@@ -232,7 +231,6 @@ func TestTranscript_matchesModelRender(t *testing.T) {
 	tx := Transcript{
 		theme:           th,
 		configTheme:     config.DefaultTheme,
-		workspacePath:   "/tmp/acme",
 		messages:        msgs,
 		reasoningEffort: "medium",
 		width:           80,
@@ -506,7 +504,6 @@ func newStreamPaneTestTranscript(th Theme, msgs []message) Transcript {
 	return Transcript{
 		theme:           th,
 		configTheme:     config.DefaultTheme,
-		workspacePath:   "/tmp/acme",
 		messages:        msgs,
 		reasoningEffort: "medium",
 		width:           80,

@@ -162,11 +162,11 @@ func TestDragSelect_copiesSelectedRange(t *testing.T) {
 		t.Fatalf("test assumes offset 0, got %d (rows: %q)", top, rows)
 	}
 	row := rows[0]
-	col := strings.Index(row, "workspace")
+	col := strings.Index(row, "You")
 	if col < 0 {
-		t.Fatalf("workspace header not on row 0, got %q", row)
+		t.Fatalf("expected a turn header on row 0, got %q", row)
 	}
-	want := "workspace"
+	want := "You"
 
 	m = mustUpdate(t, m, dragMsg("press", col, 0))
 	m = mustUpdate(t, m, dragMsg("motion", col+len(want)-1, 0))
@@ -443,8 +443,11 @@ func TestDragSelect_backwardsDragCopiesSameRange(t *testing.T) {
 	if top != 0 {
 		t.Fatalf("test assumes offset 0, got %d", top)
 	}
-	col := strings.Index(rows[0], "workspace")
-	want := "workspace"
+	col := strings.Index(rows[0], "You")
+	if col < 0 {
+		t.Fatalf("expected a turn header on the first history row, got: %q", rows[0])
+	}
+	want := "You"
 
 	m = mustUpdate(t, m, dragMsg("press", col+len(want)-1, 0))
 	m = mustUpdate(t, m, dragMsg("motion", col, 0))
@@ -462,10 +465,13 @@ func TestDragSelect_highlightsDuringDrag(t *testing.T) {
 	if top != 0 {
 		t.Fatalf("test assumes offset 0, got %d", top)
 	}
-	col := strings.Index(rows[0], "workspace")
+	col := strings.Index(rows[0], "You")
+	if col < 0 {
+		t.Fatalf("expected a turn header on the first history row, got: %q", rows[0])
+	}
 
 	m = mustUpdate(t, m, dragMsg("press", col, 0))
-	m = mustUpdate(t, m, dragMsg("motion", col+5, 0))
+	m = mustUpdate(t, m, dragMsg("motion", col+len("You"), 0))
 
 	content := view(m)
 	sel := defaultTheme.selectionBgSGR()
@@ -473,7 +479,7 @@ func TestDragSelect_highlightsDuringDrag(t *testing.T) {
 		t.Errorf("drag in progress must mark the range with the selection background, got content:\n%s", content)
 	}
 	plain := ansiStrip(content)
-	if !strings.Contains(plain, "workspace: /tmp/acme") {
+	if !strings.Contains(plain, "hi") {
 		t.Errorf("highlight must not alter the transcript text, got plain:\n%s", plain)
 	}
 

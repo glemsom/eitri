@@ -13,9 +13,8 @@ func scrollRegionFixture(t *testing.T, height, band int) *Transcript {
 	// Prompts are longer than one card row (200 chars wraps at this width) so the
 	// history overflows the region from real content, not from prompt-card padding.
 	tx := &Transcript{
-		theme:         th,
-		configTheme:   config.DefaultTheme,
-		workspacePath: "/tmp/acme",
+		theme:       th,
+		configTheme: config.DefaultTheme,
 		messages: []message{
 			{role: "you", content: strings.Repeat("q", 200)},
 			{role: "eitri", content: strings.Repeat("first answer ", 30)},

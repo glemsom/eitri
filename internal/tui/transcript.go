@@ -24,7 +24,6 @@ type Transcript struct {
 	busyPulse       int
 	reasoningEffort string
 	configTheme     string
-	workspacePath   string
 	log             toolLog
 	expandAll       bool
 	collapseAll     bool
@@ -44,7 +43,7 @@ type Transcript struct {
 	weaver            selectionWeaver
 	liveMarkdownCache liveMarkdownCache
 
-	// busyPrefix caches the rendered committed-history prefix (workspace header + every
+	// busyPrefix caches the rendered committed-history prefix (every
 	// message before the running turn's prompt) so busy-path per-delta frames re-render
 	// only the live turn's flow instead of the whole transcript. It is invalidated on
 	// every committed-history change but never on a stream delta (syncStreamSnapshots), so
@@ -418,8 +417,8 @@ func (t Transcript) busyTailIndex() int {
 	return 0
 }
 
-// renderBusyPrefix renders and caches the committed prefix: the workspace
-// header plus every message strictly before the running turn's tail. It uses
+// renderBusyPrefix renders and caches the committed prefix: every message
+// strictly before the running turn's tail. It uses
 // the same renderMessageRange emitter as the full render, so the bytes match a
 // fresh full render exactly. Every prefix tool entry is committed and uses its
 // doneAt timestamp, so the advancing live clock does not affect them and the
@@ -482,12 +481,12 @@ func (t Transcript) turnHeader(msg message, i, busyTail int) string {
 	return t.theme.turnHeaderStyle(t.phase(), live).Render(role + g(" · ", " . ") + formatElapsed(elapsed))
 }
 
-// renderMessageRange renders messages [startMsg, endMsg) plus the workspace
-// header (when withHeader) and, for a busy turn, the trailing busy indicator
-// line (when withBusyLine). toolRows/msgRows receive the message/tool row
-// indexes for the rendered span, offset so the caller can concat spans. This is
-// the single emission path behind the full-history render, the committed-prefix
-// cache, and the per-delta live tail, so no two code paths can drift.
+// renderMessageRange renders messages [startMsg, endMsg) and, for a busy turn,
+// the trailing busy indicator line (when withBusyLine). toolRows/msgRows receive
+// the message/tool row indexes for the rendered span, offset so the caller can
+// concat spans. This is the single emission path behind the full-history render,
+// the committed-prefix cache, and the per-delta live tail, so no two code paths
+// can drift.
 func (t *Transcript) renderMessageRange(b *strings.Builder, toolRows *[]toolRowRange, msgRows *[]msgRowRange, startMsg, endMsg int, withHeader, withBusyLine bool) {
 	if toolRows != nil {
 		*toolRows = (*toolRows)[:0]
@@ -501,10 +500,6 @@ func (t *Transcript) renderMessageRange(b *strings.Builder, toolRows *[]toolRowR
 		nl += strings.Count(s, "\n")
 	}
 	if withHeader {
-		if t.workspacePath != "" {
-			emit(t.theme.statusStyle.Render("workspace: " + t.workspacePath))
-			emit("\n")
-		}
 		if len(t.messages) == 0 && !t.busy {
 			emit(idleWelcome(t.theme))
 		}

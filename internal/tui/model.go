@@ -236,7 +236,6 @@ func NewModelCfg(d Dependencies) Model {
 	transcript := &Transcript{
 		theme:               th,
 		configTheme:         d.Config.Theme,
-		workspacePath:       d.WorkspacePath,
 		reasoningEffort:     d.Config.ReasoningEffort,
 		telemetry:           d.Telemetry,
 		rail:                d.Rail,

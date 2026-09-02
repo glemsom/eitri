@@ -95,11 +95,11 @@ func TestLayoutCache_messageAtLineConsumesRowIndex(t *testing.T) {
 
 	base := m.tx.layout.builds
 	first := m.tx.layout.msgs[0]
+	if first.start != 0 {
+		t.Fatalf("first message block must begin at row 0 now that the workspace header is gone, got start=%d", first.start)
+	}
 	if idx, ok := m.tx.messageAtLine(first.start); !ok || idx != first.idx {
 		t.Fatalf("messageAtLine(%d) = %d/%v, want message %d", first.start, idx, ok, first.idx)
-	}
-	if _, ok := m.tx.messageAtLine(0); ok {
-		t.Errorf("row 0 (workspace header) must not map to a message, got ok=true")
 	}
 	if m.tx.layout.builds != base {
 		t.Fatalf("messageAtLine re-ran layout: builds %d -> %d", base, m.tx.layout.builds)
