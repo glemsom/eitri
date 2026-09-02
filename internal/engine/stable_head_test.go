@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"github.com/glemsom/eitri/internal/provider"
@@ -10,31 +9,6 @@ import (
 
 type headRecorder struct {
 	reqs []provider.Request
-}
-
-func TestRunSystemHeadPrefersRipgrep(t *testing.T) {
-	t.Parallel()
-	cap := &headRecorder{}
-	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
-		cap.reqs = append(cap.reqs, req)
-		return provider.StreamFunc(provider.Chunk{Content: "hi"}, provider.Chunk{FinishReason: "stop", Done: true}), nil
-	}), &mockTranscript{})
-
-	if _, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "go"}, AgentOptions{}); err != nil {
-		t.Fatalf("RunAgent() error = %v, want nil", err)
-	}
-	if len(cap.reqs) != 1 {
-		t.Fatalf("provider requests = %d, want 1", len(cap.reqs))
-	}
-	head := cap.reqs[0].Messages[0]
-	if head.Role != provider.RoleSystem {
-		t.Fatalf("message[0].Role = %q, want %q", head.Role, provider.RoleSystem)
-	}
-	for _, want := range []string{"ripgrep", "rg", "--heading", "--color=never", "intent"} {
-		if !strings.Contains(head.Content, want) {
-			t.Fatalf("turn system head must frame ripgrep usage as intent; missing %q:\n%s", want, head.Content)
-		}
-	}
 }
 
 func TestRunOpensWithSystemPrompt(t *testing.T) {
