@@ -104,7 +104,7 @@ func tokenEstimate(s string) int {
 // idleWelcome renders the empty-transcript welcome block: the brand mark in the accent hue plus faint keybinding hints, so the first launch reads as a designed surface.
 func idleWelcome(th Theme) string {
 	return th.headerStyle.Render(hr()) + "\n" +
-		th.headerStyle.Render(brandMark()+" Eitri") + th.statusStyle.Render(g(" — ", " - ")+"your terminal coding agent") + "\n" +
+		th.headerStyle.Render(brandMark()+"  Eitri") + th.statusStyle.Render(g(" — ", " - ")+"your terminal coding agent") + "\n" +
 		th.headerStyle.Render(hr()) + "\n" +
 		th.statusStyle.Render("  "+keyHint()+" ctrl+s settings · /help for commands & keybindings") + "\n"
 }
