@@ -765,13 +765,11 @@ func settingsView(f settingsForm) string {
 		b.WriteString("\n")
 	}
 	writePalette := func(focused bool) {
-		name := "Palette"
+		marker := " "
 		if focused {
-			name = "▸ " + name
-		} else {
-			name = "   " + name
+			marker = "▸"
 		}
-		fmt.Fprintf(&b, "%-2s%-22s", "", name)
+		fmt.Fprintf(&b, "%-2s%s %-20s", "", marker, "Palette")
 		for _, c := range []color.Color{th.accent, th.ok, th.error, th.shell, th.file, th.web, th.skill} {
 			b.WriteString(" " + lipgloss.NewStyle().Foreground(c).Render(g("██", "##")))
 		}
@@ -783,14 +781,11 @@ func settingsView(f settingsForm) string {
 				emit(sec.label)
 			}
 		}
-		name := r.name
-		val := r.val
+		marker := " "
 		if f.field == i {
-			name = "▸ " + name
-		} else {
-			name = "   " + name
+			marker = "▸"
 		}
-		fmt.Fprintf(&b, "%-2s%-22s %s\n", "", name, val)
+		fmt.Fprintf(&b, "%-2s%s %-20s %s\n", "", marker, r.name, r.val)
 		if i == fieldPaths {
 			writePathList(&b, f, th)
 		}
