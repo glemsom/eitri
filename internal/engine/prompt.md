@@ -34,16 +34,20 @@ for task_number in 1 2; do
   task="<task $task_number>"
   agent_dir=$(mktemp -d "$TMPDIR/subagent.XXXXXX")
   EITRI_DIR="$agent_dir" EITRI_CONFIG="${EITRI_CONFIG:-$HOME/.eitri/config.json}" \
-    eitri -b "$task" > "$TMPDIR/sa-$task_number.out" 2>&1 &
-  pid=$!
-  wait "$pid"
-  rg 'agent_settled' "$TMPDIR/sa-$task_number.out"
+    eitri -b "$task" > "$TMPDIR/sa-$task_number.out" 2> "$TMPDIR/sa-$task_number.err" &
+  pids[$task_number]=$!
 done
+for task_number in 1 2; do
+  wait "${pids[$task_number]}"
+  echo "=== subagent $task_number exit=$? ==="
+done
+echo "=== settled markers ==="
+rg -c 'agent_settled' "$TMPDIR"/sa-*.out || echo "no settled markers found"
 ```
 
-Use a one-item list for one subagent. Always launch, `wait`, and read the
-result in the same Bash tool call; the sandbox terminates child processes when
-the tool call returns.
+Change both ranges to `1` for one subagent. Always launch, wait for every
+process, and read the results in the same Bash tool call; the sandbox
+terminates child processes when the tool call returns.
 ## Skills & Scratchpad
 - Skills: If a system message includes a skill index matching the current task, `cat` the skill path and follow its instructions.
 - Scratchpad: Write session artifacts or multi-step temporary scripts to `$TMPDIR`.
