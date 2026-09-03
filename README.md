@@ -84,7 +84,7 @@ Full detail lives in [`docs/sessions.md`](docs/sessions.md).
 
 - Type a prompt in the **composer** at the bottom and press `enter` to submit.
 - Start slash commands with `/` (e.g. `/settings` to open settings).
-- Press `?` for the live `/help` reference, which always shows the current bindings.
+- Enter `/help` for the complete live reference, which always shows the current bindings.
 
 #### Composer
 
@@ -101,7 +101,6 @@ Full detail lives in [`docs/sessions.md`](docs/sessions.md).
 
 | Key | Action |
 | --- | --- |
-| `?` | Show help |
 | `pgup` / `pgdn` | Scroll history |
 
 #### Panes
@@ -117,14 +116,12 @@ Full detail lives in [`docs/sessions.md`](docs/sessions.md).
 | Key | Action |
 | --- | --- |
 | `ctrl+s` | Open settings |
-| `ctrl+o` | Copy transcript to clipboard |
 
 #### Slash commands
 
 | Command | Action |
 | --- | --- |
 | `/settings` | Open the settings panel |
-| `/copy` | Copy the transcript to the clipboard |
 | `/new` | Start a fresh session (clears this conversation) |
 | `/login` | Interactive provider login |
 | `/help` | Show this help message |
@@ -174,12 +171,11 @@ The `copilot` and `custom_openai` objects are managed by Eitri (via device-flow 
 - **Linux** (Eitri is a Linux agent).
 - **Declared toolset** (required; fatal at boot) — Eitri verifies every declared dependency at launch and refuses to start without it, because its agent prompt promises these tools unconditionally:
   - Hard substrate: `bwrap` (bubblewrap — Eitri never runs unsandboxed) and `bash`.
-  - Declared tools: `rg` (ripgrep), `curl`, `lynx`, `patch`, `python3`, `git`.
+  - Declared tools: `rg` (ripgrep), `curl`, `lynx`, `patch`, `python3`, `git`, `xdg-open` (`xdg-utils`, backing `open_in_browser`).
   - Install hints (a missing tool aborts the launch naming every miss with its package):
-    - Debian/Ubuntu: `sudo apt install bubblewrap bash ripgrep curl lynx patch python3 git`
-    - Fedora: `sudo dnf install bubblewrap bash ripgrep curl lynx patch python3 git`
-    - Arch: `sudo pacman -S bubblewrap bash ripgrep curl lynx patch python3 git`
-- **Soft dependency** (optional, never gates startup) — a browser launcher (`xdg-open`, backing `open_in_browser`) may be absent: it surfaces only when `open_in_browser` actually runs, as a contained error.
+    - Debian/Ubuntu: `sudo apt install bubblewrap bash ripgrep curl lynx patch python3 git xdg-utils`
+    - Fedora: `sudo dnf install bubblewrap bash ripgrep curl lynx patch python3 git xdg-utils`
+    - Arch: `sudo pacman -S bubblewrap bash ripgrep curl lynx patch python3 git xdg-utils`
 - **Base toolset** (assumed present) — the coreutils `bash` builds on: `grep`, `sed`, `awk`, `cat`, `nl`, `diff`; no boot check.
 
 ## Building

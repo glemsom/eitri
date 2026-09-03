@@ -37,7 +37,7 @@ func TestCLISmoke(t *testing.T) {
 			t.Fatalf("eitri --help exit error = %v, output:\n%s", err, out)
 		}
 		// The usage text reflects the full dependency contract, not just bubblewrap.
-		for _, name := range []string{"bwrap", "bash", "rg", "curl", "lynx", "patch", "python3"} {
+		for _, name := range []string{"bwrap", "bash", "rg", "curl", "lynx", "patch", "python3", "git", "xdg-open", "xdg-utils"} {
 			if !strings.Contains(string(out), name) {
 				t.Fatalf("usage output %q does not name declared tool %q", out, name)
 			}
@@ -47,10 +47,11 @@ func TestCLISmoke(t *testing.T) {
 				t.Fatalf("usage output %q lacks per-distro install hint %q", out, hint)
 			}
 		}
-		for _, want := range []string{"soft dependency", "coreutils"} {
-			if !strings.Contains(string(out), want) {
-				t.Fatalf("usage output %q lacks the %q dependency-tier marker", out, want)
-			}
+		if strings.Contains(string(out), "soft dependency") {
+			t.Fatalf("usage output %q still classifies xdg-open as a soft dependency", out)
+		}
+		if !strings.Contains(string(out), "coreutils") {
+			t.Fatalf("usage output %q lacks the base-toolset marker", out)
 		}
 	})
 
@@ -82,7 +83,7 @@ func TestCLISmoke(t *testing.T) {
 		}
 		// The refusal names every missing declared tool (bwrap..python3) with
 		// an install hint, not just the first miss.
-		for _, name := range []string{"bwrap", "bash", "rg", "curl", "lynx", "patch", "python3"} {
+		for _, name := range []string{"bwrap", "bash", "rg", "curl", "lynx", "patch", "python3", "git", "xdg-open", "xdg-utils"} {
 			if !strings.Contains(string(out), name) {
 				t.Fatalf("eitri without declared deps output %q does not name missing tool %q", out, name)
 			}
@@ -150,7 +151,7 @@ func TestCLIBatchWithStubProvider(t *testing.T) {
 	cmd := exec.Command(bin, "-b", "hello")
 	cmd.Env = append(
 		cleanEnvs(t, "EITRI_DIR", "OPENCODE_API_KEY", "EITRI_PROVIDER_URL"),
-		"EITRI_DIR="+dataDir, "EITRI_PROVIDER_URL="+srv.URL,
+		"EITRI_DIR="+dataDir, "EITRI_PROVIDER_URL="+srv.URL, "OPENCODE_API_KEY=test-key",
 	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

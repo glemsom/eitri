@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/glemsom/eitri/internal/config"
@@ -29,27 +30,45 @@ func TestRunEngineTurnRebindsSessionArtifactsAfterNew(t *testing.T) {
 		return provider.StreamFunc(provider.Chunk{Content: "ok"}, provider.Chunk{Done: true, FinishReason: "stop"}), nil
 	}), oldSess.MessageLogSink())
 	e := engine.New(logged, oldSess)
-	live := tui.NewLiveSessionKey("fresh")
+	live := tui.NewLiveSessionKey("old")
 	bind := func(key string) error {
 		sess, err := session.NewWithGUID(dataDir, key, false)
 		if err != nil {
 			return err
 		}
-		e.BindSession(sess)
-		return reg.SetTempHost(sess.TempDir())
+		return bindSessionArtifacts(e, logged, reg, sess)
 	}
 
 	turn := runEngineTurn(e, func() config.Config { return config.Default() }, reg, live, nil, nil, bind)
-	if _, err := turn(context.Background(), "hi", ""); err != nil {
-		t.Fatalf("turn error: %v", err)
+	if _, err := turn(context.Background(), "old prompt", ""); err != nil {
+		t.Fatalf("old session turn: %v", err)
+	}
+	live.Set("fresh")
+	if _, err := turn(context.Background(), "fresh prompt", ""); err != nil {
+		t.Fatalf("fresh session turn: %v", err)
 	}
 
 	freshDir := filepath.Join(dataDir, "sessions", "fresh")
 	if _, err := os.Stat(filepath.Join(freshDir, "messages.jsonl")); err != nil {
 		t.Fatalf("fresh session messages.jsonl missing: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dataDir, "sessions", "old", "messages.jsonl")); !os.IsNotExist(err) {
-		t.Fatalf("old session received messages.jsonl, err=%v", err)
+	transcript, err := os.ReadFile(filepath.Join(freshDir, "transcript.md"))
+	if err != nil {
+		t.Fatalf("fresh session transcript missing: %v", err)
+	}
+	if !strings.Contains(string(transcript), "ok") {
+		t.Fatalf("fresh transcript = %q, want answer", transcript)
+	}
+	oldDir := filepath.Join(dataDir, "sessions", "old")
+	oldTranscript, err := os.ReadFile(filepath.Join(oldDir, "transcript.md"))
+	if err != nil {
+		t.Fatalf("old session transcript missing: %v", err)
+	}
+	if strings.Contains(string(oldTranscript), "fresh prompt") {
+		t.Fatalf("old transcript received fresh turn: %q", oldTranscript)
+	}
+	if _, err := os.Stat(filepath.Join(oldDir, "messages.jsonl")); err != nil {
+		t.Fatalf("old session messages.jsonl missing: %v", err)
 	}
 	if got := reg.TempHost(); got != filepath.Join(freshDir, "tmp") {
 		t.Fatalf("registry temp = %q, want fresh session temp", got)

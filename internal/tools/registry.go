@@ -17,10 +17,10 @@ type Deps struct {
 	Skills *Catalog
 }
 
-// Tool is one agent-callable function.
 type ToolResult struct {
 	Text       string
 	Compressed bool
+	Dropped    int
 }
 
 type Tool interface {
@@ -48,7 +48,7 @@ func (r *Registry) Definitions() []Definition {
 	return out
 }
 
-// Registry is the shared tool registry: it wires the sandbox and browser seams, then exposes the fixed tool surface. It also holds the skill catalog that backs only the human /skillname slash surface.
+// Registry owns the fixed tool surface and the skill catalog used by human activation and the model-visible index.
 type Registry struct {
 	sandbox   *Sandbox
 	workspace string
@@ -126,7 +126,6 @@ func (r *Registry) ActivateSkill(_ context.Context, name string) (ToolResult, er
 	return ToolResult{Text: renderSkillPayload(name, sk)}, nil
 }
 
-// helper: strArg extracts a required string argument, enforcing presence.
 func strArg(args map[string]any, key string) (string, error) {
 	v, ok := args[key]
 	if !ok {

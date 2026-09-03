@@ -55,12 +55,10 @@ func NewResponsesDialect() *ResponsesDialect {
 	return &ResponsesDialect{}
 }
 
-// Build marshals req as the Responses wire request body.
 func (d *ResponsesDialect) Build(req Request) ([]byte, error) {
 	return marshalResponsesBody(req)
 }
 
-// Capabilities reports the generation controls the Responses wire honors.
 func (d *ResponsesDialect) Capabilities() []GenerationControl {
 	return []GenerationControl{
 		GenerationControlGenerationBudget,
@@ -69,12 +67,10 @@ func (d *ResponsesDialect) Capabilities() []GenerationControl {
 	}
 }
 
-// Manifest re-expresses canonical tool definitions into the Responses tool manifest.
 func (d *ResponsesDialect) Manifest(defs []DialectDefinition) any {
 	return responsesToolManifest(defs)
 }
 
-// Stream returns a stream that parses Responses SSE events.
 func (d *ResponsesDialect) Stream(r io.Reader) Stream {
 	return newResponsesStream(r)
 }
@@ -140,15 +136,11 @@ func responsesTools(req Request) []responsesTool {
 	return responsesToolManifestFromTools(tools)
 }
 
-// responsesToolManifest re-expresses canonical tool definitions into the
-// Responses tool manifest.
 func responsesToolManifest(defs []DialectDefinition) []responsesTool {
 	tools := chatToolManifest(defs)
 	return responsesToolManifestFromTools(tools)
 }
 
-// responsesToolManifestFromTools folds Chat-Completions tools into their
-// Responses wire equivalents, returning nil when no tools are present.
 func responsesToolManifestFromTools(tools []Tool) []responsesTool {
 	if len(tools) == 0 {
 		return nil

@@ -88,6 +88,17 @@ func TestHighlightRange_survivesInternalResets(t *testing.T) {
 	}
 }
 
+func TestHighlightRange_RestoresSupportedBackgrounds(t *testing.T) {
+	t.Parallel()
+	for _, background := range []string{"48;5;236", "48;2;20;30;40"} {
+		line := "\x1b[" + background + "mab"
+		got := highlightRange(line, 0, 0, testSel)
+		if !strings.Contains(got, "a\x1b["+background+"m") {
+			t.Errorf("highlightRange with %q background did not restore it, got %q", background, got)
+		}
+	}
+}
+
 func TestHighlightRange_SingleCellAndOutOfRange(t *testing.T) {
 	t.Parallel()
 	got := highlightRange("ab", 1, 1, testSel)
@@ -638,7 +649,7 @@ func TestDragSelect_wheelStillScrollsDuringDrag(t *testing.T) {
 	}
 }
 
-func TestClickToExpand_togglesToolEntry(t *testing.T) {
+func TestDragSelect_plainClickDoesNotExpandToolEntry(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -668,38 +679,10 @@ func TestClickToExpand_togglesToolEntry(t *testing.T) {
 	if headRow < 0 {
 		t.Fatalf("tool head row not found, got %q", rows)
 	}
-	if idx, _, ok := m.tx.toolEntryAtLine(headRow); !ok || idx != 0 {
-		t.Fatalf("toolEntryAtLine(%d) = %d/%v, want entry 0", headRow, idx, ok)
-	}
-
-	m = mustUpdate(t, m, dragMsg("press", 2, headRow))
-	m = mustUpdate(t, m, dragMsg("release", 2, headRow))
-	if !strings.Contains(view(m), "full output line one") {
-		t.Errorf("click must expand the entry, got: %q", view(m))
-	}
-	if m.tx.expandAll {
-		t.Error("click must not set the global expandAll flag")
-	}
-
 	m = mustUpdate(t, m, dragMsg("press", 2, headRow))
 	m = mustUpdate(t, m, dragMsg("release", 2, headRow))
 	if strings.Contains(view(m), "full output line one") {
-		t.Errorf("second click must collapse the entry, got: %q", view(m))
+		t.Errorf("plain click must not expand the entry, got: %q", view(m))
 	}
 
-	promptRow := -1
-	for i, r := range rows {
-		if strings.Contains(r, "run it") {
-			promptRow = i
-			break
-		}
-	}
-	if promptRow < 0 {
-		t.Fatalf("prompt row not found, got %q", rows)
-	}
-	m = mustUpdate(t, m, dragMsg("press", 2, promptRow))
-	m = mustUpdate(t, m, dragMsg("release", 2, promptRow))
-	if strings.Contains(view(m), "full output line one") {
-		t.Errorf("click off a tool row must not expand anything, got: %q", view(m))
-	}
 }

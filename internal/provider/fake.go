@@ -18,6 +18,10 @@ func NewFake(path string) *Fake {
 	return &Fake{path: path}
 }
 
+func (f *Fake) SupportedGenerationControls(context.Context) ([]GenerationControl, error) {
+	return []GenerationControl{GenerationControlGenerationBudget}, nil
+}
+
 func (f *Fake) Stream(_ context.Context, _ Request) (Stream, error) {
 	data, err := os.ReadFile(f.path)
 	if err != nil {

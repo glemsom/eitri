@@ -29,13 +29,12 @@ func TestCompressIsDeterministic(t *testing.T) {
 	}
 }
 
-func TestCompressIsIdempotent(t *testing.T) {
+func TestCompressPreservesMarkerLikeInput(t *testing.T) {
 	t.Parallel()
-	raw := buildLongListing(1000)
-	first := Compress(raw)
-	second := Compress(first)
-	if second != first {
-		t.Fatalf("Compress not idempotent:\nfirst = %q\nsecond = %q", first, second)
+	raw := "ordinary output\n+300 more\n"
+	got, compressed, dropped := CompressResult(raw)
+	if got != raw || compressed || dropped != 0 {
+		t.Fatalf("CompressResult(marker-like input) = (%q, %v, %d), want unchanged", got, compressed, dropped)
 	}
 }
 
@@ -96,7 +95,7 @@ func TestCompressHonestEconomics(t *testing.T) {
 func TestCompressResultReportsTruth(t *testing.T) {
 	t.Parallel()
 	raw := buildLongListing(1000)
-	if out, compressed := CompressResult(raw); !compressed {
+	if out, compressed, _ := CompressResult(raw); !compressed {
 		t.Fatalf("CompressResult(heavy listing) compressed = false, want true")
 	} else if out == raw {
 		t.Fatalf("CompressResult returned the raw bytes for a compressible input")
@@ -104,7 +103,7 @@ func TestCompressResultReportsTruth(t *testing.T) {
 		t.Fatalf("compressed form missing the +N more tail marker: %q", out[len(out)-40:])
 	}
 	for _, raw := range []string{"", "ok\n", "+300 more\n"} {
-		if out, compressed := CompressResult(raw); compressed || out != raw {
+		if out, compressed, _ := CompressResult(raw); compressed || out != raw {
 			t.Fatalf("CompressResult(%q) = (%q, %v), want raw unchanged and false", raw, out, compressed)
 		}
 	}
@@ -137,7 +136,7 @@ func hasMarker(s string) bool {
 	if i := strings.LastIndex(trimmed, "\n"); i >= 0 {
 		trimmed = trimmed[i+1:]
 	}
-	return markerRE.MatchString(trimmed)
+	return strings.HasPrefix(trimmed, "+") && strings.HasSuffix(trimmed, " more")
 }
 
 func buildLongListing(n int) string {

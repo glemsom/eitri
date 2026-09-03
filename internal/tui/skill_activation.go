@@ -138,7 +138,6 @@ func runSkillActivation(ctx context.Context, activate func(ctx context.Context, 
 	return skillDoneMsg{name: name, payload: payload, args: args, seq: seq}
 }
 
-// slashCandidates returns the ordered slash-command completion candidates for the current composer value: the built-in `/settings`, `/copy`, `/login`, and `/help` commands first, then every detected skill whose name starts with the `/...` partial.
 func slashCandidates(value string, skills []SkillItem) []string {
 	if !strings.HasPrefix(value, "/") {
 		return nil
@@ -147,9 +146,6 @@ func slashCandidates(value string, skills []SkillItem) []string {
 	cands := make([]string, 0, len(skills)+5)
 	if partial == "" || strings.HasPrefix("settings", partial) {
 		cands = append(cands, "/settings")
-	}
-	if partial == "" || strings.HasPrefix("copy", partial) {
-		cands = append(cands, "/copy")
 	}
 	if partial == "" || strings.HasPrefix("login", partial) {
 		cands = append(cands, "/login")

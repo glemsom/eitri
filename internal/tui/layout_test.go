@@ -25,16 +25,16 @@ func TestLayoutCache_hitTestsReuseRecordedIndex(t *testing.T) {
 		t.Fatalf("first view must build the layout exactly once, got %d builds", m.tx.layout.builds)
 	}
 
-	m.tx.toolEntryAtLine(0) // result irrelevant; the cache reuse is what we're asserting
+	m.tx.messageAtLine(0) // result irrelevant; the cache reuse is what we're asserting
 	if m.tx.layout.builds != 1 {
 		t.Fatalf("first hit-test must reuse the hydrated layout, got %d builds", m.tx.layout.builds)
 	}
 
 	for i := 0; i < 20; i++ {
-		m.tx.toolEntryAtLine(0)
+		m.tx.messageAtLine(0)
 	}
 	if m.tx.layout.builds != 1 {
-		t.Fatalf("repeated toolEntryAtLine must not re-run layout, got %d builds", m.tx.layout.builds)
+		t.Fatalf("repeated messageAtLine must not re-run layout, got %d builds", m.tx.layout.builds)
 	}
 
 	for i := 0; i < 20; i++ {
@@ -59,7 +59,7 @@ func TestLayoutCache_recordsRowMessageIndex(t *testing.T) {
 	m = submitAndWait(t, m)
 	m = toolStart(t, m, "bash", `{"command":"go test ./..."}`)
 	m = toolResult(t, m, ToolResult{Name: "bash", Result: "full output line one\nfull output line two", Lines: 2})
-	m.tx.toolEntryAtLine(0) // build the layout once
+	m.tx.messageAtLine(0) // build the layout once
 
 	if len(m.tx.layout.msgs) == 0 {
 		t.Fatalf("row->message index must be recorded, got 0 message spans")

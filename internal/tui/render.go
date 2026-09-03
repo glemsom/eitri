@@ -154,7 +154,6 @@ func thinkingHeader(th Theme, reasoning, effort string) string {
 	return th.thinkingStyle.Render(hint) + "\n"
 }
 
-// bandHints returns the keybinding hint strip for the status row.
 func bandHints() string {
-	return strings.Join([]string{"ctrl+s settings", "ctrl+o copy", "ctrl+e expand/collapse", "shift+enter newline"}, g(" · ", " . "))
+	return strings.Join([]string{"ctrl+s settings", "ctrl+e expand/collapse", "shift+enter newline"}, g(" · ", " . "))
 }

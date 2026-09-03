@@ -8,10 +8,9 @@ import (
 // This file wires the drag-select copy seam (`selectionWeaver`) into the Model
 // and Transcript: mouse events map on-screen cells to content coordinates and
 // route them through the weaver, and a finished selection copies through the
-// same clipboard seam as Ctrl+O and /copy. The store and its rune-space
+// same clipboard seam used for selected terminal text. The store and its rune-space
 // highlight / copy logic live on the weaver itself.
 
-// updateMouse applies one mouse event to the model: wheel events scroll the history viewport; a left-button click inside the history region starts a drag selection, motion extends it (clamped to the rendered content), and release copies the selected plain-text range to the clipboard through the same seam as Ctrl+O and /copy.
 func (m *Model) updateMouse(msg tea.MouseMsg) {
 	switch msg := msg.(type) {
 	case tea.MouseWheelMsg:
@@ -47,10 +46,6 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 		}
 		if d.moved {
 			m.copySelection(d)
-			return
-		}
-		if idx, _, ok := m.tx.toolEntryAtLine(d.anchorLine); ok {
-			m.tx.toggleToolEntry(idx)
 		}
 	}
 }
@@ -79,7 +74,6 @@ func (m *Model) mouseToContent(x, y int) (line, col int, ok bool) {
 	return line, col, true
 }
 
-// copySelection copies the plain text covered by a finished drag selection to the clipboard through the same seam as Ctrl+O and /copy: the weaver computes the rune-space plain text, and the model owns the clipboard / status side effects.
 func (m *Model) copySelection(d selectionWeaver) {
 	lines := m.tx.plainLines()
 	text, ok := d.coveredLines(lines)

@@ -126,36 +126,6 @@ func TestToolLog_ExpansionSeamOwnsForces(t *testing.T) {
 	}
 }
 
-func TestToolLog_PlainTextRendersEntry(t *testing.T) {
-	t.Parallel()
-	var l toolLog
-	l.SetAnchor(0)
-	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
-	l.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "one\ntwo\n", Lines: 2}})
-
-	out := clipboardToolText(l, 0)
-	if !strings.Contains(out, "🔧 bash  ls") {
-		t.Errorf("PlainText must include the head, got %q", out)
-	}
-	if !strings.Contains(out, "  one") || !strings.Contains(out, "  two") {
-		t.Errorf("PlainText must indent the result lines, got %q", out)
-	}
-}
-
-func TestToolLog_PlainTextCollapsedAndExpanded(t *testing.T) {
-	t.Parallel()
-	var l toolLog
-	l.SetAnchor(0)
-	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
-	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"cat a.go"}`}})
-	l.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "change\n", Lines: 1}})
-
-	out := clipboardToolText(l, 0)
-	if out != "🔧 bash  ls\n🔧 bash  cat a.go\n  change\n" {
-		t.Errorf("PlainText shape mismatch, got %q", out)
-	}
-}
-
 func TestToolLog_HeadForms(t *testing.T) {
 	t.Parallel()
 	cases := []struct {

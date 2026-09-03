@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/tui"
 )
 
@@ -73,7 +75,7 @@ func TestRunErrorsWithoutDeclaredDependencies(t *testing.T) {
 
 func TestRunRefusesBootWhenBwrapAloneIsMissing(t *testing.T) {
 	dir := t.TempDir()
-	present := []string{"bash", "rg", "curl", "lynx", "patch", "python3", "git"}
+	present := []string{"bash", "rg", "curl", "lynx", "patch", "python3", "git", "xdg-open"}
 	err := Run(Options{DataDir: filepath.Join(dir, ".eitri"), LookPath: lookup(present...)})
 	if !errors.Is(err, ErrMissingDependencies) {
 		t.Fatalf("Run() error = %v, want ErrMissingDependencies; bwrap absence must stay a hard failure inside the single check pass", err)
@@ -99,6 +101,7 @@ func TestVersionShortCircuitsBoot(t *testing.T) {
 }
 
 func TestBootLoadsConfigAndCreatesSession(t *testing.T) {
+	t.Setenv(ProviderKeyEnv, "test-key")
 	stubTUI(t)
 	dir := t.TempDir()
 	dataDir := filepath.Join(dir, ".eitri")
@@ -205,6 +208,7 @@ func TestPprofEnablesMutexAndBlockProfiling(t *testing.T) {
 }
 
 func TestBootUsesDataDirForConfig(t *testing.T) {
+	t.Setenv(ProviderKeyEnv, "test-key")
 	stubTUI(t)
 	dir := t.TempDir()
 	dataDir := filepath.Join(dir, ".eitri")
@@ -232,4 +236,22 @@ func contains(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+type providerWithoutSummaryBudget struct{}
+
+func (providerWithoutSummaryBudget) Stream(context.Context, provider.Request) (provider.Stream, error) {
+	panic("network work must not start during setup")
+}
+
+func TestRunRejectsUnsupportedCompactionBeforeTUI(t *testing.T) {
+	stubTUI(t)
+	err := Run(Options{
+		DataDir:  t.TempDir(),
+		Provider: providerWithoutSummaryBudget{},
+		LookPath: okLookPath,
+	})
+	if err == nil || !strings.Contains(err.Error(), "generation_budget") {
+		t.Fatalf("Run() error = %v, want unsupported compaction setup error", err)
+	}
 }

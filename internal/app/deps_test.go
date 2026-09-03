@@ -21,14 +21,31 @@ func lookup(found ...string) func(string) (string, error) {
 	}
 }
 
-// declaredDependencyNames returns the executable names the boot check refuses
-// to start without, in declaration order.
 func declaredDependencyNames() []string {
 	names := make([]string, len(declaredDependencies))
 	for i, d := range declaredDependencies {
 		names[i] = d.name
 	}
 	return names
+}
+
+func TestCheckDependenciesRequiresXDGOpen(t *testing.T) {
+	present := []string{"bwrap", "bash", "rg", "curl", "lynx", "patch", "python3", "git"}
+
+	err := checkDependencies(lookup(present...))
+	if err == nil {
+		t.Fatal("checkDependencies() error = nil, want xdg-open to be required")
+	}
+	de, ok := err.(*DependencyError)
+	if !ok {
+		t.Fatalf("error type = %T, want *DependencyError", err)
+	}
+	if strings.Join(de.Missing, ",") != "xdg-open" {
+		t.Fatalf("DependencyError.Missing = %v, want [xdg-open]", de.Missing)
+	}
+	if msg := err.Error(); !strings.Contains(msg, "xdg-utils") {
+		t.Fatalf("error %q lacks the xdg-utils installation package", msg)
+	}
 }
 
 func TestCheckDependenciesAllPresent(t *testing.T) {
@@ -40,7 +57,7 @@ func TestCheckDependenciesAllPresent(t *testing.T) {
 
 func TestCheckDependenciesReportsEveryMissingTool(t *testing.T) {
 	present := []string{"bwrap", "bash", "rg", "curl"}
-	missing := []string{"lynx", "patch", "python3", "git"}
+	missing := []string{"lynx", "patch", "python3", "git", "xdg-open"}
 
 	err := checkDependencies(lookup(present...))
 	if err == nil {

@@ -25,11 +25,6 @@ type TranscriptWriter interface {
 	WriteTranscript(line []byte) error
 }
 
-type SessionSink interface {
-	TranscriptWriter
-	MessageLogSink() provider.MessageLogSink
-}
-
 // Engine is a run engine bound to a provider and a transcript sink.
 type Engine struct {
 	provider   provider.Provider
@@ -48,14 +43,8 @@ func New(p provider.Provider, tr TranscriptWriter) *Engine {
 	return &Engine{provider: p, transcript: tr, histories: make(map[string][]provider.Message)}
 }
 
-// BindSession retargets the engine's on-disk transcript and message-log sinks to
-// the active session key. It also updates a LoggingProvider wrapper when present,
-// so `/new` starts writing messages.jsonl under the newly displayed GUID.
-func (e *Engine) BindSession(sink SessionSink) {
-	e.transcript = sink
-	if lp, ok := e.provider.(*provider.LoggingProvider); ok {
-		lp.SetSink(sink.MessageLogSink())
-	}
+func (e *Engine) SetTranscript(tr TranscriptWriter) {
+	e.transcript = tr
 }
 
 // Listener receives one typed Event per streamed observation from a live run, in order, synchronously from within the turn's drain loop.
@@ -144,12 +133,8 @@ func repoInstructionsDirective(content string) string {
 	return "## Repository instructions (AGENTS.md)\n\n" + content
 }
 
-// bindSkillToPrompt folds a slash-injected skill payload into the single
-// high-priority user message that carries the prompt. Delivering the directive
-// inside the user layer (rather than as a competing second system message) puts
-// it adjacent to the prompt so it outranks the Eitri persona when the two
-// conflict; smaller models deprioritize instructions they receive in a system
-// message, which is why the old second-system-message injection lost.
+// bindSkillToPrompt keeps the skill adjacent to the prompt in the user layer,
+// where smaller models prioritize it over a conflicting persona instruction.
 func bindSkillToPrompt(prompt, skill string) string {
 	var b strings.Builder
 	b.WriteString("The user invoked this skill by name; follow its instructions exactly. They are binding, not advisory, and a conflicting system persona does not override them.\n\n")
@@ -176,6 +161,7 @@ func (e *Engine) finishStopped(res Result, prompt string, runID, turn int) {
 type ToolExecResult struct {
 	Text       string
 	Compressed bool
+	Dropped    int
 }
 
 type ToolExecutor interface {
@@ -205,7 +191,6 @@ type AgentOptions struct {
 	lastUsage *provider.Usage
 }
 
-// RunAgent drives a tool-capable agent run: it maintains one mutable messages list, executes any returned tool_calls (single-call path is the floor here; hardening is T5), appends a matching role:"tool" result per call, and resubmits until the model stops calling tools.
 func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions) (Result, error) {
 	if len(opts.Tools) > 0 && opts.Executor == nil {
 		return Result{}, errors.New("declared tools require a tool executor")
@@ -377,8 +362,8 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 			}
 			e.emit(ToolCallEvent{RunID: runID, Turn: turn, ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments})
 			result := execToolCall(ctx, opts, tc)
-			delivered, dropped := compress.CapBytes(result.Text, compress.DefaultByteCap, result.Compressed)
-			e.emit(newToolResultEvent(runID, turn, tc.ID, tc.Name, result.Text, dropped))
+			delivered, dropped := compress.CapBytes(result.Text, compress.DefaultByteCap, result.Dropped)
+			e.emit(newToolResultEvent(runID, turn, tc.ID, tc.Name, result, dropped))
 			messages = append(messages, provider.Message{
 				Role:       provider.RoleTool,
 				ToolCallID: tc.ID,
@@ -427,7 +412,7 @@ func execToolCall(ctx context.Context, opts AgentOptions, tc provider.ToolCall) 
 		if result.Text != "" {
 			msg += "\n" + result.Text
 		}
-		return ToolExecResult{Text: msg}
+		return ToolExecResult{Text: msg, Compressed: result.Compressed, Dropped: result.Dropped}
 	}
 	return result
 }
@@ -445,26 +430,7 @@ func (e *Engine) storeSessionHistory(sessionKey string, messages []provider.Mess
 	if sessionKey == "" {
 		return
 	}
-	start := 0
-	if len(messages) > 0 && messages[0].Role == provider.RoleSystem && messages[0].Content == SystemPromptContent() {
-		start = 1
-	}
-	// The persona head may be immediately followed by the per-run workspace
-	// directive, the model-visible skill index, and the workspace-root AGENTS.md
-	// instructions as extra system messages. All three are re-injected fresh every
-	// run (req.Workspace, req.SkillIndex, req.RepoInstructions), so they must not
-	// persist into session history (that would duplicate the message on the next
-	// turn).
-	for start < len(messages) && isWorkspaceMessage(messages[start]) {
-		start++
-	}
-	for start < len(messages) && isSkillIndexMessage(messages[start]) {
-		start++
-	}
-	for start < len(messages) && isRepoInstructionMessage(messages[start]) {
-		start++
-	}
-	persisted := append([]provider.Message(nil), messages[start:]...)
+	persisted := partitionMessages(messages).PersistedHistory()
 	e.histMu.Lock()
 	defer e.histMu.Unlock()
 	e.histories[sessionKey] = persisted

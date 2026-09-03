@@ -19,9 +19,9 @@ Usage:
   eitri session show <guid> [--turn N] [--no-reasoning]
                          compact per-cycle summary; --turn N dumps that cycle's full JSON records
   eitri session talk <guid> [--turn N|N-M] [--from N] [--role user|assistant|tool|system]
-                     [--reasoning] [--all]
+                     [--reasoning]
                          full conversation as plain text; shared request history is deduped
-                         unless --all, reasoning is stripped unless --reasoning
+                         reasoning is stripped unless --reasoning
   eitri session grep <pattern> [guid|all] [-full]
                          find cycles whose messages match pattern, with snippets;
                          -full prints the complete matching field text
@@ -38,13 +38,11 @@ Flags:
 
 Eitri creates its data directory (~/.eitri, or EITRI_DIR) on launch and
 refuses to start without its declared toolset — bwrap, bash, rg, curl, lynx,
-patch, python3, git — because its agent prompt promises those tools
+patch, python3, git, xdg-open — because its agent prompt promises those tools
 unconditionally. Install hints:
-  Debian/Ubuntu: sudo apt install bubblewrap bash ripgrep curl lynx patch python3 git
-  Fedora:        sudo dnf install bubblewrap bash ripgrep curl lynx patch python3 git
-  Arch:          sudo pacman -S bubblewrap bash ripgrep curl lynx patch python3 git
-A browser launcher such as xdg-open is the one soft dependency: optional,
-never blocking startup, surfacing only if open_in_browser is used without one.
+  Debian/Ubuntu: sudo apt install bubblewrap bash ripgrep curl lynx patch python3 git xdg-utils
+  Fedora:        sudo dnf install bubblewrap bash ripgrep curl lynx patch python3 git xdg-utils
+  Arch:          sudo pacman -S bubblewrap bash ripgrep curl lynx patch python3 git xdg-utils
 The base coreutils (grep, sed, awk, cat, nl, diff) are assumed present.
 Eitri never runs unsandboxed.
 `
@@ -94,7 +92,6 @@ func main() {
 	}
 }
 
-// die prints the error to stderr and exits non-zero.
 func die(err error) {
 	fmt.Fprintf(os.Stderr, "eitri: %v\n", err)
 	os.Exit(1)

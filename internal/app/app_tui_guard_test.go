@@ -99,6 +99,25 @@ func TestRunTUIGuard(t *testing.T) {
 	}
 }
 
+func TestRunRefusesToLaunchTUIWhenXDGOpenMissing(t *testing.T) {
+	stubTUIEnv(t, interactiveEnv)
+	launched := recordingTUI(t)
+	missingXDGOpen := func(name string) (string, error) {
+		if name == "xdg-open" {
+			return "", errors.New("executable not found: xdg-open")
+		}
+		return okLookPath(name)
+	}
+
+	err := Run(Options{DataDir: filepath.Join(t.TempDir(), ".eitri"), LookPath: missingXDGOpen})
+	if !errors.Is(err, ErrMissingDependencies) {
+		t.Fatalf("Run() error = %v, want ErrMissingDependencies when xdg-open is missing", err)
+	}
+	if *launched {
+		t.Fatal("Run() launched the TUI without xdg-open")
+	}
+}
+
 func TestRunBatchUnaffectedByNonInteractiveEnv(t *testing.T) {
 	stubTUIEnv(t, tuiEnv{stdoutTTY: false, term: "", width: 0})
 	dir := t.TempDir()

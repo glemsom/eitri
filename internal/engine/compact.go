@@ -48,7 +48,6 @@ func shouldCompact(cfg *CompactionConfig, usage *provider.Usage) bool {
 	return usage.PromptTokens >= int(float64(cfg.ContextWindow)*cfg.Fraction)
 }
 
-// maybeCompact runs the unified compaction engine for the emergency overflow path.
 func (e *Engine) maybeCompact(ctx context.Context, req RunRequest, opts AgentOptions, messages []provider.Message, force bool, turn int) ([]provider.Message, bool) {
 	cfg := opts.Compaction
 	if cfg == nil {
@@ -60,41 +59,13 @@ func (e *Engine) maybeCompact(ctx context.Context, req RunRequest, opts AgentOpt
 		return messages, false
 	}
 
-	stableHead := []provider.Message(nil)
-	start := 0
-	if len(messages) > 0 && messages[0].Role == provider.RoleSystem && messages[0].Content == SystemPromptContent() {
+	partition := partitionMessages(messages)
+	stableHead := append([]provider.Message(nil), partition.StableHead...)
+	messages = partition.PersistedHistory()
+	for len(messages) > 0 && partition.IsTransient(messages[0]) {
 		stableHead = append(stableHead, messages[0])
-		start = 1
+		messages = messages[1:]
 	}
-	// The persona head may be followed by the per-run workspace directive, the
-	// model-visible skill index, and the workspace-root AGENTS.md instructions as
-	// extra system messages; keep them in the stable head alongside the system
-	// prompt so the compact-path wire messages match the non-compact path. All
-	// three are re-injected fresh (req.Workspace, req.SkillIndex,
-	// req.RepoInstructions) on the next run and evicted periodically, but
-	// preserving them through eviction keeps them adjacent to the persona where
-	// the model expects them.
-	for start < len(messages) && isWorkspaceMessage(messages[start]) {
-		stableHead = append(stableHead, messages[start])
-		start++
-	}
-	for start < len(messages) && isSkillIndexMessage(messages[start]) {
-		stableHead = append(stableHead, messages[start])
-		start++
-	}
-	for start < len(messages) && isRepoInstructionMessage(messages[start]) {
-		stableHead = append(stableHead, messages[start])
-		start++
-	}
-	// A slash-activated skill is delivered as the user-layer directive right after
-	// the Eitri system prompt. It must survive compaction or the model forgets it
-	// is following the skill; keep any such skill payload message in the head
-	// alongside the system prompt instead of letting it enter the evictable pool.
-	for start < len(messages) && isSkillMessage(messages[start]) {
-		stableHead = append(stableHead, messages[start])
-		start++
-	}
-	messages = messages[start:]
 
 	body, tail := evict(cfg, messages)
 	if len(tail) == 0 || len(tail) == len(messages) {
@@ -151,8 +122,9 @@ func evict(cfg *CompactionConfig, messages []provider.Message) (body, tail []pro
 		keepStart = i
 	}
 	if cfg.Prune {
+		partition := partitionMessages(messages)
 		for i := range messages {
-			if isSkillMessage(messages[i]) {
+			if partition.IsTransient(messages[i]) {
 				if i < keepStart {
 					keepStart = i
 				}
@@ -173,12 +145,6 @@ func (e *Engine) generateSummary(ctx context.Context, req RunRequest, cfg *Compa
 	instruction := "You are compressing an agent conversation for seamless continuation. " +
 		"Read the conversation log below and output ONLY the condensed state, keeping the exact headings:" +
 		" `## Objective` followed by the current objective, then `## Next Move` followed by the single next action."
-
-	if _, err := provider.NegotiateGenerationControls(ctx, e.provider, []provider.ControlRequirement{
-		{Control: provider.GenerationControlGenerationBudget, Required: true},
-	}); err != nil {
-		return "" // fail-safe skip: required Generation Budget unavailable
-	}
 
 	s, err := e.provider.Stream(ctx, provider.Request{
 		Model: req.Model,
@@ -215,17 +181,6 @@ func (e *Engine) generateSummary(ctx context.Context, req RunRequest, cfg *Compa
 		text = capTokens(text, cfg.SummaryMaxTokens)
 	}
 	return text
-}
-
-// isSkillMessage reports whether a message belongs to a skill activation and so is ring-fenced from eviction when Prune is enabled: a slash-injected <skill_content> directive in the user layer, or the tool result it delivered.
-func isSkillMessage(m provider.Message) bool {
-	if m.Role == provider.RoleUser && strings.Contains(m.Content, "<skill_content") {
-		return true
-	}
-	// The model has no `skill` tool (it loads packs via bash cat), and the
-	// slash payload is delivered as the user-layer directive above, so only the
-	// injected user directive is ring-fenced.
-	return false
 }
 
 // isSkillIndexMessage reports whether a message is the injected model-visible
@@ -288,4 +243,21 @@ func capTokens(text string, n int) string {
 		return text
 	}
 	return text[:max]
+}
+
+func ResolveCompaction(ctx context.Context, p provider.Provider, enabled bool) (*CompactionConfig, error) {
+	if !enabled {
+		return nil, nil
+	}
+	if _, err := provider.NegotiateGenerationControls(ctx, p, []provider.ControlRequirement{{
+		Control:  provider.GenerationControlGenerationBudget,
+		Required: true,
+	}}); err != nil {
+		return nil, err
+	}
+	return &CompactionConfig{}, nil
+}
+
+func (e *Engine) ResolveCompaction(ctx context.Context, enabled bool) (*CompactionConfig, error) {
+	return ResolveCompaction(ctx, e.provider, enabled)
 }

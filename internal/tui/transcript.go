@@ -819,19 +819,9 @@ func (t *Transcript) recordLayout() {
 	l.builds++
 }
 
-// toolEntryAtLine returns the tool entry whose rendered rows include the given content line, and whether that entry currently renders collapsed (a click on a collapsed head toggles it open; on an open entry it toggles closed).
-func (t *Transcript) toolEntryAtLine(line int) (idx int, collapsed bool, ok bool) {
-	t.ensureLayout()
-	toolIdx, _, ok := t.log.AtLine(line, t.layout.rows, t.expansionConfig())
-	if !ok {
-		return 0, false, false
-	}
-	return toolIdx, !t.toolExpandedFor(toolIdx), true
-}
-
-// toggleToolEntry flips one tool entry's expansion state (mouse click
-// click-to-expand): an expanded entry force-collapses (beating an expanded
-// default or the expand-all mode), a collapsed one force-expands.
+// toggleToolEntry flips one tool entry's expansion state. An expanded entry
+// force-collapses (beating an expanded default or the expand-all mode), while a
+// collapsed entry force-expands.
 func (t *Transcript) toggleToolEntry(idx int) {
 	if t.toolExpandedFor(idx) {
 		t.log.ForceCollapse(idx)

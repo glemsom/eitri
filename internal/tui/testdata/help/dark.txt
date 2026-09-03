@@ -1,7 +1,6 @@
 # COMMANDS
 
   `/settings`  open settings panel
-  `/copy`      copy transcript to clipboard
   `/new`       start a fresh session (clears this conversation)
   `/login`     interactive provider login
   `/help`      show this help message
@@ -16,7 +15,6 @@
   `enter`        submit draft or toggle focused block when empty
   `shift+enter`  insert newline
   n NAVIGATION
-  `?`          show help
   `pgup/pgdn`  scroll history
   p PANES
   `ctrl+e`  toggle expanded/collapsed view
@@ -24,7 +22,6 @@
   `ctrl+z`  widen pane
   a ACTIONS
   `ctrl+s`  open settings
-  `ctrl+o`  copy transcript
 
 # CONCEPTS
 

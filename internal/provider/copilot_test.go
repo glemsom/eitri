@@ -401,10 +401,18 @@ func TestCopilotResponsesStreamToolCalls(t *testing.T) {
 	}
 }
 
+func TestCopilotUsesSharedChatCompletionsDialect(t *testing.T) {
+	t.Parallel()
+	cp := NewCopilot(config.CopilotConfig{}, "https://example.test/chat/completions", nil, nil, nil)
+	if _, ok := cp.chat.(*ChatCompletionsDialect); !ok {
+		t.Fatalf("Copilot chat dialect = %T, want *ChatCompletionsDialect", cp.chat)
+	}
+}
+
 func TestCopilotChatDialectBuildExplicitThinkingToggle(t *testing.T) {
 	t.Parallel()
 	build := func(thinking bool) map[string]any {
-		body, err := NewCopilotChatDialect().Build(Request{Model: "gpt-4o", ThinkingEnabled: thinking})
+		body, err := NewCopilot(config.CopilotConfig{}, "", nil, nil, nil).chat.Build(Request{Model: "gpt-4o", ThinkingEnabled: thinking})
 		if err != nil {
 			t.Fatalf("Build() error = %v, want nil", err)
 		}
@@ -424,6 +432,11 @@ func TestCopilotChatDialectBuildExplicitThinkingToggle(t *testing.T) {
 	}
 
 	off := build(false)
+	for _, field := range []string{"prompt_cache_key", "prompt_cache_retention"} {
+		if _, ok := off[field]; ok {
+			t.Errorf("thinking-off body carried Copilot-unsupported %s: %#v", field, off)
+		}
+	}
 	if th, ok := off["thinking"].(map[string]any); !ok || th["type"] != "disabled" {
 		t.Errorf("thinking-off body = %#v, want thinking.type disabled", off)
 	}

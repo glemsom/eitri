@@ -336,33 +336,6 @@ func transcriptWithTool(t *testing.T) Transcript {
 	}
 }
 
-func TestTranscript_toolEntryAtLineReadsPersistentIndex(t *testing.T) {
-	tx := transcriptWithTool(t)
-	tx.ensureLayout() // build the persistent row->entry index once
-	if len(tx.layout.rows) == 0 {
-		t.Fatalf("hit-test must record a tool-entry row index")
-	}
-	head := tx.layout.rows[0].start
-
-	idx, collapsed, ok := tx.toolEntryAtLine(head)
-	if !ok || idx != 0 || !collapsed {
-		t.Errorf("toolEntryAtLine(%d) = %d/%v/%v, want entry 0 collapsed=ok", head, idx, collapsed, ok)
-	}
-
-	for i := 0; i < 20; i++ {
-		if idx, _, ok := tx.toolEntryAtLine(head); !ok || idx != 0 {
-			t.Errorf("toolEntryAtLine(%d) = %d/%v, want entry 0 (reused index)", head, idx, ok)
-		}
-	}
-	if tx.layout.builds != 1 {
-		t.Errorf("hit-test must build the layout exactly once, got builds=%d", layoutBuildsOf(tx))
-	}
-
-	if _, _, ok := tx.toolEntryAtLine(99); ok {
-		t.Errorf("toolEntryAtLine(99) must be out of range")
-	}
-}
-
 func TestTranscript_toggleToolEntryFlipsExpansion(t *testing.T) {
 	tx := transcriptWithTool(t)
 
@@ -446,27 +419,6 @@ func TestTranscript_expandAllPerEntryCollapseOverride(t *testing.T) {
 	tx.renderHistory(&again, nil, nil)
 	if !strings.Contains(again.String(), "a.go") {
 		t.Errorf("second per-entry toggle must re-expand in expanded-view mode, got: %q", again.String())
-	}
-}
-
-func TestTranscript_toolEntryAtLineEffectiveCollapse(t *testing.T) {
-	tx := transcriptWithTool(t)
-	tx.ensureLayout()
-	head := tx.layout.rows[0].start
-
-	tx.expandAll = true
-	if idx, collapsed, ok := tx.toolEntryAtLine(head); !ok || idx != 0 || collapsed {
-		t.Errorf("expanded mode: entry 0 must report expanded, got %d/%v/%v", idx, collapsed, ok)
-	}
-
-	tx.toggleToolEntry(0)
-	if idx, collapsed, ok := tx.toolEntryAtLine(head); !ok || idx != 0 || !collapsed {
-		t.Errorf("override collapse: entry 0 must report collapsed, got %d/%v/%v", idx, collapsed, ok)
-	}
-
-	tx.toggleToolEntry(0)
-	if idx, collapsed, ok := tx.toolEntryAtLine(head); !ok || idx != 0 || collapsed {
-		t.Errorf("override released: entry 0 must report expanded, got %d/%v/%v", idx, collapsed, ok)
 	}
 }
 

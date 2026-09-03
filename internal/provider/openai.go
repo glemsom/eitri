@@ -46,7 +46,9 @@ func (o *OpenAICompatible) Models(ctx context.Context) ([]ModelInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	httpReq.Header.Set("Authorization", "Bearer "+o.apiKey)
+	if o.apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+o.apiKey)
+	}
 	client := resolveClient(o.http)
 	resp, err := client.Do(httpReq)
 	if err != nil {
@@ -143,7 +145,9 @@ func (o *OpenAICompatible) Stream(ctx context.Context, req Request) (Stream, err
 		return nil, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+o.apiKey)
+	if o.apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+o.apiKey)
+	}
 	if o.opencodeSessionHeader && req.SessionKey != "" {
 		httpReq.Header.Set("X-Opencode-Session", req.SessionKey)
 	}

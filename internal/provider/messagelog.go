@@ -1,6 +1,3 @@
-// Package provider — messagelog.go defines the message-layer session debug
-// seam: a LoggingProvider decorator that records every request/response cycle
-// as structured records through a MessageLogSink, plus the record shapes.
 package provider
 
 import (
@@ -35,7 +32,6 @@ type MessageLogSink interface {
 	LogResponse(rec ResponseLog)
 }
 
-// toolNames projects a tool manifest to its ordered name list, keeping request records compact.
 func toolNames(tools []Tool) []string {
 	if len(tools) == 0 {
 		return nil
@@ -113,8 +109,15 @@ func NewLoggingProvider(p Provider, sink MessageLogSink) *LoggingProvider {
 	return &LoggingProvider{inner: p, sink: sink}
 }
 
-// SetSink retargets message-layer logging for subsequent provider requests.
 func (lp *LoggingProvider) SetSink(sink MessageLogSink) { lp.sink = sink }
+
+func (lp *LoggingProvider) SupportedGenerationControls(ctx context.Context) ([]GenerationControl, error) {
+	gp, ok := lp.inner.(GenerationControlProvider)
+	if !ok {
+		return nil, nil
+	}
+	return gp.SupportedGenerationControls(ctx)
+}
 
 func (lp *LoggingProvider) Stream(ctx context.Context, req Request) (Stream, error) {
 	lp.sink.LogRequest(RequestLog{

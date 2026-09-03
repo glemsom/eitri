@@ -16,6 +16,15 @@ import (
 	"github.com/glemsom/eitri/internal/tui"
 )
 
+func bindSessionArtifacts(e *engine.Engine, logged *provider.LoggingProvider, reg *tools.Registry, sess *session.Session) error {
+	if err := reg.SetTempHost(sess.TempDir()); err != nil {
+		return err
+	}
+	e.SetTranscript(sess)
+	logged.SetSink(sess.MessageLogSink())
+	return nil
+}
+
 func runEngineTurn(e *engine.Engine, cfg func() config.Config, reg *tools.Registry, sessionKey *tui.LiveSessionKey, catalog *tools.Catalog, canContinue func() bool, bind func(string) error) func(context.Context, string, string) (tui.TurnResult, error) {
 	return func(ctx context.Context, prompt string, payload string) (tui.TurnResult, error) {
 		cur := cfg()
@@ -41,8 +50,7 @@ func runEngineTurn(e *engine.Engine, cfg func() config.Config, reg *tools.Regist
 	}
 }
 
-// runTUI launches the interactive fullscreen TUI on the shared engine and blocks until the user quits.
-func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey string, p provider.Provider, cfgPath string, dataDir string, skills *tools.Catalog, workspace string, sessionTemp string) error {
+func runTUI(e *engine.Engine, logged *provider.LoggingProvider, cfg config.Config, reg *tools.Registry, sessionKey string, p provider.Provider, cfgPath string, dataDir string, skills *tools.Catalog, workspace string, sessionTemp string) error {
 	activeSessionKey := sessionKey
 	bindSession := func(key string) error {
 		if key == activeSessionKey {
@@ -52,8 +60,7 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 		if err != nil {
 			return err
 		}
-		e.BindSession(sess)
-		if err := reg.SetTempHost(sess.TempDir()); err != nil {
+		if err := bindSessionArtifacts(e, logged, reg, sess); err != nil {
 			return err
 		}
 		activeSessionKey = key
@@ -173,9 +180,6 @@ func skillSurface(reg *tools.Registry, c *tools.Catalog) *tui.SkillsSurface {
 	return &tui.SkillsSurface{
 		Items: items,
 		Activate: func(ctx context.Context, name string) (string, error) {
-			// Force re-injection: a human /skillname is an explicit re-invoke that
-			// must re-apply the payload, never short-circuit to the model-tool's
-			// within-turn-loop dedupe notice.
 			res, err := reg.ActivateSkill(ctx, name)
 			if err != nil {
 				return "", err

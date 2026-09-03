@@ -1,4 +1,4 @@
-// Package provider defines the provider seam — the single, highest test seam in the project — plus a deterministic fake Chat-Completions SSE provider driven by committed fixtures, and an OpenAI-compatible Chat-Completions client that talks to OpenCode Go (the primary provider).
+// Package provider defines canonical requests and streaming provider adapters.
 package provider
 
 import (
@@ -53,7 +53,6 @@ func contextOverflowBody(body string) bool {
 	return false
 }
 
-// Role is a Chat-Completions message role.
 type Role string
 
 const (
@@ -69,7 +68,6 @@ type CacheControl struct {
 	TTL  string `json:"ttl,omitempty"`
 }
 
-// Message is a single conversation turn sent to the provider.
 type Message struct {
 	Role             Role
 	Content          string
@@ -107,7 +105,6 @@ type messageWire struct {
 	CacheControl     *CacheControl `json:"cache_control,omitempty"`
 }
 
-// ToolFunction is one tool's reusable definition: a name, description, and a JSON-Schema parameters object.
 type ToolFunction struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description,omitempty"`
@@ -115,7 +112,6 @@ type ToolFunction struct {
 	Strict      bool           `json:"strict,omitempty"`
 }
 
-// Tool is the outer Chat-Completions tool wrapper (type: function).
 type Tool struct {
 	Type         string        `json:"type"`
 	Function     ToolFunction  `json:"function"`
@@ -151,14 +147,12 @@ func (t ToolCall) MarshalJSON() ([]byte, error) {
 // ProviderID names the provider family a turn targets, so a shared dialect can apply provider-specific caching fields without affecting another provider.
 type ProviderID string
 
-// Provider family identifiers, matching the documented families surfaced in the Settings surface.
 const (
 	ProviderOpenCodeGo   ProviderID = "opencode-go"
 	ProviderCopilot      ProviderID = "github-copilot"
 	ProviderCustomOpenAI ProviderID = "custom-openai"
 )
 
-// Request is one Chat-Completions turn.
 type Request struct {
 	Model       string
 	Messages    []Message
@@ -249,12 +243,10 @@ func (u *Usage) finalize() {
 	u.PromptCacheMissTokens = u.PromptTokens
 }
 
-// Stream is the provider seam: a single turn's streamed chunks.
 type Stream interface {
 	Next() (Chunk, error)
 }
 
-// Provider opens a streamed Chat-Completions turn for req.
 type Provider interface {
 	Stream(ctx context.Context, req Request) (Stream, error)
 }
@@ -268,13 +260,11 @@ const (
 	EndpointResponses       EndpointKind = "responses"
 )
 
-// ModelInfo is one discovered model plus any routing metadata the provider surfaced.
 type ModelInfo struct {
 	ID           string
 	EndpointKind EndpointKind
 }
 
-// ModelIDs projects a discovered catalog to its ordered model-id list.
 func ModelIDs(models []ModelInfo) []string {
 	ids := make([]string, 0, len(models))
 	for _, m := range models {

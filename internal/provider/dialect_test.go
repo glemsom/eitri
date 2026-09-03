@@ -38,17 +38,6 @@ func TestDialectManifestChatReExpressesCanonicalTools(t *testing.T) {
 	}
 }
 
-// TestDialectManifestChatConsistForCopilot verifies the Copilot chat dialect
-// yields the same Chat-Completions function manifest as the shared chat dialect.
-func TestDialectManifestChatConsistForCopilot(t *testing.T) {
-	t.Parallel()
-	chat := NewChatCompletionsDialect().Manifest(canonicalDefs()).([]Tool)
-	copilot := NewCopilotChatDialect().Manifest(canonicalDefs()).([]Tool)
-	if !reflect.DeepEqual(chat, copilot) {
-		t.Fatalf("copilot manifest = %#v, want shared %#v", copilot, chat)
-	}
-}
-
 // TestDialectManifestResponsesReExpressesCanonicalTools verifies the Responses
 // dialect folds canonical tool definitions into its own tool manifest through
 // the shared Dialect seam.

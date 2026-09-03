@@ -18,24 +18,19 @@ const DefaultByteCap = constants.DefaultByteCap
 // ansiRE matches ANSI/CSI escape sequences that noisy CLI tools emit for color and progress (e.g. `\x1b[31m`, `\x1b[2K`).
 var ansiRE = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]`)
 
-// marketRE matches the explicit "+N more" tail marker Eitri itself emits, so a re-apply recognizes an already-truncated listing instead of re-truncating it.
-var markerRE = regexp.MustCompile(`^\+[0-9]+ more$`)
-
-// Compress deterministically compresses a tool-result string.
 func Compress(raw string) string {
-	text := ansiRE.ReplaceAllString(raw, "")
+	out, _, _ := CompressResult(raw)
+	return out
+}
+
+func CompressResult(raw string) (text string, compressed bool, dropped int) {
+	text = ansiRE.ReplaceAllString(raw, "")
 	lines := splitLines(text)
 	lines = screenProgressFrames(lines)
 
-	prevMore := 0
-	if len(lines) > 0 && markerRE.MatchString(lines[len(lines)-1]) {
-		prevMore = atoi(lines[len(lines)-1][1 : len(lines[len(lines)-1])-5])
-		lines = lines[:len(lines)-1]
-	}
-
 	lines = dedupeConsecutive(lines)
 
-	dropped := 0
+	dropped = 0
 	if len(lines) > maxLines {
 		dropped = len(lines) - maxLines
 		lines = lines[:maxLines]
@@ -46,7 +41,7 @@ func Compress(raw string) string {
 		b.WriteString(ln)
 		b.WriteByte('\n')
 	}
-	more := prevMore + dropped
+	more := dropped
 	if more > 0 {
 		b.WriteByte('+')
 		b.WriteString(itoa(more))
@@ -54,18 +49,11 @@ func Compress(raw string) string {
 	}
 
 	if b.Len() >= len(raw) {
-		return raw
+		return raw, false, 0
 	}
-	return b.String()
+	return b.String(), true, more
 }
 
-// CompressResult reports whether Compress actually produced the compressed (truncated) form.
-func CompressResult(raw string) (string, bool) {
-	out := Compress(raw)
-	return out, out != raw
-}
-
-// itoa formats a small non-negative integer without pulling fmt into the hot compress path.
 func itoa(i int) string {
 	if i == 0 {
 		return "0"
@@ -77,29 +65,18 @@ func itoa(i int) string {
 	return string(digits)
 }
 
-// atoi parses a small non-negative integer from a decimal string, used to read back an already-emitted "+N more" marker during a re-apply.
-func atoi(s string) int {
-	n := 0
-	for i := 0; i < len(s); i++ {
-		n = n*10 + int(s[i]-'0')
-	}
-	return n
-}
-
-// lineMarkerRe matches the line-compressor's "+N more" tail marker, anchored at the very end with an optional trailing newline, so the byte-cap can recognize an already-line-truncated draft (markerRE is anchored ^..$ on the marker alone; this one operates on a full draft).
-var lineMarkerRe = regexp.MustCompile(`\+([0-9]+) more\n?$`)
-
 // CapBytes deterministically caps a tool-result draft to a byte budget at the tool-result boundary: over-budget drafts are head-truncated to the budget and an explicit marker line announcing how many bytes were dropped is appended — never silent.
-func CapBytes(draft string, budget int, lineTruncated bool) (delivered string, dropped int) {
+func CapBytes(draft string, budget int, linesDropped int) (delivered string, dropped int) {
 	if len(draft) <= budget {
 		return draft, 0
 	}
 
 	merger := ""
-	if lineTruncated {
-		if m := lineMarkerRe.FindString(draft); m != "" {
-			draft = draft[:len(draft)-len(m)]
-			merger = strings.TrimSuffix(m, "\n") + ", "
+	if linesDropped > 0 {
+		lineMarker := "+" + itoa(linesDropped) + " more\n"
+		if strings.HasSuffix(draft, lineMarker) {
+			draft = strings.TrimSuffix(draft, lineMarker)
+			merger = strings.TrimSuffix(lineMarker, "\n") + ", "
 		}
 	}
 
@@ -130,7 +107,6 @@ func CapBytes(draft string, budget int, lineTruncated bool) (delivered string, d
 	return b.String(), dropped
 }
 
-// dedupeConsecutive collapses runs of identical consecutive lines into one, preserving order (so the agent's listing stays readable and predictable).
 func dedupeConsecutive(lines []string) []string {
 	if len(lines) == 0 {
 		return lines
@@ -145,7 +121,6 @@ func dedupeConsecutive(lines []string) []string {
 	return out
 }
 
-// splitLines splits s on newlines, retaining interior blank lines so blank-separated output survives deterministically.
 func splitLines(s string) []string {
 	if s == "" {
 		return nil
@@ -153,7 +128,6 @@ func splitLines(s string) []string {
 	return strings.Split(strings.TrimSuffix(s, "\n"), "\n")
 }
 
-// screenProgressFrames collapses carriage-return progress output.
 func screenProgressFrames(lines []string) []string {
 	out := make([]string, 0, len(lines))
 	for _, ln := range lines {

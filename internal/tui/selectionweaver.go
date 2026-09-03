@@ -226,8 +226,8 @@ func highlightRange(line string, from, to int, sel string) string {
 // payload is the `48;...` payload of any background it sets ("" when it clears
 // the background to default), and changed reports whether the sequence touched
 // the background at all. A bare \x1b[m or a 0/49 parameter resets the
-// background to default; a 48;5;n or 48;2;r;g;b (or legacy 48;n) sets one; any
-// other SGR leaves the background untouched.
+// background to default; a 48;5;n or 48;2;r;g;b sets one; any other SGR leaves
+// the background untouched.
 func sgrBackground(seq string) (payload string, changed bool) {
 	p := seq
 	if len(p) > 0 && p[len(p)-1] == 'm' {
@@ -246,7 +246,7 @@ func sgrBackground(seq string) (payload string, changed bool) {
 			return "", true // full reset / explicit default background
 		case "48":
 			if i+1 >= len(params) {
-				return "", true
+				return "", false
 			}
 			switch params[i+1] {
 			case "2": // 48;2;r;g;b truecolor
@@ -257,10 +257,8 @@ func sgrBackground(seq string) (payload string, changed bool) {
 				if i+2 < len(params) {
 					return "48;5;" + params[i+2], true
 				}
-			default: // 48;n legacy palette
-				return "48;" + params[i+1], true
 			}
-			return "", true
+			return "", false
 		}
 	}
 	return "", false

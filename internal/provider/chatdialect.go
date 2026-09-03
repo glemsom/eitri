@@ -29,27 +29,39 @@ type Dialect interface {
 // Chat-Completions wire: it builds the /chat/completions request body, maps
 // canonical tools to its function manifest, and reassembles streamed tool-call
 // fragments.
-type ChatCompletionsDialect struct{}
+type ChatCompletionsDialect struct {
+	copilotRequestPolicy bool
+}
 
 func NewChatCompletionsDialect() *ChatCompletionsDialect {
 	return &ChatCompletionsDialect{}
 }
 
-// chatDialect is the package-wide Chat-Completions dialect the adapters speak through.
-// It is stateless, so the single shared instance is safe.
+func newCopilotChatCompletionsDialect() *ChatCompletionsDialect {
+	return &ChatCompletionsDialect{copilotRequestPolicy: true}
+}
+
+// chatDialect is the shared stateless dialect used by Chat Completions adapters.
 var chatDialect = NewChatCompletionsDialect()
 
 func (d *ChatCompletionsDialect) Build(req Request) ([]byte, error) {
+	messages := req.Messages
+	var promptKey, retention string
+	if !d.copilotRequestPolicy {
+		messages = stampCacheBreakpoints(req)
+		promptKey = promptCacheKey(req)
+		retention = promptCacheRetention(req)
+	}
 	body := chatCompletionBody{
 		Model:                req.Model,
-		Messages:             stampCacheBreakpoints(req),
+		Messages:             messages,
 		Tools:                toolsForWire(req),
 		ToolChoice:           req.ToolChoice,
 		Stream:               true,
-		StreamOptions:        &streamOptions{IncludeUsage: true}, // opencode force-sets include_usage
-		PromptCacheKey:       promptCacheKey(req),
-		PromptCacheRetention: promptCacheRetention(req),
-		Thinking:             thinkingControl(req),
+		StreamOptions:        &streamOptions{IncludeUsage: true},
+		PromptCacheKey:       promptKey,
+		PromptCacheRetention: retention,
+		Thinking:             d.thinkingControl(req),
 		ReasoningEffort:      reasoningEffortControl(req),
 		MaxOutputTokens:      maxOutputTokens(req),
 	}
@@ -57,11 +69,18 @@ func (d *ChatCompletionsDialect) Build(req Request) ([]byte, error) {
 }
 
 func (d *ChatCompletionsDialect) Capabilities() []GenerationControl {
-	return []GenerationControl{
-		GenerationControlGenerationBudget,
-		GenerationControlToolSchemaEnforcement,
-		GenerationControlThinkingSuppression,
+	controls := []GenerationControl{GenerationControlGenerationBudget}
+	if !d.copilotRequestPolicy {
+		controls = append(controls, GenerationControlToolSchemaEnforcement)
 	}
+	return append(controls, GenerationControlThinkingSuppression)
+}
+
+func (d *ChatCompletionsDialect) thinkingControl(req Request) *thinkingEnabler {
+	if d.copilotRequestPolicy {
+		return copilotThinkingControl(req)
+	}
+	return thinkingControl(req)
 }
 
 func (d *ChatCompletionsDialect) Manifest(defs []DialectDefinition) any {
@@ -94,6 +113,14 @@ type thinkingEnabler struct {
 // streamOptions carries the stream_options switch requesting per-turn usage telemetry.
 type streamOptions struct {
 	IncludeUsage bool `json:"include_usage"`
+}
+
+func copilotThinkingControl(req Request) *thinkingEnabler {
+	t := "enabled"
+	if !req.ThinkingEnabled {
+		t = "disabled"
+	}
+	return &thinkingEnabler{Type: t}
 }
 
 // thinkingControl returns the enabled thinking toggle when req opts in, else nil so the field is omitted.

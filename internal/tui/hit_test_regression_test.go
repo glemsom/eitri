@@ -57,10 +57,6 @@ func TestMutationsKeepHitTestCorrectWithoutCallerInvalidation(t *testing.T) {
 	if idx, ok := tx.messageAtLine(answerLine); !ok || idx != 1 {
 		t.Errorf("after Fold: messageAtLine(%d) = (%d,%v), want streaming message 1", answerLine, idx, ok)
 	}
-	toolLine := findLine(plain, "bash")
-	if idx, _, ok := tx.toolEntryAtLine(toolLine); !ok || idx != 0 {
-		t.Errorf("after Fold: toolEntryAtLine(%d) = (%d,%v), want tool entry 0", toolLine, idx, ok)
-	}
 
 	// Phase 3: Commit finalizes the streamed assistant message.
 	msg := cmd().(turnDoneMsg)
@@ -94,15 +90,10 @@ func TestMutationsKeepHitTestCorrectWithoutCallerInvalidation(t *testing.T) {
 			t.Errorf("after appends+resize: messageAtLine(%d) for %q = (%d,%v), want message %d", c.line, c.marker, idx, ok, c.want)
 		}
 	}
-	toolLine = findLine(plain, "bash  ls")
-	if idx, _, ok := tx.toolEntryAtLine(toolLine); !ok || idx != 0 {
-		t.Errorf("after appends+resize: toolEntryAtLine(%d) = (%d,%v), want tool entry 0", toolLine, idx, ok)
-	}
 
 	// Repeat queries serve from the cache: no further rebuilds. One rebuild
 	// per mutation phase above, so the total is the phase count.
 	_, _ = tx.messageAtLine(answerLine)
-	_, _, _ = tx.toolEntryAtLine(toolLine)
 	if tx.layout.builds != 4 {
 		t.Errorf("layout builds = %d after repeat queries, want 4 (cache must survive until next mutation)", tx.layout.builds)
 	}

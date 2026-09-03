@@ -130,7 +130,7 @@ func TestModelSubmitExcludesControlSlashCommands(t *testing.T) {
 	// Control slash commands must never be recorded; each is submitted on a
 	// fresh Model because `/settings` opens an overlay (and `/login` starts a
 	// flow) that would otherwise swallow later Enter keys.
-	for _, cmd := range []string{"/settings", "/new", "/help", "/copy", "/login"} {
+	for _, cmd := range []string{"/settings", "/new", "/help", "/login"} {
 		var prompted string
 		m := NewModelCfg(Dependencies{
 			Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {

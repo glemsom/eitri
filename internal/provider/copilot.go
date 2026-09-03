@@ -58,7 +58,7 @@ func NewCopilot(cfg config.CopilotConfig, url string, httpc *http.Client, refres
 		refresh:         refresh,
 		persist:         persist,
 		responsesModels: map[string]bool{},
-		chat:            NewCopilotChatDialect(),
+		chat:            newCopilotChatCompletionsDialect(),
 		responses:       NewResponsesDialect(),
 	}
 }

@@ -13,14 +13,6 @@ const (
 	DefaultOpenCodeURL = "https://opencode.ai/zen/go/v1/chat/completions"
 )
 
-// apiKeyOrDefault returns key, or a sentinel so the client is still wired and a clean HTTP 401 surfaces rather than a misleading empty-credential request.
-func apiKeyOrDefault(key string) string {
-	if key != "" {
-		return key
-	}
-	return "not-configured"
-}
-
 // ProviderEnv carries the environment-derived credential and the seams the provider factory needs so routing is testable without real network.
 type ProviderEnv struct {
 	OpenCodeKey string
@@ -31,7 +23,6 @@ type ProviderEnv struct {
 	CopilotPersist func(config.CopilotConfig) error
 }
 
-// FromConfig builds the Provider the saved config selects — opencode-go, github-copilot, or custom-openai — routing through the shared Chat-Completions dialect seam (canonical tool re-expression and request shaping behind one interface, no per-provider copies).
 func FromConfig(cfg config.Config, env ProviderEnv) (Provider, error) {
 	switch ProviderID(cfg.Provider) {
 	case ProviderOpenCodeGo:
@@ -39,11 +30,14 @@ func FromConfig(cfg config.Config, env ProviderEnv) (Provider, error) {
 		if url == "" {
 			url = DefaultOpenCodeURL
 		}
-		return NewOpenCodeGo(apiKeyOrDefault(env.OpenCodeKey), url), nil
+		if env.OpenCodeKey == "" {
+			return nil, fmt.Errorf("opencode-go provider selected but OPENCODE_API_KEY is not set")
+		}
+		return NewOpenCodeGo(env.OpenCodeKey, url), nil
 
 	case ProviderCustomOpenAI:
-		if cfg.CustomOpenAI.BaseURL == "" || cfg.CustomOpenAI.Key == "" {
-			return nil, fmt.Errorf("custom-openai provider selected but no base URL/key configured (set them in Settings)")
+		if cfg.CustomOpenAI.BaseURL == "" {
+			return nil, fmt.Errorf("custom-openai provider selected but no base URL configured (set it in Settings)")
 		}
 		return NewOpenAICompatible(cfg.CustomOpenAI.Key, cfg.CustomOpenAI.BaseURL), nil
 

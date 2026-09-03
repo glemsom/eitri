@@ -123,14 +123,6 @@ func Discover(userRoot, projectRoot string, w SkillWarner) (*Catalog, error) {
 	return c, nil
 }
 
-// skillParseStatus describes why a discovered pack was or wasn't cataloged.
-type skillParseStatus int
-
-const (
-	skillCataloged skillParseStatus = iota
-	skillUnparseable
-)
-
 // discoverScope walks root for skill pack directories and folds them into c. root is the scope's <scope>/skills parent (may not exist).
 func discoverScope(root string, c *Catalog, scope string, w SkillWarner) error {
 	entries, err := os.ReadDir(root)
@@ -149,10 +141,10 @@ func discoverScope(root string, c *Catalog, scope string, w SkillWarner) error {
 			continue
 		}
 		packDir := filepath.Join(root, name)
-		skill, status := parseSkill(packDir)
-		if status == skillUnparseable {
+		skill, parseErr := parseSkill(packDir)
+		if parseErr != nil {
 			if w != nil {
-				w.Warnf("skill %q: skipping unparseable SKILL.md in scope %s", name, scope)
+				w.Warnf("skill %q: skipping unparseable SKILL.md in scope %s: %v", name, scope, parseErr)
 			}
 			continue
 		}
@@ -162,43 +154,67 @@ func discoverScope(root string, c *Catalog, scope string, w SkillWarner) error {
 	return nil
 }
 
-// parseSkill reads a pack's SKILL.md, strips its frontmatter leniently, and collects the packaged resources.
-func parseSkill(packDir string) (*Skill, skillParseStatus) {
+func parseSkill(packDir string) (*Skill, error) {
 	md := filepath.Join(packDir, "SKILL.md")
 	data, err := os.ReadFile(md)
 	if err != nil {
-		return nil, skillUnparseable
+		return nil, err
 	}
 	body, front, ok := splitFrontmatter(string(data))
 	if !ok {
-		return nil, skillUnparseable
+		return nil, fmt.Errorf("frontmatter must be delimited by exact --- lines")
 	}
-	meta := parseFrontmatter(front)
-	name, ok := meta["name"]
-	name = strings.TrimSpace(name)
-	if !ok || name == "" {
-		return nil, skillUnparseable
+	meta, err := parseFrontmatter(front)
+	if err != nil {
+		return nil, err
 	}
-	desc := meta["description"]
-	desc = strings.TrimSpace(desc)
+	name := strings.TrimSpace(meta["name"])
+	if name == "" {
+		return nil, fmt.Errorf("name must be a non-empty scalar")
+	}
+	desc := strings.TrimSpace(meta["description"])
 	if desc == "" {
-		return nil, skillUnparseable
+		return nil, fmt.Errorf("description must be a non-empty scalar")
 	}
 
-	res := bundledResources(packDir, md)
-	s := &Skill{
+	modelInvocable := true
+	modelValue, hasModel := meta["model-invocable"]
+	disableValue, hasDisable := meta["disable-model-invocation"]
+	if hasModel {
+		modelInvocable, err = parseFrontmatterBool("model-invocable", modelValue)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if hasDisable {
+		disabled, boolErr := parseFrontmatterBool("disable-model-invocation", disableValue)
+		if boolErr != nil {
+			return nil, boolErr
+		}
+		if hasModel && modelInvocable == disabled {
+			return nil, fmt.Errorf("conflicting model-invocable and disable-model-invocation values")
+		}
+		modelInvocable = !disabled
+	}
+
+	return &Skill{
 		Description:    desc,
 		Body:           strings.TrimPrefix(body, "\n"),
-		Resources:      res,
+		Resources:      bundledResources(packDir, md),
 		Dir:            packDir,
-		ModelInvocable: true,
+		ModelInvocable: modelInvocable,
+	}, nil
+}
+
+func parseFrontmatterBool(key, value string) (bool, error) {
+	switch {
+	case strings.EqualFold(value, "true"):
+		return true, nil
+	case strings.EqualFold(value, "false"):
+		return false, nil
+	default:
+		return false, fmt.Errorf("%s must be true or false", key)
 	}
-	if v, ok := meta["model-invocable"]; ok {
-		s.ModelInvocable = strings.EqualFold(strings.TrimSpace(v), "true")
-	} else if v, ok := meta["disable-model-invocation"]; ok {
-		s.ModelInvocable = !strings.EqualFold(strings.TrimSpace(v), "true")
-	}
-	return s, skillCataloged
 }
 
 // bundledResources lists the pack's files (relative paths) excluding SKILL.md, deterministically sorted.
@@ -234,48 +250,65 @@ func validSkillName(s string) bool {
 }
 
 func splitFrontmatter(s string) (body, front string, ok bool) {
-	if !strings.HasPrefix(s, "---") {
+	lines := strings.Split(s, "\n")
+	if len(lines) < 3 || lines[0] != "---" {
 		return "", "", false
 	}
-	rest := s[3:]
-	nl := strings.IndexByte(rest, '\n')
-	if nl < 0 {
-		return "", "", false
+	for i := 1; i < len(lines); i++ {
+		if lines[i] == "---" {
+			return strings.Join(lines[i+1:], "\n"), strings.Join(lines[1:i], "\n"), true
+		}
 	}
-	rest = rest[nl+1:]
-	end := strings.Index(rest, "\n---")
-	if end < 0 {
-		return "", "", false
-	}
-	front = rest[:end]
-	body = rest[end+4:]
-	return body, front, true
+	return "", "", false
 }
 
-// parseFrontmatter leniently extracts `key: value` fields from a frontmatter block.
-func parseFrontmatter(s string) map[string]string {
+// parseFrontmatter accepts only flat key/scalar fields and indented plain-text
+// continuations for description. Duplicate fields and YAML collection syntax
+// are rejected rather than interpreted partially.
+func parseFrontmatter(s string) (map[string]string, error) {
 	out := map[string]string{}
 	var curKey string
-	for _, line := range strings.Split(s, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
+	for lineNo, line := range strings.Split(s, "\n") {
+		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		if curKey != "" && (line[0] == ' ' || line[0] == '\t') {
-			out[curKey] += " " + strings.TrimSpace(trimmed)
-			continue
+		if line[0] == ' ' || line[0] == '\t' {
+			continuation := strings.TrimSpace(line)
+			if curKey == "description" && !strings.Contains(continuation, ":") {
+				out[curKey] += " " + continuation
+				continue
+			}
+			if curKey != "name" && curKey != "description" && curKey != "model-invocable" && curKey != "disable-model-invocation" {
+				if strings.HasPrefix(continuation, "- ") || strings.Contains(continuation, ":") {
+					continue
+				}
+			}
+			return nil, fmt.Errorf("frontmatter line %d: unsupported nested or continuation syntax", lineNo+1)
 		}
-		idx := strings.IndexByte(trimmed, ':')
+		idx := strings.IndexByte(line, ':')
 		if idx <= 0 {
-			continue
+			return nil, fmt.Errorf("frontmatter line %d: expected key: value", lineNo+1)
 		}
-		key := strings.ToLower(strings.TrimSpace(trimmed[:idx]))
-		val := strings.TrimSpace(trimmed[idx+1:])
-		val = strings.Trim(val, `"'`)
-		out[key] = val
+		key := strings.ToLower(strings.TrimSpace(line[:idx]))
+		if key == "" || strings.ContainsAny(key, " []{}#,\t") {
+			return nil, fmt.Errorf("frontmatter line %d: invalid key", lineNo+1)
+		}
+		if _, exists := out[key]; exists {
+			return nil, fmt.Errorf("frontmatter line %d: duplicate key %q", lineNo+1, key)
+		}
+		value := strings.TrimSpace(line[idx+1:])
+		if strings.HasPrefix(value, "[") || strings.HasPrefix(value, "{") || strings.HasPrefix(value, "-") || strings.HasPrefix(value, "|") || strings.HasPrefix(value, ">") {
+			return nil, fmt.Errorf("frontmatter line %d: unsupported value syntax", lineNo+1)
+		}
+		if len(value) >= 2 && ((value[0] == '"' && value[len(value)-1] == '"') || (value[0] == '\'' && value[len(value)-1] == '\'')) {
+			value = value[1 : len(value)-1]
+		} else if strings.HasPrefix(value, "\"") || strings.HasPrefix(value, "'") {
+			return nil, fmt.Errorf("frontmatter line %d: unterminated quoted scalar", lineNo+1)
+		}
+		out[key] = value
 		curKey = key
 	}
-	return out
+	return out, nil
 }
 
 // renderSkillPayload builds the structured agentskills-io payload: the body wrapped in <skill_content name="..."> plus a <skill_resources> listing of the bundled files.

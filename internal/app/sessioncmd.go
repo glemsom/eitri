@@ -1,4 +1,3 @@
-// Package app — sessioncmd.go implements the `eitri session` debug subcommands: list, show, grep. They let an AI agent (or human) navigate the message-layer transcripts under sessions/ without loading whole files into context.
 package app
 
 import (
@@ -15,7 +14,6 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// sessionCycle is one request/response pair from a messages.jsonl transcript.
 type sessionCycle struct {
 	Turn int // 1-based cycle index
 	Req  *provider.RequestLog
@@ -38,36 +36,53 @@ func readCycles(path string) ([]sessionCycle, error) {
 			cur = sessionCycle{Turn: len(cycles) + 1}
 		}
 	}
+	lineNumber := 0
 	for sc.Scan() {
+		lineNumber++
 		line := sc.Bytes()
-		if len(line) == 0 {
+		if len(strings.TrimSpace(string(line))) == 0 {
 			continue
 		}
 		var probe struct {
 			Dir string `json:"dir"`
 		}
 		if err := json.Unmarshal(line, &probe); err != nil {
-			continue
+			return nil, fmt.Errorf("line %d: malformed record: %w", lineNumber, err)
 		}
 		switch probe.Dir {
 		case "req":
-			flush()
+			if cur.Req != nil {
+				return nil, fmt.Errorf("line %d: request record before previous cycle received a response", lineNumber)
+			}
 			var r provider.RequestLog
-			if json.Unmarshal(line, &r) == nil {
-				rp := r
-				cur.Req = &rp
+			if err := json.Unmarshal(line, &r); err != nil {
+				return nil, fmt.Errorf("line %d: malformed request record: %w", lineNumber, err)
 			}
+			rp := r
+			cur.Req = &rp
 		case "resp":
-			var r provider.ResponseLog
-			if json.Unmarshal(line, &r) == nil {
-				rp := r
-				cur.Resp = &rp
-				flush()
+			if cur.Req == nil {
+				return nil, fmt.Errorf("line %d: response record without a request", lineNumber)
 			}
+			var r provider.ResponseLog
+			if err := json.Unmarshal(line, &r); err != nil {
+				return nil, fmt.Errorf("line %d: malformed response record: %w", lineNumber, err)
+			}
+			rp := r
+			cur.Resp = &rp
+			flush()
+		default:
+			return nil, fmt.Errorf("line %d: message record has unknown direction %q", lineNumber, probe.Dir)
 		}
 	}
+	if err := sc.Err(); err != nil {
+		return nil, err
+	}
+	if cur.Req != nil {
+		return nil, fmt.Errorf("line %d: transcript ends before request received a response", lineNumber)
+	}
 	flush()
-	return cycles, sc.Err()
+	return cycles, nil
 }
 
 func truncate(s string, n int) string {
@@ -80,6 +95,7 @@ func truncate(s string, n int) string {
 
 // ListSessions prints one line per session dir: GUID, last activity, cycle count.
 func ListSessions(dataDir string, out io.Writer) error {
+	var rendered strings.Builder
 	root := filepath.Join(dataDir, "sessions")
 	entries, err := os.ReadDir(root)
 	if err != nil {
@@ -99,19 +115,23 @@ func ListSessions(dataDir string, out io.Writer) error {
 		path := filepath.Join(root, e.Name(), "messages.jsonl")
 		fi, err := os.Stat(path)
 		if err != nil {
-			continue
+			return fmt.Errorf("session %s unreadable: %w", e.Name(), err)
 		}
 		cycles, err := readCycles(path)
-		if err != nil || len(cycles) == 0 {
+		if err != nil {
+			return fmt.Errorf("session %s unreadable: %w", e.Name(), err)
+		}
+		if len(cycles) == 0 {
 			continue
 		}
 		rows = append(rows, row{guid: e.Name(), modTime: fi.ModTime(), cycles: len(cycles), model: cycles[0].Req.Model})
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].modTime.After(rows[j].modTime) })
 	for _, r := range rows {
-		fmt.Fprintf(out, "%s\t%s\t%d cycles\t%s\n", r.guid, r.modTime.Format(time.RFC3339), r.cycles, r.model)
+		fmt.Fprintf(&rendered, "%s\t%s\t%d cycles\t%s\n", r.guid, r.modTime.Format(time.RFC3339), r.cycles, r.model)
 	}
-	return nil
+	_, err = io.WriteString(out, rendered.String())
+	return err
 }
 
 // ShowSession prints a compact per-cycle summary of a session; with turn > 0 it prints only that cycle's full JSON records.
@@ -199,10 +219,9 @@ type TalkOptions struct {
 	ToTurn    int    // inclusive; 0 = through the last cycle
 	Role      string // "", "user", "assistant", "tool", or "system"
 	Reasoning bool   // include chain-of-thought blocks
-	AllCycles bool   // print every message of every request (default dedupes shared history)
 }
 
-// TalkSession prints a session's conversation as plain text, one block per message: `[N] role:` followed by the full untruncated content. Request history shared with the previous cycle is skipped unless AllCycles is set.
+// TalkSession prints a session's conversation as plain text, one block per message: `[N] role:` followed by the full untruncated content. Request history shared with the previous cycle is skipped.
 func TalkSession(dataDir, guid string, opts TalkOptions, out io.Writer) error {
 	cycles, err := readCycles(filepath.Join(dataDir, "sessions", guid, "messages.jsonl"))
 	if err != nil {
@@ -225,7 +244,7 @@ func TalkSession(dataDir, guid string, opts TalkOptions, out io.Writer) error {
 		}
 		if c.Req != nil {
 			start := 0
-			if !opts.AllCycles && len(prevReqs) > 0 {
+			if len(prevReqs) > 0 {
 				start = lenSharedPrefix(prevReqs[len(prevReqs)-1], c.Req.Messages)
 			}
 			for _, m := range c.Req.Messages[start:] {
@@ -253,7 +272,6 @@ func TalkSession(dataDir, guid string, opts TalkOptions, out io.Writer) error {
 	return nil
 }
 
-// lenSharedPrefix returns how many leading messages of cur are identical to prev's tail-aligned history, so Talk can skip already-printed context.
 func lenSharedPrefix(prev, cur []provider.Message) int {
 	// Requests resend the whole conversation, so prev is a prefix of cur in the common case.
 	if len(cur) < len(prev) {
@@ -295,6 +313,7 @@ func indent(s string) string {
 
 // GrepSession prints one compact line per cycle whose message-layer content matches substr — snippets around each hit, or full field text when full is set. Empty guid searches all sessions.
 func GrepSession(dataDir, pattern, guid string, full bool, out io.Writer) error {
+	var rendered strings.Builder
 	root := filepath.Join(dataDir, "sessions")
 	dirs := []string{filepath.Join(root, guid)}
 	all := guid == "" || guid == "all"
@@ -312,11 +331,11 @@ func GrepSession(dataDir, pattern, guid string, full bool, out io.Writer) error 
 		sort.Strings(dirs)
 	}
 	for _, dir := range dirs {
+		tag := filepath.Base(dir)
 		cycles, err := readCycles(filepath.Join(dir, "messages.jsonl"))
 		if err != nil {
-			continue
+			return fmt.Errorf("session %s unreadable: %w", tag, err)
 		}
-		tag := filepath.Base(dir)
 		var hits []string
 		hit := func(label, text string) {
 			if !strings.Contains(text, pattern) {
@@ -351,11 +370,12 @@ func GrepSession(dataDir, pattern, guid string, full bool, out io.Writer) error 
 				}
 			}
 			for _, h := range hits {
-				fmt.Fprintf(out, "%s:%d %s\n", tag, c.Turn, h)
+				fmt.Fprintf(&rendered, "%s:%d %s\n", tag, c.Turn, h)
 			}
 		}
 	}
-	return nil
+	_, err := io.WriteString(out, rendered.String())
+	return err
 }
 
 // snippet returns up to ~120 chars of s centered on the first occurrence of pattern, or "" when absent.

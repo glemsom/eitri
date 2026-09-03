@@ -113,7 +113,7 @@ func TestRender_bandHints(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 
 	got := bandHints()
-	want := "ctrl+s settings . ctrl+o copy . ctrl+e expand/collapse . shift+enter newline"
+	want := "ctrl+s settings . ctrl+e expand/collapse . shift+enter newline"
 	if got != want {
 		t.Errorf("bandHints() = %q, want %q", got, want)
 	}
@@ -140,7 +140,7 @@ func TestHelpView_glyphs(t *testing.T) {
 			t.Errorf("helpView() missing Markdown header %q", want)
 		}
 	}
-	for _, want := range []string{"`/settings`", "`/copy`", "`/login`", "`/help`"} {
+	for _, want := range []string{"`/settings`", "`/login`", "`/help`"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("helpView() missing command code span %q", want)
 		}

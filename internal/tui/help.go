@@ -17,7 +17,6 @@ func helpView() string {
 	b.WriteString("# COMMANDS\n\n")
 	writeHelpRows(&b, []helpRow{
 		{"`/settings`", "open settings panel"},
-		{"`/copy`", "copy transcript to clipboard"},
 		{"`/new`", "start a fresh session (clears this conversation)"},
 		{"`/login`", "interactive provider login"},
 		{"`/help`", "show this help message"},
@@ -33,7 +32,6 @@ func helpView() string {
 		{"`shift+enter`", "insert newline"},
 	})
 	writeHelpCategory(&b, "NAVIGATION", []helpRow{
-		{"`?`", "show help"},
 		{"`pgup/pgdn`", "scroll history"},
 	})
 	writeHelpCategory(&b, "PANES", []helpRow{
@@ -43,7 +41,6 @@ func helpView() string {
 	})
 	writeHelpCategory(&b, "ACTIONS", []helpRow{
 		{"`ctrl+s`", "open settings"},
-		{"`ctrl+o`", "copy transcript"},
 	})
 
 	b.WriteString("\n# CONCEPTS\n\n")

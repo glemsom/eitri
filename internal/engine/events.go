@@ -1,8 +1,6 @@
 package engine
 
 import (
-	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/glemsom/eitri/internal/provider"
@@ -72,31 +70,19 @@ type CompactedEvent struct {
 	Turn  int
 }
 
-// markerRe matches an explicit truncation tail marker Eitri emits when it truncates a heavy tool result — never silent, always an explicit count of what was hidden.
-var markerRe = regexp.MustCompile(`\+([0-9]+) more(?:, \+[0-9]+ bytes truncated)?\n?$`)
-
-// newToolResultEvent builds a ToolResultEvent from a tool's full (pre-cap) result, deriving the compression metadata deterministically from the result string (without re-parsing raw stream or internal history downstream): a result carrying the explicit "+N more" tail marker is the compressed form, and the marker's count is the number of lines hidden behind it. bytesDropped is the byte-cap split: the bytes the cap dropped (the capped form lives only in the provider Message; the event carries Result full).
-func newToolResultEvent(runID, turn int, id, name, result string, bytesDropped int) ToolResultEvent {
-	dropped, lines := 0, 0
-	if result != "" {
-		lines = strings.Count(result, "\n")
-		if !strings.HasSuffix(result, "\n") {
+// newToolResultEvent builds the UI-facing event from a tool result without reparsing its rendered text.
+func newToolResultEvent(runID, turn int, id, name string, result ToolExecResult, bytesDropped int) ToolResultEvent {
+	lines := 0
+	if result.Text != "" {
+		lines = strings.Count(result.Text, "\n")
+		if !strings.HasSuffix(result.Text, "\n") {
 			lines++
-		}
-		if m := markerRe.FindStringSubmatch(result); m != nil {
-			dropped, _ = strconv.Atoi(m[1])
 		}
 	}
 	return ToolResultEvent{
-		RunID:        runID,
-		Turn:         turn,
-		ID:           id,
-		Name:         name,
-		Result:       result,
-		BytesDropped: bytesDropped,
-		Compressed:   dropped > 0,
-		Lines:        lines,
-		Dropped:      dropped,
+		RunID: runID, Turn: turn, ID: id, Name: name, Result: result.Text,
+		BytesDropped: bytesDropped, Compressed: result.Compressed,
+		Lines: lines, Dropped: result.Dropped,
 	}
 }
 

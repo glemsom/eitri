@@ -31,13 +31,13 @@ func TestSkillActivation_renderCompletionListsCandidates(t *testing.T) {
 
 	s.TrackComposer("/")
 	out := s.RenderCompletionBody(plainTestTheme())
-	for _, want := range []string{"/settings", "/copy", "/login", "/help", "/new", "/review", "/plan"} {
+	for _, want := range []string{"/settings", "/login", "/help", "/new", "/review", "/plan"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("completion output %q missing %q", out, want)
 		}
 	}
-	if n := s.CandidateCount(); n != 7 {
-		t.Errorf("CandidateCount() = %d, want 7", n)
+	if n := s.CandidateCount(); n != 6 {
+		t.Errorf("CandidateCount() = %d, want 6", n)
 	}
 
 	s.TrackComposer("hello")
@@ -53,12 +53,12 @@ func TestSkillActivation_renderCompletionHighlightsSelected(t *testing.T) {
 	s.Move(1)
 
 	out := s.RenderCompletionBody(plainTestTheme())
-	if !strings.Contains(out, "▸ /copy") {
+	if !strings.Contains(out, "▸ /login") {
 		t.Errorf("selected candidate not highlighted: %q", out)
 	}
 	var accepted string
-	if !s.Complete(func(candidate string) { accepted = candidate }) || accepted != "/copy" {
-		t.Errorf("accepted candidate = %q, want /copy", accepted)
+	if !s.Complete(func(candidate string) { accepted = candidate }) || accepted != "/login" {
+		t.Errorf("accepted candidate = %q, want /login", accepted)
 	}
 	if s.isOpen() {
 		t.Error("accepted completion should close menu")

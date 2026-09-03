@@ -69,11 +69,11 @@ func TestIsSkillMessageRecognizesSkillContentInUserLayer(t *testing.T) {
 	t.Parallel()
 	// The slash-injected <skill_content> directive in the user layer is what the
 	// compact ring-fence protects; the model has no `skill` tool.
-	if !isSkillMessage(provider.Message{Role: provider.RoleUser,
+	if !(messagePartition{}).IsTransient(provider.Message{Role: provider.RoleUser,
 		Content: "<skill_content name=\"go\">follow the guidelines</skill_content>"}) {
 		t.Fatal("isSkillMessage must recognize the slash-injected <skill_content> directive in the user layer")
 	}
-	if isSkillMessage(provider.Message{Role: provider.RoleAssistant,
+	if (messagePartition{}).IsTransient(provider.Message{Role: provider.RoleAssistant,
 		ToolCalls: []provider.ToolCall{{Name: "skill"}}}) {
 		t.Fatal("isSkillMessage must not recognize a skill tool call (no such model tool)")
 	}
@@ -98,7 +98,7 @@ func TestEvictPruneRingFenceProtectsSkillContent(t *testing.T) {
 	}
 	var sawSkill bool
 	for _, m := range tail {
-		if isSkillMessage(m) {
+		if (messagePartition{}).IsTransient(m) {
 			sawSkill = true
 		}
 	}
@@ -378,5 +378,32 @@ func TestRunAgentOverflowRecoveryOnlyOncePerRun(t *testing.T) {
 	}
 	if h.requests != 5 {
 		t.Fatalf("provider requests = %d, want 5 (2 tool turns, overflow, summary, retry overflow)", h.requests)
+	}
+}
+
+type unsupportedSummaryProvider struct{ t *testing.T }
+
+func (p unsupportedSummaryProvider) Stream(context.Context, provider.Request) (provider.Stream, error) {
+	p.t.Fatal("provider network work started during compaction setup")
+	return nil, nil
+}
+
+func TestResolveCompactionRejectsProviderWithoutSummaryBudget(t *testing.T) {
+	t.Parallel()
+	_, err := ResolveCompaction(context.Background(), unsupportedSummaryProvider{t: t}, true)
+	if err == nil {
+		t.Fatal("ResolveCompaction() error = nil, want unsupported summary capability error")
+	}
+}
+
+func TestResolveCompactionReturnsExplicitModes(t *testing.T) {
+	t.Parallel()
+	disabled, err := ResolveCompaction(context.Background(), provider.NewScripted(nil), false)
+	if err != nil || disabled != nil {
+		t.Fatalf("ResolveCompaction(disabled) = (%v, %v), want (nil, nil)", disabled, err)
+	}
+	enabled, err := ResolveCompaction(context.Background(), &budgetScripted{}, true)
+	if err != nil || enabled == nil {
+		t.Fatalf("ResolveCompaction(enabled) = (%v, %v), want supported config", enabled, err)
 	}
 }

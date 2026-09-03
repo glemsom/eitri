@@ -104,7 +104,7 @@ func TestRunEmitsStreamAndUsageAndTurnEvents(t *testing.T) {
 func compressExec() ToolExecutor {
 	return ExecutorFunc(func(_ context.Context, name, _ string) (ToolExecResult, error) {
 		if name == "bash" {
-			return ToolExecResult{Text: "README.md\ninternal/pkg_a.go\ninternal/pkg_b.go\n+3 more\n", Compressed: true}, nil
+			return ToolExecResult{Text: "README.md\ninternal/pkg_a.go\ninternal/pkg_b.go\n+3 more\n", Compressed: true, Dropped: 3}, nil
 		}
 		return ToolExecResult{Text: "result:" + name}, nil
 	})

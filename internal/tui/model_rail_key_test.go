@@ -41,84 +41,57 @@ func testConfig(railWidth int) config.Config {
 	return cfg
 }
 
-func TestRailKey_Shrink(t *testing.T) {
-	t.Parallel()
-	m, cc := railKeyModel(t, 40)
-
-	nm, _ := m.Update(tea.KeyPressMsg{Code: '[', Mod: tea.ModCtrl | tea.ModShift})
-	m = asModel(t, nm)
-
-	if w := m.tx.railWidthOrDefault(); w != 38 {
-		t.Errorf("Ctrl+Shift+[ should shrink rail by 2, got width %d (want 38)", w)
-	}
-	if cc.cfg.RailWidth != 38 {
-		t.Errorf("shrink should persist to config, got rail_width %d (want 38)", cc.cfg.RailWidth)
-	}
-}
-
-func TestRailKey_Grow(t *testing.T) {
-	t.Parallel()
-	m, cc := railKeyModel(t, 40)
-
-	nm, _ := m.Update(tea.KeyPressMsg{Code: ']', Mod: tea.ModCtrl | tea.ModShift})
-	m = asModel(t, nm)
-
-	if w := m.tx.railWidthOrDefault(); w != 42 {
-		t.Errorf("Ctrl+Shift+] should grow rail by 2, got width %d (want 42)", w)
-	}
-	if cc.cfg.RailWidth != 42 {
-		t.Errorf("grow should persist to config, got rail_width %d (want 42)", cc.cfg.RailWidth)
+func TestRailKeys_DocumentedResizeControls(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		key  rune
+		want int
+	}{
+		{"shrink", 'x', 38}, {"grow", 'z', 42},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, cc := railKeyModel(t, 40)
+			nm, _ := m.Update(tea.KeyPressMsg{Code: tc.key, Mod: tea.ModCtrl})
+			m = asModel(t, nm)
+			if got := m.tx.railWidthOrDefault(); got != tc.want {
+				t.Errorf("Ctrl+%c changed rail width to %d, want %d", tc.key, got, tc.want)
+			}
+			if got := cc.cfg.RailWidth; got != tc.want {
+				t.Errorf("Ctrl+%c persisted rail_width %d, want %d", tc.key, got, tc.want)
+			}
+		})
 	}
 }
 
-func TestRailKey_Reset(t *testing.T) {
-	t.Parallel()
-	m, cc := railKeyModel(t, 50)
-
-	nm, _ := m.Update(tea.KeyPressMsg{Code: '0', Mod: tea.ModAlt})
-	m = asModel(t, nm)
-
-	if w := m.tx.railWidthOrDefault(); w != defaultRailWidth {
-		t.Errorf("Alt+0 should reset rail to default, got width %d (want %d)", w, defaultRailWidth)
-	}
-	if cc.cfg.RailWidth != defaultRailWidth {
-		t.Errorf("reset should persist to config, got rail_width %d (want %d)", cc.cfg.RailWidth, defaultRailWidth)
+func TestRailKeys_UndocumentedAliasesAreUnsupported(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		msg  tea.KeyPressMsg
+	}{
+		{"shrink", tea.KeyPressMsg{Code: '[', Mod: tea.ModCtrl | tea.ModShift}},
+		{"grow", tea.KeyPressMsg{Code: ']', Mod: tea.ModCtrl | tea.ModShift}},
+		{"reset", tea.KeyPressMsg{Code: '0', Mod: tea.ModAlt}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, cc := railKeyModel(t, 40)
+			nm, _ := m.Update(tc.msg)
+			m = asModel(t, nm)
+			if got := m.tx.railWidthOrDefault(); got != 40 {
+				t.Errorf("unsupported key changed rail width to %d, want 40", got)
+			}
+			if got := cc.cfg.RailWidth; got != 0 {
+				t.Errorf("unsupported key persisted rail_width %d, want no persistence", got)
+			}
+		})
 	}
 }
 
 func TestRailKey_ShrinkFloor(t *testing.T) {
 	t.Parallel()
 	m, _ := railKeyModel(t, minWidthRail)
-
-	nm, _ := m.Update(tea.KeyPressMsg{Code: '[', Mod: tea.ModCtrl | tea.ModShift})
+	nm, _ := m.Update(tea.KeyPressMsg{Code: 'x', Mod: tea.ModCtrl})
 	m = asModel(t, nm)
-
 	if w := m.tx.railWidthOrDefault(); w != minWidthRail {
 		t.Errorf("shrink below floor should clamp to minWidthRail=%d, got %d", minWidthRail, w)
-	}
-}
-
-func TestRailKey_Visible(t *testing.T) {
-	t.Parallel()
-	m, _ := railKeyModel(t, 30)
-
-	for _, tc := range []struct {
-		name string
-		msg  tea.KeyPressMsg
-	}{
-		{"shrink", tea.KeyPressMsg{Code: '[', Mod: tea.ModCtrl | tea.ModShift}},
-		{"shrink-x", tea.KeyPressMsg{Code: 'x', Mod: tea.ModCtrl}},
-		{"grow", tea.KeyPressMsg{Code: ']', Mod: tea.ModCtrl | tea.ModShift}},
-		{"grow-z", tea.KeyPressMsg{Code: 'z', Mod: tea.ModCtrl}},
-		{"reset", tea.KeyPressMsg{Code: '0', Mod: tea.ModAlt}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			nm, _ := m.Update(tc.msg)
-			mm := asModel(t, nm)
-			v := view(mm)
-			if v == "" {
-				t.Errorf("rail key %s produced empty render", tc.name)
-			}
-		})
 	}
 }

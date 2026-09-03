@@ -7,12 +7,10 @@ import (
 )
 
 // The declared toolset: the hard substrate (bwrap, bash) plus the declared
-// tools (rg, curl, lynx, patch, python3, git) that the single fixed system
-// prompt promises unconditionally. A missing name here is fatal at boot: the
-// run refuses to start rather than let the agent reach for a tool that
-// cannot exist. The browser launcher backing open_in_browser is the one
-// deliberate exception: it has zero boot impact and surfaces
-// only as a contained runtime error if open_in_browser actually runs.
+// tools (rg, curl, lynx, patch, python3, git, xdg-open) that the single fixed
+// system prompt promises unconditionally. A missing name here is fatal at boot:
+// the run refuses to start rather than let the agent reach for a tool that
+// cannot exist.
 
 // dependency is one declared executable and the distro package that provides
 // it; the package name can differ from the executable name (bwrap is shipped
@@ -31,6 +29,7 @@ var declaredDependencies = []dependency{
 	{name: "patch", pkgName: "patch"},
 	{name: "python3", pkgName: "python3"},
 	{name: "git", pkgName: "git"},
+	{name: "xdg-open", pkgName: "xdg-utils"},
 }
 
 // distroInstallers maps each supported distro family to its package install

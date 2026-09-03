@@ -6,12 +6,10 @@ import (
 	"io"
 )
 
-// StreamFunc builds a Stream that yields a fixed sequence of chunks and then io.EOF.
 func StreamFunc(chunks ...Chunk) Stream {
 	return &sliceStream{chunks: chunks}
 }
 
-// sliceStream replays a pre-built chunk slice.
 type sliceStream struct {
 	chunks []Chunk
 	idx    int
@@ -26,7 +24,6 @@ func (s *sliceStream) Next() (Chunk, error) {
 	return c, nil
 }
 
-// Handler decides how a Scripted provider responds to one request.
 type Handler func(ctx context.Context, req Request) (Stream, error)
 
 // Scripted is a deterministic Provider driven by a Handler, letting engine and dispatch tests script exact tool-call turns without SSE fixtures.
@@ -34,9 +31,12 @@ type Scripted struct {
 	h Handler
 }
 
-// NewScripted returns a Provider whose turns are produced by h.
 func NewScripted(h Handler) *Scripted {
 	return &Scripted{h: h}
+}
+
+func (sp *Scripted) SupportedGenerationControls(context.Context) ([]GenerationControl, error) {
+	return []GenerationControl{GenerationControlGenerationBudget}, nil
 }
 
 func (sp *Scripted) Stream(ctx context.Context, req Request) (Stream, error) {

@@ -422,14 +422,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "pgdown", "end":
 			m.tx.navigateHistory(msgi.String())
 			return m, nil
-		case "ctrl+b":
-			return m, nil
-		case "ctrl+d":
-			m.syncComposerRail()
-			return m, nil
-		case "ctrl+o":
-			m.copyTranscript()
-			return m, nil
 		case "ctrl+e":
 			m.tx.toggleExpandedMode()
 			return m, nil
@@ -463,22 +455,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			// Non-slash draft: fall through to the textarea, which handles the tab.
-		case "ctrl+x", "ctrl+shift+[":
+		case "ctrl+x":
 			m.adjustRailWidth(-2)
 			return m, nil
-		case "ctrl+z", "ctrl+shift+]":
+		case "ctrl+z":
 			m.adjustRailWidth(+2)
 			return m, nil
-		case "alt+0":
-			m.tx.setRailWidth(defaultRailWidth)
-			m.persistRailWidth()
-			m.syncWidths()
-			return m, nil
-		case "?":
-			if m.composer.Value() == "" && !m.tx.busy {
-				m.tx.appendMsg(helpView())
-				return m, nil
-			}
 		}
 		// Any key not consumed above edits the composer directly, which ends an
 		// active arrow recall so a recalled prompt doesn't linger as stale state.
@@ -644,10 +626,6 @@ func (m Model) submitPrompt() (tea.Model, tea.Cmd) {
 	m.endRecall()
 	if prompt == "/settings" {
 		return m.startSettings()
-	}
-	if prompt == "/copy" {
-		m.copyTranscript()
-		return m, nil
 	}
 	if prompt == "/login" {
 		return m.startLogin()

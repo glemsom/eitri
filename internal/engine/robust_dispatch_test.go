@@ -260,3 +260,34 @@ func TestRunAgentRejectsUndeclaredToolCall(t *testing.T) {
 		t.Fatalf("tool results = %q, want undeclared-tool error", toolResults)
 	}
 }
+
+func TestRunAgentExecutesDeclaredSchemaLessTool(t *testing.T) {
+	t.Parallel()
+	var toolResults []string
+	scripted := provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
+		toolResults = toolResultContents(req.Messages)
+		if len(toolResults) == 0 {
+			return provider.StreamFunc(provider.Chunk{FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{
+				{ID: "call_bash", Name: "bash", Arguments: `{}`},
+			}, Done: true}), nil
+		}
+		return provider.StreamFunc(provider.Chunk{Content: "done", FinishReason: "stop", Done: true}), nil
+	})
+	rec := &mockToolRecorder{}
+	e := New(scripted, &mockTranscript{})
+
+	_, err := e.RunAgent(context.Background(), RunRequest{Model: "model", Prompt: "go"}, AgentOptions{
+		Tools:    []provider.Tool{{Type: "function", Function: provider.ToolFunction{Name: "bash"}}},
+		Executor: rec,
+		MaxTurns: 2,
+	})
+	if err != nil {
+		t.Fatalf("RunAgent() error = %v, want nil", err)
+	}
+	if len(rec.calls) != 1 || rec.calls[0].name != "bash" {
+		t.Fatalf("executor calls = %+v, want one call to declared schema-less tool bash", rec.calls)
+	}
+	if len(toolResults) != 1 || toolResults[0] != "result:bash" {
+		t.Fatalf("tool results = %q, want schema-less tool result", toolResults)
+	}
+}

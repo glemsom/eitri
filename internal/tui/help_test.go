@@ -73,12 +73,12 @@ func TestHelpView_codeSpans(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()
 
-	for _, name := range []string{"/settings", "/copy", "/login", "/help"} {
+	for _, name := range []string{"/settings", "/login", "/help"} {
 		if want := "`" + name + "`"; !strings.Contains(got, want) {
 			t.Errorf("helpView() missing code span %q", want)
 		}
 	}
-	for _, name := range []string{"tab", "enter", "shift+enter", "?", "pgup/pgdn", "ctrl+e", "ctrl+x", "ctrl+z", "ctrl+s", "ctrl+o"} {
+	for _, name := range []string{"tab", "enter", "shift+enter", "pgup/pgdn", "ctrl+e", "ctrl+x", "ctrl+z", "ctrl+s"} {
 		if want := "`" + name + "`"; !strings.Contains(got, want) {
 			t.Errorf("helpView() missing keybinding code span %q", want)
 		}
@@ -107,7 +107,7 @@ func TestHelpView_renderedCommandRowsStayOnSeparateLines(t *testing.T) {
 	plain := ansiStrip(out)
 	commands := plain[strings.Index(plain, "COMMANDS"):strings.Index(plain, "KEYBINDINGS")]
 
-	for _, cmd := range []string{"/settings", "/copy", "/new", "/login", "/help"} {
+	for _, cmd := range []string{"/settings", "/new", "/login", "/help"} {
 		if count := strings.Count(commands, cmd); count != 1 {
 			t.Fatalf("rendered help command %q count = %d, want 1\n%s", cmd, count, plain)
 		}
@@ -123,7 +123,7 @@ func TestHelpView_commands(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()
 
-	for _, cmd := range []string{"/settings", "/copy", "/login", "/help"} {
+	for _, cmd := range []string{"/settings", "/login", "/help"} {
 		if !strings.Contains(got, cmd) {
 			t.Errorf("helpView() missing command %q", cmd)
 		}
@@ -148,7 +148,7 @@ func TestHelpView_alignedColumns(t *testing.T) {
 		descs  []string
 	}{
 		{"COMMANDS", []string{
-			"open settings panel", "copy transcript to clipboard",
+			"open settings panel",
 			"interactive provider login", "show this help message",
 		}},
 		{"CONCEPTS", []string{
@@ -176,9 +176,9 @@ func TestHelpView_alignedColumns(t *testing.T) {
 			"submit draft or toggle focused block when empty",
 			"insert newline",
 		}},
-		{"NAVIGATION", []string{"show help", "scroll history"}},
+		{"NAVIGATION", []string{"scroll history"}},
 		{"PANES", []string{"toggle expanded/collapsed view", "narrow pane", "widen pane"}},
-		{"ACTIONS", []string{"open settings", "copy transcript"}},
+		{"ACTIONS", []string{"open settings"}},
 	}
 	for _, cat := range categories {
 		lines := categoryLines(t, got, cat.name)
@@ -228,8 +228,8 @@ func TestHelpView_keybindingsComplete(t *testing.T) {
 
 	sec := keybindingsSection(t, got)
 	keys := []string{
-		"`ctrl+s`", "`ctrl+o`", "`ctrl+e`", "`tab`", "`enter`", "`shift+enter`",
-		"`?`", "`pgup/pgdn`", "`ctrl+x`", "`ctrl+z`",
+		"`ctrl+s`", "`ctrl+e`", "`tab`", "`enter`", "`shift+enter`",
+		"`pgup/pgdn`", "`ctrl+x`", "`ctrl+z`",
 	}
 	for _, k := range keys {
 		if n := strings.Count(sec, k); n != 1 {

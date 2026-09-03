@@ -238,3 +238,33 @@ func TestFromConfigUnknownProviderFails(t *testing.T) {
 		t.Fatalf("FromConfig(unknown) = nil error, want an error")
 	}
 }
+
+func TestFromConfigOpenCodeMissingCredentialFails(t *testing.T) {
+	t.Parallel()
+	_, err := FromConfig(config.Config{Provider: string(ProviderOpenCodeGo)}, ProviderEnv{})
+	if err == nil {
+		t.Fatal("FromConfig(opencode-go) without credential = nil error, want setup error")
+	}
+}
+
+func TestFromConfigAnonymousCustomOpenAIOmitsAuthorization(t *testing.T) {
+	t.Parallel()
+	var authorization string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authorization = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: [DONE]\\n\\n"))
+	}))
+	defer srv.Close()
+
+	p, err := FromConfig(config.Config{Provider: string(ProviderCustomOpenAI), CustomOpenAI: config.OpenAIConfig{BaseURL: srv.URL}}, ProviderEnv{})
+	if err != nil {
+		t.Fatalf("FromConfig(anonymous custom-openai) error = %v, want nil", err)
+	}
+	if _, err := p.Stream(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: "hi"}}}); err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	if authorization != "" {
+		t.Fatalf("Authorization = %q, want omitted", authorization)
+	}
+}

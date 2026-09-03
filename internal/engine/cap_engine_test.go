@@ -163,7 +163,7 @@ func TestAgentByteCapComposesWithLineMarker(t *testing.T) {
 			Tools: byteCapToolDefs(),
 			Executor: ExecutorFunc(func(_ context.Context, name, _ string) (ToolExecResult, error) {
 				if name == "bash" {
-					return ToolExecResult{Text: draft, Compressed: true}, nil
+					return ToolExecResult{Text: draft, Compressed: true, Dropped: 29900}, nil
 				}
 				return ToolExecResult{Text: "result:" + name}, nil
 			}),
@@ -247,6 +247,9 @@ func TestAgentByteCapPreservesLookLikeMarkerContent(t *testing.T) {
 	}
 	if gotResult == nil {
 		t.Fatal("no ToolResultEvent emitted")
+	}
+	if gotResult.Compressed || gotResult.Dropped != 0 {
+		t.Errorf("marker-like tool content reported compression metadata: %+v", *gotResult)
 	}
 	if !strings.Contains(delivered, "+300 more\n") {
 		t.Errorf("look-like-marker content line was silently stripped from the delivered form: %q", delivered[len(delivered)-60:])

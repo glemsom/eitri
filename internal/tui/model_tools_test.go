@@ -184,9 +184,6 @@ func TestModel_toolArgsTruncateToWidth(t *testing.T) {
 	if width := lipgloss.Width(ansiStrip(line)); width > 78 {
 		t.Errorf("tool row %d cols overflows the 80-col pane, want <= 78", width)
 	}
-	if !strings.Contains(m.transcriptText(), "Retry-After") {
-		t.Errorf("copy must keep the full args, got: %q", m.transcriptText())
-	}
 }
 
 func TestModel_ctrlETogglesExpandedViewMode(t *testing.T) {

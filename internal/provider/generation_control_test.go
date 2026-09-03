@@ -96,9 +96,13 @@ func TestNegotiateUnsupportedOptionalDegrades(t *testing.T) {
 	}
 }
 
+type providerWithoutCapabilities struct{}
+
+func (providerWithoutCapabilities) Stream(context.Context, Request) (Stream, error) { return nil, nil }
+
 func TestNegotiateProviderWithoutCapability(t *testing.T) {
 	t.Parallel()
-	p := NewScripted(nil)
+	p := providerWithoutCapabilities{}
 	reqs := []ControlRequirement{
 		{Control: GenerationControlGenerationBudget, Required: false},
 	}

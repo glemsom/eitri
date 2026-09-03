@@ -338,7 +338,7 @@ type warningSink struct {
 }
 
 func (w *warningSink) Warnf(format string, args ...any) {
-	w.warns = append(w.warns, format)
+	w.warns = append(w.warns, fmt.Sprintf(format, args...))
 	w.count++
 }
 
@@ -349,4 +349,83 @@ func contains(list []string, s string) bool {
 		}
 	}
 	return false
+}
+
+func TestSkillInvocationAliasesRejectConflict(t *testing.T) {
+	t.Parallel()
+	user := t.TempDir()
+	writeSkillMeta(t, user, "conflict", "desc", "body", nil, []string{
+		"model-invocable: true",
+		"disable-model-invocation: true",
+	})
+	warnings := &warningSink{}
+	catalog, err := Discover(user, t.TempDir(), warnings)
+	if err != nil {
+		t.Fatalf("Discover error = %v, want nil", err)
+	}
+	if catalog.Skill("conflict") != nil {
+		t.Fatal("conflicting aliases were cataloged, want skill rejected")
+	}
+	if warnings.count == 0 || !strings.Contains(warnings.warns[0], "conflicting") {
+		t.Fatalf("warnings = %v, want clear conflicting-alias warning", warnings.warns)
+	}
+}
+
+func TestSkillFrontmatterRejectsMalformedSyntaxAndValues(t *testing.T) {
+	t.Parallel()
+	for i, line := range []string{
+		"unsupported list item",
+		"model-invocable: sometimes",
+		"description: duplicate",
+		"name: [bad]",
+		"metadata:\n  malformed nested line",
+	} {
+		user := t.TempDir()
+		name := fmt.Sprintf("bad%d", i)
+		writeSkillMeta(t, user, name, "desc", "body", nil, []string{line})
+		catalog, err := Discover(user, t.TempDir(), &warningSink{})
+		if err != nil {
+			t.Fatalf("%q: Discover error = %v, want nil", line, err)
+		}
+		if catalog.Skill(name) != nil {
+			t.Errorf("%q: malformed skill was cataloged", line)
+		}
+	}
+}
+
+func TestSkillInvocationAliasesAllowAgreement(t *testing.T) {
+	t.Parallel()
+	user := t.TempDir()
+	writeSkillMeta(t, user, "agrees", "desc", "body", nil, []string{
+		"model-invocable: false",
+		"disable-model-invocation: true",
+	})
+	catalog, err := Discover(user, t.TempDir(), &warningSink{})
+	if err != nil {
+		t.Fatalf("Discover error = %v, want nil", err)
+	}
+	if skill := catalog.Skill("agrees"); skill == nil || skill.ModelInvocable {
+		t.Fatalf("agreeing aliases produced skill = %+v, want hidden skill", skill)
+	}
+}
+
+func TestSkillFrontmatterKeepsExistingAncillaryMetadataCompatible(t *testing.T) {
+	t.Parallel()
+	user := t.TempDir()
+	writeSkillMeta(t, user, "compatible", `quoted description`, "body", nil, []string{
+		"user-invocable: true",
+		"license: MIT",
+		"metadata:",
+		"  author: smith",
+		"  requires:",
+		"    bins:",
+		"      - go",
+	})
+	catalog, err := Discover(user, t.TempDir(), &warningSink{})
+	if err != nil {
+		t.Fatalf("Discover error = %v, want nil", err)
+	}
+	if catalog.Skill("compatible") == nil {
+		t.Fatal("valid existing ancillary metadata caused skill rejection")
+	}
 }

@@ -59,8 +59,6 @@ eitri session talk <guid>             # full conversation as plain text: [N] rol
 #   --from N        start at turn N and run to the end
 #   --role R        keep only user|assistant|tool|system messages (assistant responses included)
 #   --reasoning     include chain-of-thought blocks (stripped by default)
-#   --all           print every message of every request cycle; default dedupes the request
-#                   history each cycle resends, so each user/tool message appears once
 ```
 
 `talk` is the read-the-conversation command: it renders actual message bodies,

@@ -102,26 +102,3 @@ func TestModel_settingsThemeSaveReskinsChrome(t *testing.T) {
 		t.Errorf("chrome must re-skin to dracula after save, got: %q", pane)
 	}
 }
-
-func TestModel_statusNoteIsOneShot(t *testing.T) {
-	t.Parallel()
-	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
-			return TurnResult{Answer: "ok"}, nil
-		},
-		Clipboard: func(string) error { return nil },
-	})
-	m = resize(t, m)
-	m = typeText(t, m, "hello")
-	m = submitAndWait(t, m)
-
-	m = keypressCtrlO(t, m) // sets the "copied" note
-
-	if view := view(m); !strings.Contains(view, "copied") {
-		t.Fatalf("expected copy note on the frame after Ctrl+O, got: %q", view)
-	}
-	m = resize(t, m)
-	if view := view(m); strings.Contains(view, "copied") {
-		t.Errorf("copy note repeated after a later update, got: %q", view)
-	}
-}

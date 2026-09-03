@@ -89,41 +89,6 @@ func TestTranscript_flatFlowAnswerKeepsAgentHue(t *testing.T) {
 	}
 }
 
-func TestTranscript_flatFlowToolRowsRemainClickable(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
-	tx := flowTranscript()
-	tx.layout.dirty = true
-	tx.ensureLayout()
-
-	lines := tx.layout.plain
-	head := -1
-	for i, l := range lines {
-		if strings.Contains(l, g("🔧 bash", "$ bash")) {
-			head = i
-			break
-		}
-	}
-	if head < 0 {
-		t.Fatalf("flat flow must render the tool head row, got plain rows:\n%s", strings.Join(lines, "\n"))
-	}
-
-	idx, collapsed, ok := tx.toolEntryAtLine(head)
-	if !ok || idx != 0 || !collapsed {
-		t.Errorf("toolEntryAtLine(%d) = idx %d collapsed %v ok %v, want entry 0 collapsed", head, idx, collapsed, ok)
-	}
-
-	// Click on the tool row expands it to its full result in the merged flow.
-	tx.toggleToolEntry(0)
-	var expanded strings.Builder
-	tx.renderHistory(&expanded, nil, nil)
-	if !strings.Contains(ansiStrip(expanded.String()), "a.go") {
-		t.Errorf("clicked tool in the flat flow must expand to show its result, got:\n%s", ansiStrip(expanded.String()))
-	}
-	if idx, collapsed, ok := tx.toolEntryAtLine(head); !ok || idx != 0 || collapsed {
-		t.Errorf("expanded tool must report expanded at the same row, got %d/%v/%v", idx, collapsed, ok)
-	}
-}
-
 func TestTranscript_liveTurnRendersFromTimelineFlow(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)

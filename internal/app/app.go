@@ -172,13 +172,16 @@ func Run(opts Options) error {
 	// Message-layer debug transcript: every request/response cycle the engine sees is mirrored to messages.jsonl.
 	logged := provider.NewLoggingProvider(liveProvider, sess.MessageLogSink())
 	e := engine.New(logged, sess)
+	if _, err := e.ResolveCompaction(context.Background(), cfg.ContextOverflowRecovery); err != nil {
+		return fmt.Errorf("configure context overflow recovery: %w", err)
+	}
 	key := sess.GUID() // opt into the session-scoped prompt cache
 
 	if opts.Prompt == "" {
 		if err := tuiBootError(currentTUIEnv()); err != nil {
 			return err
 		}
-		return runTUI(e, cfg, reg, key, liveProvider, cfgPath, dir, skills, workspace, tempHost)
+		return runTUI(e, logged, cfg, reg, key, liveProvider, cfgPath, dir, skills, workspace, tempHost)
 	}
 
 	res, err := runAgent(context.Background(), e, cfg, reg, key, opts.Prompt, skills, nil, nil)
@@ -225,9 +228,9 @@ func (stderrWarner) Warnf(format string, args ...any) {
 
 // runAgent drives one agent turn (user prompt → assistant answer) over the shared run engine, session transcript, and tool registry that both the TUI and batch use. The model-visible index and the per-run workspace directive are each carried as their own system message so they reach the model without perturbing the byte-stable system prompt; a catalog with none renders to a nil index that keeps the no-index wire bytes intact. ctx is threaded through to the engine so the TUI's per-turn cancellation (Ctrl+C/Esc) reaches an in-flight run; batch passes context.Background() (no stop binding).
 func runAgent(ctx context.Context, e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey, prompt string, catalog *tools.Catalog, skillInject *string, canContinue func() bool) (engine.Result, error) {
-	var compaction *engine.CompactionConfig
-	if cfg.ContextOverflowRecovery {
-		compaction = &engine.CompactionConfig{}
+	compaction, err := e.ResolveCompaction(ctx, cfg.ContextOverflowRecovery)
+	if err != nil {
+		return engine.Result{}, fmt.Errorf("configure context overflow recovery: %w", err)
 	}
 	var skillIndex *string
 	if catalog != nil {
@@ -264,9 +267,9 @@ func runAgent(ctx context.Context, e *engine.Engine, cfg config.Config, reg *too
 				// Preserve any output the tool produced alongside its error; bash
 				// returns combined stdout+stderr even on a non-zero exit, and
 				// dropping it would rob the model of diagnostic context.
-				return engine.ToolExecResult{Text: res.Text, Compressed: res.Compressed}, err
+				return engine.ToolExecResult{Text: res.Text, Compressed: res.Compressed, Dropped: res.Dropped}, err
 			}
-			return engine.ToolExecResult{Text: res.Text, Compressed: res.Compressed}, nil
+			return engine.ToolExecResult{Text: res.Text, Compressed: res.Compressed, Dropped: res.Dropped}, nil
 		}),
 		MaxTurns:    cfg.MaxTurns,
 		CanContinue: canContinue,

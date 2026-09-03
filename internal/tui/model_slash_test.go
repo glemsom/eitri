@@ -51,7 +51,7 @@ func TestModel_slashCompletionListsCommands(t *testing.T) {
 
 	m = typeText(t, m, "/")
 	content := view(m)
-	if !strings.Contains(content, "/settings") || !strings.Contains(content, "/copy") || !strings.Contains(content, "/login") || !strings.Contains(content, "/new") {
+	if !strings.Contains(content, "/settings") || !strings.Contains(content, "/login") || !strings.Contains(content, "/new") {
 		t.Errorf("bare `/` completion should list built-in commands, got: %q", content)
 	}
 	if !strings.Contains(content, "/review") || !strings.Contains(content, "/plan") {
@@ -91,12 +91,12 @@ func TestModel_slashNavigateAndAcceptWithTab(t *testing.T) {
 	m = typeText(t, m, "/")
 
 	m = keypress(t, m, "down")
-	if !strings.Contains(view(m), "▸ /copy") {
-		t.Fatalf("arrow navigation did not highlight /copy, got: %q", view(m))
+	if !strings.Contains(view(m), "▸ /login") {
+		t.Fatalf("arrow navigation did not highlight /login, got: %q", view(m))
 	}
 	m = keypress(t, m, "tab")
-	if got := m.composer.Value(); got != "/copy" {
-		t.Fatalf("tab completion = %q, want /copy", got)
+	if got := m.composer.Value(); got != "/login" {
+		t.Fatalf("tab completion = %q, want /login", got)
 	}
 	if m.slash.isOpen() {
 		t.Fatal("tab completion should close slash dropdown")
@@ -376,7 +376,7 @@ func TestModel_slashCompletionRendersCommandsPopover(t *testing.T) {
 	if hints == -1 || hints < ask {
 		t.Fatalf("completion hints must render below composer panel, got:\n%s", content)
 	}
-	if !strings.Contains(content, "▸ /settings") || !strings.Contains(content, "  /copy") {
+	if !strings.Contains(content, "▸ /settings") || !strings.Contains(content, "  /login") {
 		t.Fatalf("slash candidates missing selected/non-selected rows, got:\n%s", content)
 	}
 }

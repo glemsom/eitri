@@ -98,6 +98,30 @@ func TestRunRefusesWhenGitMissing(t *testing.T) {
 	}
 }
 
+func TestRunBatchRefusesWhenXDGOpenMissing(t *testing.T) {
+	var out bytes.Buffer
+	missingXDGOpen := func(name string) (string, error) {
+		if name == "xdg-open" {
+			return "", errors.New("executable not found: xdg-open")
+		}
+		return okLookPath(name)
+	}
+
+	err := Run(Options{
+		DataDir:  filepath.Join(t.TempDir(), ".eitri"),
+		LookPath: missingXDGOpen,
+		Prompt:   "Say hello",
+		Stdout:   &out,
+		Provider: provider.NewFake("../provider/testdata/hello.sse"),
+	})
+	if !errors.Is(err, ErrMissingDependencies) {
+		t.Fatalf("Run() error = %v, want ErrMissingDependencies when xdg-open is missing", err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty when boot refuses on missing xdg-open", out.String())
+	}
+}
+
 func TestRunBatchWritesTranscript(t *testing.T) {
 	dir := t.TempDir()
 	dataDir := filepath.Join(dir, ".eitri")
@@ -117,12 +141,23 @@ func TestRunBatchWritesTranscript(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sessions dir %s not created: %v", sessions, err)
 	}
-	transcript := filepath.Join(sessions, entries[0].Name(), "transcript.md")
+	if len(entries) != 1 {
+		t.Fatalf("session count = %d, want 1", len(entries))
+	}
+	sessionDir := filepath.Join(sessions, entries[0].Name())
+	transcript := filepath.Join(sessionDir, "transcript.md")
 	data, err := os.ReadFile(transcript)
 	if err != nil {
 		t.Fatalf("read transcript: %v", err)
 	}
 	if !strings.Contains(string(data), "Hello world") {
 		t.Fatalf("transcript %q missing the answer", data)
+	}
+	messages, err := os.ReadFile(filepath.Join(sessionDir, "messages.jsonl"))
+	if err != nil {
+		t.Fatalf("read message-layer transcript: %v", err)
+	}
+	if !strings.Contains(string(messages), "Hello world") {
+		t.Fatalf("message-layer transcript %q missing the answer", messages)
 	}
 }
