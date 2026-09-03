@@ -174,7 +174,7 @@ func (e *Engine) generateSummary(ctx context.Context, req RunRequest, cfg *Compa
 		"Read the conversation log below and output ONLY the condensed state, keeping the exact headings:" +
 		" `## Objective` followed by the current objective, then `## Next Move` followed by the single next action."
 
-	if _, err := e.NegotiateGenerationControls(ctx, []provider.ControlRequirement{
+	if _, err := provider.NegotiateGenerationControls(ctx, e.provider, []provider.ControlRequirement{
 		{Control: provider.GenerationControlGenerationBudget, Required: true},
 	}); err != nil {
 		return "" // fail-safe skip: required Generation Budget unavailable

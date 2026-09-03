@@ -24,8 +24,8 @@ func (s *blockUntilCancel) Next() (provider.Chunk, error) {
 
 // TestRunEngineTurnCancelsStreamedTurn guards the regression where runAgent dropped the
 // caller's per-turn context and replaced it with context.Background(), so Ctrl+C while a
-// (TurnSession.Stop -> turnCmd) bottoms out at the tui.Turn seam, which tests there
-// fake out; the context-drop lived in internal/app, so this test sits at the runEngineTurn
+// (TurnSession.Stop -> turnCmd) bottoms out at the TUI turn callback, which tests there
+// fake out; the context-drop lived in internal/app, so this test sits at the runEngineTurn callback
 // boundary where the turn's cancelable context is handed to the shared engine seam.
 func TestRunEngineTurnCancelsStreamedTurn(t *testing.T) {
 	streamStarted := make(chan struct{})
@@ -36,7 +36,7 @@ func TestRunEngineTurnCancelsStreamedTurn(t *testing.T) {
 	reg := tools.NewRegistry(tools.Deps{Workspace: t.TempDir()})
 	cfg := config.Config{Model: "deepseek-v4-flash", ThinkingEnabled: true, ReasoningEffort: "low", ContextOverflowRecovery: true}
 
-	turn := runEngineTurn(e, func() config.Config { return cfg }, reg, tui.NewLiveSessionKey("sess"), nil, nil)
+	turn := runEngineTurn(e, func() config.Config { return cfg }, reg, tui.NewLiveSessionKey("sess"), nil, nil, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

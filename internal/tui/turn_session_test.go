@@ -184,7 +184,7 @@ func newTestTx() Transcript {
 	}
 }
 
-func stubTurn(answer string, err error) Turn {
+func stubTurn(answer string, err error) func(context.Context, string, string) (TurnResult, error) {
 	return func(_ context.Context, _ string, _ string) (TurnResult, error) {
 		return TurnResult{Answer: answer}, err
 	}

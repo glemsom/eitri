@@ -23,7 +23,7 @@ func TestRunEngineTurnReadsCurrentConfig(t *testing.T) {
 	reg := tools.NewRegistry(tools.Deps{Workspace: t.TempDir()})
 	cfg := config.Config{Model: "first", ThinkingEnabled: true, ReasoningEffort: "low", ContextOverflowRecovery: true}
 
-	turn := runEngineTurn(e, func() config.Config { return cfg }, reg, tui.NewLiveSessionKey("sess-"+t.Name()), nil, nil)
+	turn := runEngineTurn(e, func() config.Config { return cfg }, reg, tui.NewLiveSessionKey("sess-"+t.Name()), nil, nil, nil)
 	if _, err := turn(context.Background(), "one", ""); err != nil {
 		t.Fatalf("first turn error = %v, want nil", err)
 	}

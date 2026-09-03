@@ -346,7 +346,7 @@ func TestTUISlashArgsPutsSkillInProviderContext(t *testing.T) {
 	}), mockTranscript{})
 
 	cfg := config.Default()
-	turn := runEngineTurn(e, func() config.Config { return cfg }, reg, tui.NewLiveSessionKey("sess-"+t.Name()), skills, nil)
+	turn := runEngineTurn(e, func() config.Config { return cfg }, reg, tui.NewLiveSessionKey("sess-"+t.Name()), skills, nil, nil)
 	m := tui.NewModelCfg(tui.Dependencies{
 		Turn:   turn,
 		Skills: surface,
@@ -426,7 +426,7 @@ func TestTUISlashBarePutsSkillInProviderContext(t *testing.T) {
 	}), mockTranscript{})
 
 	cfg := config.Default()
-	turn := runEngineTurn(e, func() config.Config { return cfg }, reg, tui.NewLiveSessionKey("sess-"+t.Name()), skills, nil)
+	turn := runEngineTurn(e, func() config.Config { return cfg }, reg, tui.NewLiveSessionKey("sess-"+t.Name()), skills, nil, nil)
 	m := tui.NewModelCfg(tui.Dependencies{
 		Turn:   turn,
 		Skills: surface,

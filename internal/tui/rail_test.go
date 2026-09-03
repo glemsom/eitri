@@ -9,7 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-func fakeSess(prompt string) Turn {
+func fakeSess(prompt string) func(context.Context, string, string) (TurnResult, error) {
 	return func(ctx context.Context, p string, _ string) (TurnResult, error) {
 		return TurnResult{Answer: "hi"}, nil
 	}
@@ -290,7 +290,7 @@ func TestModelRailStaysOnScreen(t *testing.T) {
 
 func TestModelRailNoPanicWithoutFeed(t *testing.T) {
 	t.Parallel()
-	m := NewModel(fakeSess("hi"))
+	m := NewModelCfg(Dependencies{Turn: fakeSess("hi")})
 	m = resize(t, m)
 	content := view(m)
 	if strings.Contains(content, "STATS") {
@@ -337,7 +337,7 @@ func TestModelBandSpansFullWidthWhileTranscriptStaysRailShrunk(t *testing.T) {
 
 func TestModelBandWidthRailHiddenTiny(t *testing.T) {
 	t.Parallel()
-	m := NewModel(fakeSess("hi")) // no rail wired -> railVisible() == false
+	m := NewModelCfg(Dependencies{Turn: fakeSess("hi")}) // no rail wired -> railVisible() == false
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 3, Height: 8})
 	m = asModel(t, nm)
 	if m.tx.railVisible() {

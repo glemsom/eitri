@@ -73,14 +73,6 @@ func (m *completionMenu) Dismiss() {
 
 func (m *completionMenu) CandidateCount() int { return len(m.view) }
 
-func (m *completionMenu) RenderCompletion(b *strings.Builder, th Theme) {
-	if !m.open {
-		return
-	}
-	b.WriteString(m.RenderCompletionBody(th))
-	b.WriteByte('\n')
-}
-
 func (m *completionMenu) RenderCompletionBody(th Theme) string {
 	if !m.open {
 		return ""

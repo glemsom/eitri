@@ -11,10 +11,10 @@ import (
 func TestModel_enterSubmitsAndClearsComposer(t *testing.T) {
 	t.Parallel()
 	var got []string
-	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+	m := NewModelCfg(Dependencies{Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		got = append(got, prompt)
 		return TurnResult{Answer: "ok"}, nil
-	})
+	}})
 	m = resize(t, m)
 	m = typeText(t, m, "hello")
 
@@ -34,10 +34,10 @@ func TestModel_enterSubmitsAndClearsComposer(t *testing.T) {
 func TestModel_shiftEnterInsertsNewlineWithoutSubmitting(t *testing.T) {
 	t.Parallel()
 	var got []string
-	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+	m := NewModelCfg(Dependencies{Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		got = append(got, prompt)
 		return TurnResult{Answer: "ok"}, nil
-	})
+	}})
 	m = resize(t, m)
 	m = typeText(t, m, "line one")
 	m = newlineShiftEnter(t, m)
@@ -57,10 +57,10 @@ func TestModel_shiftEnterInsertsNewlineWithoutSubmitting(t *testing.T) {
 func TestModel_shiftEnterCsiUInsertsNewline(t *testing.T) {
 	t.Parallel()
 	var got []string
-	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+	m := NewModelCfg(Dependencies{Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		got = append(got, prompt)
 		return TurnResult{Answer: "ok"}, nil
-	})
+	}})
 	m = resize(t, m)
 	m = typeText(t, m, "line one")
 	m = newlineShiftEnterCsiU(t, m)
@@ -86,10 +86,10 @@ func newlineShiftEnterCsiU(t *testing.T, m Model) Model {
 func TestModel_composerMultiLineInsertAndSubmit(t *testing.T) {
 	t.Parallel()
 	var got []string
-	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+	m := NewModelCfg(Dependencies{Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		got = append(got, prompt)
 		return TurnResult{Answer: "ok"}, nil
-	})
+	}})
 	m = resize(t, m)
 	m = typeText(t, m, "line one")
 	m = newlineShiftEnter(t, m)
@@ -116,9 +116,9 @@ func newlineShiftEnter(t *testing.T, m Model) Model {
 
 func TestModel_composerGrowsWithDraftLines(t *testing.T) {
 	t.Parallel()
-	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+	m := NewModelCfg(Dependencies{Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		return TurnResult{Answer: "ok"}, nil
-	})
+	}})
 	m = resize(t, m)
 
 	if h := m.composer.Height(); h != minComposerRows {
@@ -151,9 +151,9 @@ func TestModel_composerGrowsWithDraftLines(t *testing.T) {
 
 func TestModel_composerGrowsForSoftWrappedLines(t *testing.T) {
 	t.Parallel()
-	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+	m := NewModelCfg(Dependencies{Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		return TurnResult{Answer: "ok"}, nil
-	})
+	}})
 	m = resize(t, m) // 80 cols -> composer width 78
 
 	m = typeText(t, m, strings.Repeat("word ", 40))

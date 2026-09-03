@@ -30,9 +30,7 @@ func TestSkillActivation_renderCompletionListsCandidates(t *testing.T) {
 	s := NewSkillActivation(Dependencies{Skills: &SkillsSurface{Items: []SkillItem{{Name: "review"}, {Name: "plan"}}}})
 
 	s.TrackComposer("/")
-	var b strings.Builder
-	s.RenderCompletion(&b, plainTestTheme())
-	out := b.String()
+	out := s.RenderCompletionBody(plainTestTheme())
 	for _, want := range []string{"/settings", "/copy", "/login", "/help", "/new", "/review", "/plan"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("completion output %q missing %q", out, want)
@@ -54,10 +52,9 @@ func TestSkillActivation_renderCompletionHighlightsSelected(t *testing.T) {
 	s.TrackComposer("/")
 	s.Move(1)
 
-	var b strings.Builder
-	s.RenderCompletion(&b, plainTestTheme())
-	if !strings.Contains(b.String(), "▸ /copy") {
-		t.Errorf("selected candidate not highlighted: %q", b.String())
+	out := s.RenderCompletionBody(plainTestTheme())
+	if !strings.Contains(out, "▸ /copy") {
+		t.Errorf("selected candidate not highlighted: %q", out)
 	}
 	var accepted string
 	if !s.Complete(func(candidate string) { accepted = candidate }) || accepted != "/copy" {

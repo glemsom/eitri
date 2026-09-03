@@ -14,12 +14,12 @@ import (
 
 func TestModel_greetingRoundTrip(t *testing.T) {
 	t.Parallel()
-	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+	m := NewModelCfg(Dependencies{Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		if prompt != "hello" {
 			t.Errorf("expected prompt 'hello', got %q", prompt)
 		}
 		return TurnResult{Answer: "Hello! **glad** to help."}, nil
-	})
+	}})
 
 	m = resize(t, m)
 
@@ -49,9 +49,9 @@ func TestModel_greetingRoundTrip(t *testing.T) {
 
 func TestModel_errorTurn(t *testing.T) {
 	t.Parallel()
-	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+	m := NewModelCfg(Dependencies{Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		return TurnResult{}, errors.New("provider exploded")
-	})
+	}})
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 	m = submitAndWait(t, m)
@@ -358,10 +358,10 @@ func mustUpdate(t *testing.T, m Model, msg tea.Msg) Model {
 
 func TestModel_shiftEnterInsertsNewline(t *testing.T) {
 	t.Parallel()
-	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+	m := NewModelCfg(Dependencies{Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		t.Fatalf("Shift+Enter must not submit a turn, got prompt %q", prompt)
 		return TurnResult{}, nil
-	})
+	}})
 	m = resize(t, m)
 	m = typeText(t, m, "line one")
 
@@ -395,9 +395,9 @@ func TestModel_workspaceStateSurfaced(t *testing.T) {
 		t.Errorf("workspace path must not leak into the composer input, got: %q", m.composer.Value())
 	}
 
-	bare := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+	bare := NewModelCfg(Dependencies{Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		return TurnResult{Answer: "ok"}, nil
-	})
+	}})
 	bare = resize(t, bare)
 	if strings.Contains(view(bare), "workspace:") {
 		t.Errorf("expected no workspace header when none is configured (issue #82 AC1)")
@@ -407,10 +407,10 @@ func TestModel_workspaceStateSurfaced(t *testing.T) {
 func TestModel_shiftEnterThenSubmitSendsWholeMultiLine(t *testing.T) {
 	t.Parallel()
 	var got []string
-	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+	m := NewModelCfg(Dependencies{Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		got = append(got, prompt)
 		return TurnResult{Answer: "ok"}, nil
-	})
+	}})
 	m = resize(t, m)
 	m = typeText(t, m, "line one")
 	newlined, _ := m.Update(tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl})
@@ -432,9 +432,9 @@ func TestModel_shiftEnterThenSubmitSendsWholeMultiLine(t *testing.T) {
 
 func TestModel_shiftEnterIgnoredWhileBusy(t *testing.T) {
 	t.Parallel()
-	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+	m := NewModelCfg(Dependencies{Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		return TurnResult{Answer: "ok"}, nil
-	})
+	}})
 	m = resize(t, m)
 	m = typeText(t, m, "first")
 	nm, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})

@@ -203,34 +203,6 @@ func (c *capableScripted) SupportedGenerationControls(context.Context) ([]provid
 	return append([]provider.GenerationControl(nil), c.supported...), nil
 }
 
-func TestEngineNegotiatesGenerationControls(t *testing.T) {
-	t.Parallel()
-	p := &capableScripted{
-		Scripted:  provider.NewScripted(nil),
-		supported: []provider.GenerationControl{provider.GenerationControlGenerationBudget},
-	}
-	e := New(p, &mockTranscript{})
-
-	_, err := e.NegotiateGenerationControls(context.Background(), []provider.ControlRequirement{{
-		Control:  provider.GenerationControlToolSchemaEnforcement,
-		Required: true,
-	}})
-	if err == nil {
-		t.Fatal("NegotiateGenerationControls() error = nil, want unsupported-required error")
-	}
-
-	got, err := e.NegotiateGenerationControls(context.Background(), []provider.ControlRequirement{{
-		Control:  provider.GenerationControlGenerationBudget,
-		Required: false,
-	}})
-	if err != nil {
-		t.Fatalf("NegotiateGenerationControls() error = %v, want nil", err)
-	}
-	if len(got) != 1 || got[0] != provider.GenerationControlGenerationBudget {
-		t.Fatalf("NegotiateGenerationControls() = %v, want [generation_budget]", got)
-	}
-}
-
 func TestRunAgentWritesStoppedTranscriptBetweenToolCalls(t *testing.T) {
 	t.Parallel()
 	tr := &mockTranscript{}

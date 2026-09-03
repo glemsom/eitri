@@ -25,7 +25,7 @@ func TestRunEngineTurnReadsLiveSessionKey(t *testing.T) {
 	reg := tools.NewRegistry(tools.Deps{Workspace: t.TempDir()})
 	cfg := config.Default()
 	key := tui.NewLiveSessionKey("sess-a")
-	turn := runEngineTurn(e, func() config.Config { return cfg }, reg, key, nil, nil)
+	turn := runEngineTurn(e, func() config.Config { return cfg }, reg, key, nil, nil, nil)
 
 	if _, err := turn(context.Background(), "first", ""); err != nil {
 		t.Fatalf("turn error = %v", err)

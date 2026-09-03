@@ -18,7 +18,7 @@ func TestModel_escWhileBusyCancelsTurnAndKeepsPartial(t *testing.T) {
 	var enteredOnce sync.Once
 	entered := make(chan struct{})
 	var calls atomic.Int32
-	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+	m := NewModelCfg(Dependencies{Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		calls.Add(1)
 		if calls.Load() > 1 {
 			return TurnResult{Answer: "second answer"}, nil
@@ -27,7 +27,7 @@ func TestModel_escWhileBusyCancelsTurnAndKeepsPartial(t *testing.T) {
 		<-ctx.Done()
 		canceled.Store(true)
 		return TurnResult{Answer: "partial answer"}, ctx.Err()
-	})
+	}})
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 	m, cmd := submitBusy(t, m)
@@ -79,9 +79,9 @@ func TestModel_escWhileBusyCancelsTurnAndKeepsPartial(t *testing.T) {
 }
 
 func TestModel_escWhileBusyMarksStoppedNotError(t *testing.T) {
-	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+	m := NewModelCfg(Dependencies{Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		return TurnResult{Stopped: true, Answer: "prior reasoning"}, nil
-	})
+	}})
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 	m, cmd := submitBusy(t, m)
@@ -109,9 +109,9 @@ func TestModel_escWhileBusyMarksStoppedNotError(t *testing.T) {
 
 func TestModel_escIdleStaysNoop(t *testing.T) {
 	var canceled atomic.Bool
-	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+	m := NewModelCfg(Dependencies{Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		return TurnResult{Answer: "never"}, nil
-	})
+	}})
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 
@@ -134,9 +134,9 @@ func TestModel_escIdleStaysNoop(t *testing.T) {
 }
 
 func TestModel_stoppedBeforeAnyDeltaAppendsPartialMessage(t *testing.T) {
-	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+	m := NewModelCfg(Dependencies{Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		return TurnResult{Stopped: true, Answer: "first words"}, nil
-	})
+	}})
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 	m, cmd := submitBusy(t, m)
@@ -182,13 +182,13 @@ func TestModel_stoppedStreamKeepsStreamedBuffer(t *testing.T) {
 
 func TestModel_stoppedThenNewTurnWorks(t *testing.T) {
 	turns := 0
-	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+	m := NewModelCfg(Dependencies{Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		turns++
 		if turns == 1 {
 			return TurnResult{Stopped: true, Answer: "partial"}, nil
 		}
 		return TurnResult{Answer: "full answer"}, nil
-	})
+	}})
 	m = resize(t, m)
 	m = typeText(t, m, "one")
 	m, cmd := submitBusy(t, m)
@@ -211,10 +211,10 @@ func TestModel_stoppedThenNewTurnWorks(t *testing.T) {
 }
 
 func TestModel_turnCancelErrorSurfacesAsStopped(t *testing.T) {
-	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+	m := NewModelCfg(Dependencies{Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		<-ctx.Done()
 		return TurnResult{Answer: "partial"}, context.Canceled
-	})
+	}})
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 	m, cmd := submitBusy(t, m)
@@ -247,12 +247,12 @@ func TestModel_ctrlCWhileBusyStopsTurnAndKeepsPartial(t *testing.T) {
 	var canceled atomic.Bool
 	var enteredOnce sync.Once
 	entered := make(chan struct{})
-	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+	m := NewModelCfg(Dependencies{Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		enteredOnce.Do(func() { close(entered) })
 		<-ctx.Done()
 		canceled.Store(true)
 		return TurnResult{Answer: "partial via ctrl+c"}, ctx.Err()
-	})
+	}})
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 	m, cmd := submitBusy(t, m)
@@ -293,9 +293,9 @@ func TestModel_ctrlCWhileBusyStopsTurnAndKeepsPartial(t *testing.T) {
 }
 
 func TestModel_ctrlCWhenIdleQuits(t *testing.T) {
-	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+	m := NewModelCfg(Dependencies{Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		return TurnResult{Answer: "never"}, nil
-	})
+	}})
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 
@@ -312,9 +312,9 @@ func TestModel_ctrlCWhenIdleQuits(t *testing.T) {
 }
 
 func TestModel_ctrlCAfterStopQuits(t *testing.T) {
-	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+	m := NewModelCfg(Dependencies{Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		return TurnResult{Stopped: true, Answer: "partial"}, nil
-	})
+	}})
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 	m, cmd := submitBusy(t, m)

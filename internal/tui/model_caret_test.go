@@ -10,9 +10,9 @@ import (
 
 func caretModel(t *testing.T) Model {
 	t.Helper()
-	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+	m := NewModelCfg(Dependencies{Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		return TurnResult{Answer: "ok"}, nil
-	})
+	}})
 	return resize(t, m)
 }
 

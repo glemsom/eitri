@@ -205,11 +205,6 @@ type AgentOptions struct {
 	lastUsage *provider.Usage
 }
 
-// NegotiateGenerationControls pre-flights a special turn's generation-control requirements against this engine's provider capability surface.
-func (e *Engine) NegotiateGenerationControls(ctx context.Context, reqs []provider.ControlRequirement) ([]provider.GenerationControl, error) {
-	return provider.NegotiateGenerationControls(ctx, e.provider, reqs)
-}
-
 // RunAgent drives a tool-capable agent run: it maintains one mutable messages list, executes any returned tool_calls (single-call path is the floor here; hardening is T5), appends a matching role:"tool" result per call, and resubmits until the model stops calling tools.
 func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions) (Result, error) {
 	runID := e.claimRunID()
@@ -240,7 +235,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 
 	enforceSchema := false
 	if opts.ToolSchemaEnforcement {
-		honored, err := e.NegotiateGenerationControls(ctx, []provider.ControlRequirement{
+		honored, err := provider.NegotiateGenerationControls(ctx, e.provider, []provider.ControlRequirement{
 			{Control: provider.GenerationControlToolSchemaEnforcement, Required: false},
 		})
 		if err != nil {

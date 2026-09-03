@@ -13,7 +13,7 @@ import (
 // cursor of the in-progress assistant message. Begin arms a new turn end to
 // end and Stop cancels the in-flight one, so turn start/stop has one owner.
 type TurnSession struct {
-	turn            Turn
+	turn            func(context.Context, string, string) (TurnResult, error)
 	ctx             context.Context
 	cancel          context.CancelFunc
 	thinkingEnabled bool
@@ -26,7 +26,7 @@ type TurnSession struct {
 }
 
 // NewTurnSession creates a disarmed session for the given turn function.
-func NewTurnSession(turn Turn) *TurnSession {
+func NewTurnSession(turn func(context.Context, string, string) (TurnResult, error)) *TurnSession {
 	return &TurnSession{turn: turn, curStream: -1}
 }
 

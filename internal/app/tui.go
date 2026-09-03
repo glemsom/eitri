@@ -16,14 +16,7 @@ import (
 	"github.com/glemsom/eitri/internal/tui"
 )
 
-type sessionTurnBinder func(sessionKey string) error
-
-// runEngineTurn adapts the shared runAgent turn to the tui.Turn seam.
-func runEngineTurn(e *engine.Engine, cfg func() config.Config, reg *tools.Registry, sessionKey *tui.LiveSessionKey, catalog *tools.Catalog, canContinue func() bool) tui.Turn {
-	return runEngineTurnWithBinder(e, cfg, reg, sessionKey, catalog, canContinue, nil)
-}
-
-func runEngineTurnWithBinder(e *engine.Engine, cfg func() config.Config, reg *tools.Registry, sessionKey *tui.LiveSessionKey, catalog *tools.Catalog, canContinue func() bool, bind sessionTurnBinder) tui.Turn {
+func runEngineTurn(e *engine.Engine, cfg func() config.Config, reg *tools.Registry, sessionKey *tui.LiveSessionKey, catalog *tools.Catalog, canContinue func() bool, bind func(string) error) func(context.Context, string, string) (tui.TurnResult, error) {
 	return func(ctx context.Context, prompt string, payload string) (tui.TurnResult, error) {
 		cur := cfg()
 		key := sessionKey.Get()
@@ -107,7 +100,7 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 			})
 		},
 	})
-	ts := tui.NewTurnSession(runEngineTurnWithBinder(e, func() config.Config { return currentCfg }, reg, live, skills, m.ContinueHook(), bindSession))
+	ts := tui.NewTurnSession(runEngineTurn(e, func() config.Config { return currentCfg }, reg, live, skills, m.ContinueHook(), bindSession))
 	ts.SetThinkingEnabled(cfg.ThinkingEnabled)
 	m.SetTurnSession(ts)
 	return runProgram(m)

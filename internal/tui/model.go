@@ -20,9 +20,6 @@ import (
 // defaultPromptHistoryCap is how many submitted prompts the Model's in-memory
 const defaultPromptHistoryCap = 100
 
-// Turn runs one agent conversation turn (user prompt -> assistant answer) over the shared engine seam.
-type Turn func(ctx context.Context, prompt string, payload string) (TurnResult, error)
-
 // TurnResult reports one completed agent turn: the final answer snapshot, its
 // chain-of-thought, and whether the user stopped the turn early.
 type TurnResult struct {
@@ -103,7 +100,7 @@ type SkillsSurface struct {
 
 // Dependencies wires a Model to its environment: the conversation Turn, model discovery + loaded config for the Settings surface, and a persistence seam.
 type Dependencies struct {
-	Turn                Turn
+	Turn                func(context.Context, string, string) (TurnResult, error)
 	WorkspacePath       string
 	Models              []string
 	DiscoverModels      func(ctx context.Context, cfg config.Config) ([]string, error)
@@ -194,7 +191,6 @@ type Model struct {
 	histDraft string
 }
 
-// NewModel builds a bare chat-only model (no Settings surface), the historical default signature.
 // newModelHistory builds the Model's prompt-history ring: file-backed when a
 // in-memory ring.
 func newModelHistory(path string) *PromptHistory {
@@ -202,10 +198,6 @@ func newModelHistory(path string) *PromptHistory {
 		return NewPromptHistory(defaultPromptHistoryCap)
 	}
 	return NewPersistedPromptHistory(defaultPromptHistoryCap, path)
-}
-
-func NewModel(t Turn) Model {
-	return NewModelCfg(Dependencies{Turn: t})
 }
 
 // NewModelCfg builds a TUI model wired to the given dependencies.

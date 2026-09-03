@@ -253,9 +253,9 @@ func TestScroll_navigationDoesNotStealComposerFocus(t *testing.T) {
 // either way, so this regression needs a View-level assertion.
 func TestScroll_viewDeclaresMouseCellMotion(t *testing.T) {
 	t.Parallel()
-	m := NewModel(func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+	m := NewModelCfg(Dependencies{Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 		return TurnResult{}, nil
-	})
+	}})
 	if got := m.View().MouseMode; got != tea.MouseModeCellMotion {
 		t.Fatalf("View().MouseMode = %v, want %v (mouse reporting must be enabled for wheel scroll)", got, tea.MouseModeCellMotion)
 	}

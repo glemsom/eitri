@@ -40,7 +40,7 @@ func TestRunEngineTurnRebindsSessionArtifactsAfterNew(t *testing.T) {
 		return nil
 	}
 
-	turn := runEngineTurnWithBinder(e, func() config.Config { return config.Default() }, reg, live, nil, nil, bind)
+	turn := runEngineTurn(e, func() config.Config { return config.Default() }, reg, live, nil, nil, bind)
 	if _, err := turn(context.Background(), "hi", ""); err != nil {
 		t.Fatalf("turn error: %v", err)
 	}
