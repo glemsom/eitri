@@ -105,6 +105,7 @@ func TestRunAgentCanceledDuringToolExecutionKillsToolLive(t *testing.T) {
 	go func() {
 		defer close(done)
 		_, err := e.RunAgent(ctx, RunRequest{Model: "m", Prompt: "hi"}, AgentOptions{
+			Tools: []provider.Tool{{Type: "function", Function: provider.ToolFunction{Name: "bash"}}},
 			Executor: ExecutorFunc(func(ctx context.Context, name, argsJSON string) (ToolExecResult, error) {
 				toolCtx = ctx
 				close(execStarted)
