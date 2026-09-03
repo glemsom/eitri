@@ -20,7 +20,7 @@ func TestRunEngineTurnReadsCurrentConfig(t *testing.T) {
 			provider.Chunk{Done: true, FinishReason: "stop"},
 		), nil
 	}), mockTranscript{})
-	reg := tools.NewRegistry(tools.Deps{Workspace: t.TempDir()})
+	reg, _ := tools.NewRegistry(tools.Deps{TempHost: t.TempDir(), Runner: tools.RealRunner, Workspace: t.TempDir()})
 	cfg := config.Config{Model: "first", ThinkingEnabled: true, ReasoningEffort: "low", ContextOverflowRecovery: true}
 
 	turn := runEngineTurn(e, func() config.Config { return cfg }, reg, tui.NewLiveSessionKey("sess-"+t.Name()), nil, nil, nil)

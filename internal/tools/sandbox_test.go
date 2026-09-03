@@ -25,7 +25,10 @@ func TestSandboxBuildsBwrapArgv(t *testing.T) {
 	t.Parallel()
 	rr := &recordingRunner{out: &Output{Stdout: "ok"}}
 	tempHost := filepath.Join(t.TempDir(), "tmp")
-	sb := NewSandbox("/home/u/proj", tempHost, rr, "/tmp/kubeconfig")
+	sb, newErr := NewSandbox("/home/u/proj", tempHost, rr, "/tmp/kubeconfig")
+	if newErr != nil {
+		t.Fatalf("NewSandbox() error = %v", newErr)
+	}
 	_, err := sb.Run(context.Background(), "echo hi")
 	if err != nil {
 		t.Fatalf("Run() error = %v, want nil", err)
@@ -72,7 +75,10 @@ func TestSandboxBuildsBwrapArgv(t *testing.T) {
 func TestSandboxRunPropagatesOutput(t *testing.T) {
 	t.Parallel()
 	rr := &recordingRunner{out: &Output{Stdout: "hello\n", Stderr: "warn\n"}}
-	sb := NewSandbox("/ws", t.TempDir(), rr)
+	sb, newErr := NewSandbox("/ws", t.TempDir(), rr)
+	if newErr != nil {
+		t.Fatalf("NewSandbox() error = %v", newErr)
+	}
 	o, err := sb.Run(context.Background(), "ls")
 	if err != nil {
 		t.Fatalf("Run() error = %v, want nil", err)
@@ -86,7 +92,10 @@ func TestSandboxRunPropagatesError(t *testing.T) {
 	t.Parallel()
 	sentinel := errors.New("boom")
 	rr := &recordingRunner{err: sentinel}
-	sb := NewSandbox("/ws", t.TempDir(), rr)
+	sb, newErr := NewSandbox("/ws", t.TempDir(), rr)
+	if newErr != nil {
+		t.Fatalf("NewSandbox() error = %v", newErr)
+	}
 	_, err := sb.Run(context.Background(), "false")
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("Run() error = %v, want sentinel", err)
@@ -97,7 +106,10 @@ func TestSandboxRegistersSshConfigMount(t *testing.T) {
 	t.Parallel()
 	rr := &recordingRunner{out: &Output{Stdout: "ok"}}
 	tempHost := t.TempDir()
-	sb := NewSandbox("/ws", tempHost, rr)
+	sb, newErr := NewSandbox("/ws", tempHost, rr)
+	if newErr != nil {
+		t.Fatalf("NewSandbox() error = %v", newErr)
+	}
 	if _, err := sb.Run(context.Background(), "true"); err != nil {
 		t.Fatalf("Run() error = %v, want nil", err)
 	}
@@ -127,7 +139,10 @@ func TestSandboxRealBwrapIntegration(t *testing.T) {
 	}
 	ws := newNonRemappedWorkspace(t)
 	tempHost := t.TempDir()
-	sb := NewSandbox(ws, tempHost, defaultRunner{})
+	sb, newErr := NewSandbox(ws, tempHost, defaultRunner{})
+	if newErr != nil {
+		t.Fatalf("NewSandbox() error = %v", newErr)
+	}
 	o, err := sb.Run(context.Background(), "cwd=$PWD; touch workspace-gone.txt; echo \"$cwd|workspace-written\" > $PWD/probe.txt; echo done")
 	if err != nil {
 		t.Fatalf("Run() error = %v, want nil", err)
@@ -178,7 +193,7 @@ func TestSandboxRealBwrapIntegration(t *testing.T) {
 		t.Fatalf("close extra writable probe: %v", err)
 	}
 	t.Cleanup(func() { _ = os.Remove(extraTmpPath) })
-	sbWithExtra := NewSandbox(ws, tempHost, defaultRunner{}, extraTmpPath)
+	sbWithExtra, _ := NewSandbox(ws, tempHost, defaultRunner{}, extraTmpPath)
 	if _, err := sbWithExtra.Run(context.Background(), "echo allowed > "+shellQuote(extraTmpPath)); err != nil {
 		t.Fatalf("extra writable /tmp file was not writable: %v", err)
 	}
@@ -238,3 +253,28 @@ func shellQuote(s string) string {
 }
 
 var _ = os.Getenv
+
+func TestNewSandboxRejectsInvalidDependencies(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		workspace string
+		tempHost  string
+		runner    Runner
+		want      string
+	}{
+		{name: "empty workspace", tempHost: "/tmp/session", runner: &recordingRunner{}, want: "workspace path is empty"},
+		{name: "relative workspace", workspace: "workspace", tempHost: "/tmp/session", runner: &recordingRunner{}, want: "workspace path must be absolute"},
+		{name: "empty session temp", workspace: "/workspace", runner: &recordingRunner{}, want: "session temp path is empty"},
+		{name: "relative session temp", workspace: "/workspace", tempHost: "session", runner: &recordingRunner{}, want: "session temp path must be absolute"},
+		{name: "missing runner", workspace: "/workspace", tempHost: "/tmp/session", want: "command runner is required"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewSandbox(tt.workspace, tt.tempHost, tt.runner)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("NewSandbox() error = %v, want containing %q", err, tt.want)
+			}
+		})
+	}
+}

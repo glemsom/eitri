@@ -23,7 +23,7 @@ func TestRunEngineTurnRebindsSessionArtifactsAfterNew(t *testing.T) {
 	if err != nil {
 		t.Fatalf("old session: %v", err)
 	}
-	reg := tools.NewRegistry(tools.Deps{Workspace: t.TempDir(), TempHost: oldSess.TempDir()})
+	reg, _ := tools.NewRegistry(tools.Deps{Runner: tools.RealRunner, Workspace: t.TempDir(), TempHost: oldSess.TempDir()})
 
 	logged := provider.NewLoggingProvider(provider.NewScripted(func(_ context.Context, _ provider.Request) (provider.Stream, error) {
 		return provider.StreamFunc(provider.Chunk{Content: "ok"}, provider.Chunk{Done: true, FinishReason: "stop"}), nil
@@ -36,8 +36,7 @@ func TestRunEngineTurnRebindsSessionArtifactsAfterNew(t *testing.T) {
 			return err
 		}
 		e.BindSession(sess)
-		reg.SetTempHost(sess.TempDir())
-		return nil
+		return reg.SetTempHost(sess.TempDir())
 	}
 
 	turn := runEngineTurn(e, func() config.Config { return config.Default() }, reg, live, nil, nil, bind)

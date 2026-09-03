@@ -148,7 +148,8 @@ func Run(opts Options) error {
 		return err
 	}
 	skills := discoverSkills(workspace)
-	reg := tools.NewRegistry(tools.Deps{
+	defer func() { _ = os.RemoveAll(tempHost) }()
+	reg, err := tools.NewRegistry(tools.Deps{
 		Workspace:     workspace,
 		TempHost:      tempHost,
 		ExtraWritable: cfg.ExtraWritablePaths,
@@ -156,8 +157,9 @@ func Run(opts Options) error {
 		Browser:       opts.Browser,
 		Skills:        skills,
 	})
-	defer func() { _ = os.RemoveAll(tempHost) }()
-
+	if err != nil {
+		return err
+	}
 	p := opts.Provider
 	if p == nil {
 		var err error

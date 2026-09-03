@@ -39,9 +39,10 @@ func TestTUISlashSkillThroughEngineSeam(t *testing.T) {
 	defer func() { _ = os.Chdir(oldWd) }()
 
 	skills := discoverSkills(ws)
-	reg := tools.NewRegistry(tools.Deps{
+	reg, _ := tools.NewRegistry(tools.Deps{
 		Workspace: ws,
 		TempHost:  t.TempDir(),
+		Runner:    tools.RealRunner,
 		Skills:    skills,
 	})
 	surface := skillSurface(reg, skills)
@@ -83,9 +84,10 @@ func TestTUISlashRepeatedActivationReapplies(t *testing.T) {
 	defer func() { _ = os.Chdir(oldWd) }()
 
 	skills := discoverSkills(ws)
-	reg := tools.NewRegistry(tools.Deps{
+	reg, _ := tools.NewRegistry(tools.Deps{
 		Workspace: ws,
 		TempHost:  t.TempDir(),
+		Runner:    tools.RealRunner,
 		Skills:    skills,
 	})
 	surface := skillSurface(reg, skills)
@@ -128,9 +130,10 @@ func TestTUISlashListsHiddenSkill(t *testing.T) {
 	}
 
 	skills := discoverSkills(ws)
-	reg := tools.NewRegistry(tools.Deps{
+	reg, _ := tools.NewRegistry(tools.Deps{
 		Workspace: ws,
 		TempHost:  t.TempDir(),
+		Runner:    tools.RealRunner,
 		Skills:    skills,
 	})
 	surface := skillSurface(reg, skills)
@@ -204,9 +207,10 @@ func TestTUISlashHiddenSkillThroughEngineSeamWithArgs(t *testing.T) {
 	defer func() { _ = os.Chdir(oldWd) }()
 
 	skills := discoverSkills(ws)
-	reg := tools.NewRegistry(tools.Deps{
+	reg, _ := tools.NewRegistry(tools.Deps{
 		Workspace: ws,
 		TempHost:  t.TempDir(),
+		Runner:    tools.RealRunner,
 		Skills:    skills,
 	})
 	surface := skillSurface(reg, skills)
@@ -329,9 +333,10 @@ func TestTUISlashArgsPutsSkillInProviderContext(t *testing.T) {
 	defer func() { _ = os.Chdir(oldWd) }()
 
 	skills := discoverSkills(ws)
-	reg := tools.NewRegistry(tools.Deps{
+	reg, _ := tools.NewRegistry(tools.Deps{
 		Workspace: ws,
 		TempHost:  t.TempDir(),
+		Runner:    tools.RealRunner,
 		Skills:    skills,
 	})
 	surface := skillSurface(reg, skills)
@@ -409,9 +414,10 @@ func TestTUISlashBarePutsSkillInProviderContext(t *testing.T) {
 	defer func() { _ = os.Chdir(oldWd) }()
 
 	skills := discoverSkills(ws)
-	reg := tools.NewRegistry(tools.Deps{
+	reg, _ := tools.NewRegistry(tools.Deps{
 		Workspace: ws,
 		TempHost:  t.TempDir(),
+		Runner:    tools.RealRunner,
 		Skills:    skills,
 	})
 	surface := skillSurface(reg, skills)

@@ -57,7 +57,7 @@ type Registry struct {
 }
 
 // NewRegistry builds the registry for one session from Deps.
-func NewRegistry(d Deps) *Registry {
+func NewRegistry(d Deps) (*Registry, error) {
 	if d.Browser == nil {
 		d.Browser = xdgBrowser{}
 	}
@@ -65,7 +65,11 @@ func NewRegistry(d Deps) *Registry {
 		workspace: filepath.Clean(d.Workspace),
 		tools:     map[string]Tool{},
 	}
-	r.sandbox = NewSandbox(d.Workspace, d.TempHost, d.Runner, d.ExtraWritable...)
+	var err error
+	r.sandbox, err = NewSandbox(d.Workspace, d.TempHost, d.Runner, d.ExtraWritable...)
+	if err != nil {
+		return nil, fmt.Errorf("build tool registry: %w", err)
+	}
 	r.tools["bash"] = &bashTool{sb: r.sandbox}
 	r.tools["open_in_browser"] = &openInBrowserTool{br: d.Browser}
 
@@ -73,7 +77,7 @@ func NewRegistry(d Deps) *Registry {
 	// the model a name/path/description index; the model has no `skill` tool and
 	// loads pack bodies itself via `bash cat` (see the system prompt).
 	r.catalog = d.Skills
-	return r
+	return r, nil
 }
 
 func (r *Registry) Names() []string {
@@ -83,8 +87,15 @@ func (r *Registry) Names() []string {
 func (r *Registry) Workspace() string { return r.workspace }
 
 // SetTempHost rewires the per-session temp directory used by sandboxed tools.
-func (r *Registry) SetTempHost(tempHost string) {
+func (r *Registry) SetTempHost(tempHost string) error {
+	if tempHost == "" {
+		return fmt.Errorf("session temp path is empty")
+	}
+	if !filepath.IsAbs(tempHost) {
+		return fmt.Errorf("session temp path must be absolute: %q", tempHost)
+	}
 	r.sandbox.tempHost = filepath.Clean(tempHost)
+	return nil
 }
 
 // TempHost returns the per-session temp directory used by sandboxed tools.

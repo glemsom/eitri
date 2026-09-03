@@ -62,7 +62,7 @@ func TestDispatchBashThenCatReturnsSandboxOutput(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(workspace) })
 	tempHost := filepath.Join(t.TempDir(), "tmp")
-	reg := tools.NewRegistry(tools.Deps{
+	reg, _ := tools.NewRegistry(tools.Deps{
 		Workspace: workspace,
 		TempHost:  tempHost,
 		Runner:    tools.RealRunner,
@@ -119,7 +119,7 @@ func TestDispatchPreservesToolOutputOnError(t *testing.T) {
 		), nil
 	})
 
-	reg := tools.NewRegistry(tools.Deps{
+	reg, _ := tools.NewRegistry(tools.Deps{
 		Workspace: t.TempDir(),
 		TempHost:  t.TempDir(),
 		Runner: &fakeBashRunner{out: listing,

@@ -128,7 +128,7 @@ func TestActivateSkillRendersStrippedPayload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Discover error = %v, want nil", err)
 	}
-	rd := NewRegistry(testDeps(t, "", catalog))
+	rd, _ := NewRegistry(testDeps(t, "", catalog))
 	res, err := rd.ActivateSkill(context.Background(), "res")
 	if err != nil {
 		t.Fatalf("ActivateSkill error = %v, want nil", err)
@@ -147,7 +147,7 @@ func TestActivateSkillRendersStrippedPayload(t *testing.T) {
 
 func TestActivateSkillNoSkills(t *testing.T) {
 	t.Parallel()
-	rd := NewRegistry(testDeps(t, "", nil))
+	rd, _ := NewRegistry(testDeps(t, "", nil))
 	if _, err := rd.ActivateSkill(context.Background(), "any"); err == nil {
 		t.Fatal("ActivateSkill with nil catalog = nil error, want an error")
 	}
@@ -161,7 +161,7 @@ func TestActivateSkillUnknownName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Discover error = %v, want nil", err)
 	}
-	rd := NewRegistry(testDeps(t, "", catalog))
+	rd, _ := NewRegistry(testDeps(t, "", catalog))
 	if _, err := rd.ActivateSkill(context.Background(), "nope"); err == nil {
 		t.Fatal("ActivateSkill unknown name = nil error, want an error")
 	}
@@ -177,7 +177,7 @@ func TestActivateSkillReappliesEveryTime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Discover error = %v, want nil", err)
 	}
-	rd := NewRegistry(testDeps(t, "", catalog))
+	rd, _ := NewRegistry(testDeps(t, "", catalog))
 	for i := 0; i < 2; i++ {
 		res, err := rd.ActivateSkill(context.Background(), "s1")
 		if err != nil {
@@ -197,7 +197,7 @@ func TestSkillCatalogDoesNotExposeModelTool(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Discover error = %v, want nil", err)
 	}
-	rd := NewRegistry(testDeps(t, "", catalog))
+	rd, _ := NewRegistry(testDeps(t, "", catalog))
 	for _, n := range rd.Names() {
 		if n == "skill" {
 			t.Fatalf("skill tool still registered; names = %v", rd.Names())
@@ -327,6 +327,7 @@ func testDeps(t *testing.T, workspace string, catalog *Catalog) Deps {
 	return Deps{
 		Workspace: workspace,
 		TempHost:  filepath.Join(t.TempDir(), "eitri-g"),
+		Runner:    RealRunner,
 		Skills:    catalog,
 	}
 }

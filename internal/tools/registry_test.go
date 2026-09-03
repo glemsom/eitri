@@ -19,7 +19,7 @@ func newTestRegistry(t *testing.T, rr Runner) (*Registry, string) {
 	if rr == nil {
 		rr = &recordingRunner{out: &Output{Stdout: "ls-output\n"}}
 	}
-	r := NewRegistry(Deps{
+	r, _ := NewRegistry(Deps{
 		Workspace: ws,
 		TempHost:  filepath.Join(t.TempDir(), "eitri-g"),
 		Runner:    rr,
@@ -97,5 +97,22 @@ func TestBashCompressesNoisyOutputAtBoundary(t *testing.T) {
 	}
 	if again != got {
 		t.Fatalf("compression not deterministic: first=%q second=%q", got, again)
+	}
+}
+
+func TestNewRegistryRejectsInvalidSandboxDependencies(t *testing.T) {
+	t.Parallel()
+	_, err := NewRegistry(Deps{Workspace: "", TempHost: "/tmp/session", Runner: &recordingRunner{}})
+	if err == nil || !strings.Contains(err.Error(), "workspace path is empty") {
+		t.Fatalf("NewRegistry() error = %v, want actionable workspace error", err)
+	}
+}
+
+func TestRegistryRejectsInvalidSessionTempRewire(t *testing.T) {
+	r, _ := newTestRegistry(t, nil)
+	for _, path := range []string{"", "relative/session"} {
+		if err := r.SetTempHost(path); err == nil || !strings.Contains(err.Error(), "session temp path") {
+			t.Fatalf("SetTempHost(%q) error = %v, want actionable error", path, err)
+		}
 	}
 }

@@ -19,7 +19,7 @@ func (b *recordingBrowser) Open(_ context.Context, target string) error {
 func TestOpenInBrowserLaunchesHostSideTarget(t *testing.T) {
 	t.Parallel()
 	br := &recordingBrowser{}
-	r := NewRegistry(Deps{Workspace: t.TempDir(), Browser: br})
+	r, _ := NewRegistry(Deps{Workspace: t.TempDir(), TempHost: t.TempDir(), Runner: RealRunner, Browser: br})
 	res, err := r.Run(context.Background(), "open_in_browser", argMap("path", "https://example.com"))
 	out := res.Text
 	if err != nil {
@@ -37,7 +37,7 @@ func TestOpenInBrowserOpensCanonicalSessionTempPath(t *testing.T) {
 	t.Parallel()
 	target := "file:///home/user/.eitri/sessions/g/tmp/report.html"
 	br := &recordingBrowser{}
-	r := NewRegistry(Deps{Workspace: t.TempDir(), TempHost: "/home/user/.eitri/sessions/g/tmp", Browser: br})
+	r, _ := NewRegistry(Deps{Runner: RealRunner, Workspace: t.TempDir(), TempHost: "/home/user/.eitri/sessions/g/tmp", Browser: br})
 	res, err := r.Run(context.Background(), "open_in_browser", argMap("path", target))
 	out := res.Text
 	if err != nil {

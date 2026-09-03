@@ -22,7 +22,7 @@ func TestRunEngineTurnReadsLiveSessionKey(t *testing.T) {
 		return provider.StreamFunc(provider.Chunk{Content: "ok"}, provider.Chunk{Done: true, FinishReason: "stop"}), nil
 	}), mockTranscript{})
 
-	reg := tools.NewRegistry(tools.Deps{Workspace: t.TempDir()})
+	reg, _ := tools.NewRegistry(tools.Deps{TempHost: t.TempDir(), Runner: tools.RealRunner, Workspace: t.TempDir()})
 	cfg := config.Default()
 	key := tui.NewLiveSessionKey("sess-a")
 	turn := runEngineTurn(e, func() config.Config { return cfg }, reg, key, nil, nil, nil)

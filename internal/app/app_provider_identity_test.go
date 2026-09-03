@@ -20,7 +20,7 @@ func TestRunAgentCarriesProviderIdentity(t *testing.T) {
 		return provider.StreamFunc(provider.Chunk{Content: "ok"}, provider.Chunk{Done: true}), nil
 	}), mockTranscript{})
 
-	reg := tools.NewRegistry(tools.Deps{Workspace: t.TempDir()})
+	reg, _ := tools.NewRegistry(tools.Deps{TempHost: t.TempDir(), Runner: tools.RealRunner, Workspace: t.TempDir()})
 
 	for _, tc := range []struct {
 		cfgProvider string

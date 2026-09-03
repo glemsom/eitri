@@ -53,7 +53,9 @@ func runTUI(e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey
 			return err
 		}
 		e.BindSession(sess)
-		reg.SetTempHost(sess.TempDir())
+		if err := reg.SetTempHost(sess.TempDir()); err != nil {
+			return err
+		}
 		activeSessionKey = key
 		return nil
 	}

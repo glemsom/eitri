@@ -53,7 +53,7 @@ func TestAgentBashTurnReturnsCompressedOutput(t *testing.T) {
 		), nil
 	})
 
-	reg := tools.NewRegistry(tools.Deps{
+	reg, _ := tools.NewRegistry(tools.Deps{
 		Workspace: t.TempDir(),
 		TempHost:  t.TempDir(),
 		Runner:    &fakeBashRunner{out: raw.String()},

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -47,18 +48,27 @@ type Sandbox struct {
 }
 
 // NewSandbox builds a sandbox for workspace (host path, RW) with the session temp at tempHost (same absolute path inside and outside the cage). run is the command runner seam.
-func NewSandbox(workspace, tempHost string, run Runner, extraWritable ...string) *Sandbox {
-	if tempHost != "" {
-		tempHost = filepath.Clean(tempHost)
+func NewSandbox(workspace, tempHost string, run Runner, extraWritable ...string) (*Sandbox, error) {
+	if workspace == "" {
+		return nil, errors.New("workspace path is empty")
 	}
-	return &Sandbox{workspace: workspace, tempHost: tempHost, extraWritable: cleanPaths(extraWritable), run: run}
+	if !filepath.IsAbs(workspace) {
+		return nil, fmt.Errorf("workspace path must be absolute: %q", workspace)
+	}
+	if tempHost == "" {
+		return nil, errors.New("session temp path is empty")
+	}
+	if !filepath.IsAbs(tempHost) {
+		return nil, fmt.Errorf("session temp path must be absolute: %q", tempHost)
+	}
+	if run == nil {
+		return nil, errors.New("command runner is required")
+	}
+	return &Sandbox{workspace: filepath.Clean(workspace), tempHost: filepath.Clean(tempHost), extraWritable: cleanPaths(extraWritable), run: run}, nil
 }
 
 // Run executes the shell command cmd inside the bwrap cage and returns its output. cmd is a shell string executed by /bin/bash -c.
 func (s *Sandbox) Run(ctx context.Context, cmd string) (*Output, error) {
-	if s.tempHost == "" {
-		return nil, errors.New("session temp path is empty")
-	}
 	if err := os.MkdirAll(s.tempHost, 0o700); err != nil {
 		return nil, err
 	}
