@@ -505,3 +505,29 @@ func TestNormalizeReasoningEffort(t *testing.T) {
 		}
 	}
 }
+
+func TestOpenCodeGoSendsStableSessionHeader(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("X-Opencode-Session"); got != "sess-123" {
+			t.Errorf("X-Opencode-Session = %q, want %q", got, "sess-123")
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fixture, _ := os.ReadFile("testdata/usage-final.sse")
+		_, _ = w.Write(fixture)
+	}))
+	defer srv.Close()
+
+	cl := NewOpenCodeGo("test-key", srv.URL+"/v1/chat/completions")
+	s, err := cl.Stream(context.Background(), Request{
+		Model:      "deepseek-v4-flash",
+		Messages:   []Message{{Role: RoleUser, Content: "hi"}},
+		SessionKey: "sess-123",
+	})
+	if err != nil {
+		t.Fatalf("OpenCodeGo.Stream() error = %v, want nil", err)
+	}
+	if _, _, err := consume(s); err != nil {
+		t.Fatalf("consume error = %v, want nil", err)
+	}
+}

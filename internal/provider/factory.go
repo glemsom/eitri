@@ -39,7 +39,7 @@ func FromConfig(cfg config.Config, env ProviderEnv) (Provider, error) {
 		if url == "" {
 			url = DefaultOpenCodeURL
 		}
-		return NewOpenAICompatible(apiKeyOrDefault(env.OpenCodeKey), url), nil
+		return NewOpenCodeGo(apiKeyOrDefault(env.OpenCodeKey), url), nil
 
 	case ProviderCustomOpenAI:
 		if cfg.CustomOpenAI.BaseURL == "" || cfg.CustomOpenAI.Key == "" {

@@ -12,14 +12,22 @@ import (
 
 // OpenAICompatible is a Chat-Completions HTTP client targeting any OpenAI-compatible endpoint (OpenCode Go, the primary provider).
 type OpenAICompatible struct {
-	apiKey string
-	url    string
-	http   *http.Client
+	apiKey                string
+	url                   string
+	http                  *http.Client
+	opencodeSessionHeader bool
 }
 
 // NewOpenAICompatible returns a client for the given Bearer key and base URL (the full /v1/chat/completions endpoint or a prefix to which it appends).
 func NewOpenAICompatible(apiKey, url string) *OpenAICompatible {
 	return &OpenAICompatible{apiKey: apiKey, url: normalizeChatCompletionsURL(url)}
+}
+
+// NewOpenCodeGo returns an OpenCode Go client that identifies each conversation to the service.
+func NewOpenCodeGo(apiKey, url string) *OpenAICompatible {
+	client := NewOpenAICompatible(apiKey, url)
+	client.opencodeSessionHeader = true
+	return client
 }
 
 func normalizeChatCompletionsURL(raw string) string {
@@ -136,6 +144,9 @@ func (o *OpenAICompatible) Stream(ctx context.Context, req Request) (Stream, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+o.apiKey)
+	if o.opencodeSessionHeader && req.SessionKey != "" {
+		httpReq.Header.Set("X-Opencode-Session", req.SessionKey)
+	}
 
 	client := resolveClient(o.http)
 	resp, err := client.Do(httpReq)
