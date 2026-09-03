@@ -23,7 +23,7 @@ func TestRunAgentLoadsWorkspaceRootAgentsMd(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws, "AGENTS.md"), []byte("# Repo guidance\n\nDo the thing.\n"), 0o600); err != nil {
 		t.Fatalf("write AGENTS.md: %v", err)
 	}
-	reg := tools.NewRegistry(tools.Deps{Workspace: ws, GUID: tools.GUID("agents-" + t.Name())})
+	reg := tools.NewRegistry(tools.Deps{Workspace: ws})
 
 	cap := &captureSkillRequests{}
 	e := engine.New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
@@ -58,7 +58,7 @@ func TestRunAgentLoadsWorkspaceRootAgentsMd(t *testing.T) {
 // system message), preserving the pre-feature bytes.
 func TestRunAgentNoRepoInstructionsWithoutAgentsMd(t *testing.T) {
 	ws := t.TempDir() // deliberately no AGENTS.md
-	reg := tools.NewRegistry(tools.Deps{Workspace: ws, GUID: tools.GUID("noagents-" + t.Name())})
+	reg := tools.NewRegistry(tools.Deps{Workspace: ws})
 
 	cap := &captureSkillRequests{}
 	e := engine.New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {

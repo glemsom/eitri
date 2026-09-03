@@ -30,7 +30,7 @@ func TestRunAgentInjectsSkillIndex(t *testing.T) {
 	}
 
 	skills := discoverSkills(ws)
-	reg := tools.NewRegistry(tools.Deps{Workspace: ws, Skills: skills, GUID: tools.GUID("idx-" + t.Name())})
+	reg := tools.NewRegistry(tools.Deps{Workspace: ws, Skills: skills})
 
 	cap := &captureSkillRequests{}
 	e := engine.New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
@@ -68,7 +68,7 @@ func TestRunAgentNoIndexWhenNoModelVisibleSkills(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
 	skills := discoverSkills(ws)
-	reg := tools.NewRegistry(tools.Deps{Workspace: ws, Skills: skills, GUID: tools.GUID("noidx-" + t.Name())})
+	reg := tools.NewRegistry(tools.Deps{Workspace: ws, Skills: skills})
 
 	cap := &captureSkillRequests{}
 	e := engine.New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
@@ -91,7 +91,7 @@ func TestRunAgentNoIndexWhenNoModelVisibleSkills(t *testing.T) {
 // contract: a nil catalog must not render (RenderIndex would dereference a nil
 // receiver), so runAgent leaves the index nil and the engine omits the block.
 func TestRunAgentNoIndexWhenCatalogNil(t *testing.T) {
-	reg := tools.NewRegistry(tools.Deps{Workspace: t.TempDir(), GUID: tools.GUID("nilcat-" + t.Name())})
+	reg := tools.NewRegistry(tools.Deps{Workspace: t.TempDir()})
 
 	cap := &captureSkillRequests{}
 	e := engine.New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {

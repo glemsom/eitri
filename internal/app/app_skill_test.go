@@ -42,7 +42,6 @@ func TestTUISlashSkillThroughEngineSeam(t *testing.T) {
 	reg := tools.NewRegistry(tools.Deps{
 		Workspace: ws,
 		TempHost:  t.TempDir(),
-		GUID:      tools.GUID("tui-seam-" + t.Name()),
 		Skills:    skills,
 	})
 	surface := skillSurface(reg, skills)
@@ -87,7 +86,6 @@ func TestTUISlashRepeatedActivationReapplies(t *testing.T) {
 	reg := tools.NewRegistry(tools.Deps{
 		Workspace: ws,
 		TempHost:  t.TempDir(),
-		GUID:      tools.GUID("slash-repeat-" + t.Name()),
 		Skills:    skills,
 	})
 	surface := skillSurface(reg, skills)
@@ -133,7 +131,6 @@ func TestTUISlashListsHiddenSkill(t *testing.T) {
 	reg := tools.NewRegistry(tools.Deps{
 		Workspace: ws,
 		TempHost:  t.TempDir(),
-		GUID:      tools.GUID("slash-hidden-" + t.Name()),
 		Skills:    skills,
 	})
 	surface := skillSurface(reg, skills)
@@ -210,7 +207,6 @@ func TestTUISlashHiddenSkillThroughEngineSeamWithArgs(t *testing.T) {
 	reg := tools.NewRegistry(tools.Deps{
 		Workspace: ws,
 		TempHost:  t.TempDir(),
-		GUID:      tools.GUID("slash-hidden-args-" + t.Name()),
 		Skills:    skills,
 	})
 	surface := skillSurface(reg, skills)
@@ -336,7 +332,6 @@ func TestTUISlashArgsPutsSkillInProviderContext(t *testing.T) {
 	reg := tools.NewRegistry(tools.Deps{
 		Workspace: ws,
 		TempHost:  t.TempDir(),
-		GUID:      tools.GUID("slash-provider-" + t.Name()),
 		Skills:    skills,
 	})
 	surface := skillSurface(reg, skills)
@@ -417,7 +412,6 @@ func TestTUISlashBarePutsSkillInProviderContext(t *testing.T) {
 	reg := tools.NewRegistry(tools.Deps{
 		Workspace: ws,
 		TempHost:  t.TempDir(),
-		GUID:      tools.GUID("slash-bare-" + t.Name()),
 		Skills:    skills,
 	})
 	surface := skillSurface(reg, skills)

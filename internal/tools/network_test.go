@@ -31,7 +31,7 @@ func TestXdgBrowserMissingLauncherIsContainedError(t *testing.T) {
 
 func TestOpenInBrowserMissingBackendSurfacesOnlyAtRun(t *testing.T) {
 	missingBackendEnv(t)
-	o := &openInBrowserTool{br: xdgBrowser{}, tr: NewPathTranslator()}
+	o := &openInBrowserTool{br: xdgBrowser{}}
 	_, err := o.Run(context.Background(), argMap("path", "https://example.com"))
 	if err == nil {
 		t.Fatal("Run() = nil error, want the missing launcher surfaced as a contained tool error")

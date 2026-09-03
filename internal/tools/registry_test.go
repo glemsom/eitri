@@ -22,7 +22,6 @@ func newTestRegistry(t *testing.T, rr Runner) (*Registry, string) {
 	r := NewRegistry(Deps{
 		Workspace: ws,
 		TempHost:  filepath.Join(t.TempDir(), "eitri-g"),
-		GUID:      GUID("tguid"),
 		Runner:    rr,
 	})
 	return r, ws

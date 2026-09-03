@@ -65,7 +65,6 @@ func TestDispatchBashThenCatReturnsSandboxOutput(t *testing.T) {
 	reg := tools.NewRegistry(tools.Deps{
 		Workspace: workspace,
 		TempHost:  tempHost,
-		GUID:      tools.GUID("engine"),
 		Runner:    tools.RealRunner,
 	})
 
@@ -123,7 +122,6 @@ func TestDispatchPreservesToolOutputOnError(t *testing.T) {
 	reg := tools.NewRegistry(tools.Deps{
 		Workspace: t.TempDir(),
 		TempHost:  t.TempDir(),
-		GUID:      tools.GUID("dispatch-err"),
 		Runner: &fakeBashRunner{out: listing,
 			err: errors.New("exit status 2")},
 	})

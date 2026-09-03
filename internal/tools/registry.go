@@ -10,7 +10,6 @@ import (
 type Deps struct {
 	Workspace     string
 	TempHost      string
-	GUID          GUID
 	ExtraWritable []string
 	Runner        Runner
 	Browser       BrowserLauncher
@@ -49,11 +48,9 @@ func (r *Registry) Definitions() []Definition {
 	return out
 }
 
-// Registry is the shared tool registry: it wires the single PathTranslator plus the network and browser seams, then exposes the fixed tool surface. It also holds the skill catalog that backs only the human /skillname slash surface.
+// Registry is the shared tool registry: it wires the sandbox and browser seams, then exposes the fixed tool surface. It also holds the skill catalog that backs only the human /skillname slash surface.
 type Registry struct {
-	tr        *PathTranslator
 	sandbox   *Sandbox
-	browser   BrowserLauncher
 	workspace string
 	tools     map[string]Tool
 	catalog   *Catalog
@@ -65,14 +62,12 @@ func NewRegistry(d Deps) *Registry {
 		d.Browser = xdgBrowser{}
 	}
 	r := &Registry{
-		tr:        NewPathTranslator(),
-		browser:   d.Browser,
 		workspace: filepath.Clean(d.Workspace),
 		tools:     map[string]Tool{},
 	}
 	r.sandbox = NewSandbox(d.Workspace, d.TempHost, d.Runner, d.ExtraWritable...)
 	r.tools["bash"] = &bashTool{sb: r.sandbox}
-	r.tools["open_in_browser"] = &openInBrowserTool{br: d.Browser, tr: r.tr}
+	r.tools["open_in_browser"] = &openInBrowserTool{br: d.Browser}
 
 	// Skills back the human /skillname slash surface and, via RenderIndex, feed
 	// the model a name/path/description index; the model has no `skill` tool and

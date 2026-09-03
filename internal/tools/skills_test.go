@@ -327,7 +327,6 @@ func testDeps(t *testing.T, workspace string, catalog *Catalog) Deps {
 	return Deps{
 		Workspace: workspace,
 		TempHost:  filepath.Join(t.TempDir(), "eitri-g"),
-		GUID:      GUID("tguid"),
 		Skills:    catalog,
 	}
 }

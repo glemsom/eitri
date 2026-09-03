@@ -142,7 +142,6 @@ func Run(opts Options) error {
 		return err
 	}
 
-	guid := tools.GUID(sess.GUID())
 	tempHost := sess.TempDir()
 	workspace, err := os.Getwd()
 	if err != nil {
@@ -152,7 +151,6 @@ func Run(opts Options) error {
 	reg := tools.NewRegistry(tools.Deps{
 		Workspace:     workspace,
 		TempHost:      tempHost,
-		GUID:          guid,
 		ExtraWritable: cfg.ExtraWritablePaths,
 		Runner:        tools.RealRunner,
 		Browser:       opts.Browser,

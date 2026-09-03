@@ -10,7 +10,6 @@ import (
 // openInBrowserTool is the open_in_browser tool: host-side, outside the bwrap cage.
 type openInBrowserTool struct {
 	br BrowserLauncher
-	tr *PathTranslator
 }
 
 func (o *openInBrowserTool) Name() string {
@@ -35,29 +34,13 @@ func (o *openInBrowserTool) Run(ctx context.Context, args map[string]any) (ToolR
 	if err != nil {
 		return ToolResult{}, err
 	}
-	host, err := o.translate(target)
-	if err != nil {
-		return ToolResult{}, err
+	if strings.HasPrefix(target, "file://") {
+		if _, err := url.Parse(target); err != nil {
+			return ToolResult{}, fmt.Errorf("open_in_browser %s: %w", target, err)
+		}
 	}
-	if err := o.br.Open(ctx, host); err != nil {
+	if err := o.br.Open(ctx, target); err != nil {
 		return ToolResult{}, fmt.Errorf("open_in_browser %s: %w", target, err)
 	}
-	return ToolResult{Text: fmt.Sprintf("Opened %s in the host browser", host)}, nil
-}
-
-// translate maps the model-facing target to the host launch form: a plain URL passes through; a file URL or filesystem path resolves through the shared PathTranslator.
-func (o *openInBrowserTool) translate(target string) (string, error) {
-	if u, err := url.Parse(target); err == nil && u.Scheme != "" && u.Scheme != "file" {
-		return target, nil
-	}
-	if strings.HasPrefix(target, "file://") {
-		u, err := url.Parse(target)
-		if err != nil {
-			return "", fmt.Errorf("open_in_browser %s: %w", target, err)
-		}
-		host, _ := o.tr.SandboxToHost(u.Path)
-		return "file://" + host, nil
-	}
-	host, _ := o.tr.SandboxToHost(target)
-	return host, nil
+	return ToolResult{Text: fmt.Sprintf("Opened %s in the host browser", target)}, nil
 }
