@@ -190,17 +190,6 @@ func TestSettingsForm_InvalidThemeFirstAdjustSelectsValid(t *testing.T) {
 	}
 }
 
-func TestSettingsForm_PathsRoundTrip(t *testing.T) {
-	t.Parallel()
-	f := newSettingsForm(cfgFixture(), []string{})
-	f.field = fieldPaths
-	f.SetPathBuf("/a, /b ,/c")
-	got := f.draft().ExtraWritablePaths
-	if len(got) != 3 || got[0] != "/a" || got[1] != "/b" || got[2] != "/c" {
-		t.Fatalf("SetPathBuf draft paths = %v, want [/a /b /c]", got)
-	}
-}
-
 func TestSettingsForm_SaveAndCancelAreFocusableFields(t *testing.T) {
 	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{})
@@ -358,6 +347,19 @@ func TestSettingsView_PaletteSwatchTracksTheme(t *testing.T) {
 	}
 }
 
+func TestSettingsOverlay_WritablePathsCannotBeManuallyEdited(t *testing.T) {
+	t.Parallel()
+	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, Dependencies{})
+	o.field = fieldPaths
+
+	o.Key(tea.KeyPressMsg{Text: "x", Code: 'x'})
+
+	got := o.draft().ExtraWritablePaths
+	if len(got) != 1 || got[0] != "/srv" {
+		t.Fatalf("paths after typing = %v, want unchanged [/srv]", got)
+	}
+}
+
 func TestSettingsForm_RemoveSelectedPath(t *testing.T) {
 	t.Parallel()
 	cfg := cfgFixture()
@@ -396,8 +398,7 @@ func TestSettingsOverlay_FilePickerSelectClosesPickerBeforeTab(t *testing.T) {
 	dir := t.TempDir()
 	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, Dependencies{})
 	o.field = fieldPaths
-	o.addingPath = true
-	o.pickerActive = true
+	o.beginAddPath()
 	o.picker.Path = dir
 	o.Handle(tea.KeyPressMsg{Text: "s", Code: 's', Mod: tea.ModCtrl})
 	o.Handle(tea.KeyPressMsg{Code: tea.KeyTab})
@@ -412,7 +413,7 @@ func TestSettingsOverlay_FilePickerSelectClosesPickerBeforeTab(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("selected path count after tab = %d in %v, want 1", count, got)
 	}
-	if o.addingPath || o.pickerActive {
-		t.Fatalf("picker active after selection: adding=%v active=%v, want closed", o.addingPath, o.pickerActive)
+	if o.pickerActive {
+		t.Fatalf("picker active after selection, want closed")
 	}
 }

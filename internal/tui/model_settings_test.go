@@ -113,62 +113,6 @@ func TestModel_SettingsEffortSelectingMediumPersists(t *testing.T) {
 	}
 }
 
-func TestModel_SettingsPathsBackspaceEdits(t *testing.T) {
-	t.Parallel()
-	var saved config.Config
-	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
-			return TurnResult{Answer: "ok"}, nil
-		},
-		Models: []string{"deepseek-v4-flash"},
-		Config: cfgFixture(),
-		Save:   func(c config.Config) error { saved = c; return nil },
-	})
-	m = resize(t, m)
-	m = keypress(t, m, "ctrl+s")
-	for i := fieldProvider; i < fieldPaths; i++ {
-		m = keypress(t, m, "enter")
-	}
-	m = keypress(t, m, "x")         // append
-	m = keypress(t, m, "backspace") // delete it
-	for i := fieldPaths; i < fieldSave; i++ {
-		m = keypress(t, m, "enter")
-	}
-	keypress(t, m, "enter")
-
-	if len(saved.ExtraWritablePaths) != 1 || saved.ExtraWritablePaths[0] != "/srv" {
-		t.Fatalf("saved paths = %v, want [/srv] after append+backspace", saved.ExtraWritablePaths)
-	}
-}
-
-func TestModel_SettingsPathsSpaceTypesASpace(t *testing.T) {
-	t.Parallel()
-	var saved config.Config
-	m := NewModelCfg(Dependencies{
-		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
-			return TurnResult{Answer: "ok"}, nil
-		},
-		Models: []string{"deepseek-v4-flash"},
-		Config: cfgFixture(),
-		Save:   func(c config.Config) error { saved = c; return nil },
-	})
-	m = resize(t, m)
-	m = keypress(t, m, "ctrl+s")
-	for i := fieldProvider; i < fieldPaths; i++ {
-		m = keypress(t, m, "enter")
-	}
-	m = keypress(t, m, " ")
-	m = keypress(t, m, "v2")
-	for i := fieldPaths; i < fieldSave; i++ {
-		m = keypress(t, m, "enter")
-	}
-	keypress(t, m, "enter")
-
-	if len(saved.ExtraWritablePaths) != 1 || saved.ExtraWritablePaths[0] != "/srv v2" {
-		t.Fatalf("saved paths = %v, want [/srv v2] (space typed literally)", saved.ExtraWritablePaths)
-	}
-}
-
 func TestModel_SettingsSaveAppliesThinkingStateToLiveSession(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
