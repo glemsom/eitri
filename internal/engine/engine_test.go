@@ -177,15 +177,6 @@ func TestRunAgentPersistsReasoningOnToolTurns(t *testing.T) {
 	}
 }
 
-type capableScripted struct {
-	*provider.Scripted
-	supported []provider.GenerationControl
-}
-
-func (c *capableScripted) SupportedGenerationControls(context.Context) ([]provider.GenerationControl, error) {
-	return append([]provider.GenerationControl(nil), c.supported...), nil
-}
-
 func TestRunAgentWritesStoppedTranscriptBetweenToolCalls(t *testing.T) {
 	t.Parallel()
 	tr := &mockTranscript{}

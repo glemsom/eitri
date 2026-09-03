@@ -443,10 +443,6 @@ func TestTranscript_expandAllOffDoesNotWipePerEntry(t *testing.T) {
 	}
 }
 
-func layoutBuildsOf(tx Transcript) int {
-	return tx.layout.builds
-}
-
 func newStreamPaneTestTranscript(th Theme, msgs []message) Transcript {
 	for i, m := range msgs {
 		if m.role == "eitri" && len(m.events) == 0 {

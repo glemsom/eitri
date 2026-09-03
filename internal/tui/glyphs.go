@@ -38,9 +38,6 @@ func focusMarker() string { return g("▸", ">") }
 // hr returns a horizontal-rule separator (──) with its "--" ASCII fallback.
 func hr() string { return g("──", "--") }
 
-// promptHint returns the 💬 glyph for the prompt hint line.
-func promptHint() string { return g("💬", ">") }
-
 // keyHint returns the ⌨ glyph for the keybinding hint line.
 func keyHint() string { return g("⌨", "k") }
 

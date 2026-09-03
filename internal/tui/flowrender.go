@@ -284,15 +284,6 @@ func (r flowRenderer) reasoningBlock(msg message, msgIdx int, it flowItem, isFoc
 	return renderReasoningBlockCached(r.markdownCache, r.theme, r.config, r.width, r.effort, msg, msgIdx, it.fragIdx, it.text, it.expanded, focused)
 }
 
-// renderReasoningBlock renders one whole reasoning fragment as its header line
-// (prefixed with the focus marker when focused) and, when expanded, the
-// markdown-rendered body in the pane chosen from the message's stream state.
-// The FlowRenderer routes through this one emitter, so the reasoning block's
-// header/pane rendering has exactly one implementation.
-func renderReasoningBlock(theme Theme, config string, width int, effort string, msg message, msgIdx, fragIdx int, text string, expanded, focused bool) string {
-	return renderReasoningBlockCached(nil, theme, config, width, effort, msg, msgIdx, fragIdx, text, expanded, focused)
-}
-
 func renderReasoningBlockCached(cache *liveMarkdownCache, theme Theme, config string, width int, effort string, msg message, msgIdx, fragIdx int, text string, expanded, focused bool) string {
 	var b strings.Builder
 	h := thinkingHeader(theme, text, effort)
