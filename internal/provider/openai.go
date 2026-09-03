@@ -153,7 +153,7 @@ func (o *OpenAICompatible) Stream(ctx context.Context, req Request) (Stream, err
 	}
 
 	client := resolveClient(o.http)
-	resp, err := client.Do(httpReq)
+	resp, err := doWithRetry(ctx, client, httpReq)
 	if err != nil {
 		return nil, err
 	}

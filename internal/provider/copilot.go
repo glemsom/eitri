@@ -147,7 +147,7 @@ func (cp *CopilotProvider) do(ctx context.Context, tok, url string, body []byte)
 	httpReq.Header.Set("Authorization", "Bearer "+tok)
 	setCopilotIdentityHeaders(httpReq)
 	client := resolveClient(cp.http)
-	resp, err := client.Do(httpReq)
+	resp, err := doWithRetry(ctx, client, httpReq)
 	if err != nil {
 		return nil, err
 	}
