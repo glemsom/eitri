@@ -229,3 +229,34 @@ func TestNullableUnionToleratesNull(t *testing.T) {
 		}
 	}
 }
+
+func TestRunAgentRejectsUndeclaredToolCall(t *testing.T) {
+	t.Parallel()
+	var toolResults []string
+	scripted := provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
+		toolResults = toolResultContents(req.Messages)
+		if len(toolResults) == 0 {
+			return provider.StreamFunc(provider.Chunk{FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{
+				{ID: "call_unknown", Name: "write", Arguments: `{}`},
+			}, Done: true}), nil
+		}
+		return provider.StreamFunc(provider.Chunk{Content: "recovered", FinishReason: "stop", Done: true}), nil
+	})
+	rec := &mockToolRecorder{}
+	e := New(scripted, &mockTranscript{})
+
+	_, err := e.RunAgent(context.Background(), RunRequest{Model: "model", Prompt: "go"}, AgentOptions{
+		Tools:    []provider.Tool{{Type: "function", Function: provider.ToolFunction{Name: "bash"}}},
+		Executor: rec,
+		MaxTurns: 2,
+	})
+	if err != nil {
+		t.Fatalf("RunAgent() error = %v, want nil", err)
+	}
+	if len(rec.calls) != 0 {
+		t.Fatalf("executor calls = %+v, want none", rec.calls)
+	}
+	if len(toolResults) != 1 || !contains(toolResults[0], `undeclared tool "write"`) {
+		t.Fatalf("tool results = %q, want undeclared-tool error", toolResults)
+	}
+}

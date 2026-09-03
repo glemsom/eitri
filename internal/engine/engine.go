@@ -207,6 +207,9 @@ type AgentOptions struct {
 
 // RunAgent drives a tool-capable agent run: it maintains one mutable messages list, executes any returned tool_calls (single-call path is the floor here; hardening is T5), appends a matching role:"tool" result per call, and resubmits until the model stops calling tools.
 func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions) (Result, error) {
+	if len(opts.Tools) > 0 && opts.Executor == nil {
+		return Result{}, errors.New("declared tools require a tool executor")
+	}
 	runID := e.claimRunID()
 	if ctx.Err() != nil {
 		return Result{}, ErrStopped
@@ -387,20 +390,23 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 	}
 }
 
-// toolSchema returns the canonical strict-shaped Parameters map for the named tool from the request-head tool manifest, or nil if the tool is unknown/not validated.
-func toolSchema(tools []provider.Tool, name string) map[string]any {
-	for _, t := range tools {
-		if t.Function.Name == name {
-			return t.Function.Parameters
+func declaredTool(tools []provider.Tool, name string) (provider.Tool, bool) {
+	for _, tool := range tools {
+		if tool.Function.Name == name {
+			return tool, true
 		}
 	}
-	return nil
+	return provider.Tool{}, false
 }
 
 // execToolCall runs one tool call through the hardened dispatch path: it parses and validates the arguments against the tool's strict schema, then executes only when valid.
 func execToolCall(ctx context.Context, opts AgentOptions, tc provider.ToolCall) ToolExecResult {
+	tool, ok := declaredTool(opts.Tools, tc.Name)
+	if !ok {
+		return ToolExecResult{Text: fmt.Sprintf("error executing tool: undeclared tool %q", tc.Name)}
+	}
 	var parsed map[string]any
-	if err := validateToolCallArgs(toolSchema(opts.Tools, tc.Name), tc.Arguments, &parsed); err != nil {
+	if err := validateToolCallArgs(tool.Function.Parameters, tc.Arguments, &parsed); err != nil {
 		if errors.Is(err, errInvalidJSON) {
 			b, jerr := json.Marshal(map[string]string{"INVALID_JSON": tc.Arguments})
 			if jerr != nil {
@@ -409,9 +415,6 @@ func execToolCall(ctx context.Context, opts AgentOptions, tc provider.ToolCall) 
 			return ToolExecResult{Text: string(b)}
 		}
 		return ToolExecResult{Text: "invalid tool arguments: " + err.Error()}
-	}
-	if opts.Executor == nil {
-		return ToolExecResult{Text: "error executing tool: no tool executor configured"}
 	}
 	result, err := opts.Executor.Execute(ctx, tc.Name, tc.Arguments)
 	if err != nil {

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/glemsom/eitri/internal/compress"
 )
 
 type recordingRunner struct {
@@ -276,5 +278,22 @@ func TestNewSandboxRejectsInvalidDependencies(t *testing.T) {
 				t.Fatalf("NewSandbox() error = %v, want containing %q", err, tt.want)
 			}
 		})
+	}
+}
+
+func TestDefaultRunnerBoundsLongRunningCommandOutput(t *testing.T) {
+	t.Parallel()
+	const emitted = 8 << 20
+	o, err := (defaultRunner{}).Run(context.Background(), "/bin/bash", []string{"-c", "head -c 8388608 /dev/zero; head -c 8388608 /dev/zero >&2"})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	for name, got := range map[string]string{"stdout": o.Stdout, "stderr": o.Stderr} {
+		if len(got) > compress.DefaultByteCap {
+			t.Errorf("%s retained %d bytes, want at most %d", name, len(got), compress.DefaultByteCap)
+		}
+		if !strings.HasSuffix(got, "+8323097 bytes truncated\n") {
+			t.Errorf("%s missing exact truncation marker; tail = %q", name, got[max(0, len(got)-40):])
+		}
 	}
 }

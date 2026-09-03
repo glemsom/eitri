@@ -1,7 +1,6 @@
 package tools
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -9,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/glemsom/eitri/internal/compress"
 )
 
 // Output is the result of a sandboxed command: separated stdout/stderr so callers can decide how to combine them (the bash tool returns combined output for token efficiency).
@@ -30,11 +31,47 @@ type defaultRunner struct{}
 
 func (defaultRunner) Run(ctx context.Context, name string, args []string) (*Output, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	stdout := newBoundedBuffer(compress.DefaultByteCap)
+	stderr := newBoundedBuffer(compress.DefaultByteCap)
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 	err := cmd.Run()
 	return &Output{Stdout: stdout.String(), Stderr: stderr.String()}, err
+}
+
+type boundedBuffer struct {
+	buf   []byte
+	total int
+	limit int
+}
+
+func newBoundedBuffer(limit int) *boundedBuffer {
+	return &boundedBuffer{buf: make([]byte, 0, limit), limit: limit}
+}
+
+func (b *boundedBuffer) Write(p []byte) (int, error) {
+	b.total += len(p)
+	if remaining := b.limit - len(b.buf); remaining > 0 {
+		b.buf = append(b.buf, p[:min(remaining, len(p))]...)
+	}
+	return len(p), nil
+}
+
+func (b *boundedBuffer) String() string {
+	if b.total <= b.limit {
+		return string(b.buf)
+	}
+
+	dropped := b.total - b.limit
+	for {
+		marker := fmt.Sprintf("+%d bytes truncated\n", dropped)
+		keep := b.limit - len(marker)
+		actual := b.total - keep
+		if actual == dropped {
+			return string(b.buf[:keep]) + marker
+		}
+		dropped = actual
+	}
 }
 
 // Sandbox runs shell commands inside the bubblewrap cage.

@@ -108,39 +108,22 @@ func TestRunThreadsThinkingAndEffort(t *testing.T) {
 	}
 }
 
-func TestRunAgentReportsMissingToolExecutor(t *testing.T) {
+func TestRunAgentRejectsDeclaredToolsWithoutExecutorBeforeProviderRequest(t *testing.T) {
 	t.Parallel()
-	turn := 0
-	var toolResult string
-	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
-		turn++
-		if turn == 1 {
-			return provider.StreamFunc(provider.Chunk{FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{
-				{ID: "call_1", Type: "function", Name: "bash", Arguments: `{"command":"ls"}`},
-			}, Done: true}), nil
-		}
-		for _, m := range req.Messages {
-			if m.Role == provider.RoleTool && m.ToolCallID == "call_1" {
-				toolResult = m.Content
-			}
-		}
-		return provider.StreamFunc(provider.Chunk{Content: "done", FinishReason: "stop", Done: true}), nil
+	requests := 0
+	e := New(provider.NewScripted(func(_ context.Context, _ provider.Request) (provider.Stream, error) {
+		requests++
+		return provider.StreamFunc(provider.Chunk{Done: true}), nil
 	}), &mockTranscript{})
 
-	res, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "go"}, AgentOptions{
-		Tools: []provider.Tool{{Type: "function", Function: provider.ToolFunction{Name: "bash", Parameters: map[string]any{
-			"type": "object", "properties": map[string]any{"command": map[string]any{"type": "string"}}, "required": []any{"command"},
-		}}}},
-		MaxTurns: 5,
+	_, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "go"}, AgentOptions{
+		Tools: []provider.Tool{{Type: "function", Function: provider.ToolFunction{Name: "bash"}}},
 	})
-	if err != nil {
-		t.Fatalf("RunAgent() error = %v, want nil", err)
+	if err == nil || !contains(err.Error(), "tool executor") {
+		t.Fatalf("RunAgent() error = %v, want missing tool executor error", err)
 	}
-	if res.Answer != "done" {
-		t.Fatalf("Answer = %q, want done", res.Answer)
-	}
-	if !contains(toolResult, "no tool executor configured") {
-		t.Fatalf("tool result = %q, want missing-executor error", toolResult)
+	if requests != 0 {
+		t.Fatalf("provider requests = %d, want 0", requests)
 	}
 }
 
