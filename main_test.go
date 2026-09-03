@@ -115,25 +115,21 @@ func TestRenderDiagnosticsDocsGiveBenchmarkComparisonWorkflow(t *testing.T) {
 	}
 }
 
-func TestRenderDiagnosticsDocsExplainEvidenceWorkflows(t *testing.T) {
+func TestRenderDiagnosticsDocsDescribeSupportedWorkflows(t *testing.T) {
 	b, err := os.ReadFile("docs/render-diagnostics.md")
 	if err != nil {
 		t.Fatalf("read render diagnostics docs: %v", err)
 	}
 	doc := string(b)
 
-	for _, want := range []string{
-		"Performance symptoms",
-		"Visual correctness symptoms",
-		"go tool pprof -seconds 30",
-		"may contain transcript content",
-		"FrameSnapshotDir",
-		"RawFrameCaptureDir",
-		"RenderDiagnosticFrames",
-		"add or update a regression test before changing behavior",
-	} {
+	for _, want := range []string{"Performance symptoms", "go tool pprof -seconds 30"} {
 		if !strings.Contains(doc, want) {
-			t.Fatalf("render diagnostics docs lack workflow detail %q", want)
+			t.Fatalf("render diagnostics docs lack supported workflow detail %q", want)
+		}
+	}
+	for _, removed := range []string{"DiagnosticsConfig", "FrameSnapshotDir", "RawFrameCaptureDir", "RenderDiagnosticFrames"} {
+		if strings.Contains(doc, removed) {
+			t.Fatalf("render diagnostics docs still describe removed TUI diagnostic %q", removed)
 		}
 	}
 }
