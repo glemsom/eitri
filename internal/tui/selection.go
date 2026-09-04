@@ -26,9 +26,15 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 		line, col, ok := m.mouseToContent(msg.X, msg.Y)
 		if !ok {
 			m.tx.weaver = selectionWeaver{}
+			m.tx.pendingToolClick = false
 			return
 		}
 		m.tx.weaver.start(line, col)
+		if _, onCard := m.tx.onToolCard(line); onCard {
+			m.tx.pendingToolClick = true
+		} else {
+			m.tx.pendingToolClick = false
+		}
 	case tea.MouseMotionMsg:
 		if !m.tx.weaver.active {
 			return
@@ -41,6 +47,14 @@ func (m *Model) updateMouse(msg tea.MouseMsg) {
 	case tea.MouseReleaseMsg:
 		d := m.tx.weaver
 		m.tx.weaver = selectionWeaver{}
+		if m.tx.pendingToolClick && !d.moved {
+			if idx, ok := m.tx.onToolCard(d.anchorLine); ok {
+				m.tx.toggleToolEntry(idx)
+			}
+			m.tx.pendingToolClick = false
+			return
+		}
+		m.tx.pendingToolClick = false
 		if !d.active {
 			return
 		}

@@ -649,7 +649,7 @@ func TestDragSelect_wheelStillScrollsDuringDrag(t *testing.T) {
 	}
 }
 
-func TestDragSelect_plainClickDoesNotExpandToolEntry(t *testing.T) {
+func TestDragSelect_plainClickExpandsCollapsedToolEntry(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -681,8 +681,113 @@ func TestDragSelect_plainClickDoesNotExpandToolEntry(t *testing.T) {
 	}
 	m = mustUpdate(t, m, dragMsg("press", 2, headRow))
 	m = mustUpdate(t, m, dragMsg("release", 2, headRow))
+	if !strings.Contains(view(m), "full output line one") {
+		t.Errorf("plain click on collapsed tool card must expand the entry, got: %q", view(m))
+	}
+}
+
+func TestDragSelect_plainClickCollapsesExpandedToolEntry(t *testing.T) {
+	t.Parallel()
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+		Events: NewEventFeed(),
+		Config: config.Config{CoTCollapsedByDefault: false, ToolResultsCollapsedByDefault: false},
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "run it")
+	m = submitAndWait(t, m)
+	m = toolStart(t, m, "bash", `{"command":"go test ./..."}`)
+	m = toolResult(t, m, ToolResult{Name: "bash", Result: "full output line one\nfull output line two", Lines: 2})
+	view(m)
+
+	rows, top := historyContentRows(m)
+	if top != 0 {
+		t.Fatalf("test assumes offset 0, got %d", top)
+	}
+	headRow := -1
+	for i, r := range rows {
+		if strings.Contains(r, "🔧 bash") {
+			headRow = i
+			break
+		}
+	}
+	if headRow < 0 {
+		t.Fatalf("tool head row not found, got %q", rows)
+	}
+	if !strings.Contains(view(m), "full output line one") {
+		t.Fatalf("test assumption broken: entry must start expanded, got: %q", view(m))
+	}
+	m = mustUpdate(t, m, dragMsg("press", 2, headRow))
+	m = mustUpdate(t, m, dragMsg("release", 2, headRow))
 	if strings.Contains(view(m), "full output line one") {
-		t.Errorf("plain click must not expand the entry, got: %q", view(m))
+		t.Errorf("plain click on expanded tool card must collapse the entry, got: %q", view(m))
+	}
+}
+
+func TestDragSelect_dragOnToolCardStillCopies(t *testing.T) {
+	t.Parallel()
+	var copied string
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+		Events: NewEventFeed(),
+		Config: config.Config{CoTCollapsedByDefault: true, ToolResultsCollapsedByDefault: true},
+		WorkspacePath: "/tmp/acme",
+		Clipboard:     func(s string) error { copied = s; return nil },
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "run it")
+	m = submitAndWait(t, m)
+	m = toolStart(t, m, "bash", `{"command":"go test ./..."}`)
+	m = toolResult(t, m, ToolResult{Name: "bash", Result: "full output line one\nfull output line two", Lines: 2})
+	view(m)
+
+	rows, top := historyContentRows(m)
+	if top != 0 {
+		t.Fatalf("test assumes offset 0, got %d", top)
+	}
+	headRow := -1
+	for i, r := range rows {
+		if strings.Contains(r, "🔧 bash") {
+			headRow = i
+			break
+		}
+	}
+	if headRow < 0 {
+		t.Fatalf("tool head row not found, got %q", rows)
+	}
+	// First click expands the card.
+	m = mustUpdate(t, m, dragMsg("press", 2, headRow))
+	m = mustUpdate(t, m, dragMsg("release", 2, headRow))
+	if !strings.Contains(view(m), "full output line one") {
+		t.Fatalf("click must expand tool card first, got: %q", view(m))
 	}
 
+	rowsAfter, topAfter := historyContentRows(m)
+	if topAfter != 0 {
+		t.Fatalf("test assumes offset 0 after expand, got %d", topAfter)
+	}
+	resultRow := -1
+	resultCol := 0
+	for i, r := range rowsAfter {
+		if idx := strings.Index(r, "full output line one"); idx >= 0 {
+			resultRow = i
+			resultCol = lipgloss.Width(r[:idx])
+			break
+		}
+	}
+	if resultRow < 0 {
+		t.Fatalf("result row not found after expand, got rows: %q", rowsAfter)
+	}
+
+	// Now drag-select inside the expanded result.
+	m = mustUpdate(t, m, dragMsg("press", resultCol, resultRow))
+	m = mustUpdate(t, m, dragMsg("motion", resultCol+len("full output line one")-1, resultRow))
+	m = mustUpdate(t, m, dragMsg("release", resultCol+len("full output line one")-1, resultRow))
+	if copied != "full output line one" {
+		t.Errorf("drag-select on expanded tool card must copy text, got %q", copied)
+	}
 }

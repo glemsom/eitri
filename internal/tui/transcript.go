@@ -41,6 +41,7 @@ type Transcript struct {
 	layout            transcriptLayout
 	telemetry         *Telemetry
 	weaver            selectionWeaver
+	pendingToolClick   bool
 	liveMarkdownCache liveMarkdownCache
 
 	// busyPrefix caches the rendered committed-history prefix (every
@@ -825,6 +826,18 @@ func (t *Transcript) toggleToolEntry(idx int) {
 	}
 	t.layout.dirty = true // an entry expanded/collapsed changes its rendered rows
 	t.busyPrefixDirty = true
+}
+
+// onToolCard reports whether the given content line falls inside any tool
+// entry's rendered row range, regardless of whether that entry is expanded or
+// collapsed, and returns the entry index if so.
+func (t Transcript) onToolCard(line int) (idx int, ok bool) {
+	for _, r := range t.layout.rows {
+		if line >= r.start && line <= r.end {
+			return r.idx, true
+		}
+	}
+	return 0, false
 }
 
 // toolExpandedFor reports whether tool entry idx renders expanded under the
