@@ -74,10 +74,16 @@ Use pprof to find where time or allocation pressure is spent. To prove a perform
 Eitri records every session so you can review, replay, and search past work:
 
 ```sh
-eitri session list                            # list recorded sessions (GUID, time, cycles, model)
-eitri session show <guid> [--turn N]          # compact per-cycle summary
-eitri session talk <guid> [--turn N|N-M]      # full conversation as plain text
-eitri session grep <pattern> [guid|all]       # find cycles whose messages match
+eitri session list
+                           # list recorded sessions (GUID, time, cycles, model)
+eitri session show <guid> [--turn N] [--no-reasoning]
+                           # compact per-cycle summary; --turn N dumps that cycle's full JSON records
+eitri session talk <guid> [--turn N|N-M] [--from N] [--role user|assistant|tool|system] [--reasoning]
+                           # full conversation as plain text; shared request history is deduped
+                           # reasoning is stripped unless --reasoning
+eitri session grep <pattern> [guid|all] [-full]
+                           # find cycles whose messages match pattern, with snippets;
+                           # -full prints the complete matching field text
 ```
 
 Full detail lives in [`docs/sessions.md`](docs/sessions.md).
