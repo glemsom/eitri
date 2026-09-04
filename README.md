@@ -2,12 +2,14 @@
 
 **Eitri** is a self-hosted, single-binary AI coding agent for Linux. It runs entirely on your machine and your own model credentials — no vendor lock-in, no hosted agent service, nothing leaves your box except the requests you choose to send to your provider.
 
-## Why self-host?
+## Philosophy
 
-- **Your data stays yours.** Sessions, transcripts, and configuration live under `~/.eitri`. You control where they are and who can read them.
-- **One binary.** No runtime, no daemon, no container image — a single static Go binary you can drop anywhere.
-- **Your provider, your terms.** Point Eitri at any model or OpenAI-compatible endpoint, from a local model to a cloud provider.
+- **Smith it.** Minimal, precise strikes. Full substance, no filler. Prefer the simplest correct solution, focused edits over full rewrites, and preserving existing code style.
+- **Unix primitives first.** Compose command-line tools into simple pipelines. Scripts are for state and control flow; everything else is `bash`.
+- **Self-host or don't.** Eitri is a single static Go binary you drop anywhere. Sessions, transcripts, and configuration live under `~/.eitri`. You own them.
+- **Your provider, your terms.** Point Eitri at any model or OpenAI-compatible endpoint — local or cloud. No vendor lock-in.
 - **Sandboxed by default.** Eitri never runs unsandboxed: every execution is confined by bubblewrap.
+- **One prompt, exactly what it promises.** The agent prompt is fixed and written to match a declared dependency set. Eitri verifies every declared dependency at launch and refuses to start if anything is missing, so the agent never hallucinates a tool that isn't there.
 
 > Eitri's internal, agent-facing documentation lives in [`CONTEXT.md`](CONTEXT.md). This README is for humans.
 
