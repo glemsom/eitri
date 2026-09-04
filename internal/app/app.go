@@ -181,6 +181,9 @@ func Run(opts Options) error {
 	key := sess.GUID() // opt into the session-scoped prompt cache
 
 	if opts.Prompt == "" {
+		if _, err := e.ResolveCompaction(context.Background(), cfg.ContextOverflowRecovery); err != nil {
+			return fmt.Errorf("configure context overflow recovery: %w", err)
+		}
 		return runTUI(e, logged, cfg, reg, key, liveProvider, cfgPath, dir, skills, workspace, tempHost)
 	}
 
