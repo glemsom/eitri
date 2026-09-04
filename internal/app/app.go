@@ -160,6 +160,12 @@ func Run(opts Options) error {
 	if err != nil {
 		return err
 	}
+	if opts.Prompt == "" {
+		if err := tuiBootError(currentTUIEnv()); err != nil {
+			return err
+		}
+	}
+
 	p := opts.Provider
 	if p == nil {
 		var err error
@@ -178,9 +184,6 @@ func Run(opts Options) error {
 	key := sess.GUID() // opt into the session-scoped prompt cache
 
 	if opts.Prompt == "" {
-		if err := tuiBootError(currentTUIEnv()); err != nil {
-			return err
-		}
 		return runTUI(e, logged, cfg, reg, key, liveProvider, cfgPath, dir, skills, workspace, tempHost)
 	}
 
