@@ -144,6 +144,39 @@ func TestModel_SettingsSaveAppliesThinkingStateToLiveSession(t *testing.T) {
 	}
 }
 
+func TestModel_SettingsSaveRefreshesRightRail(t *testing.T) {
+	t.Parallel()
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+		Models: []string{"deepseek-v4-flash", "grok-2"},
+		Config: cfgFixture(),
+		Save:   func(c config.Config) error { return nil },
+		Rail:   NewRail("opencode-go", "deepseek-v4-flash", "high", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a"),
+	})
+	m = resize(t, m)
+	m = keypress(t, m, "ctrl+s")
+	m = keypress(t, m, "enter") // focus Model
+	m = keypress(t, m, "tab")   // deepseek-v4-flash -> grok-2
+	for i := fieldModel; i < fieldSave; i++ {
+		m = keypress(t, m, "enter")
+	}
+	m = keypress(t, m, "enter") // Save
+
+	if m.deps.Rail.provider != "opencode-go" || m.deps.Rail.model != "grok-2" {
+		t.Fatalf("rail = provider %q model %q after Settings save, want opencode-go / grok-2", m.deps.Rail.provider, m.deps.Rail.model)
+	}
+	m = keypress(t, m, "esc") // close Settings, rail visible again
+	content := plain(view(m))
+	if !strings.Contains(content, "grok-2") {
+		t.Fatalf("right rail does not show the saved model:\n%s", content)
+	}
+	if strings.Contains(content, "deepseek-v4-flash") {
+		t.Fatalf("right rail still shows the old model:\n%s", content)
+	}
+}
+
 func TestModel_SettingsSaveFailureDoesNotApplyLiveConfig(t *testing.T) {
 	t.Parallel()
 	applied := false

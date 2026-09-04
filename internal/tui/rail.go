@@ -9,6 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/constants"
 )
 
@@ -112,6 +113,20 @@ func keyColWidth(keyWidth int) int {
 		return 8
 	}
 	return keyWidth
+}
+
+// ApplyConfig refreshes the MODEL section from a fresh config, so a Settings
+// save shows the new provider/model/mode immediately instead of at the next
+// launch. Effort follows the boot-time rule: hidden while thinking is off.
+func (r *Rail) ApplyConfig(cfg config.Config) {
+	effort := cfg.ReasoningEffort
+	if !cfg.ThinkingEnabled {
+		effort = ""
+	}
+	r.provider = cfg.Provider
+	r.model = cfg.Model
+	r.effort = effort
+	r.thinking = cfg.ThinkingEnabled
 }
 
 // render returns the rail's rendered sections for tests and non-live callers.

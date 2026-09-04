@@ -734,6 +734,9 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tx.applySettings(*res.saved)
 			m.tx.reasoningEffort = res.saved.ReasoningEffort
 			m.runtime.SetThinkingEnabled(res.saved.ThinkingEnabled)
+			if m.deps.Rail != nil {
+				m.deps.Rail.ApplyConfig(*res.saved)
+			}
 		}
 	}
 	return m, res.cmd

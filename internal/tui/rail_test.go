@@ -7,11 +7,37 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/glemsom/eitri/internal/config"
 )
 
 func fakeSess(prompt string) func(context.Context, string, string) (TurnResult, error) {
 	return func(ctx context.Context, p string, _ string) (TurnResult, error) {
 		return TurnResult{Answer: "hi"}, nil
+	}
+}
+
+func TestRailApplyConfigRefreshesModelSection(t *testing.T) {
+	t.Parallel()
+	r := NewRail("opencode-go", "deepseek-v4-flash", "high", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
+	r.ApplyConfig(config.Config{Provider: "github-copilot", Model: "grok-2", ReasoningEffort: "low", ThinkingEnabled: false})
+	got := plain(r.renderModel(defaultTheme, 60))
+	for _, want := range []string{"github-copilot", "grok-2", "effort:n/a", "think:off"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("MODEL section after ApplyConfig %q missing %q", got, want)
+		}
+	}
+}
+
+func TestRailApplyConfigKeepsBootDefaults(t *testing.T) {
+	t.Parallel()
+	r := NewRail("opencode-go", "deepseek-v4-flash", "high", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
+	r.ApplyConfig(config.Config{Provider: "opencode-go", Model: "deepseek-v4-flash", ReasoningEffort: "max", ThinkingEnabled: true})
+	got := plain(r.renderModel(defaultTheme, 60))
+	for _, want := range []string{"opencode-go", "deepseek-v4-flash", "effort:max", "think:on"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("MODEL section after ApplyConfig %q missing %q", got, want)
+		}
 	}
 }
 
