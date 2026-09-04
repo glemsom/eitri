@@ -35,7 +35,7 @@ make build          # 1. build ./bin/eitri
 | --- | --- |
 | `eitri` | Launch the interactive TUI |
 | `eitri -b "<prompt>"` | Run once in batch mode and exit |
-| `eitri -v` | In batch mode, print the model's thinking/reasoning to stdout |
+| `eitri -b "<prompt>" -v` | Batch mode, plus print the model's thinking/reasoning to stdout |
 | `eitri -d` | Debug mode: write full HTTP traces to/from the provider |
 | `eitri --version` | Print the version and exit |
 
