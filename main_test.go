@@ -37,7 +37,7 @@ func TestCLISmoke(t *testing.T) {
 			t.Fatalf("eitri --help exit error = %v, output:\n%s", err, out)
 		}
 		// The usage text reflects the full dependency contract, not just bubblewrap.
-		for _, name := range []string{"bwrap", "bash", "rg", "curl", "lynx", "patch", "python3", "git", "xdg-open", "xdg-utils"} {
+		for _, name := range []string{"bwrap", "bash", "rg", "curl", "lynx", "patch", "python3", "git", "jq", "xdg-open", "xdg-utils"} {
 			if !strings.Contains(string(out), name) {
 				t.Fatalf("usage output %q does not name declared tool %q", out, name)
 			}
@@ -83,7 +83,7 @@ func TestCLISmoke(t *testing.T) {
 		}
 		// The refusal names every missing declared tool (bwrap..python3) with
 		// an install hint, not just the first miss.
-		for _, name := range []string{"bwrap", "bash", "rg", "curl", "lynx", "patch", "python3", "git", "xdg-open", "xdg-utils"} {
+		for _, name := range []string{"bwrap", "bash", "rg", "curl", "lynx", "patch", "python3", "git", "jq", "xdg-open", "xdg-utils"} {
 			if !strings.Contains(string(out), name) {
 				t.Fatalf("eitri without declared deps output %q does not name missing tool %q", out, name)
 			}

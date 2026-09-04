@@ -30,7 +30,7 @@ func declaredDependencyNames() []string {
 }
 
 func TestCheckDependenciesRequiresXDGOpen(t *testing.T) {
-	present := []string{"bwrap", "bash", "rg", "curl", "lynx", "patch", "python3", "git"}
+	present := []string{"bwrap", "bash", "rg", "curl", "lynx", "patch", "python3", "git", "jq"}
 
 	err := checkDependencies(lookup(present...))
 	if err == nil {
@@ -57,7 +57,7 @@ func TestCheckDependenciesAllPresent(t *testing.T) {
 
 func TestCheckDependenciesReportsEveryMissingTool(t *testing.T) {
 	present := []string{"bwrap", "bash", "rg", "curl"}
-	missing := []string{"lynx", "patch", "python3", "git", "xdg-open"}
+	missing := []string{"lynx", "patch", "python3", "git", "jq", "xdg-open"}
 
 	err := checkDependencies(lookup(present...))
 	if err == nil {

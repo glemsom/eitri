@@ -29,6 +29,7 @@ var declaredDependencies = []dependency{
 	{name: "patch", pkgName: "patch"},
 	{name: "python3", pkgName: "python3"},
 	{name: "git", pkgName: "git"},
+	{name: "jq", pkgName: "jq"},
 	{name: "xdg-open", pkgName: "xdg-utils"},
 }
 

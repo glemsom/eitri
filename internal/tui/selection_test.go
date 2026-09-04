@@ -733,8 +733,8 @@ func TestDragSelect_dragOnToolCardStillCopies(t *testing.T) {
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
-		Events: NewEventFeed(),
-		Config: config.Config{CoTCollapsedByDefault: true, ToolResultsCollapsedByDefault: true},
+		Events:        NewEventFeed(),
+		Config:        config.Config{CoTCollapsedByDefault: true, ToolResultsCollapsedByDefault: true},
 		WorkspacePath: "/tmp/acme",
 		Clipboard:     func(s string) error { copied = s; return nil },
 	})

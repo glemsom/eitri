@@ -16,9 +16,9 @@
 ```sh
 # Install the declared toolset (required; Eitri refuses to start without it,
 # because its agent prompt promises these tools unconditionally):
-#   Debian/Ubuntu: sudo apt install bubblewrap bash ripgrep curl lynx patch python3 git
-#   Fedora:        sudo dnf install bubblewrap bash ripgrep curl lynx patch python3 git
-#   Arch:          sudo pacman -S bubblewrap bash ripgrep curl lynx patch python3 git
+#   Debian/Ubuntu: sudo apt install bubblewrap bash ripgrep curl lynx patch python3 git jq xdg-utils
+#   Fedora:        sudo dnf install bubblewrap bash ripgrep curl lynx patch python3 git jq xdg-utils
+#   Arch:          sudo pacman -S bubblewrap bash ripgrep curl lynx patch python3 git jq xdg-utils
 
 make build          # 1. build ./bin/eitri
 ./bin/eitri         # 2. launch the interactive TUI
@@ -171,11 +171,11 @@ The `copilot` and `custom_openai` objects are managed by Eitri (via device-flow 
 - **Linux** (Eitri is a Linux agent).
 - **Declared toolset** (required; fatal at boot) — Eitri verifies every declared dependency at launch and refuses to start without it, because its agent prompt promises these tools unconditionally:
   - Hard substrate: `bwrap` (bubblewrap — Eitri never runs unsandboxed) and `bash`.
-  - Declared tools: `rg` (ripgrep), `curl`, `lynx`, `patch`, `python3`, `git`, `xdg-open` (`xdg-utils`, backing `open_in_browser`).
+  - Declared tools: `rg` (ripgrep), `curl`, `lynx`, `patch`, `python3`, `git`, `jq`, `xdg-open` (`xdg-utils`, backing `open_in_browser`).
   - Install hints (a missing tool aborts the launch naming every miss with its package):
-    - Debian/Ubuntu: `sudo apt install bubblewrap bash ripgrep curl lynx patch python3 git xdg-utils`
-    - Fedora: `sudo dnf install bubblewrap bash ripgrep curl lynx patch python3 git xdg-utils`
-    - Arch: `sudo pacman -S bubblewrap bash ripgrep curl lynx patch python3 git xdg-utils`
+    - Debian/Ubuntu: `sudo apt install bubblewrap bash ripgrep curl lynx patch python3 git jq xdg-utils`
+    - Fedora: `sudo dnf install bubblewrap bash ripgrep curl lynx patch python3 git jq xdg-utils`
+    - Arch: `sudo pacman -S bubblewrap bash ripgrep curl lynx patch python3 git jq xdg-utils`
 - **Base toolset** (assumed present) — the coreutils `bash` builds on: `grep`, `sed`, `awk`, `cat`, `nl`, `diff`; no boot check.
 
 ## Building

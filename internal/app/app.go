@@ -178,9 +178,6 @@ func Run(opts Options) error {
 	// Message-layer debug transcript: every request/response cycle the engine sees is mirrored to messages.jsonl.
 	logged := provider.NewLoggingProvider(liveProvider, sess.MessageLogSink())
 	e := engine.New(logged, sess)
-	if _, err := e.ResolveCompaction(context.Background(), cfg.ContextOverflowRecovery); err != nil {
-		return fmt.Errorf("configure context overflow recovery: %w", err)
-	}
 	key := sess.GUID() // opt into the session-scoped prompt cache
 
 	if opts.Prompt == "" {

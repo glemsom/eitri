@@ -21,7 +21,7 @@ The isolation boundary for shell commands: root read-only (including host `/tmp`
 _Avoid_: container, jail
 
 **Declared dependency / declared toolset**:
-The executable set Eitri verifies at boot and refuses to start without — the hard substrate (`bwrap`, `bash`) plus the declared tools (`rg`, `curl`, `lynx`, `patch`, `python3`, `git`, `xdg-open`) — because the single fixed prompt promises them unconditionally.
+The executable set Eitri verifies at boot and refuses to start without — the hard substrate (`bwrap`, `bash`) plus the declared tools (`rg`, `curl`, `lynx`, `patch`, `python3`, `git`, `jq`, `xdg-open`) — because the single fixed prompt promises them unconditionally.
 _Avoid_: requirement, prerequisite
 
 **Host-side tool**:
@@ -101,7 +101,7 @@ The terminal's support for the Kitty graphics protocol, resolved once at TUI sta
 _Avoid_: image support, graphics mode
 
 **Declared dependency**:
-A tool Eitri's single system prompt relies on unconditionally and therefore checks for at startup, refusing to run when missing. One of a fixed set (`rg`, `curl`, `lynx`, `patch`, `python3`, `git`, `xdg-open`, plus the `bwrap`/`bash` substrate); contrasted with a base tool that is assumed present.
+A tool Eitri's single system prompt relies on unconditionally and therefore checks for at startup, refusing to run when missing. One of a fixed set (`rg`, `curl`, `lynx`, `patch`, `python3`, `git`, `jq`, `xdg-open`, plus the `bwrap`/`bash` substrate); contrasted with a base tool that is assumed present.
 _Avoid_: supported tool, external tool, tool requirement
 
 **Base tool**:

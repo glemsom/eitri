@@ -20,13 +20,14 @@ jobs:
       # cage: without bubblewrap present they fail, they do not skip. The main
       # package smoke test also boots the real binary, and boot refuses to
       # start unless every declared dependency (bwrap, bash, rg, curl, lynx,
-      # patch, python3) is on PATH — so install the full declared toolset.
+      # patch, python3, git, jq, xdg-open) is on PATH — so install the full
+      # declared toolset.
       # Lift the unprivileged-user-namespace restriction some runner images
       # enable by default (the sysctl may be absent on others, hence `|| true`).
       - name: Install declared dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bubblewrap bash ripgrep curl lynx patch python3
+          sudo apt-get install -y bubblewrap bash ripgrep curl lynx patch python3 git jq xdg-utils
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
 
       - name: go vet

@@ -8,7 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// busyLine renders the in-progress working indicator: the animated braille spinner with the stage verb of the derived Phase (issues #363/#365) — Reasoning / Working / Answering — when motion is enabled, the static "… thinking" line otherwise.
+// busyLine is the in-progress working indicator: animated braille spinner + phase verb when motion is enabled, static "… thinking" otherwise.
 func busyLine(idx int, p Phase) string {
 	if !motionEnabled() || len(busySpinnerFrames) == 0 {
 		return "… thinking"
@@ -16,7 +16,7 @@ func busyLine(idx int, p Phase) string {
 	return string(busySpinnerFrames[idx%len(busySpinnerFrames)]) + " " + phaseVerb(p)
 }
 
-// forgeBusyLine renders the branded busy-panel copy: the same spinner cadence as busyLine, but with phase-specific smithing verbs.
+// forgeBusyLine is the branded busy-panel copy: same spinner cadence as busyLine, with phase-specific smithing verbs.
 func forgeBusyLine(idx int, p Phase) string {
 	if !motionEnabled() || len(busySpinnerFrames) == 0 {
 		return "… forging"
@@ -130,7 +130,7 @@ func tokenEstimate(s string) int {
 	return len([]rune(s)) / 4
 }
 
-// idleWelcome renders the empty-transcript welcome block: the brand mark in the accent hue plus faint keybinding hints, so the first launch reads as a designed surface.
+// idleWelcome is the empty-transcript welcome block: brand mark + keybinding hints.
 func idleWelcome(th Theme) string {
 	return th.headerStyle.Render(hr()) + "\n" +
 		th.headerStyle.Render(brandMark()+"  Eitri") + th.statusStyle.Render(g(" — ", " - ")+"your terminal coding agent") + "\n" +
@@ -138,7 +138,7 @@ func idleWelcome(th Theme) string {
 		th.statusStyle.Render("  "+keyHint()+" ctrl+s settings · /help for commands & keybindings") + "\n"
 }
 
-// promptView renders the interactive max-turns continuation prompt.
+// promptView is the interactive max-turns continuation prompt.
 func promptView(th Theme) string {
 	return th.headerStyle.Render("run paused at the max-turns cap") + "\n\n" +
 		"  Continue the run with more turns?\n" +
