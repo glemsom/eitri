@@ -285,6 +285,30 @@ func TestModel_newCommandResetsLiveStats(t *testing.T) {
 	}
 }
 
+func TestModel_newCommandClearsOldSessionHistory(t *testing.T) {
+	t.Parallel()
+	var cleared string
+	live := NewLiveSessionKey("old")
+	m := NewModelCfg(Dependencies{
+		Turn: func(_ context.Context, _ string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+		LiveKey:        live,
+		NewGUID:        func() string { return "fresh" },
+		SessionCleared: func(key string) { cleared = key },
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "/new")
+	m = keypress(t, m, "enter")
+
+	if cleared != "old" {
+		t.Fatalf("SessionCleared = %q, want old session key %q", cleared, "old")
+	}
+	if live.Get() != "fresh" {
+		t.Fatalf("`/new` rekeyed session to %q, want fresh", live.Get())
+	}
+}
+
 func TestModel_newCommandBlockedWhileBusy(t *testing.T) {
 	t.Parallel()
 	live := NewLiveSessionKey("old")

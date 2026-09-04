@@ -435,3 +435,16 @@ func (e *Engine) storeSessionHistory(sessionKey string, messages []provider.Mess
 	defer e.histMu.Unlock()
 	e.histories[sessionKey] = persisted
 }
+
+// ClearSessionHistory drops the stored history for sessionKey, freeing the
+// memory the engine accumulated for that session. It is called when the
+// caller knows the session is being abandoned (e.g. a `/new` re-mint) so
+// repeated fresh sessions do not leak prior context indefinitely.
+func (e *Engine) ClearSessionHistory(sessionKey string) {
+	if sessionKey == "" {
+		return
+	}
+	e.histMu.Lock()
+	defer e.histMu.Unlock()
+	delete(e.histories, sessionKey)
+}

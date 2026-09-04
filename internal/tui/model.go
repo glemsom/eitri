@@ -124,6 +124,10 @@ type Dependencies struct {
 	// NewGUID mints a fresh session GUID string for `/new`; nil falls back to the
 	// session package's random hex mint.
 	NewGUID func() string
+	// SessionCleared is called with the old session key when `/new` re-mints,
+	// so the caller can drop any cached state tied to that session (e.g.
+	// the engine's in-memory session history).
+	SessionCleared func(string)
 }
 
 type feedbackKind int
@@ -576,6 +580,13 @@ func (m Model) updatePrompt(msgi tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // the older GUID's on-disk session and engine history stay orphaned (auditable,
 // no pruning).
 func (m *Model) mintNewSession() {
+	oldKey := ""
+	if m.liveKey != nil {
+		oldKey = m.liveKey.Get()
+	}
+	if m.deps.SessionCleared != nil {
+		m.deps.SessionCleared(oldKey)
+	}
 	if m.liveKey == nil {
 		m.liveKey = NewLiveSessionKey(m.newGUID())
 	} else {

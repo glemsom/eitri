@@ -268,3 +268,22 @@ func hasMessage(msgs []provider.Message, role provider.Role, content string) boo
 	}
 	return false
 }
+
+func TestClearSessionHistory(t *testing.T) {
+	t.Parallel()
+	e := New(provider.NewFake("../provider/testdata/hello.sse"), &mockTranscript{})
+
+	e.storeSessionHistory("old", []provider.Message{{Role: provider.RoleUser, Content: "hi"}})
+	if len(e.sessionHistory("old")) == 0 {
+		t.Fatal("setup failed to store history")
+	}
+
+	e.ClearSessionHistory("old")
+
+	if got := e.sessionHistory("old"); len(got) != 0 {
+		t.Fatalf("ClearSessionHistory left %d messages, want 0", len(got))
+	}
+	if got := e.sessionHistory("new"); len(got) != 0 {
+		t.Fatalf("ClearSessionHistory affected other key: %d messages", len(got))
+	}
+}
