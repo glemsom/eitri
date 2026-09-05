@@ -54,9 +54,15 @@ type Registry struct {
 	sandbox   *Sandbox
 	bash      bashBackend
 	workspace string
+	yolo      bool
 	tools     map[string]Tool
 	catalog   *Catalog
 }
+
+// Yolo reports whether the registry serves an unsandboxed (--yolo-unsafe)
+// session. Calls outside the engine (e.g. the app layer) read the mode from
+// here because the registry is built once per process from the launch flag.
+func (r *Registry) Yolo() bool { return r.yolo }
 
 // NewRegistry builds the registry for one session from Deps.
 func NewRegistry(d Deps) (*Registry, error) {
@@ -65,6 +71,7 @@ func NewRegistry(d Deps) (*Registry, error) {
 	}
 	r := &Registry{
 		workspace: filepath.Clean(d.Workspace),
+		yolo:      d.Yolo,
 		tools:     map[string]Tool{},
 	}
 	var err error

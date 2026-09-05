@@ -60,6 +60,22 @@ func TestCompactionProtectsTransientSkillActivationAfterConversationHistory(t *t
 	t.Fatalf("activation after conversation history was evicted: %#v", got)
 }
 
+func TestPartitionRecognizesYoloPromptHead(t *testing.T) {
+	persona := provider.Message{Role: provider.RoleSystem, Content: SystemPromptYoloContent()}
+	workspace := provider.Message{Role: provider.RoleSystem, Content: "## Working directory\n/workspace"}
+	repo := provider.Message{Role: provider.RoleSystem, Content: "## Repository instructions (AGENTS.md)\nfollow them"}
+	conversation := []provider.Message{{Role: provider.RoleAssistant, Content: "answer"}, {Role: provider.RoleUser, Content: "next"}}
+	messages := append([]provider.Message{persona, workspace, repo}, conversation...)
+
+	got := partitionMessages(messages)
+	if want := []provider.Message{persona, workspace, repo}; !reflect.DeepEqual(got.StableHead, want) {
+		t.Fatalf("StableHead = %#v, want %#v", got.StableHead, want)
+	}
+	if !reflect.DeepEqual(got.History, conversation) {
+		t.Fatalf("History = %#v, want %#v", got.History, conversation)
+	}
+}
+
 func TestStoreSessionHistoryUsesSharedPartitionAndPreservesOrder(t *testing.T) {
 	e := New(provider.NewFake(""), &mockTranscript{})
 	persona := provider.Message{Role: provider.RoleSystem, Content: SystemPromptContent()}
