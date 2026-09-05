@@ -9,7 +9,7 @@ import (
 	"github.com/glemsom/eitri/internal/app"
 )
 
-const usage = `eitri — a self-hosted, single-binary AI coding agent for Linux.
+const usage = `eitri - AI Assistant for Linux.
 
 Usage:
 

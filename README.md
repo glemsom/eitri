@@ -1,6 +1,6 @@
 # Eitri
 
-**Eitri** is a self-hosted, single-binary AI coding agent for Linux. It runs entirely on your machine and your own model credentials — no vendor lock-in, no hosted agent service, nothing leaves your box except the requests you choose to send to your provider.
+Named after the Norse blacksmith who forged Mjölnir. Eitri is an AI assistant that runs on your own machine — it reads, writes, and runs code in your workspace, guided by natural language conversations.
 
 ## Philosophy
 
