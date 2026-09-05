@@ -98,9 +98,10 @@ func TestLiveTurnToolCache_widthIsKeyed(t *testing.T) {
 
 // TestLiveTurnToolCache_dropsOnMutation locks that a completed entry whose
 // result arrives (Apply Result) invalidates its memo so the filled render is
-// produced, and a new entry (Apply Start) invalidates the whole map because it
-// shifts every later index.
-func TestLiveTurnToolCache_dropsOnMutation(t *testing.T) {
+// produced, and a new entry (Apply Start) does not touch earlier siblings'
+// cached rows, because toolLog entries are append-only and their indexes are
+// therefore stable.
+func TestLiveTurnToolCache_completionInvalidatesStartRetains(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 	l := &toolLog{}
@@ -123,10 +124,21 @@ func TestLiveTurnToolCache_dropsOnMutation(t *testing.T) {
 	if _, ok := l.cached(0, 120, false, false); !ok {
 		t.Fatal("completed entry should now be cached")
 	}
-	// Appending a new entry must drop the whole map (indexes shift).
+	// Appending a new entry must not evict a completed sibling's cached row:
+	// indexes are stable (append-only) and the fresh entry is incomplete, so it
+	// needs no invalidation and earlier cards stay in the memo across the turn.
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"x"}`}})
-	if len(l.entryCache.m) != 0 {
-		t.Fatalf("a new entry must clear the cache, got %d entries", len(l.entryCache.m))
+	if len(l.entries) != 2 {
+		t.Fatalf("start must append one entry, got %d", len(l.entries))
+	}
+	if l.entries[1].complete {
+		t.Fatal("a fresh start must be incomplete")
+	}
+	if _, ok := l.cached(0, 120, false, false); !ok {
+		t.Fatal("appending a new entry must not evict a completed sibling's cached render")
+	}
+	if got := l.renderEntry(0, 120, th, false, false, false); !strings.Contains(got, "2 line") || !strings.Contains(got, "ok") {
+		t.Fatalf("completed sibling should still render from cache, got %q", got)
 	}
 }
 
@@ -137,3 +149,39 @@ var (
 )
 
 func parseUTC(s string) time.Time { v, _ := time.Parse(time.RFC3339, s); return v }
+
+// BenchmarkToolEntryRender_CachedAcrossStarts isolates the completed-entry render
+// cache (toolLog.renderEntry) itself, stripping the whole-page rebuild/copy that
+// BenchmarkLiveTurnTimeline is dominated by. A live turn's committed tool cards
+// re-render each busy frame; entryCache must make that cost flat in the number
+// of already-completed tools instead of re-paying lipgloss Style.Render per card
+// per frame. With the memo surviving each new Apply(Start) (entries are
+// append-only so indexes are stable), a frame that re-renders N cached cards
+// stays near the N=1 cost.
+//
+// Run: go test ./internal/tui -run xxx -bench BenchmarkToolEntryRender -benchmem
+func BenchmarkToolEntryRender_CachedAcrossStarts(b *testing.B) {
+	b.Setenv("EITRI_ASCII_GLYPHS", "1")
+	th := themeFor(config.DefaultTheme)
+	for _, n := range []int{1, 200} {
+		b.Run("tools_"+strconv.Itoa(n), func(b *testing.B) {
+			l := &toolLog{}
+			l.SetAnchor(0)
+			for i := 0; i < n; i++ {
+				l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"run cmd"}`}})
+				l.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "ok", Lines: 1}})
+			}
+			// Seed the memo once: completed cards are immutable between frames.
+			for i := 0; i < n; i++ {
+				_ = l.renderEntry(i, 120, th, false, false, false)
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				for j := 0; j < n; j++ {
+					_ = l.renderEntry(j, 120, th, false, false, true)
+				}
+			}
+		})
+	}
+}

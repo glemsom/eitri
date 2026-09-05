@@ -95,8 +95,11 @@ func (l *toolLog) SetStart(i int, t time.Time) {
 // Apply folds one tool-call observation into the log: a Start appends a fresh incomplete entry anchored to the current turn; a Result pairs back to the most recent not-yet-complete entry for that tool name and fills in its result/compression/line-delta metadata and marks it complete.
 func (l *toolLog) Apply(u ToolUpdate) {
 	if u.Start != nil {
-		l.initCache()
-		l.entryCache.m = nil // a new entry shifts every later index; drop the whole memo
+		// A Start appends a fresh incomplete entry; the completed-entry memo is
+		// left alone because toolLog entries are append-only, so earlier indexes
+		// are stable and finished card rows stay cached across the turn. A fresh
+		// entry is incomplete and renderEntry never caches incomplete entries, so
+		// it needs no invalidation of its own.
 		l.entries = append(l.entries, toolEntry{
 			name:      u.Start.Name,
 			args:      u.Start.Args,
