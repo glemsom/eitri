@@ -28,11 +28,17 @@ func (b *bashTool) Name() string {
 	return "bash"
 }
 
+// bashOutputContract is the shared, mode-independent description tail describing
+// the bounded, ANSI-stripped, compressed output every bash run returns. It is
+// identical across the sandboxed and unsandboxed tool definitions so the model
+// sees the same recovery contract either way.
+const bashOutputContract = "Returns the combined stream (stdout then stderr; ANSI escape sequences stripped, repeated consecutive lines collapsed). Output passes through a deterministic line compressor: heavy listings are truncated with an explicit \"+N more\" marker — never silent — so re-running the command is the recovery path if you need the tail. Same command yields the same compressed form."
+
 func (b *bashTool) Description() string {
 	if b.unsandboxed {
-		return "Execute a shell command directly as your user on the host — no sandbox or cage is constructed, so the command runs with your full host permissions. Returns the combined stream (stdout then stderr; ANSI escape sequences stripped, repeated consecutive lines collapsed). Output passes through a deterministic line compressor: heavy listings are truncated with an explicit \"+N more\" marker — never silent — so re-running the command is the recovery path if you need the tail. Same command yields the same compressed form."
+		return "Execute a shell command directly as your user on the host — no sandbox or cage is constructed, so the command runs with your full host permissions. " + bashOutputContract
 	}
-	return "Execute a shell command in a sandbox. Returns the combined stream (stdout then stderr; ANSI escape sequences stripped, repeated consecutive lines collapsed). Output passes through a deterministic line compressor: heavy listings are truncated with an explicit \"+N more\" marker — never silent — so re-running the command is the recovery path if you need the tail. Same command yields the same compressed form."
+	return "Execute a shell command in a sandbox. " + bashOutputContract
 }
 
 func (b *bashTool) Schema() map[string]any {

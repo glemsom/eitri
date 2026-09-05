@@ -32,7 +32,7 @@ Flags:
   -v             in batch mode, print the model's thinking/reasoning to stdout
   -d             enable debug mode (writes full HTTP traces to/from the provider)
   --yolo-unsafe  run unsandboxed: bash executes directly as your user, no
-                 bubblewrap cage (and bubblewrap is not required to start)
+                 bubblewrap cage
   --pprof <addr> enable localhost pprof diagnostics (example: 127.0.0.1:6060)
   --pprof-mutex  include mutex profile evidence when --pprof is enabled
   --pprof-block  include block profile evidence when --pprof is enabled
