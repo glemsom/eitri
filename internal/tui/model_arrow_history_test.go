@@ -47,13 +47,13 @@ func TestArrowRecall_upDownCycle(t *testing.T) {
 	m := arrowHistoryModel(t)
 	m = pushHistory(t, m, "a", "b")
 
-	m = keypress(t, m, "up") // b
-	m = keypress(t, m, "up") // a
+	m = keypress(t, m, "up")
+	m = keypress(t, m, "up")
 	m = keypress(t, m, "up") // a again: recalling the oldest stays put
 	if v := m.composer.Value(); v != "a" {
 		t.Fatalf("further up beyond oldest should keep oldest, got %q", v)
 	}
-	m = keypress(t, m, "down") // back to b
+	m = keypress(t, m, "down")
 	if v := m.composer.Value(); v != "b" {
 		t.Fatalf("down from oldest should move forward to the next newer prompt, got %q", v)
 	}
@@ -190,7 +190,7 @@ func TestArrowRecall_editingEndsRecall(t *testing.T) {
 	t.Parallel()
 	m := arrowHistoryModel(t)
 	m = pushHistory(t, m, "older", "newer")
-	m = keypress(t, m, "up") // "newer"
+	m = keypress(t, m, "up")
 	if v := m.composer.Value(); v != "newer" {
 		t.Fatalf("up should recall newest, got %q", v)
 	}
@@ -205,7 +205,7 @@ func TestArrowRecall_escapeEndsRecall(t *testing.T) {
 	t.Parallel()
 	m := arrowHistoryModel(t)
 	m = pushHistory(t, m, "older", "newer")
-	m = keypress(t, m, "up") // "newer"
+	m = keypress(t, m, "up")
 	if v := m.composer.Value(); v != "newer" {
 		t.Fatalf("up should recall newest, got %q", v)
 	}
