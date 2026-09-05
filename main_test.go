@@ -135,6 +135,46 @@ func TestRenderDiagnosticsDocsDescribeSupportedWorkflows(t *testing.T) {
 	}
 }
 
+func TestYoloUnsafeDocumentationHonest(t *testing.T) {
+	readme, err := os.ReadFile("README.md")
+	if err != nil {
+		t.Fatalf("read README: %v", err)
+	}
+	doc := string(readme)
+
+	// The README describes --yolo-unsafe and no longer claims Eitri never runs
+	// unsandboxed, so no stale unqualified claim survives anywhere human-facing.
+	if strings.Contains(doc, "never runs unsandboxed") {
+		t.Fatalf("README still carries an unqualified %q claim", "never runs unsandboxed")
+	}
+	// It names the flag and its meaning (direct host execution, no cage).
+	for _, want := range []string{"--yolo-unsafe", "bubblewrap cage", "directly as your user"} {
+		if !strings.Contains(doc, want) {
+			t.Fatalf("README does not describe --yolo-unsafe meaning %q", want)
+		}
+	}
+	// It states the risk: full host permissions, and that Eitri does not
+	// represent itself as contained in this mode.
+	for _, want := range []string{"full host permissions", "does not represent itself as contained"} {
+		if !strings.Contains(doc, want) {
+			t.Fatalf("README does not describe the --yolo-unsafe risk %q", want)
+		}
+	}
+
+	ctx, err := os.ReadFile("CONTEXT.md")
+	if err != nil {
+		t.Fatalf("read CONTEXT.md: %v", err)
+	}
+	glossary := string(ctx)
+	// The domain glossary captures the yolo-mode vocabulary and the
+	// sandbox/yolo distinction.
+	for _, want := range []string{"Yolo mode", "unsandboxed", "sandbox"} {
+		if !strings.Contains(glossary, want) {
+			t.Fatalf("CONTEXT glossary does not capture yolo vocabulary %q", want)
+		}
+	}
+}
+
 func TestCLIBatchWithStubProvider(t *testing.T) {
 	fixture, err := os.ReadFile("internal/provider/testdata/hello.sse")
 	if err != nil {

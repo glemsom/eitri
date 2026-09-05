@@ -8,7 +8,7 @@
 - **Unix primitives first.** Compose command-line tools into simple pipelines. Scripts are for state and control flow; everything else is `bash`.
 - **Self-host or don't.** Eitri is a single static Go binary you drop anywhere. Sessions, transcripts, and configuration live under `~/.eitri`. You own them.
 - **Your provider, your terms.** Point Eitri at any model or OpenAI-compatible endpoint — local or cloud. No vendor lock-in.
-- **Sandboxed by default.** Every bash execution is confined by bubblewrap unless you opt out with `--yolo-unsafe`.
+- **Sandboxed by default.** Every bash execution is confined by bubblewrap unless you opt out with `--yolo-unsafe`, which runs commands directly as your user with full host permissions — see [Sandboxing and `--yolo-unsafe`](#sandboxing-and---yolo-unsafe).
 - **One prompt, exactly what it promises.** The agent prompt is fixed and written to match a declared dependency set. Eitri verifies every declared dependency at launch and refuses to start if anything is missing, so the agent never hallucinates a tool that isn't there.
 
 > Eitri's internal, agent-facing documentation lives in [`CONTEXT.md`](CONTEXT.md). This README is for humans.
@@ -33,8 +33,20 @@ make build          # 1. build ./bin/eitri
 | `eitri -b "<prompt>"` | Run once in batch mode and exit |
 | `eitri -b "<prompt>" -v` | Batch mode, plus print the model's thinking/reasoning to stdout |
 | `eitri -d` | Debug mode: write full HTTP traces to/from the provider |
-| `eitri --yolo-unsafe` | Run unsandboxed: `bash` executes directly as your user, no bubblewrap cage |
+| `eitri --yolo-unsafe` | Run unsandboxed: `bash` executes directly as your user with full host permissions, no bubblewrap cage |
 | `eitri --version` | Print the version and exit |
+
+### Sandboxing and `--yolo-unsafe`
+
+By default every `bash` command Eitri runs is confined by a **bubblewrap cage**: root is read-only, the workspace and session temp are writable, and the command runs in its own PID, `/dev`, and `/proc` namespace. That is the sandboxed-by-default guarantee.
+
+`--yolo-unsafe` is a launch-time opt-out that drops that guarantee — intended for trusted, single-user machines where the cage's isolation and its `bwrap` dependency get in the way:
+
+- `bash` executes **directly as your user** with your **full host permissions** — there is **no bubblewrap cage**.
+- `bwrap` is no longer required at boot; Eitri skips it in this mode and does not suggest installing it.
+- The agent's system prompt and `bash` tool definition are the honest unsandboxed variants: they never claim a terminating sandbox, because no cage runs.
+
+**Do not use `--yolo-unsafe` to contain an untrusted workload or an untrusted prompt.** In this mode Eitri **does not represent itself as contained to the agent**: a command it runs can read, write, or delete anything your user can, reach the network as your user, and otherwise act with your identity. Only run unsandboxed on a machine where that exposure is acceptable.
 
 ### Repository instructions (`AGENTS.md`)
 
