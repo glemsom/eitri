@@ -23,9 +23,8 @@ type Mention struct {
 	partial   string
 
 	// manifest caches the workspace's full path tree (dirs with a trailing "/")
-	// for the current mention session. It is populated once, asynchronously off
-	// the main loop, and reused while the dropdown stays open so each keystroke
-	// only re-filters in memory instead of hitting disk.
+	// for the mention session: populated once asynchronously off the main loop
+	// and re-filtered in memory per keystroke, so the dropdown never hits disk.
 	manifest []string
 	walking  bool // a background manifest walk is in flight
 }

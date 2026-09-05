@@ -44,26 +44,18 @@ type Transcript struct {
 	pendingToolClick  bool
 	liveMarkdownCache liveMarkdownCache
 
-	// busyPrefix caches the rendered committed-history prefix (every
-	// message before the running turn's prompt) so busy-path per-delta frames re-render
-	// only the live turn's flow instead of the whole transcript. It is invalidated on
-	// every committed-history change but never on a stream delta (syncStreamSnapshots), so
-	// the expensive prefix render is amortized across a streaming burst; the live tail is
-	// small and rebuilt each delta.
+	// busyPrefix caches the rendered committed history so a streaming burst
+	// re-renders only the live tail; invalidated on any committed-history
+	// change, never on a stream delta.
 	busyPrefix      string
 	busyPrefixDirty bool
-	// busyPrefixTail caches the trailing followWindowLines of busyPrefix,
-	// recomputed alongside it (via lastNLines, itself bounded to
-	// followWindowLines rather than scanning busyPrefix's full length). The
-	// busy+follow fast path in renderHistoryViewport composes this with the
-	// live tail instead of the full committed prefix, so a CoT/answer stream
-	// with the reader following along never touches history outside this
-	// bounded window.
+	// busyPrefixTail caches the trailing followWindowLines of busyPrefix so
+	// the busy+follow fast path renders only a bounded window, never the full
+	// committed prefix; recomputed alongside the prefix via lastNLines.
 	busyPrefixTail string
-	// viewportStale is true when the busy+follow fast path skipped feeding the
-	// persisted histViewport this frame: the viewport's lines/YOffset are then
-	// stale (from before the fast-path burst started) and must be resynced via
-	// ensureViewportSynced before anything reads or scrolls it.
+	// viewportStale marks the persisted histViewport stale after a busy+follow
+	// fast-path frame skipped it, so ensureViewportSynced re-feeds it before
+	// anything reads or scrolls.
 	viewportStale bool
 	width         int
 	height        int
@@ -74,8 +66,8 @@ type Transcript struct {
 
 	rail *Rail
 	// The styled rail is stable across mouse and stream frames unless its text or
-	// dimensions change. Caching it avoids rebuilding Kitty placeholder graphemes;
-	// BenchmarkPausedStreamViewWithFace measured 936 -> 187 allocs per frame.
+	// dimensions change; caching it avoids rebuilding Kitty placeholder graphemes
+	// (BenchmarkPausedStreamViewWithFace measured 936 -> 187 allocs per frame).
 	railRenderInput  string
 	railRenderOutput string
 	railRenderHeight int
@@ -86,12 +78,20 @@ type toolRowRange struct {
 	start, end, idx int
 }
 
-// msgRowRange maps a rendered history row span to the message that owns it, so the transcript exposes a row->message index alongside the row->tool-entry index. start/end are content-line indexes in the viewport's split space (the same space mouseToContent maps into); idx indexes the Transcript-owned messages.
+// msgRowRange maps a content-line span to the owning message, exposing a
+// row->message index beside the row->tool-entry index; start/end are indexes in
+// the viewport's split space (where mouseToContent maps), idx indexes the
+// Transcript-owned messages.
 type msgRowRange struct {
 	start, end, idx int
 }
 
-// transcriptLayout is the persistent layout cache for the history region : one batched renderHistory pass captures the row->tool-entry mapping (rows), the row->message mapping (msgs), both in content-line coordinates, and the ANSI-stripped history rows (plain, the drag-select copy space) so the mouse hit-test reads the recorded index instead of re-deriving layout on every pointer event. dirty is true when a transcript-affecting change makes the cached index stale; the lazy hit-test rebuilds exactly once per invalidate.
+// transcriptLayout is the persistent layout cache for the history region: one
+// batched renderHistory pass records the row->tool-entry mapping (rows), the
+// row->message mapping (msgs), and the ANSI-stripped rows (plain, the
+// drag-select copy space) so the mouse hit-test reads recorded indexes instead
+// of re-deriving layout per pointer event. dirty marks a transcript-affecting
+// change; the lazy hit-test rebuilds exactly once per invalidate.
 type transcriptLayout struct {
 	rows                []toolRowRange // row->tool-entry index in content-line coordinates
 	msgs                []msgRowRange  // row->message index in content-line coordinates
@@ -103,16 +103,15 @@ type transcriptLayout struct {
 	builds              int
 }
 
-// viewMode is the transcript's global expansion mode: the default (respects
-// the config defaults plus per-block state), the e / ctrl+e expand-all mode,
-// or the E collapse-all-to-hints mode.
+// viewMode is the transcript's global expansion mode: the default (config
+// defaults plus per-block state), the e/ctrl+e expand-all mode, or the E
+// collapse-all-to-hints mode.
 type viewMode int
 
-// followWindowLines bounds the busyPrefixTail cache and the busy+follow fast
-// path's rendered window: generous headroom over any real terminal height, so
-// lastNLines never has to fall back to scanning past it. Bounding this to a
-// constant (rather than the live viewport height) means the cache built in
-// renderBusyPrefix does not need rebuilding on every resize tick.
+// followWindowLines bounds the busyPrefixTail cache and the busy+follow
+// rendered window at a fixed constant — generous headroom over any real
+// terminal height — so lastNLines never falls back to scanning past it and
+// resize ticks never rebuild the prefix cache.
 const followWindowLines = 4000
 
 const (
@@ -121,10 +120,10 @@ const (
 	viewCollapseAll
 )
 
-// Reset clears all turn material so the transcript returns to the empty
-// the tool log, the live session, and the focused block; configuration, the
-// prompt-history ring, and the settings overlay all live outside the
-// transcript and are untouched.
+// Reset clears all turn material — committed messages, the tool log, the live
+// session, and the focused block — so the transcript returns to the empty
+// state. Configuration, the prompt-history ring, and the settings overlay live
+// outside the transcript and are untouched.
 func (t *Transcript) Reset() {
 	t.messages = nil
 	t.log = toolLog{}
@@ -164,7 +163,10 @@ func (t Transcript) viewMode() viewMode {
 // railVisible reports whether the right context rail should render now.
 func (t Transcript) railVisible() bool { return t.rail != nil }
 
-// transcriptWidth returns the column width the transcript pane should use for wrapping: the terminal width (or a sane default before a resize) minus the 2-col gutter, and minus the rail + separator when the rail is visible, so the history re-wraps to leave the rail room .
+// transcriptWidth returns the column width the transcript pane should use for
+// wrapping: the terminal width (or a sane default before a resize) minus the
+// 2-col gutter, and minus the rail + separator when the rail is visible, so
+// the history re-wraps to leave the rail room.
 func (t Transcript) transcriptWidth() int {
 	base := t.width
 	if base == 0 {
@@ -272,7 +274,10 @@ func (t *Transcript) appendUserMsg(content string) {
 	t.busyPrefixDirty = true
 }
 
-// setRailWidth stores the rail width and marks the shared layout cache dirty, so the next render pass re-wraps the history at the new transcript width and re-records the row layout . scroll/follow survive because the persisted viewport keeps its position; it is only re-sized, never re-created.
+// setRailWidth stores the rail width and marks the shared layout cache dirty,
+// so the next render pass re-wraps the history at the new transcript width and
+// re-records the row layout. Scroll/follow survive because the persisted
+// viewport keeps its position; it is only re-sized, never re-created.
 func (t *Transcript) setRailWidth(w int) {
 	t.railWidth = w
 	t.layout.dirty = true
@@ -283,7 +288,8 @@ func (t *Transcript) setRailWidth(w int) {
 func (t *Transcript) renderPane(band string) string {
 	bandStr := band
 
-	// The scroll region renders through the native bubbletea/viewport component (T1 alt-screen pivot, ), which owns the history clip + follow.
+	// The scroll region renders through the native bubbletea/viewport component,
+	// which owns the history clip + follow.
 	histRegion := t.renderHistoryPane(lineCount(bandStr))
 	if histRegion != "" && !strings.HasSuffix(histRegion, "\n") {
 		histRegion += "\n"
@@ -292,13 +298,11 @@ func (t *Transcript) renderPane(band string) string {
 }
 
 // renderHistoryPane renders the scroll region for this frame, choosing between
-// bounded busy paths and the plain content-then-viewport path.
-// renderPaneContent's concatenation of the cached committed prefix with the
-// live tail is itself an O(len(history)) copy — affordable once per commit,
-// unaffordable once per streamed token. Following readers take the tail-window
-// fast path. Readers who wheel-pause during a stream keep the already-synced
-// viewport unchanged across later deltas, so their reading position holds
-// without re-feeding the full transcript every token.
+// the busy paths and the plain content-then-viewport path. The busy paths
+// re-render only the live tail — a full prefix+tail concatenation is an
+// O(len(history)) copy, affordable once per commit, not once per streamed
+// token — and readers who wheel-pause keep the already-synced viewport, so
+// their reading position holds without re-feeding the full transcript.
 func (t *Transcript) renderHistoryPane(reserved int) string {
 	vh := t.scrollRegionHeight(reserved)
 	if vh > 0 && t.busy && t.histFollow && !t.weaver.active {
@@ -318,12 +322,10 @@ func (t *Transcript) renderHistoryPane(reserved int) string {
 	return t.renderHistoryViewport(t.renderPaneContent(), reserved)
 }
 
-// renderHistory renders the scroll region: the agent history that the user reads and scrolls.
 // turnFlowEvents returns the event sequence that renders as the flat flow of
-// the turn owned by user message i, and whether that turn renders as a flow.
-// A turn becomes a flow the moment its event log has content: the live
-// timeline while it is the running turn, the committed log on its assistant
-// message once it completes.
+// the turn owned by user message i, and whether that turn renders as a flow:
+// the live timeline while it is the running turn, the committed log on its
+// assistant message once it completes.
 func (t Transcript) turnFlowEvents(i int) ([]TimelineEvent, bool) {
 	if i < 0 || i >= len(t.messages) || t.messages[i].role != "you" {
 		return nil, false
@@ -558,7 +560,8 @@ func (t *Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg mes
 	})
 }
 
-// renderHistoryViewport returns the Height-clamped scroll region: the rendered history content limited to the rows the fixed bottom band (the only non-reserved region) does not occupy.
+// renderHistoryViewport returns the history content clamped to the scroll
+// region: the rows the fixed bottom band does not occupy.
 func (t *Transcript) renderHistoryViewport(content string, reserved int) string {
 	vh := t.scrollRegionHeight(reserved)
 	if vh < 0 {
@@ -580,12 +583,10 @@ func (t *Transcript) renderHistoryViewport(content string, reserved int) string 
 	return t.histViewport.View()
 }
 
-// syncViewportContent feeds content into the persisted viewport when it is
-// out of date: a prior busy+follow fast-path frame left it stale, the
-// rendered bytes changed, the layout cache was rebuilt since the last sync, or
-// the viewport has never been populated. Callers that already know they need
-// a sync (ensureViewportSynced) still route through here so the dirty checks
-// and viewportStale/viewportSyncedBuild bookkeeping stay in one place.
+// syncViewportContent feeds content into the persisted viewport when it is out
+// of date — stale from a fast-path frame, changed bytes, a layout rebuild, or
+// never populated. Every sync routes through here so the dirty checks and
+// viewportStale/viewportSyncedBuild bookkeeping stay in one place.
 func (t *Transcript) syncViewportContent(content string) {
 	if !t.viewportStale && content == t.layout.rendered && t.layout.viewportSyncedBuild == t.layout.builds && (content == "" || t.histViewport.TotalLineCount() != 0) {
 		return
@@ -595,13 +596,10 @@ func (t *Transcript) syncViewportContent(content string) {
 	t.viewportStale = false
 }
 
-// ensureViewportSynced forces the persisted viewport to hold the true full
-// content, positioned at the bottom, before a scroll or click action reads or
-// mutates it: the busy+follow fast path leaves it stale (still showing
-// whatever it held before the fast path engaged), so acting on it directly —
-// PgUp, Home, wheel-up, or a click's row/col hit-test — would scroll or map
-// coordinates within stale, possibly much shorter, content. It is a no-op once
-// the viewport is already synced.
+// ensureViewportSynced forces the persisted viewport to the true full content
+// at the bottom before a scroll or click action reads or mutates it: the
+// busy+follow fast path leaves it stale, and acting on stale, possibly much
+// shorter content would scroll or map coordinates wrongly. A no-op once synced.
 func (t *Transcript) ensureViewportSynced() {
 	if !t.viewportStale {
 		return
@@ -745,12 +743,10 @@ func (t *Transcript) mouseWheelRows() int {
 }
 
 // scrollRegion assembles the history-region seam from the persisted viewport's
-// current size and scroll position plus the plain content line count, so render,
+// size and scroll position plus the plain content line count, so render,
 // click-drag selection, and wheel scroll route through one region source and
-// coordinates and on-screen rows cannot drift apart. It resyncs the viewport
-// first (ensureViewportSynced), a no-op unless the busy+follow fast path left
-// it stale, so every hit-test/scroll consumer reads a viewport that matches
-// the true content.
+// coordinates cannot drift apart. It resyncs the viewport first (a no-op
+// unless the busy+follow fast path left it stale).
 func (t *Transcript) scrollRegion() scrollRegion {
 	t.ensureViewportSynced()
 	vp := t.histViewport
@@ -778,7 +774,10 @@ func (t *Transcript) ensureLayout() {
 	}
 }
 
-// recordLayout performs the one batched layout pass behind the persistent cache : it renders the history into a scratch builder, captures the toolRows and msgRows out-params, and derives the ANSI-stripped plain rows from the same builder, storing both indexes and clearing dirty.
+// recordLayout performs the one batched layout pass behind the persistent
+// cache: it renders the history into a scratch builder, captures the toolRows
+// and msgRows out-params, and derives the ANSI-stripped plain rows from the
+// same builder, storing both indexes and clearing dirty.
 func (t *Transcript) recordLayout() {
 	l := &t.layout
 	var hist strings.Builder
@@ -975,8 +974,7 @@ func (t Transcript) collapsibleBlocks() []collapsibleBlock {
 				// A live turn's flow coalesces contiguous reasoning deltas into one
 				// fragment per tool-delimited run (so token-size SSE deltas never
 				// paint a card per token), and the focus owns one block per such
-				// run in emission order — fragments on both sides of a tool entry
-				// emits none; its blocks stay unfocusable.
+				// run in emission order.
 				if m.thinkingRequested {
 					for k := range reasoningFragments(t.flowEventsFor(m)) {
 						blocks = append(blocks, collapsibleBlock{kind: blockReasoning, msgIdx: j, fragIdx: k})
@@ -1064,16 +1062,10 @@ func (t *Transcript) toggleFocused() {
 }
 
 // focusedBlockIs reports whether the block identified by kind/msgIdx/toolIdx/
-// fragIdx is the one under the focus cursor, so the renderer can mark it. This
-// runs once per rendered block (reasoning header, tool entry, answer) — every
-// delta of a busy turn calls it again — so it short-circuits on the common
-// case first: no block focused (the user never pressed Tab) needs no scan at
-// all, since t.focused() always answers !ok when the cursor is off regardless
-// of the block list. Skipping the collapsibleBlocks() rescan here is what
-// keeps a CoT/answer stream's per-token frame cost independent of how many
-// prior turns sit in history; without it, every delta re-walked the entire
-// committed message log through collapsibleBlocks() just to learn no block was
-// focused.
+// fragIdx is the one under the focus cursor, so the renderer can mark it. It
+// runs once per rendered block per delta and short-circuits on the common
+// no-block-focused case before scanning, keeping a streaming turn's per-token
+// frame cost independent of how many prior turns sit in history.
 func (t Transcript) focusedBlockIs(kind blockKind, msgIdx, toolIdx, fragIdx int) bool {
 	if !t.focus.on {
 		return false
@@ -1084,15 +1076,9 @@ func (t Transcript) focusedBlockIs(kind blockKind, msgIdx, toolIdx, fragIdx int)
 
 // thinkingExpandedForBlock is the free-function form of the whole-turn
 // reasoning-block expansion decision, read through the ExpansionState seam by
-// both the Transcript and the FlowRenderer. It builds the explicit config bundle
-// from the render-time mode and CoT-collapsed-by-default flag and asks the seam
-// for the whole-block decision without mutating any stored state, folding in the
-// live-stream auto-expand (a streaming reasoning block stays open so the user
-// watches chain-of-thought arrive, yielding to a pinned force-collapse or the
-// hide-every-body collapse-all mode). A pinned
-// whole-block force (the migrated thinkingCollapsed / thinkingExpanded flags now
-// live on the seam keyed on reasoningWholeID) always wins, then the global modes,
-// then the collapsed-by-default flag.
+// both the Transcript and the FlowRenderer: a pinned whole-block force wins,
+// then the global modes, then the collapsed-by-default flag; a streaming block
+// auto-expands unless force-collapsed or in collapse-all mode.
 func thinkingExpandedForBlock(msg message, cfg expansionConfig) bool {
 	if msg.streaming && msg.reasoning != "" && cfg.mode != viewCollapseAll {
 		// a live streamed block auto-expands unless pinned force-collapsed, so
@@ -1117,12 +1103,9 @@ func thinkingExpandedForFrag(msg message, fragIdx int, cfg expansionConfig) bool
 }
 
 // thinkingExpandedForFragment returns whether the fragIdx-th reasoning fragment
-// of msg renders expanded: a per-fragment force wins over the whole-block logic
-// and the live auto-expand, and a fragment without a force follows the
-// whole-block decision. A force is a per-block override, so it beats the global
-// modes exactly as before (Enter on a focused block collapses it even in
-// expand-all mode); the modes take over only once the forces are cleared on mode
-// entry.
+// of msg renders expanded: a per-fragment force wins, else the fragment follows
+// the whole-block decision. Forces beat the global modes (Enter on a focused
+// fragment collapses it even in expand-all mode) until cleared on mode entry.
 func (t Transcript) thinkingExpandedForFragment(msg message, fragIdx int) bool {
 	return thinkingExpandedForFrag(msg, fragIdx, t.expansionConfig())
 }

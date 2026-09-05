@@ -249,7 +249,12 @@ func newLightDaltonizedTheme() Theme {
 	)
 }
 
-// themeFor maps a config theme name to its chrome palette: the Markdown render theme selection also selects the TUI chrome palette, so choosing a theme re-skins the whole surface, not just the Markdown body. "dracula", "tokyo-night", "pink" and "light" select their curated palettes; "auto" resolves to light or dark by the terminal background, mirroring the renderer's own auto resolution; "notty" keeps the default palette deliberately (the TUI never runs under notty — the boot guard refuses non-interactive contexts); an unknown value falls back to default — exactly the renderer's fallback behavior, so the chrome and Markdown never disagree about a theme.
+// themeFor maps a config theme name to its chrome palette, re-skinning the
+// whole surface with the same theme the Markdown renderer applied. "auto"
+// follows the terminal background; any other unknown name falls back to
+// default — mirroring the renderer's fallback so the chrome and Markdown never
+// disagree. notty needs no special case: the TUI never runs there, the boot
+// guard refuses non-interactive contexts.
 func themeFor(name string) Theme {
 	if name == "auto" {
 		return themeFor(autoTheme())
