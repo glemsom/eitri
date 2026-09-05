@@ -17,7 +17,8 @@ import (
 	"github.com/glemsom/eitri/internal/session"
 )
 
-// defaultPromptHistoryCap is how many submitted prompts the Model's in-memory
+// defaultPromptHistoryCap caps how many submitted prompts the Model's
+// in-memory prompt-history ring retains.
 const defaultPromptHistoryCap = 100
 
 // TurnResult reports one completed agent turn: the final answer snapshot, its
@@ -37,11 +38,12 @@ type message struct {
 	streaming         bool            // true while this assistant reply is still growing from the answer stream
 	thinkingRequested bool
 	// expansion owns the reasoning block's expansion forces on the ExpansionState
-	// migrated thinkingExpanded / thinkingCollapsed flags) plus a per-fragment
-	// force for each interleaved fragment on a turn whose chain-of-thought
-	// order index. It replaces the scattered thinkingExpanded / thinkingCollapsed
-	// / fragmentForces leaf flags; the open/collapsed decision and every toggle
-	// read and write through the seam instead.
+	// seam: the whole-block force keyed on reasoningWholeID (the migrated
+	// thinkingExpanded / thinkingCollapsed flags) plus a per-fragment force for
+	// each interleaved reasoning fragment, keyed by its emission order index. It
+	// replaces the scattered thinkingExpanded / thinkingCollapsed / fragmentForces
+	// leaf flags; every expansion decision and toggle reads and writes through the
+	// seam instead.
 	expansion ExpansionState
 	stopped   bool
 }
@@ -115,11 +117,14 @@ type Dependencies struct {
 	ThinkingSuppression func() bool
 	Clipboard           func(text string) error
 	OSC52Out            io.Writer
-	// HistoryPath is the path of the prompt-history file to persist submitted
+	// HistoryPath is the path of the prompt-history file submitted prompts
+	// persist to (a sibling of config.json in the data directory); empty leaves
+	// the ring in-memory only.
 	HistoryPath string
-	// LiveKey is the shared mutable session key the engine-turn seam and the rail
-	// turn opens a clean engine session history while the old GUID's on-disk
-	// session stays orphaned and auditable.
+	// LiveKey is the shared mutable session key the engine-turn seam and the
+	// rail read per turn; `/new` mints a fresh GUID onto it so the next turn
+	// opens a clean engine session history while the old GUID's on-disk session
+	// stays orphaned and auditable.
 	LiveKey *LiveSessionKey
 	// NewGUID mints a fresh session GUID string for `/new`; nil falls back to the
 	// session package's random hex mint.
@@ -183,20 +188,21 @@ type Model struct {
 
 	clipboard func(text string) error
 
-	// history is the Model-owned in-memory ring of submitted user prompts
-	// reads from and survives a `/new` because it lives on the Model, not the
-	// transcript or session.
+	// history is the Model-owned in-memory ring of submitted user prompts that
+	// arrow-key recall reads from; it survives a `/new` because it lives on the
+	// Model, not the transcript or session.
 	history *PromptHistory
 
 	// histIdx is the arrow-recall cursor into the history ring, or -1 while no
 	// prompt is being recalled. histDraft pins the composer draft that recall
-	// displaced (the node the `down` key returns to), or the empty string when
+	// displaced (the node `down` returns to), or the empty string when recall
+	// started from an empty draft.
 	histIdx   int
 	histDraft string
 }
 
 // newModelHistory builds the Model's prompt-history ring: file-backed when a
-// in-memory ring.
+// HistoryPath is wired, else a plain in-memory ring.
 func newModelHistory(path string) *PromptHistory {
 	if path == "" {
 		return NewPromptHistory(defaultPromptHistoryCap)
@@ -263,7 +269,8 @@ func NewModelCfg(d Dependencies) Model {
 	return m
 }
 
-// newHistoryViewport builds the persisted history scroll component (T1 alt-screen pivot, ) as a plain bubbletea/viewport value.
+// newHistoryViewport builds the persisted history scroll component as a plain
+// bubbletea/viewport value.
 func newHistoryViewport() viewport.Model {
 	v := viewport.New()
 	v.MouseWheelEnabled = false
@@ -571,7 +578,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// updatePrompt handles a keypress on the engine's max-turns continuation
+// updatePrompt handles a keypress while a continuation prompt is pending.
 func (m Model) updatePrompt(msgi tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msgi.String() {
 	case "y", "Y", "enter":
@@ -685,12 +692,11 @@ func (m *Model) startTurn(prompt string, payload string) tea.Cmd {
 	return cmd
 }
 
-// handleArrowRecall implements readline-style prompt recall on the composer
-// the draft only while the caret rests on the top (up) or bottom (down) line;
-// elsewhere the key falls through to the textarea caret motion, so in-draft
-// navigation and the shift variants are untouched. Recall is suppressed while
-// a turn streams and while any completion surface is open; a recalled
-// `/skill ...` line stays inert until Enter submits it through the slash path.
+// handleArrowRecall implements readline-style prompt recall: `up`/`down` move
+// a prior/following prompt into the draft only while the caret rests on the
+// top/bottom line, else the key falls through to the textarea caret motion.
+// Recall is suppressed while a turn streams or a completion surface is open,
+// and a recalled `/skill ...` line stays inert until Enter submits it.
 func (m Model) handleArrowRecall(dir int) (Model, bool) {
 	if !m.canRecall() {
 		return m, false
