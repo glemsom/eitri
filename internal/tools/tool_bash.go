@@ -1,0 +1,79 @@
+package tools
+
+import (
+	"context"
+	"strings"
+
+	"github.com/glemsom/eitri/internal/compress"
+)
+
+// bashBackend is the execution boundary behind the bash tool: either the bwrap
+// sandbox or the unsandboxed direct runner selected by the --yolo-unsafe flag.
+// Both honour the same environment contract (workspace cwd, session temp as
+// TMPDIR) and return a bounded, ANSI-stripped, compressed output.
+type bashBackend interface {
+	Run(ctx context.Context, cmd string) (*Output, error)
+	setTempHost(tempHost string)
+}
+
+// bashTool runs a shell command through the selected backend (bwrap sandbox by
+// default; direct host execution in an unsandboxed --yolo-unsafe session), with
+// host network, returning the combined stdout+stderr (token-efficient single stream).
+type bashTool struct {
+	backend     bashBackend
+	unsandboxed bool
+}
+
+func (b *bashTool) Name() string {
+	return "bash"
+}
+
+// bashOutputContract is the shared, mode-independent description tail describing
+// the bounded, ANSI-stripped, compressed output every bash run returns. It is
+// identical across the sandboxed and unsandboxed tool definitions so the model
+// sees the same recovery contract either way.
+const bashOutputContract = "Returns the combined stream (stdout then stderr; ANSI escape sequences stripped, repeated consecutive lines collapsed). Output passes through a deterministic line compressor: heavy listings are truncated with an explicit \"+N more\" marker — never silent — so re-running the command is the recovery path if you need the tail. Same command yields the same compressed form."
+
+func (b *bashTool) Description() string {
+	if b.unsandboxed {
+		return "Execute a shell command directly as your user on the host — no sandbox or cage is constructed, so the command runs with your full host permissions. " + bashOutputContract
+	}
+	return "Execute a shell command in a sandbox. " + bashOutputContract
+}
+
+func (b *bashTool) Schema() map[string]any {
+	return strictSchema(map[string]any{
+		"command": map[string]any{
+			"type":        "string",
+			"description": "The shell command to run, executed by /bin/bash -c.",
+		},
+	}, []string{"command"})
+}
+
+func (b *bashTool) Run(ctx context.Context, args map[string]any) (ToolResult, error) {
+	cmd, err := strArg(args, "command")
+	if err != nil {
+		return ToolResult{}, err
+	}
+	o, err := b.backend.Run(ctx, cmd)
+	if err != nil {
+		if o == nil {
+			return ToolResult{}, err
+		}
+		return ToolResult{Text: o.Combined()}, err
+	}
+	text, compressed, dropped := compress.CompressResult(o.Combined())
+	return ToolResult{Text: text, Compressed: compressed, Dropped: dropped}, nil
+}
+
+// Combined returns stdout then stderr joined, prioritizing stdout for token efficiency while keeping stderr visible.
+func (o *Output) Combined() string {
+	switch {
+	case o.Stdout != "" && o.Stderr != "":
+		return strings.TrimSuffix(o.Stdout, "\n") + "\n" + o.Stderr
+	case o.Stderr != "":
+		return o.Stderr
+	default:
+		return o.Stdout
+	}
+}

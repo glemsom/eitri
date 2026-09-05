@@ -1,0 +1,139 @@
+package tui
+
+import tea "charm.land/bubbletea/v2"
+
+// TurnRuntime owns one agent turn's live event acceptance: the current run
+// ID, stale-event rejection, and draining/waiting on the live merged event
+// feed. It wraps the existing TurnSession and Fold modules, which for now
+// still own turn start/stop/commit and stream/tool projection respectively;
+// later seams move that behaviour behind TurnRuntime too.
+type TurnRuntime struct {
+	session   *TurnSession
+	fold      *Fold
+	events    *EventFeed
+	liveRunID int
+}
+
+// NewTurnRuntime builds a runtime bound to the given turn session and live
+// merged event feed (nil when no engine event stream is wired). The transcript
+// projection helper is internal to the runtime seam.
+func NewTurnRuntime(session *TurnSession, events *EventFeed) *TurnRuntime {
+	return &TurnRuntime{session: session, fold: NewFold(session), events: events, liveRunID: -1}
+}
+
+// HasEvents reports whether a live merged event feed is wired.
+func (rt *TurnRuntime) HasEvents() bool { return rt.events != nil }
+
+// Begin arms a fresh run ID, drains any stale events left over from a prior
+// turn, and starts the session's turn; when a live event feed is wired the
+// returned command also starts the spinner so the busy indicator animates.
+func (rt *TurnRuntime) Begin(tx *Transcript, prompt, payload string) tea.Cmd {
+	rt.liveRunID = -1
+	if rt.events != nil {
+		rt.events.Drain()
+	}
+	cmd := rt.session.Begin(tx, prompt, payload)
+	if rt.events != nil {
+		return tea.Batch(cmd, spinnerTick())
+	}
+	return cmd
+}
+
+// OnTurnStart records the run ID for a turn's engine-reported start; only
+// events matching this run ID are accepted until the next Begin/OnTurnStart.
+func (rt *TurnRuntime) OnTurnStart(runID int) { rt.liveRunID = runID }
+
+// Accept reports whether a live event belongs to the current run: direct
+// events with RunID == 0 (tests and package-local callers) are always
+// accepted, and engine-sourced events must match the current run ID.
+func (rt *TurnRuntime) Accept(u Event) bool {
+	if u.RunID == 0 {
+		return true // tests and package-local callers can deliver direct events.
+	}
+	return rt.liveRunID == u.RunID
+}
+
+// Wait returns the command that blocks for the next merged event, or nil
+// when no event feed is wired.
+func (rt *TurnRuntime) Wait() tea.Cmd {
+	if rt.events == nil {
+		return nil
+	}
+	return eventWait(rt.events)
+}
+
+// Commit reconciles one turn completion into the transcript through the
+// session; Model routes turnDoneMsg here instead of calling TurnSession
+// directly.
+func (rt *TurnRuntime) Commit(tx *Transcript, msg turnDoneMsg) (stopped bool, err error) {
+	return rt.session.Commit(tx, msg)
+}
+
+// Stop cancels the in-flight turn through the session; Model routes
+// non-skill stops here instead of calling TurnSession directly.
+func (rt *TurnRuntime) Stop() {
+	rt.session.Stop()
+}
+
+// SetThinkingEnabled sets the thinking-enabled flag used when the turn
+// creates messages.
+func (rt *TurnRuntime) SetThinkingEnabled(v bool) { rt.session.SetThinkingEnabled(v) }
+
+// ThinkingEnabled reports the thinking-enabled flag used when the turn
+// creates messages.
+func (rt *TurnRuntime) ThinkingEnabled() bool { return rt.session.ThinkingEnabled() }
+
+// LiveTimeline exposes the in-progress turn's arrival-ordered event log for
+// read-only rendering.
+func (rt *TurnRuntime) LiveTimeline() []TimelineEvent { return rt.session.LiveTimeline() }
+
+// DrainReady applies every additional live event already queued on the feed
+// (non-blocking), so a fast-arriving burst of small deltas (a real reasoning
+// provider often streams one token per SSE event) does not force one
+// render per delta: a render is the expensive step (it re-renders the live
+// turn's markdown from scratch), so while one render is in flight the feed's
+// buffered channel accumulates a backlog, and applying that whole backlog
+// before the next render batches the work instead of paying its cost once per
+// token. Order is preserved: events are still applied one at a time, in
+// arrival order, through the same Accept/Observe path a single event would
+// take.
+func (rt *TurnRuntime) DrainReady(tx *Transcript) {
+	if rt.events == nil {
+		return
+	}
+	for {
+		u, ok := rt.events.TryNext()
+		if !ok {
+			return
+		}
+		if u.TurnStart {
+			rt.OnTurnStart(u.RunID)
+			continue
+		}
+		if rt.Accept(u) {
+			rt.Observe(tx, u)
+		}
+	}
+}
+
+// Observe projects one live event onto the transcript through the Fold:
+// stream deltas grow the streaming assistant message, and tool observations
+// land in the tool log and transcript event log. Stream deltas arriving
+// while no turn runs are dropped, matching the pre-timeline stream
+// behavior. Tool starts arm the busy pulse when thinking is off and motion
+// is enabled, so a thinking-off turn still shows visible progress. Observe
+// never returns a command today; the return type matches the turn runtime's
+// external shape so callers do not need to change if projection later needs
+// to trigger one.
+func (rt *TurnRuntime) Observe(tx *Transcript, u Event) tea.Cmd {
+	if u.Stream != nil && tx.busy {
+		rt.fold.Stream(tx, u.Stream.Kind, u.Stream.Delta)
+	}
+	if u.Tool != nil {
+		rt.fold.Tool(tx, *u.Tool)
+		if u.Tool.Start != nil && !rt.session.ThinkingEnabled() && motionEnabled() {
+			tx.busyPulse = 3
+		}
+	}
+	return nil
+}

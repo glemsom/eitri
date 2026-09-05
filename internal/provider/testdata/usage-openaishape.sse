@@ -1,0 +1,5 @@
+data: {"id":"chatcmpl-7","object":"chat.completion.chunk","model":"deepseek-v4-flash","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-7","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"ack"},"finish_reason":"stop"}],"usage":{"prompt_tokens":100,"completion_tokens":2,"prompt_tokens_details":{"cached_tokens":80}}}
+
+data: [DONE]

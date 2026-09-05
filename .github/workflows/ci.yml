@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      # The batch/app/engine tests execute real commands through the bwrap
+      # cage: without bubblewrap present they fail, they do not skip. The main
+      # package smoke test also boots the real binary, and boot refuses to
+      # start unless every declared dependency (bwrap, bash, rg, curl, lynx,
+      # patch, python3, git, jq, xdg-open) is on PATH — so install the full
+      # declared toolset.
+      # Lift the unprivileged-user-namespace restriction some runner images
+      # enable by default (the sysctl may be absent on others, hence `|| true`).
+      - name: Install declared dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap bash ripgrep curl lynx patch python3 git jq xdg-utils
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Race-enabled tests
+        run: go test ./... -race -count=1
+
+      - name: Coverage
+        run: |
+          go test ./... -coverprofile=cover.out
+          go tool cover -func=cover.out
