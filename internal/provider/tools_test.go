@@ -50,6 +50,21 @@ func TestParseEventAccumulatesToolCall(t *testing.T) {
 	}
 }
 
+func TestToolMessageMarshalsEmptyContent(t *testing.T) {
+	t.Parallel()
+	b, err := json.Marshal(Message{Role: RoleTool, ToolCallID: "call_9", Content: ""})
+	if err != nil {
+		t.Fatalf("marshal error = %v", err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(b, &parsed); err != nil {
+		t.Fatalf("unmarshal error = %v", err)
+	}
+	if _, ok := parsed["content"]; !ok {
+		t.Fatalf("tool message with empty content missing 'content' field: %s", b)
+	}
+}
+
 func TestToolMessageMarshalsWithToolCallID(t *testing.T) {
 	t.Parallel()
 	m := Message{Role: RoleTool, ToolCallID: "call_9", Content: "ok"}

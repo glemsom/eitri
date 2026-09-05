@@ -77,11 +77,15 @@ type Message struct {
 	CacheControl     *CacheControl
 }
 
-// MarshalJSON serializes a Message with role-aware reasoning handling: the `reasoning_content` field is emitted unconditionally on assistant messages (even when empty — DeepSeek's hard 400-avoidance) and omitted on every other role.
+// MarshalJSON serializes a Message with role-aware reasoning handling: the `reasoning_content` field is emitted unconditionally on assistant messages (even when empty — DeepSeek's hard 400-avoidance) and omitted on every other role. `content` is emitted for tool messages even when empty, because the Chat Completions API requires it there.
 func (m Message) MarshalJSON() ([]byte, error) {
+	var content *string
+	if m.Content != "" || m.Role == RoleTool {
+		content = &m.Content
+	}
 	wire := messageWire{
 		Role:       m.Role,
-		Content:    m.Content,
+		Content:    content,
 		ToolCallID: m.ToolCallID,
 		ToolCalls:  m.ToolCalls,
 	}
@@ -98,7 +102,7 @@ func (m Message) MarshalJSON() ([]byte, error) {
 // messageWire is the deterministic field-ordered serialization shape for a Message.
 type messageWire struct {
 	Role             Role          `json:"role"`
-	Content          string        `json:"content,omitempty"`
+	Content          *string       `json:"content,omitempty"`
 	ToolCallID       string        `json:"tool_call_id,omitempty"`
 	ToolCalls        []ToolCall    `json:"tool_calls,omitempty"`
 	ReasoningContent *string       `json:"reasoning_content,omitempty"`
