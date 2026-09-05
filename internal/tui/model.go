@@ -458,12 +458,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.tx.focusNext() // empty composer: Tab cycles the block focus
 				return m, nil
 			}
+			if m.tx.busy {
+				return m, nil // busy: no literal tab insert into the hidden draft
+			}
 			// Non-slash draft: fall through to the textarea, which handles the tab.
 		case "ctrl+x":
 			m.adjustRailWidth(-2)
 			return m, nil
 		case "ctrl+z":
 			m.adjustRailWidth(+2)
+			return m, nil
+		}
+		// While a turn streams the composer sits behind the forge panel with no
+		// caret, so editing it would type into an invisible draft that resurfaces
+		// once the turn commits — swallow composer-mutating keys.
+		if m.tx.busy {
 			return m, nil
 		}
 		// Any key not consumed above edits the composer directly, which ends an
