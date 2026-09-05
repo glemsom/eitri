@@ -176,7 +176,7 @@ func (m *Model) syncComposerRail() {
 func (m Model) renderBand(b *strings.Builder) {
 	var inner strings.Builder
 	if m.tx.busy {
-		body := forgeBusyLine(m.tx.spinner, m.tx.phase()) + " · " + m.tx.theme.statusStyle.Render(m.forgeDetailLine()) + "\n" + m.tx.theme.statusStyle.Render("Hold steady — composer locked during forging")
+		body := forgeBusyLine(m.tx.spinner, m.tx.phase()) + " · " + m.tx.theme.statusStyle.Render("Hold steady — composer locked during forging")
 		style := lipgloss.NewStyle().Foreground(dimmed(m.tx.theme.accent, 0.45))
 		inner.WriteString(renderTitledPanel(m.forgeTitle(), m.tx.bandWidth(), style, body))
 	} else {
@@ -292,14 +292,6 @@ func forgeElapsed(m Model) string {
 		return ""
 	}
 	return " · " + formatElapsed(time.Since(m.tx.busyStartedAt)) + " elapsed"
-}
-
-func (m Model) forgeDetailLine() string {
-	parts := []string{forgePhaseDetail(m.tx.phase())}
-	if e, ok := m.tx.activeTool(); ok {
-		parts = append(parts, "running "+e.name)
-	}
-	return strings.Join(parts, " · ")
 }
 
 func (m Model) composerHint() string {
