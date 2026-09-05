@@ -140,7 +140,7 @@ func Run(opts Options) error {
 	if lookPath == nil {
 		lookPath = exec.LookPath
 	}
-	if err := checkDependencies(lookPath); err != nil {
+	if err := checkDependencies(lookPath, opts.Yolo); err != nil {
 		return err
 	}
 

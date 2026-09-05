@@ -122,6 +122,48 @@ func TestRunBatchRefusesWhenXDGOpenMissing(t *testing.T) {
 	}
 }
 
+func TestRunBatchYoloStartsWithoutBwrapOnPath(t *testing.T) {
+	missingBwrap := func(name string) (string, error) {
+		if name == "bwrap" {
+			return "", errors.New("executable not found: bwrap")
+		}
+		return okLookPath(name)
+	}
+
+	var out bytes.Buffer
+	err := Run(Options{
+		DataDir:  filepath.Join(t.TempDir(), ".eitri"),
+		LookPath: missingBwrap,
+		Prompt:   "Say hello",
+		Stdout:   &out,
+		Provider: provider.NewFake("../provider/testdata/hello.sse"),
+		Yolo:     true,
+	})
+	if err != nil {
+		t.Fatalf("Run(yolo, no bwrap on PATH) error = %v, want nil", err)
+	}
+}
+
+func TestRunBatchDefaultRefusesWithoutBwrapOnPath(t *testing.T) {
+	missingBwrap := func(name string) (string, error) {
+		if name == "bwrap" {
+			return "", errors.New("executable not found: bwrap")
+		}
+		return okLookPath(name)
+	}
+
+	err := Run(Options{
+		DataDir:  filepath.Join(t.TempDir(), ".eitri"),
+		LookPath: missingBwrap,
+		Prompt:   "Say hello",
+		Stdout:   &bytes.Buffer{},
+		Provider: provider.NewFake("../provider/testdata/hello.sse"),
+	})
+	if !errors.Is(err, ErrMissingDependencies) {
+		t.Fatalf("Run(default, no bwrap on PATH) error = %v, want ErrMissingDependencies", err)
+	}
+}
+
 func TestRunBatchWritesTranscript(t *testing.T) {
 	dir := t.TempDir()
 	dataDir := filepath.Join(dir, ".eitri")

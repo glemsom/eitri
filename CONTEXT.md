@@ -25,7 +25,7 @@ A shell program assumed present on any host that runs Eitri and therefore never 
 _Avoid_: core utility, builtin
 
 **Declared dependency / declared toolset**
-The executables Eitri verifies at boot and refuses to start without — the hard substrate (`bwrap`, `bash`) plus the declared tools (`rg`, `curl`, `lynx`, `patch`, `python3`, `git`, `jq`, `xdg-open`) — because the single fixed prompt promises them unconditionally. The one boot-time check reports every miss (with per-distro install hints) and exits non-zero.
+The executables Eitri verifies at boot and refuses to start without — the hard substrate (`bwrap`, `bash`) plus the declared tools (`rg`, `curl`, `lynx`, `patch`, `python3`, `git`, `jq`, `xdg-open`) — because the single fixed prompt promises them unconditionally. The one boot-time check reports every miss (with per-distro install hints) and exits non-zero. An unsandboxed (`--yolo-unsafe`) session exempts the sandbox substrate (`bwrap`), whose backend it bypasses, and never suggests installing bubblewrap.
 _Avoid_: requirement, prerequisite, supported tool, external tool, dependency probe, preflight
 
 ## Agent session

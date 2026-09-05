@@ -14,14 +14,16 @@ import (
 
 // dependency is one declared executable and the distro package that provides
 // it; the package name can differ from the executable name (bwrap is shipped
-// as bubblewrap, rg as ripgrep).
+// as bubblewrap, rg as ripgrep). yoloExempt marks a substrate that the
+// unsandboxed (--yolo-unsafe) backend bypasses, so it is not required then.
 type dependency struct {
-	name    string
-	pkgName string
+	name       string
+	pkgName    string
+	yoloExempt bool
 }
 
 var declaredDependencies = []dependency{
-	{name: "bwrap", pkgName: "bubblewrap"},
+	{name: "bwrap", pkgName: "bubblewrap", yoloExempt: true},
 	{name: "bash", pkgName: "bash"},
 	{name: "rg", pkgName: "ripgrep"},
 	{name: "curl", pkgName: "curl"},
@@ -87,10 +89,14 @@ func (e *DependencyError) Unwrap() error { return ErrMissingDependencies }
 
 // checkDependencies resolves every declared dependency through the injectable
 // executable-lookup seam and returns a *DependencyError naming every miss, or
-// nil when the full declared toolset is present.
-func checkDependencies(lookPath func(name string) (string, error)) error {
+// nil when the full declared toolset is present. In an unsandboxed (--yolo-unsafe)
+// session the yolo-exempt substrate (bwrap) is not required and is skipped.
+func checkDependencies(lookPath func(name string) (string, error), yolo bool) error {
 	var missing []string
 	for _, d := range declaredDependencies {
+		if yolo && d.yoloExempt {
+			continue
+		}
 		if _, err := lookPath(d.name); err != nil {
 			missing = append(missing, d.name)
 		}
