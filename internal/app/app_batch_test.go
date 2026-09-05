@@ -74,8 +74,8 @@ func TestRunRefusesWhenGitMissing(t *testing.T) {
 	dir := t.TempDir()
 	var out bytes.Buffer
 
-	// git is now a declared dependency (ADR-0002): its absence must refuse
-	// startup exactly like any other declared tool, not degrade quietly.
+	// git is now a declared dependency: its absence must refuse startup exactly
+	// like any other declared tool, not degrade quietly.
 	missingGit := func(name string) (string, error) {
 		if name == "git" {
 			return "", errors.New("executable not found: git")

@@ -247,9 +247,9 @@ func TestScroll_navigationDoesNotStealComposerFocus(t *testing.T) {
 // TestScroll_viewDeclaresMouseCellMotion locks the terminal-facing seam that
 // actually delivers wheel scroll and drag-select: the model's View must declare
 // cell-motion mode so bubbletea v2 turns on SGR mouse reporting and routes wheel
-// events into navigateMouse. Dropping it (as the rail-drag removal did, issue
-// #334) disables mouse input entirely even though the wheel handlers still exist
-// — unit tests constructing MouseWheelMsg directly bypass the terminal and pass
+// events into navigateMouse. Dropping it disables mouse input entirely even
+// though the wheel handlers still exist — unit tests constructing MouseWheelMsg
+// directly bypass the terminal and pass
 // either way, so this regression needs a View-level assertion.
 func TestScroll_viewDeclaresMouseCellMotion(t *testing.T) {
 	t.Parallel()

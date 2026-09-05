@@ -83,7 +83,7 @@ func NewPersistedPromptHistory(capacity int, path string) *PromptHistory {
 }
 
 // PromptHistoryPath returns the on-disk JSON file for persisted submitted
-// prompts. It lives as a sibling of config.json in the data directory (issue
+// prompts. It lives as a sibling of config.json in the data directory.
 func PromptHistoryPath(dataDir string) string {
 	return filepath.Join(dataDir, "prompt_history.json")
 }

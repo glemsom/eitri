@@ -418,7 +418,7 @@ func TestTranscript_committedReasoningSnapshotRendersOnce(t *testing.T) {
 	plain := ansiStrip(hist.String())
 
 	if n := strings.Count(plain, "snapshot reasoning"); n != 1 {
-		t.Errorf("committed reasoning snapshot rendered %d times, want exactly once (issue #434/#451):\n%s", n, plain)
+		t.Errorf("committed reasoning snapshot rendered %d times, want exactly once:\n%s", n, plain)
 	}
 	// A committed turn's reasoning is one authoritative snapshot; a reasoning
 	// event that resumes after a tool is not re-rendered as a second block.
@@ -427,9 +427,9 @@ func TestTranscript_committedReasoningSnapshotRendersOnce(t *testing.T) {
 	}
 }
 
-// TestTranscript_committedReasoningSnapshotOnceAtTailWhenNoToolFollows locks the
-// #451 no-tool leg: a committed turn that streams no tool renders its reasoning
-// snapshot exactly once, at the tail (directly before the answer), through the
+// TestTranscript_committedReasoningSnapshotOnceAtTailWhenNoToolFollows locks
+// that a committed turn that streams no tool renders its reasoning snapshot
+// exactly once, at the tail (directly before the answer), through the
 // full Transcript render path rather than only the flow fold.
 func TestTranscript_committedReasoningSnapshotOnceAtTailWhenNoToolFollows(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")

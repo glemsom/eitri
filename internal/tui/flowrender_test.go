@@ -77,10 +77,11 @@ func TestRenderFlow_committedRendersReasoningOnceAtFirstToolBoundary(t *testing.
 	}
 }
 
-// TestRenderFlow_committedReasoningSnapshotOnceAtTailWhenNoToolFollows locks the
-// #451 contract for a committed turn that streams no tool: its reasoning is one
-// authoritative snapshot (never split or re-rendered) and, with no tool boundary
-// to anchor it, renders exactly once at the tail, directly before the answer.
+// TestRenderFlow_committedReasoningSnapshotOnceAtTailWhenNoToolFollows locks
+// that a committed turn that streams no tool keeps its reasoning as one
+// authoritative snapshot (never split or re-rendered) and, with no tool
+// boundary to anchor it, renders exactly once at the tail, directly before the
+// answer.
 func TestRenderFlow_committedReasoningSnapshotOnceAtTailWhenNoToolFollows(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	in := renderFlowInput(
@@ -151,12 +152,12 @@ func TestRenderFlow_liveInterleavesReasoningFragmentsInEmissionOrder(t *testing.
 	}
 }
 
-// TestRenderFlow_liveFlushesReasoningPerDeltaWithoutToolBoundary locks the
-// #657 contract for a pure chain-of-thought stretch: a live, streaming turn
-// with no intervening tool boundary paints each reasoning delta as its own
-// fragment as it arrives, rather than hiding everything in one composite block
-// until the tail. Each delta renders separately (one header per fragment), and
-// the whole streamed span never appears as a single contiguous block.
+// TestRenderFlow_liveFlushesReasoningPerDeltaWithoutToolBoundary locks that a
+// pure chain-of-thought stretch — a live, streaming turn with no intervening
+// tool boundary — paints each reasoning delta as its own fragment as it
+// arrives, rather than hiding everything in one composite block until the
+// tail. Each delta renders separately (one header per fragment), and the whole
+// streamed span never appears as a single contiguous block.
 func TestRenderFlow_liveReasoningCoalescesContiguousDeltas(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	in := renderFlowInput(

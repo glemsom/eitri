@@ -8,8 +8,7 @@ import (
 )
 
 // busyCacheTranscript builds a busy transcript with a committed history followed
-// by a running live turn, mirroring the shape the issue's acceptance criteria
-// target: committed turns plus one in-progress streaming turn.
+// by a running live turn: committed turns plus one in-progress streaming turn.
 func busyCacheTranscript(delta string) (*Transcript, *TurnSession) {
 	th := themeFor(config.DefaultTheme)
 	tx := &Transcript{
@@ -52,7 +51,7 @@ func busyCacheTranscript(delta string) (*Transcript, *TurnSession) {
 }
 
 // TestBusyRender_concatenatedMatchesFullRender locks the byte-identical
-// requirement of the issue: the busy-path concatenation (cached prefix + live
+// requirement: the busy-path concatenation (cached prefix + live
 // tail) must equal a fresh full render of the same state, every delta.
 func TestBusyRender_concatenatedMatchesFullRender(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")

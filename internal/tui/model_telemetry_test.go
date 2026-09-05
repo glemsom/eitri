@@ -33,7 +33,7 @@ func TestModelStatusStripHintsOnly(t *testing.T) {
 		t.Errorf("right rail missing cache gauge, got: %q", content)
 	}
 	if strings.Contains(content, "cost") {
-		t.Errorf("right rail must not render a cost readout (issue #374), got: %q", content)
+		t.Errorf("right rail must not render a cost readout, got: %q", content)
 	}
 
 	var band strings.Builder
