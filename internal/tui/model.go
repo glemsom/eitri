@@ -694,9 +694,10 @@ func (m *Model) startTurn(prompt string, payload string) tea.Cmd {
 
 // handleArrowRecall implements readline-style prompt recall: `up`/`down` move
 // a prior/following prompt into the draft only while the caret rests on the
-// top/bottom line, else the key falls through to the textarea caret motion.
-// Recall is suppressed while a turn streams or a completion surface is open,
-// and a recalled `/skill ...` line stays inert until Enter submits it.
+// top/bottom line, else the key falls through to the textarea caret motion, so
+// in-draft navigation and the shift variants are untouched. Recall is
+// suppressed while a turn streams or a completion surface is open, and a
+// recalled `/skill ...` line stays inert until Enter submits it.
 func (m Model) handleArrowRecall(dir int) (Model, bool) {
 	if !m.canRecall() {
 		return m, false

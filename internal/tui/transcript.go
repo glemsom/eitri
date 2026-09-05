@@ -1104,7 +1104,8 @@ func thinkingExpandedForFrag(msg message, fragIdx int, cfg expansionConfig) bool
 
 // thinkingExpandedForFragment returns whether the fragIdx-th reasoning fragment
 // of msg renders expanded: a per-fragment force wins, else the fragment follows
-// the whole-block decision.
+// the whole-block decision. Forces beat the global modes (Enter on a focused
+// fragment collapses it even in expand-all mode) until cleared on mode entry.
 func (t Transcript) thinkingExpandedForFragment(msg message, fragIdx int) bool {
 	return thinkingExpandedForFrag(msg, fragIdx, t.expansionConfig())
 }
