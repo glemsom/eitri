@@ -100,6 +100,11 @@ type RunRequest struct {
 	ThinkingEnabled bool
 	ReasoningEffort string
 
+	// Yolo selects the unsandboxed (--yolo-unsafe) session variant of the
+	// embedded system prompt, whose subagent guidance never claims a
+	// terminating sandbox because no cage runs.
+	Yolo bool
+
 	// ProviderID is the provider family this run targets, chosen by config, so
 	// the shared dialect can apply provider-specific wire fields.
 	ProviderID provider.ProviderID
@@ -112,8 +117,13 @@ type Result struct {
 	Usage     *provider.Usage
 }
 
-// systemPromptHead returns the byte-stable embedded Eitri system prompt as the immutable request-head message.
-func systemPromptHead() []provider.Message {
+// systemPromptHead returns the byte-stable embedded Eitri system prompt as the
+// immutable request-head message, selecting the unsandboxed (--yolo-unsafe)
+// variant in a yolo session.
+func systemPromptHead(yolo bool) []provider.Message {
+	if yolo {
+		return []provider.Message{{Role: provider.RoleSystem, Content: SystemPromptYoloContent()}}
+	}
 	return []provider.Message{{Role: provider.RoleSystem, Content: SystemPromptContent()}}
 }
 
@@ -199,7 +209,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 	if ctx.Err() != nil {
 		return Result{}, ErrStopped
 	}
-	messages := systemPromptHead()
+	messages := systemPromptHead(req.Yolo)
 	if req.Workspace != "" {
 		messages = append(messages, provider.Message{Role: provider.RoleSystem, Content: workspaceDirective(req.Workspace)})
 	}

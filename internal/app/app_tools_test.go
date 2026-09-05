@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/glemsom/eitri/internal/engine"
 	"github.com/glemsom/eitri/internal/provider"
 )
 
@@ -86,6 +87,37 @@ func TestYoloBatchToolDefinitionOmitsSandboxClaim(t *testing.T) {
 	}
 	if strings.Contains(folded, "in a sandbox") || strings.Contains(folded, "inside a sandbox") {
 		t.Fatalf("yolo bash tool definition still claims execution in a sandbox: %q", gotDesc)
+	}
+}
+
+func TestYoloBatchSelectsYoloSystemPromptHead(t *testing.T) {
+	var heads []string
+	p := provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
+		if len(req.Messages) > 0 {
+			heads = append(heads, req.Messages[0].Content)
+		}
+		return provider.StreamFunc(
+			provider.Chunk{Content: "ok"},
+			provider.Chunk{FinishReason: "stop", Done: true},
+		), nil
+	})
+
+	var out bytes.Buffer
+	if err := Run(Options{
+		DataDir:  filepath.Join(t.TempDir(), ".eitri"),
+		LookPath: okLookPath,
+		Provider: p,
+		Prompt:   "inspect",
+		Stdout:   &out,
+		Yolo:     true,
+	}); err != nil {
+		t.Fatalf("Run(yolo batch) error = %v, want nil", err)
+	}
+	if len(heads) != 1 {
+		t.Fatalf("captured %d request heads, want 1", len(heads))
+	}
+	if heads[0] != engine.SystemPromptYoloContent() {
+		t.Fatalf("yolo batch head = %q, want SystemPromptYoloContent", heads[0])
 	}
 }
 

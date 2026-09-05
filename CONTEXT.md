@@ -95,7 +95,7 @@ A control slash command that starts a fresh session: it re-mints the live sessio
 _Avoid_: reset, wipe, clear history
 
 **Single authoritative prompt**
-Eitri's one fixed system prompt (`internal/engine/prompt.md`), written to match exactly the declared dependency set and never adapted to what is installed on a given machine. This is what makes the startup dependency check mandatory rather than advisory.
+Eitri's fixed system prompt (`internal/engine/prompt.md`), written to match exactly the declared dependency set and never adapted to what is installed on a given machine. An unsandboxed (`--yolo-unsafe`) session selects its own fixed variant (`internal/engine/prompt_yolo.md`), byte-identical to the default except the subagent guidance, which never claims a terminating sandbox because no cage runs. This is what makes the startup dependency check mandatory rather than advisory.
 _Avoid_: system prompt, adaptive prompt, tool guidance
 
 **Repository instructions (AGENTS.md)**

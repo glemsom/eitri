@@ -13,9 +13,16 @@ type messagePartition struct {
 	persisted  []provider.Message
 }
 
+// isSystemPromptHead reports whether content is the byte-stable persona head
+// in either mode (default or unsandboxed), so prompt-head detection strips the
+// right head in a yolo session.
+func isSystemPromptHead(content string) bool {
+	return content == SystemPromptContent() || content == SystemPromptYoloContent()
+}
+
 func partitionMessages(messages []provider.Message) messagePartition {
 	start := 0
-	if len(messages) > 0 && messages[0].Role == provider.RoleSystem && messages[0].Content == SystemPromptContent() {
+	if len(messages) > 0 && messages[0].Role == provider.RoleSystem && isSystemPromptHead(messages[0].Content) {
 		start++
 	}
 	for start < len(messages) && isWorkspaceMessage(messages[start]) {
