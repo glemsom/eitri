@@ -62,6 +62,6 @@ func TestRunEngineTurnCancelsStreamedTurn(t *testing.T) {
 			t.Fatal("turn not marked stopped after cancel: the per-turn context never reached the engine")
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("turn did not stop after cancel: the per-turn context was dropped for context.Background() (issue #427)")
+		t.Fatal("turn did not stop after cancel: the per-turn context was dropped for context.Background()")
 	}
 }

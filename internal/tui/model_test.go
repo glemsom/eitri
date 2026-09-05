@@ -388,7 +388,7 @@ func TestModel_workspaceStateSurfaced(t *testing.T) {
 
 	content := view(m)
 	if !strings.Contains(content, "/tmp/acme-project") {
-		t.Errorf("expected workspace path surfaced in view (issue #82 AC1), got: %q", content)
+		t.Errorf("expected workspace path surfaced in view, got: %q", content)
 	}
 
 	if strings.Contains(m.composer.Value(), "/tmp/acme-project") {
@@ -400,7 +400,7 @@ func TestModel_workspaceStateSurfaced(t *testing.T) {
 	}})
 	bare = resize(t, bare)
 	if strings.Contains(view(bare), "workspace:") {
-		t.Errorf("expected no workspace header when none is configured (issue #82 AC1)")
+		t.Errorf("expected no workspace header when none is configured")
 	}
 }
 

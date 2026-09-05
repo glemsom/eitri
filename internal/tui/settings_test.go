@@ -314,7 +314,7 @@ func TestSettingsView_RendersLiveCacheReadout(t *testing.T) {
 		t.Fatalf("settings view %q missing live cache hit-ratio readout", view)
 	}
 	if strings.Contains(view, "cost") {
-		t.Fatalf("settings view %q must not render a cost readout (issue #374)", view)
+		t.Fatalf("settings view %q must not render a cost readout", view)
 	}
 }
 

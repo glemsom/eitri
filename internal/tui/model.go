@@ -160,8 +160,8 @@ type Model struct {
 	deps     Dependencies
 	tx       *Transcript
 
-	// liveKey is the shared mutable session key wired via Dependencies (issue
-	// #609); `/new` re-mints it to a fresh GUID on confirm.
+	// liveKey is the shared mutable session key wired via Dependencies; `/new`
+	// re-mints it to a fresh GUID on confirm.
 	liveKey *LiveSessionKey
 
 	settings *SettingsOverlay

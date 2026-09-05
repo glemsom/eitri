@@ -102,7 +102,7 @@ func TestReasoning_renderDelegatesToSeam(t *testing.T) {
 // TestReasoning_clearCollapseForcesDirectional locks that expand-all / collapse-all
 // route through the seam and clear only the opposing force direction, so a
 // manually pinned force in the other direction survives a mode round-trip (the
-// same policy the tool-log migration #470 establishes).
+// same policy the tool-log migration establishes).
 func TestReasoning_clearCollapseForcesDirectional(t *testing.T) {
 	t.Parallel()
 	tx := committedReasoningFlowTranscript("", "answer")
