@@ -91,6 +91,8 @@ type Options struct {
 
 	Verbose bool
 
+	Yolo bool
+
 	Stdout io.Writer
 
 	Provider provider.Provider
@@ -154,6 +156,7 @@ func Run(opts Options) error {
 		TempHost:      tempHost,
 		ExtraWritable: cfg.ExtraWritablePaths,
 		Runner:        tools.RealRunner,
+		Yolo:          opts.Yolo,
 		Browser:       opts.Browser,
 		Skills:        skills,
 	})

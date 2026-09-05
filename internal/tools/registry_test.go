@@ -69,6 +69,105 @@ func TestBashRunsInSandbox(t *testing.T) {
 	}
 }
 
+func TestRegistrySelectsSandboxBackendByDefault(t *testing.T) {
+	t.Parallel()
+	rr := &recordingRunner{out: &Output{Stdout: "x"}}
+	r, _ := newTestRegistry(t, rr)
+	if _, err := r.Run(context.Background(), "bash", argMap("command", "echo hi")); err != nil {
+		t.Fatalf("bash error = %v, want nil", err)
+	}
+	if len(rr.calls) != 1 {
+		t.Fatalf("runner calls = %d, want 1", len(rr.calls))
+	}
+	if rr.calls[0].Name != "bwrap" {
+		t.Fatalf("default backend exec = %q, want bwrap (sandboxed)", rr.calls[0].Name)
+	}
+}
+
+func TestRegistrySelectsDirectBackendInYolo(t *testing.T) {
+	t.Parallel()
+	rr := &recordingRunner{out: &Output{Stdout: "x"}}
+	top := filepath.Join(t.TempDir(), ".eitri-test-reg-yolo-"+strings.ReplaceAll(t.Name(), "/", "_"))
+	ws := filepath.Join(top, "proj")
+	if err := os.MkdirAll(ws, 0o700); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	r, err := NewRegistry(Deps{Workspace: ws, TempHost: filepath.Join(t.TempDir(), "eitri-g"), Runner: rr, Yolo: true})
+	if err != nil {
+		t.Fatalf("NewRegistry(yolo) error = %v, want nil", err)
+	}
+	if _, err := r.Run(context.Background(), "bash", argMap("command", "echo hi")); err != nil {
+		t.Fatalf("bash error = %v, want nil", err)
+	}
+	if len(rr.calls) != 1 {
+		t.Fatalf("runner calls = %d, want 1", len(rr.calls))
+	}
+	spec := rr.calls[0]
+	if spec.Name != "/bin/bash" {
+		t.Fatalf("yolo backend exec = %q, want /bin/bash (direct, no bwrap)", spec.Name)
+	}
+	if spec.Dir != ws {
+		t.Fatalf("yolo backend working dir = %q, want workspace %q", spec.Dir, ws)
+	}
+}
+
+func TestYoloBashCompressesOutput(t *testing.T) {
+	t.Parallel()
+	var raw strings.Builder
+	for i := 0; i < 600; i++ {
+		raw.WriteString("src/file_")
+		raw.WriteString(strconv.Itoa(i))
+		raw.WriteString(".go          1234 bytes\n")
+	}
+	rr := &recordingRunner{out: &Output{Stdout: raw.String()}}
+	r, _ := NewRegistry(Deps{
+		Workspace: t.TempDir(),
+		TempHost:  t.TempDir(),
+		Runner:    rr,
+		Yolo:      true,
+	})
+	res, err := r.Run(context.Background(), "bash", argMap("command", "ls -R ."))
+	if err != nil {
+		t.Fatalf("bash error = %v, want nil", err)
+	}
+	if !strings.Contains(res.Text, " more") {
+		t.Fatalf("yolo bash output missing explicit tail marker: %q", res.Text)
+	}
+	if len(res.Text) >= len(raw.String()) {
+		t.Fatalf("yolo bash output not compressed: raw=%d bytes, got=%d bytes", len(raw.String()), len(res.Text))
+	}
+}
+
+func TestSetTempHostRewiresYoloBackend(t *testing.T) {
+	t.Parallel()
+	rr := &recordingRunner{out: &Output{Stdout: "x"}}
+	r, _ := NewRegistry(Deps{
+		Workspace: t.TempDir(),
+		TempHost:  filepath.Join(t.TempDir(), "old"),
+		Runner:    rr,
+		Yolo:      true,
+	})
+	newTemp := filepath.Join(t.TempDir(), "new")
+	if err := r.SetTempHost(newTemp); err != nil {
+		t.Fatalf("SetTempHost() error = %v, want nil", err)
+	}
+	if got := r.TempHost(); got != newTemp {
+		t.Fatalf("TempHost() = %q, want %q", got, newTemp)
+	}
+	if _, err := r.Run(context.Background(), "bash", argMap("command", "echo hi")); err != nil {
+		t.Fatalf("bash error = %v, want nil", err)
+	}
+	spec := rr.calls[0]
+	env := map[string]string{}
+	for _, kv := range spec.Env {
+		p := strings.SplitN(kv, "=", 2)
+		env[p[0]] = p[1]
+	}
+	if env["TMPDIR"] != newTemp {
+		t.Fatalf("yolo TMPDIR after rewire = %q, want %q", env["TMPDIR"], newTemp)
+	}
+}
+
 func TestBashCompressesNoisyOutputAtBoundary(t *testing.T) {
 	t.Parallel()
 	var raw strings.Builder

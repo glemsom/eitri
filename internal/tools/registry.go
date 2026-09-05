@@ -6,12 +6,13 @@ import (
 	"path/filepath"
 )
 
-// Deps carries the per-session wiring the registry (and hence every tool) needs: the workspace, the session temp host root, configured extra writable paths, the sandbox runner, the browser seam, and the skill catalog backing the human /skillname slash surface.
+// Deps carries the per-session wiring the registry (and hence every tool) needs: the workspace, the session temp host root, configured extra writable paths, the sandbox runner, the unsandboxed (--yolo-unsafe) switch, the browser seam, and the skill catalog backing the human /skillname slash surface.
 type Deps struct {
 	Workspace     string
 	TempHost      string
 	ExtraWritable []string
 	Runner        Runner
+	Yolo          bool
 	Browser       BrowserLauncher
 
 	Skills *Catalog
@@ -51,6 +52,7 @@ func (r *Registry) Definitions() []Definition {
 // Registry owns the fixed tool surface and the skill catalog used by human activation and the model-visible index.
 type Registry struct {
 	sandbox   *Sandbox
+	bash      bashBackend
 	workspace string
 	tools     map[string]Tool
 	catalog   *Catalog
@@ -70,7 +72,12 @@ func NewRegistry(d Deps) (*Registry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("build tool registry: %w", err)
 	}
-	r.tools["bash"] = &bashTool{sb: r.sandbox}
+	if d.Yolo {
+		r.bash = &directRunner{workspace: r.workspace, tempHost: r.sandbox.tempHost, run: d.Runner}
+	} else {
+		r.bash = r.sandbox
+	}
+	r.tools["bash"] = &bashTool{backend: r.bash, unsandboxed: d.Yolo}
 	r.tools["open_in_browser"] = &openInBrowserTool{br: d.Browser}
 
 	// Skills back the human /skillname slash surface and, via RenderIndex, feed
@@ -86,7 +93,9 @@ func (r *Registry) Names() []string {
 
 func (r *Registry) Workspace() string { return r.workspace }
 
-// SetTempHost rewires the per-session temp directory used by sandboxed tools.
+// SetTempHost rewires the per-session temp directory used by the bash backend
+// (the bwrap sandbox, or the direct runner in an unsandboxed --yolo-unsafe
+// session).
 func (r *Registry) SetTempHost(tempHost string) error {
 	if tempHost == "" {
 		return fmt.Errorf("session temp path is empty")
@@ -95,6 +104,7 @@ func (r *Registry) SetTempHost(tempHost string) error {
 		return fmt.Errorf("session temp path must be absolute: %q", tempHost)
 	}
 	r.sandbox.tempHost = filepath.Clean(tempHost)
+	r.bash.setTempHost(r.sandbox.tempHost)
 	return nil
 }
 

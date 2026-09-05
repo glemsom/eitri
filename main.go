@@ -31,6 +31,8 @@ Flags:
   -b <prompt>    run once in batch mode with the given prompt and exit
   -v             in batch mode, print the model's thinking/reasoning to stdout
   -d             enable debug mode (writes full HTTP traces to/from the provider)
+  --yolo-unsafe  run unsandboxed: bash executes directly as your user, no
+                 bubblewrap cage (and bubblewrap is not required to start)
   --pprof <addr> enable localhost pprof diagnostics (example: 127.0.0.1:6060)
   --pprof-mutex  include mutex profile evidence when --pprof is enabled
   --pprof-block  include block profile evidence when --pprof is enabled
@@ -44,7 +46,9 @@ unconditionally. Install hints:
   Fedora:        sudo dnf install bubblewrap bash ripgrep curl lynx patch python3 git jq xdg-utils
   Arch:          sudo pacman -S bubblewrap bash ripgrep curl lynx patch python3 git jq xdg-utils
 The base coreutils (grep, sed, awk, cat, nl, diff) are assumed present.
-Eitri never runs unsandboxed.
+By default Eitri never runs unsandboxed: every bash command is confined by the
+bubblewrap cage. With --yolo-unsafe that guarantee is dropped — bash runs
+directly as your user with full host permissions.
 `
 
 func main() {
@@ -59,6 +63,7 @@ func main() {
 		prompt     = flag.String("b", "", "run once in batch mode with the given prompt and exit")
 		verbose    = flag.Bool("v", false, "print the model's thinking to stdout in batch mode")
 		debug      = flag.Bool("d", false, "enable debug mode")
+		yolo       = flag.Bool("yolo-unsafe", false, "run unsandboxed: bash executes directly, no bubblewrap cage")
 		pprofAddr  = flag.String("pprof", "", "enable localhost pprof diagnostics, optionally with an address")
 		pprofMutex = flag.Bool("pprof-mutex", false, "include mutex profile evidence when --pprof is enabled")
 		pprofBlock = flag.Bool("pprof-block", false, "include block profile evidence when --pprof is enabled")
@@ -79,6 +84,7 @@ func main() {
 		Debug:   *debug,
 		Prompt:  *prompt,
 		Verbose: *verbose,
+		Yolo:    *yolo,
 		Pprof: app.PprofOptions{
 			Enabled: *pprofAddr != "",
 			Addr:    *pprofAddr,

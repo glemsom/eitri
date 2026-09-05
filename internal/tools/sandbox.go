@@ -18,19 +18,38 @@ type Output struct {
 	Stderr string
 }
 
+// RunSpec is a fully-resolved system call a backend wants to execute: the
+// program, its arguments, the working directory to run in, and any extra
+// environment variables (appended to the inherited environment). Both the
+// sandboxed (bwrap) and unsandboxed (direct bash) backends resolve to this
+// shape before touching the OS.
+type RunSpec struct {
+	Name string
+	Args []string
+	Dir  string
+	Env  []string
+}
+
 // Runner is the system-boundary seam that actually executes a command (bwrap in production).
 type Runner interface {
-	Run(ctx context.Context, name string, args []string) (*Output, error)
+	Run(ctx context.Context, spec RunSpec) (*Output, error)
 }
 
 // RealRunner is the production command runner that actually spawns bwrap.
 var RealRunner Runner = defaultRunner{}
 
-// defaultRunner executes name with args and captures combined output.
+// defaultRunner executes the RunSpec's program and captures combined output,
+// honoring the working directory and extra environment variables.
 type defaultRunner struct{}
 
-func (defaultRunner) Run(ctx context.Context, name string, args []string) (*Output, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
+func (defaultRunner) Run(ctx context.Context, spec RunSpec) (*Output, error) {
+	cmd := exec.CommandContext(ctx, spec.Name, spec.Args...)
+	if spec.Dir != "" {
+		cmd.Dir = spec.Dir
+	}
+	if len(spec.Env) > 0 {
+		cmd.Env = append(os.Environ(), spec.Env...)
+	}
 	stdout := newBoundedBuffer(compress.DefaultByteCap)
 	stderr := newBoundedBuffer(compress.DefaultByteCap)
 	cmd.Stdout = stdout
@@ -134,7 +153,13 @@ func (s *Sandbox) Run(ctx context.Context, cmd string) (*Output, error) {
 		"--chdir", s.workspace,
 		"/bin/bash", "-c", cmd,
 	)
-	return s.run.Run(ctx, "bwrap", args)
+	return s.run.Run(ctx, RunSpec{Name: "bwrap", Args: args})
+}
+
+// setTempHost rewires the session temp directory the backend writes and
+// exports as $TMPDIR; used when the registry binds a fresh per-session temp.
+func (s *Sandbox) setTempHost(tempHost string) {
+	s.tempHost = tempHost
 }
 
 func cleanPaths(paths []string) []string {

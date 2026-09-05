@@ -41,6 +41,54 @@ func scriptedBashOnly() *provider.Scripted {
 	})
 }
 
+func TestYoloBatchToolDefinitionOmitsSandboxClaim(t *testing.T) {
+	ws := filepath.Join(t.TempDir(), ".eitri-app-ws")
+	if err := os.MkdirAll(ws, 0o700); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(ws); err != nil {
+		t.Fatalf("chdir workspace: %v", err)
+	}
+	defer func() { _ = os.Chdir(oldWd) }()
+	defer os.RemoveAll(ws)
+
+	var gotDesc string
+	p := provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
+		for _, tl := range req.Tools {
+			if tl.Function.Name == "bash" {
+				gotDesc = tl.Function.Description
+			}
+		}
+		return provider.StreamFunc(
+			provider.Chunk{Content: "ok"},
+			provider.Chunk{FinishReason: "stop", Done: true},
+		), nil
+	})
+
+	var out bytes.Buffer
+	if err := Run(Options{
+		DataDir:  filepath.Join(t.TempDir(), ".eitri"),
+		LookPath: okLookPath,
+		Provider: p,
+		Prompt:   "inspect",
+		Stdout:   &out,
+		Yolo:     true,
+	}); err != nil {
+		t.Fatalf("Run(yolo batch) error = %v, want nil", err)
+	}
+	folded := strings.ToLower(gotDesc)
+	if folded == "" {
+		t.Fatal("provider received no bash tool description")
+	}
+	if strings.Contains(folded, "in a sandbox") || strings.Contains(folded, "inside a sandbox") {
+		t.Fatalf("yolo bash tool definition still claims execution in a sandbox: %q", gotDesc)
+	}
+}
+
 func TestBatchDispatchesToolThroughRegistry(t *testing.T) {
 	ws := filepath.Join(t.TempDir(), ".eitri-app-ws")
 	if err := os.MkdirAll(ws, 0o700); err != nil {
