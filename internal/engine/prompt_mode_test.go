@@ -19,7 +19,7 @@ func TestRunAgentSelectsPromptHeadByMode(t *testing.T) {
 		Model:  "deepseek-v4-flash",
 		Prompt: "hi",
 	}, AgentOptions{MaxTurns: 1}); err != nil {
-		t.Fatalf("RunAgent(error=%v), want nil", err)
+		t.Fatalf("RunAgent() error = %v, want nil", err)
 	}
 	if len(c.requests) != 1 {
 		t.Fatalf("captured %d requests, want 1", len(c.requests))
