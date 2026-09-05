@@ -122,6 +122,45 @@ func TestRunBatchRefusesWhenXDGOpenMissing(t *testing.T) {
 	}
 }
 
+// lookPathExcept stubs the executable-lookup seam like okLookPath but reports
+// the single named executable as absent, for boot-gate tests.
+func lookPathExcept(missing string) func(string) (string, error) {
+	return func(name string) (string, error) {
+		if name == missing {
+			return "", errors.New("executable not found: " + name)
+		}
+		return okLookPath(name)
+	}
+}
+
+func TestRunBatchYoloStartsWithoutBwrapOnPath(t *testing.T) {
+	var out bytes.Buffer
+	err := Run(Options{
+		DataDir:  filepath.Join(t.TempDir(), ".eitri"),
+		LookPath: lookPathExcept("bwrap"),
+		Prompt:   "Say hello",
+		Stdout:   &out,
+		Provider: provider.NewFake("../provider/testdata/hello.sse"),
+		Yolo:     true,
+	})
+	if err != nil {
+		t.Fatalf("Run(yolo, no bwrap on PATH) error = %v, want nil", err)
+	}
+}
+
+func TestRunBatchDefaultRefusesWithoutBwrapOnPath(t *testing.T) {
+	err := Run(Options{
+		DataDir:  filepath.Join(t.TempDir(), ".eitri"),
+		LookPath: lookPathExcept("bwrap"),
+		Prompt:   "Say hello",
+		Stdout:   &bytes.Buffer{},
+		Provider: provider.NewFake("../provider/testdata/hello.sse"),
+	})
+	if !errors.Is(err, ErrMissingDependencies) {
+		t.Fatalf("Run(default, no bwrap on PATH) error = %v, want ErrMissingDependencies", err)
+	}
+}
+
 func TestRunBatchWritesTranscript(t *testing.T) {
 	dir := t.TempDir()
 	dataDir := filepath.Join(dir, ".eitri")

@@ -32,7 +32,7 @@ func declaredDependencyNames() []string {
 func TestCheckDependenciesRequiresXDGOpen(t *testing.T) {
 	present := []string{"bwrap", "bash", "rg", "curl", "lynx", "patch", "python3", "git", "jq"}
 
-	err := checkDependencies(lookup(present...))
+	err := checkDependencies(lookup(present...), false)
 	if err == nil {
 		t.Fatal("checkDependencies() error = nil, want xdg-open to be required")
 	}
@@ -50,7 +50,7 @@ func TestCheckDependenciesRequiresXDGOpen(t *testing.T) {
 
 func TestCheckDependenciesAllPresent(t *testing.T) {
 	names := declaredDependencyNames()
-	if err := checkDependencies(lookup(names...)); err != nil {
+	if err := checkDependencies(lookup(names...), false); err != nil {
 		t.Fatalf("checkDependencies() error = %v, want nil when every declared tool is present", err)
 	}
 }
@@ -59,7 +59,7 @@ func TestCheckDependenciesReportsEveryMissingTool(t *testing.T) {
 	present := []string{"bwrap", "bash", "rg", "curl"}
 	missing := []string{"lynx", "patch", "python3", "git", "jq", "xdg-open"}
 
-	err := checkDependencies(lookup(present...))
+	err := checkDependencies(lookup(present...), false)
 	if err == nil {
 		t.Fatal("checkDependencies() error = nil, want a fatal missing-dependencies error")
 	}
@@ -76,7 +76,7 @@ func TestCheckDependenciesReportsEveryMissingTool(t *testing.T) {
 }
 
 func TestCheckDependenciesErrorCarriesPerDistroInstallHints(t *testing.T) {
-	err := checkDependencies(lookup())
+	err := checkDependencies(lookup(), false)
 	if err == nil {
 		t.Fatal("checkDependencies() error = nil, want a fatal missing-dependencies error")
 	}
@@ -93,10 +93,62 @@ func TestCheckDependenciesErrorCarriesPerDistroInstallHints(t *testing.T) {
 	}
 }
 
+func TestCheckDependenciesYoloSkipsBwrap(t *testing.T) {
+	present := []string{"bash", "rg", "curl", "lynx", "patch", "python3", "git", "jq", "xdg-open"}
+
+	if err := checkDependencies(lookup(present...), true); err != nil {
+		t.Fatalf("checkDependencies(yolo=true) error = %v, want nil when bwrap is absent", err)
+	}
+}
+
+func TestCheckDependenciesDefaultStillRequiresBwrap(t *testing.T) {
+	present := []string{"bash", "rg", "curl", "lynx", "patch", "python3", "git", "jq", "xdg-open"}
+
+	err := checkDependencies(lookup(present...), false)
+	if err == nil {
+		t.Fatal("checkDependencies(yolo=false) error = nil, want bwrap still required by default")
+	}
+	de, ok := err.(*DependencyError)
+	if !ok {
+		t.Fatalf("error type = %T, want *DependencyError", err)
+	}
+	if strings.Join(de.Missing, ",") != "bwrap" {
+		t.Fatalf("DependencyError.Missing = %v, want [bwrap]", de.Missing)
+	}
+}
+
+func TestCheckDependenciesYoloStillRequiresOtherTools(t *testing.T) {
+	present := []string{"bwrap", "bash", "rg", "curl", "lynx", "patch", "python3", "git", "jq"}
+
+	err := checkDependencies(lookup(present...), true)
+	if err == nil {
+		t.Fatal("checkDependencies(yolo=true) error = nil, want the other declared tools still required")
+	}
+	de, ok := err.(*DependencyError)
+	if !ok {
+		t.Fatalf("error type = %T, want *DependencyError", err)
+	}
+	if strings.Join(de.Missing, ",") != "xdg-open" {
+		t.Fatalf("DependencyError.Missing = %v, want [xdg-open]", de.Missing)
+	}
+}
+
+func TestCheckDependenciesYoloErrorDoesNotDemandBubblewrap(t *testing.T) {
+	// In yolo mode bwrap is never checked, so a refusal for another missing tool
+	// must not point a user at installing bubblewrap that the run will not use.
+	err := checkDependencies(lookup("bash"), true)
+	if err == nil {
+		t.Fatal("checkDependencies(yolo=true) error = nil, want a fatal missing-dependencies error")
+	}
+	if msg := err.Error(); strings.Contains(msg, "bubblewrap") {
+		t.Fatalf("yolo refusal %q still demands installing bubblewrap", msg)
+	}
+}
+
 func TestCheckDependenciesErrorNamesExecutableAndPackage(t *testing.T) {
 	// The executable and its distro package can differ (bwrap → bubblewrap,
 	// rg → ripgrep); the error must name both so a human knows what to install.
-	err := checkDependencies(lookup())
+	err := checkDependencies(lookup(), false)
 	if err == nil {
 		t.Fatal("checkDependencies() error = nil, want a fatal missing-dependencies error")
 	}
