@@ -52,7 +52,7 @@ func TestModel_questionMarkEditsEmptyComposer(t *testing.T) {
 	}
 }
 
-func TestModel_questionMarkEditsComposerWhileBusy(t *testing.T) {
+func TestModel_questionMarkFrozenWhileBusy(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -64,8 +64,8 @@ func TestModel_questionMarkEditsComposerWhileBusy(t *testing.T) {
 	m, _ = submitBusy(t, m)
 	m = keypress(t, m, "?")
 
-	if got := m.composer.Value(); got != "?" {
-		t.Fatalf("composer = %q, want literal question mark", got)
+	if got := m.composer.Value(); got != "" {
+		t.Fatalf("composer = %q, want frozen empty draft (typing while busy must not mutate)", got)
 	}
 }
 
