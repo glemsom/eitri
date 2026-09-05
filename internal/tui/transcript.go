@@ -121,16 +121,6 @@ const (
 	viewCollapseAll
 )
 
-func (t Transcript) activeTool() (toolEntry, bool) {
-	for i := len(t.log.entries) - 1; i >= 0; i-- {
-		e := t.log.entries[i]
-		if !e.complete {
-			return e, true
-		}
-	}
-	return toolEntry{}, false
-}
-
 // Reset clears all turn material so the transcript returns to the empty
 // the tool log, the live session, and the focused block; configuration, the
 // prompt-history ring, and the settings overlay all live outside the

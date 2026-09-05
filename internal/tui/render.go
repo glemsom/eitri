@@ -31,18 +31,7 @@ func forgeVerb(p Phase) string {
 	case PhaseAnswering:
 		return "Quenching the answer"
 	default:
-		return "Hammering the plan"
-	}
-}
-
-func forgePhaseDetail(p Phase) string {
-	switch p {
-	case PhaseReasoning:
-		return "planning next strike"
-	case PhaseAnswering:
-		return "writing reply"
-	default:
-		return "running tools"
+		return "Striking the anvil"
 	}
 }
 
