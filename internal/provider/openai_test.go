@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -529,5 +530,55 @@ func TestOpenCodeGoSendsStableSessionHeader(t *testing.T) {
 	}
 	if _, _, err := consume(s); err != nil {
 		t.Fatalf("consume error = %v, want nil", err)
+	}
+}
+
+func TestOpenAICompatibleSendsEitriUserAgent(t *testing.T) {
+	t.Parallel()
+
+	// Verify the identity User-Agent is stamped on both the streaming chat
+	// call and model discovery, not just one path.
+	var mu sync.Mutex
+	var chatUA, modelsUA string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		if strings.Contains(r.URL.Path, "/models") {
+			modelsUA = r.Header.Get("User-Agent")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[]}`))
+			return
+		}
+		chatUA = r.Header.Get("User-Agent")
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		fixture, _ := os.ReadFile("testdata/usage-final.sse")
+		_, _ = w.Write(fixture)
+	}))
+	defer srv.Close()
+
+	cl := NewOpenCodeGo("test-key", srv.URL)
+	if _, err := cl.Models(context.Background()); err != nil {
+		t.Fatalf("OpenCodeGo.Models() error = %v, want nil", err)
+	}
+	s, err := cl.Stream(context.Background(), Request{
+		Model:      "deepseek-v4-flash",
+		Messages:   []Message{{Role: RoleUser, Content: "hi"}},
+		SessionKey: "sess-123",
+	})
+	if err != nil {
+		t.Fatalf("OpenCodeGo.Stream() error = %v, want nil", err)
+	}
+	if _, _, err := consume(s); err != nil {
+		t.Fatalf("consume error = %v, want nil", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if modelsUA != eitriUserAgent {
+		t.Errorf("models User-Agent = %q, want %q", modelsUA, eitriUserAgent)
+	}
+	if chatUA != eitriUserAgent {
+		t.Errorf("stream User-Agent = %q, want %q", chatUA, eitriUserAgent)
 	}
 }

@@ -18,6 +18,12 @@ type OpenAICompatible struct {
 	opencodeSessionHeader bool
 }
 
+// eitriUserAgent identifies Eitri to OpenAI-compatible gateways. The OpenCode
+// Go gateway requires clients to identify themselves with a specific user agent
+// (never a broad/default one) so its abuse monitoring and prompt-cache tuning can
+// attribute traffic.
+const eitriUserAgent = "Eitri/1.0.0"
+
 // NewOpenAICompatible returns a client for the given Bearer key and base URL (the full /v1/chat/completions endpoint or a prefix to which it appends).
 func NewOpenAICompatible(apiKey, url string) *OpenAICompatible {
 	return &OpenAICompatible{apiKey: apiKey, url: normalizeChatCompletionsURL(url)}
@@ -49,6 +55,7 @@ func (o *OpenAICompatible) Models(ctx context.Context) ([]ModelInfo, error) {
 	if o.apiKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+o.apiKey)
 	}
+	httpReq.Header.Set("User-Agent", eitriUserAgent)
 	client := resolveClient(o.http)
 	resp, err := client.Do(httpReq)
 	if err != nil {
@@ -151,6 +158,7 @@ func (o *OpenAICompatible) Stream(ctx context.Context, req Request) (Stream, err
 	if o.opencodeSessionHeader && req.SessionKey != "" {
 		httpReq.Header.Set("X-Opencode-Session", req.SessionKey)
 	}
+	httpReq.Header.Set("User-Agent", eitriUserAgent)
 
 	client := resolveClient(o.http)
 	resp, err := doWithRetry(ctx, client, httpReq)
