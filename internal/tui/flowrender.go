@@ -35,6 +35,9 @@ type flowInput struct {
 	Tools         []flowTool
 	IsFocused     func(kind blockKind, msgIdx, toolIdx, fragIdx int) bool
 	MarkdownCache *liveMarkdownCache
+	// ToolLog, when non-nil, is the owning log whose completed-entry render
+	// cache memoizes committed tool cards across frames. See toolLog.renderEntry.
+	ToolLog *toolLog
 }
 
 // flowTool is one tool entry the flow renderer emits: the log entry plus its
@@ -83,6 +86,9 @@ type flowRenderer struct {
 	now           time.Time
 	tools         []flowTool
 	markdownCache *liveMarkdownCache
+	// toolLog, when non-nil, is the owning log whose completed-entry render
+	// cache memoizes committed tool cards across frames. See toolLog.renderEntry.
+	toolLog *toolLog
 }
 
 // RenderFlow renders one turn's event log as a single continuous merged flow:
@@ -102,6 +108,7 @@ func RenderFlow(in flowInput) (string, []toolRowRange) {
 		now:           in.Now,
 		tools:         in.Tools,
 		markdownCache: in.MarkdownCache,
+		toolLog:       in.ToolLog,
 	}
 	items := r.fold(in.Events, in.Msg)
 	return r.render(items, in.Msg, in.MsgIdx, in.IsFocused)
@@ -264,7 +271,13 @@ func (r flowRenderer) render(items []flowItem, msg message, msgIdx int, isFocuse
 			// anchor is implied by arrival order), so the focus match uses 0.
 			// The FlowRenderer is the only tool-entry renderer.
 			start := nl
-			s := renderToolEntry(r.theme, it.tool.entry, it.tool.expanded, r.now, r.width, r.pulse, isFocused != nil && isFocused(blockTool, 0, it.tool.logIdx, 0))
+			focused := isFocused != nil && isFocused(blockTool, 0, it.tool.logIdx, 0)
+			var s string
+			if r.toolLog != nil && it.tool.logIdx >= 0 {
+				s = r.toolLog.renderEntry(it.tool.logIdx, r.width, r.theme, it.tool.expanded, focused, r.pulse)
+			} else {
+				s = renderToolEntry(r.theme, it.tool.entry, it.tool.expanded, r.now, r.width, r.pulse, focused)
+			}
 			emit(s)
 			if n := strings.Count(s, "\n"); n > 0 {
 				rows = append(rows, toolRowRange{start: start, end: start + n - 1, idx: it.tool.logIdx})

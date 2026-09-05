@@ -24,7 +24,43 @@ type toolLog struct {
 	// expansion owns every tool entry's per-block expansion force (keyed by the
 	// entry's log index) and the open/collapsed decision, so the per-entry
 	// expanded / force-collapse flags live behind the ExpansionState seam rather
+	// than a per-entry flag.
 	expansion ExpansionState
+	// entryCache memoizes rendered completed tool entries keyed by log index;
+	// see cachedToolRender. A pointer so the value-copied toolLog shares one
+	// memo across render passes without copying it.
+	entryCache *toolRenderCache
+}
+
+// cachedToolRender memoizes one completed tool entry's rendered text plus the
+// surface parameters it was built for, so a later frame reuses it only when
+// nothing it rendered from changed. Completed entries are immutable between
+// frames (result, compression metadata and doneAt are fixed; only the live
+// in-progress entry re-renders against the running clock), so a long busy turn
+// re-renders its committed tool cards from cache instead of re-paying lipgloss
+// Style.Render on every ~80ms spinner frame — the O(entries*width) hot path
+// that makes a long tool-heavy live turn crawl.
+type cachedToolRender struct {
+	width    int
+	expanded bool
+	focused  bool
+	text     string
+}
+
+// toolRenderCache is the memo map behind toolLog.entryCache; a map value is
+// present only for completed entries. The caller owns invalidation on Apply
+// (entry mutation / new entry) and clears on internal invalidation.
+type toolRenderCache struct {
+	m map[int]cachedToolRender
+}
+
+func (l *toolLog) initCache() {
+	if l.entryCache == nil {
+		l.entryCache = &toolRenderCache{}
+	}
+	if l.entryCache.m == nil {
+		l.entryCache.m = map[int]cachedToolRender{}
+	}
 }
 
 func (l toolLog) Len() int { return len(l.entries) }
@@ -59,6 +95,8 @@ func (l *toolLog) SetStart(i int, t time.Time) {
 // Apply folds one tool-call observation into the log: a Start appends a fresh incomplete entry anchored to the current turn; a Result pairs back to the most recent not-yet-complete entry for that tool name and fills in its result/compression/line-delta metadata and marks it complete.
 func (l *toolLog) Apply(u ToolUpdate) {
 	if u.Start != nil {
+		l.initCache()
+		l.entryCache.m = nil // a new entry shifts every later index; drop the whole memo
 		l.entries = append(l.entries, toolEntry{
 			name:      u.Start.Name,
 			args:      u.Start.Args,
@@ -77,6 +115,8 @@ func (l *toolLog) Apply(u ToolUpdate) {
 				l.entries[i].compressed = u.Result.Compressed
 				l.entries[i].doneAt = time.Now()
 				l.entries[i].complete = true
+				l.initCache()
+				delete(l.entryCache.m, i) // the completed entry re-renders once with its filled result
 				return
 			}
 		}
@@ -90,6 +130,7 @@ func (l *toolLog) Expand(i int) {
 		return
 	}
 	l.expansion.set(blockTool, i, true)
+	l.dropEntryCache(i)
 }
 
 // ForceCollapse pins one entry force-collapsed on the seam, beating the
@@ -99,6 +140,7 @@ func (l *toolLog) ForceCollapse(i int) {
 		return
 	}
 	l.expansion.set(blockTool, i, false)
+	l.dropEntryCache(i)
 }
 
 // expandedFor returns whether entry i renders expanded, read solely through
@@ -112,6 +154,57 @@ func (l toolLog) expandedFor(i int, cfg expansionConfig) bool {
 		return false
 	}
 	return l.expansion.expanded(blockTool, i, cfg)
+}
+
+// dropEntryCache discards the memoized render of entry i (and its dependents'
+// indexes if the entry list shrank, which Apply handles separately).
+func (l *toolLog) dropEntryCache(i int) {
+	if l.entryCache == nil {
+		return
+	}
+	delete(l.entryCache.m, i)
+}
+
+// cached returns the memoized render of completed entry i when it matches the
+// current surface parameters, and whether one exists.
+func (l *toolLog) cached(i, width int, expanded, focused bool) (string, bool) {
+	if l.entryCache == nil {
+		return "", false
+	}
+	c, ok := l.entryCache.m[i]
+	if !ok {
+		return "", false
+	}
+	if c.width != width || c.expanded != expanded || c.focused != focused || !l.entries[i].complete {
+		return "", false
+	}
+	return c.text, true
+}
+
+// storeCache records the memoized render of completed entry i for the given
+// surface parameters.
+func (l *toolLog) storeCache(i, width int, expanded, focused bool, text string) {
+	l.initCache()
+	l.entryCache.m[i] = cachedToolRender{width: width, expanded: expanded, focused: focused, text: text}
+}
+
+// renderEntry renders entry i (or reuses its cache) using the given surface
+// parameters. Completed entries are served from cache; in-progress entries are
+// never cached and always render fresh against the running clock (pulse only
+// affects the in-progress highlight, so it is not part of the completed-entry
+// cache key). The focused flag participates in the cache key because the focus
+// marker changes the bytes.
+func (l *toolLog) renderEntry(i, width int, th Theme, expanded, focused, pulse bool) string {
+	if l.entries[i].complete {
+		if s, ok := l.cached(i, width, expanded, focused); ok {
+			return s
+		}
+	}
+	s := renderToolEntry(th, l.entries[i], expanded, time.Now(), width, pulse, focused)
+	if l.entries[i].complete {
+		l.storeCache(i, width, expanded, focused, s)
+	}
+	return s
 }
 
 // AtLine maps a content-line coordinate to the tool entry that owns it via the shared layout pass. rows is the row-account already produced by Render (the log never re-derives layout separately), so the hit-test cannot drift from what the transcript renders.

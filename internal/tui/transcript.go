@@ -557,6 +557,7 @@ func (t *Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg mes
 		Tools:         tools,
 		IsFocused:     t.focusedBlockIs,
 		MarkdownCache: &t.liveMarkdownCache,
+		ToolLog:       &t.log,
 	})
 }
 
