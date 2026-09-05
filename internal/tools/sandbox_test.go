@@ -13,13 +13,13 @@ import (
 )
 
 type recordingRunner struct {
-	calls [][]string
+	calls []RunSpec
 	out   *Output
 	err   error
 }
 
-func (r *recordingRunner) Run(_ context.Context, name string, args []string) (*Output, error) {
-	r.calls = append(r.calls, append([]string{name}, args...))
+func (r *recordingRunner) Run(_ context.Context, spec RunSpec) (*Output, error) {
+	r.calls = append(r.calls, spec)
 	return r.out, r.err
 }
 
@@ -38,9 +38,13 @@ func TestSandboxBuildsBwrapArgv(t *testing.T) {
 	if len(rr.calls) != 1 {
 		t.Fatalf("runner calls = %d, want 1", len(rr.calls))
 	}
-	argv := rr.calls[0]
-	if argv[0] != "bwrap" {
-		t.Fatalf("argv[0] = %q, want bwrap", argv[0])
+	spec := rr.calls[0]
+	if spec.Name != "bwrap" {
+		t.Fatalf("exec name = %q, want bwrap", spec.Name)
+	}
+	argv := spec.Args
+	if argv[0] != "--die-with-parent" {
+		t.Fatalf("argv[0] = %q, want --die-with-parent", argv[0])
 	}
 	want := []string{
 		"--die-with-parent",
@@ -64,8 +68,8 @@ func TestSandboxBuildsBwrapArgv(t *testing.T) {
 		t.Fatalf("argv too short: %v", argv)
 	}
 	for i, w := range want {
-		if argv[i+1] != w { // argv[0] is bwrap
-			t.Fatalf("argv[%d] = %q, want %q (argv=%v)", i+1, argv[i+1], w, argv)
+		if argv[i] != w {
+			t.Fatalf("argv[%d] = %q, want %q (argv=%v)", i, argv[i], w, argv)
 		}
 	}
 	last := argv[len(argv)-1]
@@ -115,7 +119,7 @@ func TestSandboxRegistersSshConfigMount(t *testing.T) {
 	if _, err := sb.Run(context.Background(), "true"); err != nil {
 		t.Fatalf("Run() error = %v, want nil", err)
 	}
-	argv := rr.calls[0]
+	argv := rr.calls[0].Args
 	sshSrc := tempHost + string(filepath.Separator) + sshConfigDirName
 	if !hasArgvPair(argv, "--ro-bind", sshSrc, "/etc/ssh/ssh_config.d") {
 		t.Fatalf("argv does not bind sanitized ssh config over /etc/ssh/ssh_config.d: %v", argv)
@@ -284,7 +288,7 @@ func TestNewSandboxRejectsInvalidDependencies(t *testing.T) {
 func TestDefaultRunnerBoundsLongRunningCommandOutput(t *testing.T) {
 	t.Parallel()
 	const emitted = 8 << 20
-	o, err := (defaultRunner{}).Run(context.Background(), "/bin/bash", []string{"-c", "head -c 8388608 /dev/zero; head -c 8388608 /dev/zero >&2"})
+	o, err := (defaultRunner{}).Run(context.Background(), RunSpec{Name: "/bin/bash", Args: []string{"-c", "head -c 8388608 /dev/zero; head -c 8388608 /dev/zero >&2"}})
 	if err != nil {
 		t.Fatalf("Run() error = %v, want nil", err)
 	}

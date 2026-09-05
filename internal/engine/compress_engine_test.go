@@ -78,6 +78,6 @@ type fakeBashRunner struct {
 	err error
 }
 
-func (f *fakeBashRunner) Run(_ context.Context, _ string, _ []string) (*tools.Output, error) {
+func (f *fakeBashRunner) Run(_ context.Context, _ tools.RunSpec) (*tools.Output, error) {
 	return &tools.Output{Stdout: f.out}, f.err
 }
