@@ -52,13 +52,13 @@ var defaultTheme = newDefaultTheme()
 // newDefaultTheme builds the default theme: the styling identity — a restrained dark palette with a single agent accent — as a palette registry plus the derived styles that draw from it.
 func newDefaultTheme() Theme {
 	return newTheme(
-		lipgloss.Color("#7AA2F7"), // accent
-		lipgloss.Color("#F7768E"), // error
-		lipgloss.Color("#9ECE6A"), // ok
-		lipgloss.Color("#E0AF68"), // shell
-		lipgloss.Color("#7DCFFF"), // file
-		lipgloss.Color("#BB9AF7"), // web
-		lipgloss.Color("#FF87D7"), // skill
+		lipgloss.Color("#7AA2F7"),
+		lipgloss.Color("#F7768E"),
+		lipgloss.Color("#9ECE6A"),
+		lipgloss.Color("#E0AF68"),
+		lipgloss.Color("#7DCFFF"),
+		lipgloss.Color("#BB9AF7"),
+		lipgloss.Color("#FF87D7"),
 		lipgloss.Color("#2A2F3A"), // bubble tint (near-background gray-blue)
 		lipgloss.Color("#3B4261"), // selectionBackground (dim blue-gray)
 		[3]color.Color{
@@ -72,13 +72,13 @@ func newDefaultTheme() Theme {
 // newDraculaTheme is the second curated chrome palette: the canonical dracula hues — purple accent, red error, green ok — built on the same constructor pattern as the default, proving a new palette is a registry addition with no consumer change.
 func newDraculaTheme() Theme {
 	return newTheme(
-		lipgloss.Color("#BD93F9"), // accent
-		lipgloss.Color("#FF5555"), // error
-		lipgloss.Color("#50FA7B"), // ok
-		lipgloss.Color("#FFB86C"), // shell
-		lipgloss.Color("#8BE9FD"), // file
-		lipgloss.Color("#FF79C6"), // web
-		lipgloss.Color("#F1FA8C"), // skill
+		lipgloss.Color("#BD93F9"),
+		lipgloss.Color("#FF5555"),
+		lipgloss.Color("#50FA7B"),
+		lipgloss.Color("#FFB86C"),
+		lipgloss.Color("#8BE9FD"),
+		lipgloss.Color("#FF79C6"),
+		lipgloss.Color("#F1FA8C"),
 		lipgloss.Color("#3D3F51"), // bubble tint (dracula comment family)
 		lipgloss.Color("#44475A"), // selectionBackground (dracula current-line)
 		[3]color.Color{
@@ -92,13 +92,13 @@ func newDraculaTheme() Theme {
 // newTokyoNightTheme is the curated tokyo-night chrome palette: the canonical tokyo-night hues — purple accent (glamour's heading color for the theme), red error, green ok — so choosing tokyo-night for Markdown also re-skins the chrome with the same family instead of inheriting the default.
 func newTokyoNightTheme() Theme {
 	return newTheme(
-		lipgloss.Color("#BB9AF7"), // accent
-		lipgloss.Color("#F7768E"), // error
-		lipgloss.Color("#9ECE6A"), // ok
-		lipgloss.Color("#FF9E64"), // shell
-		lipgloss.Color("#7DCFFF"), // file
-		lipgloss.Color("#2AC3DE"), // web
-		lipgloss.Color("#73DACA"), // skill
+		lipgloss.Color("#BB9AF7"),
+		lipgloss.Color("#F7768E"),
+		lipgloss.Color("#9ECE6A"),
+		lipgloss.Color("#FF9E64"),
+		lipgloss.Color("#7DCFFF"),
+		lipgloss.Color("#2AC3DE"),
+		lipgloss.Color("#73DACA"),
 		lipgloss.Color("#292E42"), // bubble tint (tokyo-night bg-adjacent)
 		lipgloss.Color("#33467C"), // selectionBackground (tokyo-night selection)
 		[3]color.Color{
@@ -112,13 +112,13 @@ func newTokyoNightTheme() Theme {
 // newPinkTheme is the curated pink chrome palette: the glamour pink theme's hot-pink heading hue as the accent, with a crimson error and a soft green ok that keep ✓/✗ outcomes and the error pane distinguishable from the pink accent.
 func newPinkTheme() Theme {
 	return newTheme(
-		lipgloss.Color("#FF87D7"), // accent
-		lipgloss.Color("#E5484D"), // error
-		lipgloss.Color("#69DB8C"), // ok
-		lipgloss.Color("#FFB224"), // shell
-		lipgloss.Color("#39C0ED"), // file
-		lipgloss.Color("#A78BFA"), // web
-		lipgloss.Color("#60A5FA"), // skill
+		lipgloss.Color("#FF87D7"),
+		lipgloss.Color("#E5484D"),
+		lipgloss.Color("#69DB8C"),
+		lipgloss.Color("#FFB224"),
+		lipgloss.Color("#39C0ED"),
+		lipgloss.Color("#A78BFA"),
+		lipgloss.Color("#60A5FA"),
 		lipgloss.Color("#33202E"), // bubble tint (pink-family dark)
 		lipgloss.Color("#4A2F3F"), // selectionBackground (pink-family taupe)
 		[3]color.Color{
@@ -132,13 +132,13 @@ func newPinkTheme() Theme {
 // newLightTheme is the curated light chrome palette: hues readable on a light terminal background — the glamour light theme's heading blue as the accent, with a dark red error and a dark teal-green ok, each contrast-checked against white (≥ 4.5:1).
 func newLightTheme() Theme {
 	return newTheme(
-		lipgloss.Color("#005FFF"), // accent
-		lipgloss.Color("#C92A2A"), // error
-		lipgloss.Color("#00875F"), // ok
-		lipgloss.Color("#B45309"), // shell
-		lipgloss.Color("#0E7490"), // file
-		lipgloss.Color("#6D28D9"), // web
-		lipgloss.Color("#A21CAF"), // skill
+		lipgloss.Color("#005FFF"),
+		lipgloss.Color("#C92A2A"),
+		lipgloss.Color("#00875F"),
+		lipgloss.Color("#B45309"),
+		lipgloss.Color("#0E7490"),
+		lipgloss.Color("#6D28D9"),
+		lipgloss.Color("#A21CAF"),
 		lipgloss.Color("#EAEAEF"), // bubble tint (near-white gray)
 		lipgloss.Color("#C7D8F7"), // selectionBackground (light blue highlight)
 		[3]color.Color{

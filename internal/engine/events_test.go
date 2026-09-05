@@ -209,7 +209,7 @@ func TestSetListenerNilStopsDelivery(t *testing.T) {
 		return provider.StreamFunc(provider.Chunk{Content: "hi"}, provider.Chunk{Done: true}), nil
 	}), &mockTranscript{})
 	e.SetListener(col.on)
-	e.SetListener(nil) // unsubscribe
+	e.SetListener(nil)
 
 	if _, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "go"}, AgentOptions{}); err != nil {
 		t.Fatalf("run error = %v, want nil", err)

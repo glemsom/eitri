@@ -581,8 +581,7 @@ func TestDragSelect_scrolledViewportMapsRows(t *testing.T) {
 		m = submitAndWait(t, m)
 	}
 	m = resizeTo(t, m, 120, 12)
-	view(m) // hydrate
-	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyPgUp})
+	view(m)
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyPgUp})
 	view(m)
 	if m.tx.histViewport.YOffset() <= 0 {

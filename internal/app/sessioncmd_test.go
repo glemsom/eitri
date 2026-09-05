@@ -205,7 +205,6 @@ func TestTalkSession(t *testing.T) {
 		}
 	}
 
-	// Turn range.
 	out.Reset()
 	if err := TalkSession(dataDir, "ffff6666", TalkOptions{FromTurn: 2, ToTurn: 2}, &out); err != nil {
 		t.Fatalf("TalkSession(turn 2) error = %v", err)
@@ -214,7 +213,6 @@ func TestTalkSession(t *testing.T) {
 		t.Errorf("--turn 2 output wrong:\n%s", out.String())
 	}
 
-	// Role filter.
 	out.Reset()
 	if err := TalkSession(dataDir, "ffff6666", TalkOptions{Role: "user"}, &out); err != nil {
 		t.Fatalf("TalkSession(role=user) error = %v", err)
