@@ -16,6 +16,10 @@ _Avoid_: tmp, scratch
 The isolation boundary for shell commands: root read-only (including host `/tmp` unless configured writable), workspace and session temp writable, separate PID namespace, private `/dev` and `/proc`.
 _Avoid_: container, jail
 
+**Yolo mode / `--yolo-unsafe`**
+The launch-time opt-out that drops the sandbox: `bash` executes directly as the invoking user with full host permissions, no bwrap cage is constructed, and the sandbox substrate (`bwrap`) is exempted from the boot dependency check. The honest unsandboxed prompt variant and `bash` tool definition never claim a terminating sandbox, because no cage runs — Eitri does not represent itself as contained in this mode. The distinction from **Sandbox / bwrap cage** is the absence of any isolation boundary.
+_Avoid_: unsafe mode, unrestricted mode, no-sandbox mode, raw mode
+
 **Host-side tool**
 A tool running outside the sandbox while resolving the same filesystem paths as `bash`; write-side tools gate targets on the writable roots.
 _Avoid_: local tool, external tool
