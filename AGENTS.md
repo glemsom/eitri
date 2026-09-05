@@ -14,7 +14,7 @@ Five canonical triage roles use label strings equal to their names: `needs-triag
 
 ### Domain docs
 
-Single-context: one `CONTEXT.md` at the repo root. See `docs/agents/domain.md`.
+Single-context: one `CONTEXT.md` at the repo root, holding all domain definitions and glossary terms. Structural maps (how code modules are wired) belong in `ARCHITECTURE.md`, which must reference `CONTEXT.md` for terminology rather than redefining it. See `docs/agents/domain.md`.
 
 ### Comment-value policy
 
