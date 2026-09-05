@@ -16,16 +16,12 @@
 ## Quickstart
 
 ```sh
-# Install the declared toolset (required; Eitri refuses to start without it,
-# because its agent prompt promises these tools unconditionally):
-#   Debian/Ubuntu: sudo apt install bubblewrap bash ripgrep curl lynx patch python3 git jq xdg-utils
-#   Fedora:        sudo dnf install bubblewrap bash ripgrep curl lynx patch python3 git jq xdg-utils
-#   Arch:          sudo pacman -S bubblewrap bash ripgrep curl lynx patch python3 git jq xdg-utils
-
 make build          # 1. build ./bin/eitri
 ./bin/eitri         # 2. launch the interactive TUI
-# 3. on first launch you'll be asked to log in to your provider
+# 3. the first launch asks you to log in to your provider
 ```
+
+> Eitri refuses to start unless its declared toolset is installed — see [Requirements](#requirements).
 
 ## Usage
 
