@@ -80,6 +80,10 @@ _Avoid_: Prompt template, plugin
 The binary-owned ROM at `$EITRI_DIR/skills-builtin` where embedded builtin skill packs are materialized at boot. Refreshed only on content mismatch (upgrades win, edits reverted by design); a builtin is overridden by a same-named skill in the user or project scope.
 _Avoid_: Engine skills, embedded skills
 
+**Skillspack source**:
+The repo directory `internal/engine/skillspack/` — the single place builtin skill packs are authored and edited. The materialized skills-builtin root is its output, and from inside an agent sandbox `~/.eitri` is read-only (only the workspace, the session's `$TMPDIR`, and `~/.cache` are writable), so agent edits to builtin skills land in the skillspack source, never in the materialized ROM.
+_Avoid_: Skills-builtin editing, builtin skill patching
+
 **Skill catalog**:
 The filtered, trust-gated set of skills for a run, backing both the human slash surface and the model-facing skill index. On exact-name collision the strongest claim wins: project > user > builtin.
 _Avoid_: Skill list, registry

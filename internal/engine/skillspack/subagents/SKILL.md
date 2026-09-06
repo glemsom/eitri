@@ -30,3 +30,13 @@ process, and read the results in the same Bash tool call: in sandboxed mode
 the sandbox terminates child processes when the tool call returns; elsewhere
 they merely keep running — waiting and reading within the same call is what
 guarantees the results are there to collect.
+
+## File handoff
+
+Hand files between the parent and a subagent through the **workspace** — the
+only path writable from both sides. Each subagent runs in an isolated sandbox
+with its *own* writable `$TMPDIR`; the parent's `$TMPDIR` is read-only from
+inside the subagent, and a subagent's scratch files are unreachable by the
+parent after the run. So pass workspace paths in task prompts for any file
+that crosses the boundary, and let each side keep private scratch in its own
+`$TMPDIR`.
