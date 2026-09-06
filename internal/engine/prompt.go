@@ -20,8 +20,9 @@ func SystemPromptContent() string {
 }
 
 // SystemPromptYoloContent returns the unsandboxed (--yolo-unsafe) variant of
-// the embedded persona: byte-identical to the default prompt except the subagent
-// guidance, which never claims a terminating sandbox because no cage runs.
+// the embedded persona, byte-identical to the default: the batch-subagent
+// recipe moved to the `subagents` builtin skill, leaving both heads with only
+// the one-line pointer.
 func SystemPromptYoloContent() string {
 	return strings.TrimRight(SystemPromptYolo, "\n")
 }
