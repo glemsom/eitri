@@ -73,7 +73,7 @@ _Avoid_: Scratchpad, tmp (the ambiguous system-wide /tmp)
 ### Skills
 
 **Skill**:
-A discovered, validated pack of agent instructions (body plus resources) installed under the builtin, user, or project scope, activated by the human via `/skillname` or read by the model itself through `bash`.
+A discovered, validated pack of agent instructions (body plus resources) found under the builtin, user, or project scope, activated by the human via `/skillname` or read by the model itself through `bash`.
 _Avoid_: Prompt template, plugin
 
 **Builtin skills root**:
