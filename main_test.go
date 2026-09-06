@@ -136,23 +136,10 @@ func TestRenderDiagnosticsDocsDescribeSupportedWorkflows(t *testing.T) {
 }
 
 func TestCLIBatchWithStubProvider(t *testing.T) {
-	fixture, err := os.ReadFile("internal/provider/testdata/hello.sse")
-	if err != nil {
-		t.Fatalf("read fixture: %v", err)
-	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = w.Write(fixture)
-	}))
-	defer srv.Close()
-
+	srv := stubProviderServer(t)
 	bin := buildBinary(t)
-	dataDir := filepath.Join(t.TempDir(), ".eitri")
 	cmd := exec.Command(bin, "-b", "hello")
-	cmd.Env = append(
-		cleanEnvs(t, "EITRI_DIR", "OPENCODE_API_KEY", "EITRI_PROVIDER_URL"),
-		"EITRI_DIR="+dataDir, "EITRI_PROVIDER_URL="+srv.URL, "OPENCODE_API_KEY=test-key",
-	)
+	cmd.Env, _ = batchRunEnv(t, srv.URL)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("eitri -b exit error = %v, output:\n%s", err, out)
