@@ -94,6 +94,12 @@ type Options struct {
 
 	Yolo bool
 
+	// Stdin is the stream batch mode consumes as piped context and appends to
+	// the -b prompt as a fenced block. Nil falls back to host stdin, which is
+	// only read when it is not an interactive terminal; terminal input is never
+	// drained.
+	Stdin io.Reader
+
 	Stdout io.Writer
 
 	Provider provider.Provider
@@ -171,6 +177,11 @@ func Run(opts Options) error {
 		return err
 	}
 	if opts.Prompt == "" {
+		// Piped stdin into an interactive launch would be silently drained by a
+		// TUI that never reads it; refuse with a pointer at batch mode instead.
+		if opts.Stdin != nil || !stdinIsTerminal() {
+			return ErrStdinWithoutBatch
+		}
 		if err := tuiBootError(currentTUIEnv()); err != nil {
 			return err
 		}
@@ -197,7 +208,14 @@ func Run(opts Options) error {
 		return runTUI(e, logged, cfg, reg, key, liveProvider, cfgPath, dir, skills, workspace, tempHost)
 	}
 
-	res, err := runAgent(context.Background(), e, cfg, reg, key, opts.Prompt, skills, nil, nil)
+	prompt := opts.Prompt
+	if prompt != "" {
+		var err error
+		if prompt, err = withStdinContext(prompt, stdinSource(opts.Stdin)); err != nil {
+			return err
+		}
+	}
+	res, err := runAgent(context.Background(), e, cfg, reg, key, prompt, skills, nil, nil)
 	if err != nil {
 		return err
 	}
