@@ -4,6 +4,7 @@ Named after the Norse blacksmith who forged Mjölnir. Eitri is an AI assistant t
 
 ## Philosophy
 
+- **A lean system prompt, no fat.** The agent prompt stays small and sharp: it tells the model how to behave, not what the tools already tell it. Knowledge the agent needs per workspace lives in files (`AGENTS.md`, skills, `CONTEXT.md`) loaded on demand, not baked into the prompt. Every prompt line must earn its tokens.
 - **Smith it.** Minimal, precise strikes. Full substance, no filler. Prefer the simplest correct solution, focused edits over full rewrites, and preserving existing code style.
 - **Unix primitives first.** Compose command-line tools into simple pipelines. Scripts are for state and control flow; everything else is `bash`.
 - **Self-host or don't.** Eitri is a single static Go binary you drop anywhere. Sessions, transcripts, and configuration live under `~/.eitri`. You own them.

@@ -1,6 +1,6 @@
 # Eitri Architecture
 
-Eitri is a single static Go binary: a self-hosted AI coding agent that reads, writes, and runs code in a user's workspace through natural-language conversation with any OpenAI-compatible model provider. This document is the map of how the code is put together. Terminology follows [`CONTEXT.md`](CONTEXT.md); `README.md` covers user-facing behavior.
+Eitri is a single static Go binary: a self-hosted AI coding agent that reads, writes, and runs code in a user's workspace through natural-language conversation with any OpenAI-compatible model provider. Two goals shape every design decision here. First, Eitri keeps a **lean system prompt**: the embedded persona says as little as possible, and workspace-specific knowledge is delivered as additive system-layer directives (`AGENTS.md`, skills) or read from disk on demand rather than baked in. Second, Eitri leans on the **Unix philosophy**: the agent's tools are the shell's tools (`bash`, `rg`, `curl`, `jq`, `python3`, ...) composed into pipelines, and the binary itself is a small static Go program that does one thing — the agent loop — instead of reimplementing what the OS already provides. This document is the map of how the code is put together. Terminology follows [`CONTEXT.md`](CONTEXT.md); `README.md` covers user-facing behavior.
 
 ## The big picture
 
