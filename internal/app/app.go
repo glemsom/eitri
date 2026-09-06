@@ -280,16 +280,15 @@ type batchEnvelope struct {
 // writeBatchEnvelope marshals the run result into one JSON object and writes it
 // as the final stdout output.
 func writeBatchEnvelope(out io.Writer, sessionGUID string, res engine.Result) error {
-	env, err := json.Marshal(batchEnvelope{
+	// Marshal cannot fail for a struct of string/int/bool fields; only the write
+	// can.
+	env, _ := json.Marshal(batchEnvelope{
 		Answer:  res.Answer,
 		Session: sessionGUID,
 		Turns:   res.Turns,
 		Stopped: res.Stopped,
 	})
-	if err != nil {
-		return err
-	}
-	_, err = fmt.Fprintln(out, string(env))
+	_, err := fmt.Fprintln(out, string(env))
 	return err
 }
 
