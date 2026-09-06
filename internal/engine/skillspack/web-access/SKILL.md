@@ -1,6 +1,6 @@
 ---
 name: web-access
-description: Fetch and read web content — pages, API/JSON data, downloads. Use whenever the task needs something from the web: looking up docs, calling an API, checking a URL, or reading an article — even if the user doesn't mention 'the web', 'curl', or a browser.
+description: "Fetch and read web content — pages, API/JSON data, downloads. Use whenever the task needs something from the web: looking up docs, calling an API, checking a URL, or reading an article — even if the user doesn't mention 'the web', 'curl', or a browser."
 model-invocable: true
 ---
 
