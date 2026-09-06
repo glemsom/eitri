@@ -136,6 +136,23 @@ func TestRenderDiagnosticsDocsDescribeSupportedWorkflows(t *testing.T) {
 }
 
 func TestCLIBatchWithStubProvider(t *testing.T) {
+	srv := stubProviderServer(t)
+	bin := buildBinary(t)
+	cmd := exec.Command(bin, "-b", "hello")
+	cmd.Env, _ = batchRunEnv(t, srv.URL)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("eitri -b exit error = %v, output:\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "Hello world") {
+		t.Fatalf("batch output %q missing the final answer", out)
+	}
+}
+
+// stubProviderServer serves the hello.sse fixture over SSE, standing in for a
+// model endpoint so CLI-level batch tests can boot without a network.
+func stubProviderServer(t *testing.T) *httptest.Server {
+	t.Helper()
 	fixture, err := os.ReadFile("internal/provider/testdata/hello.sse")
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
@@ -144,21 +161,78 @@ func TestCLIBatchWithStubProvider(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write(fixture)
 	}))
-	defer srv.Close()
+	t.Cleanup(srv.Close)
+	return srv
+}
 
-	bin := buildBinary(t)
+// batchRunEnv builds the environment a booted batch CLI run needs: a fresh
+// data dir and a stubbed provider endpoint.
+func batchRunEnv(t *testing.T, providerURL string) ([]string, string) {
+	t.Helper()
 	dataDir := filepath.Join(t.TempDir(), ".eitri")
-	cmd := exec.Command(bin, "-b", "hello")
-	cmd.Env = append(
+	env := append(
 		cleanEnvs(t, "EITRI_DIR", "OPENCODE_API_KEY", "EITRI_PROVIDER_URL"),
-		"EITRI_DIR="+dataDir, "EITRI_PROVIDER_URL="+srv.URL, "OPENCODE_API_KEY=test-key",
+		"EITRI_DIR="+dataDir, "EITRI_PROVIDER_URL="+providerURL, "OPENCODE_API_KEY=test-key",
 	)
+	return env, dataDir
+}
+
+func TestCLIBatchConsumesPipedStdin(t *testing.T) {
+	// `git diff | eitri -b "review this diff"` must work end to end: piped stdin
+	// is consumed as context and the run completes cleanly.
+	srv := stubProviderServer(t)
+	bin := buildBinary(t)
+	cmd := exec.Command(bin, "-b", "review this diff")
+	cmd.Env, _ = batchRunEnv(t, srv.URL)
+	cmd.Stdin = strings.NewReader("diff --git a/x b/x\n--- a/x\n+++ b/x\n")
+
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("eitri -b exit error = %v, output:\n%s", err, out)
+		t.Fatalf("eitri -b with piped stdin exit error = %v, output:\n%s", err, out)
 	}
 	if !strings.Contains(string(out), "Hello world") {
 		t.Fatalf("batch output %q missing the final answer", out)
+	}
+}
+
+func TestCLIBatchRefusesOversizedStdinWithExitOne(t *testing.T) {
+	srv := stubProviderServer(t)
+	bin := buildBinary(t)
+	cmd := exec.Command(bin, "-b", "summarize")
+	cmd.Env, _ = batchRunEnv(t, srv.URL)
+	// One byte over the 1 MiB cap: refusal beats truncation, exit code 1.
+	cmd.Stdin = strings.NewReader(strings.Repeat("x", 1<<20+1))
+
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("eitri -b with >1 MiB stdin exited zero, output:\n%s", out)
+	}
+	if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 1 {
+		t.Fatalf("oversized-stdin refusal exit = %v, want exit code 1", err)
+	}
+	if !strings.Contains(string(out), "1 MiB") {
+		t.Fatalf("oversized-stdin refusal stderr %q does not name the 1 MiB cap", out)
+	}
+}
+
+func TestCLIRefusesPipedStdinWithoutBatch(t *testing.T) {
+	// `git diff | eitri` (no -b) must refuse rather than silently drain the pipe,
+	// pointing the user at `eitri -b "<prompt>"`, exit code 1.
+	srv := stubProviderServer(t)
+	bin := buildBinary(t)
+	cmd := exec.Command(bin)
+	cmd.Env, _ = batchRunEnv(t, srv.URL)
+	cmd.Stdin = strings.NewReader("git diff output")
+
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("eitri with piped stdin and no -b exited zero, output:\n%s", out)
+	}
+	if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 1 {
+		t.Fatalf("no--b piped-stdin refusal exit = %v, want exit code 1", err)
+	}
+	if !strings.Contains(string(out), `eitri -b "<prompt>"`) {
+		t.Fatalf("no--b refusal stderr %q does not point at `eitri -b \"<prompt>\"`", out)
 	}
 }
 

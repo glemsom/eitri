@@ -28,7 +28,8 @@ Usage:
 
 Flags:
 
-  -b <prompt>    run once in batch mode with the given prompt and exit
+  -b <prompt>    run once in batch mode with the given prompt and exit;
+                 piped (non-TTY) stdin is appended after the prompt as fenced context
   -v             in batch mode, print the model's thinking/reasoning to stdout
   -d             enable debug mode (writes full HTTP traces to/from the provider)
   --yolo-unsafe  run unsandboxed: bash executes directly as your user, no
