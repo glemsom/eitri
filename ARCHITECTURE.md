@@ -84,7 +84,7 @@ The fixed tool surface plus everything it needs to execute safely.
 - `direct.go` — the unsandboxed `--yolo-unsafe` backend: same environment contract, no cage.
 - `tool_bash.go` — the `bash` tool; selects the backend via the `bashBackend` interface and returns combined stdout+stderr through compression.
 - `tool_browser.go` / `network.go` — `open_in_browser` backed by `xdg-open`.
-- `skills.go` — skill discovery and validation under builtin/user/project scopes (project shadows user, which shadows builtin; the builtin root is the materialized `<dataDir>/skills-builtin`), the trust-gated catalog backing both the human slash surface and the model-facing skill index (`ModelInvocable` flag), and the rendered index.
+- `skills.go` — skill discovery and validation across three roots: the builtin root `<dataDir>/skills-builtin` (materialized from the binary at boot), the user-global `~/.agents/skills`, and the project `.agents/skills` under the workspace. On exact-name collision the strongest claim wins — project shadows user, which shadows builtin — and the trust-gated catalog backs both the human slash surface and the model-facing skill index (`ModelInvocable` flag), plus the rendered index.
 
 ### `internal/session` — the on-disk trail
 

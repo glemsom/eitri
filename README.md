@@ -53,6 +53,16 @@ By default every `bash` command Eitri runs is confined by a **bubblewrap cage**:
 
 If the workspace root (the directory you launch Eitri from) contains an `AGENTS.md`, Eitri reads it and carries its content to the model as a dedicated system-layer directive headed `## Repository instructions (AGENTS.md)` — both in the TUI and in batch (`-b`) mode. The injected instructions are **additive**: the built-in Eitri persona prompt is preserved unchanged, and the message is excluded from persisted session history so it isn't duplicated on the next turn. Without an `AGENTS.md`, no extra message is sent and the request is byte-identical to the pre-feature case. There is no opt-in or escape-hatch flag; the file is loaded whenever it exists.
 
+### Skills
+
+Skill packs (agent instructions plus bundled resources) are discovered from three scopes, in shadowing order **project > user > builtin**:
+
+- **Builtin** — ships inside the binary (currently the `subagents` recipe) and is materialized to `$EITRI_DIR/skills-builtin` on launch. Binary-owned: refreshed on content mismatch, manual edits reverted by design.
+- **User** — `~/.agents/skills`, applies in every workspace.
+- **Project** — `.agents/skills` in the workspace, applies there only.
+
+Shadowing means a same-named pack in a higher scope overrides a lower one, so you can replace any builtin skill with your own.
+
 ### Diagnostics with pprof
 
 Use `pprof` for performance symptoms: slow rendering, stalls while streaming, high CPU, or unexpected allocation pressure. It is disabled by default; enable it only for a diagnostic run and bind it to localhost:
