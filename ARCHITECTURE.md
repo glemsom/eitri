@@ -4,25 +4,26 @@ Eitri is a single static Go binary: a self-hosted AI coding agent that reads, wr
 
 ## The big picture
 
-```
-main.go ──► internal/app          boot, flags, wiring, batch mode, session CLI
-                │
-                │  builds
-                ▼
-internal/config    internal/tools     internal/provider      internal/engine
-  config.json      bash + sandbox     provider seam +        turn loop, prompt,
-  + EITRI_DIR      browser, skills    dialects, streaming,   compaction, events
-                   registry           auth, message log
-                                             │
-                                             ▼
-                                    internal/session        on-disk session trail
-                                                            (JSONL transcript)
-                │
-                ▼ (interactive mode)
-           internal/tui      bubbletea UI: transcript, composer, turn lifecycle
+```mermaid
+flowchart BT
+    main["main.go<br><i>flags, session CLI dispatch</i>"] --> app["internal/app<br><i>boot, wiring, dependency verification</i>"]
+    config["internal/config<br><i>config.json + EITRI_DIR</i>"] --> app
+
+    app --> engine["internal/engine<br><i>turn loop, prompt, compaction, events</i>"]
+    app --> tui["internal/tui<br><i>bubbletea UI: transcript, composer,<br>turn lifecycle</i>"]
+
+    engine --> provider["internal/provider<br><i>provider seam, dialects, streaming,<br>auth, message log</i>"]
+    engine --> tools["internal/tools<br><i>bash + sandbox, browser, skills,<br>registry</i>"]
+    engine --> session["internal/session<br><i>on-disk session trail<br>(JSONL transcript)</i>"]
+    tools --> session
+
+    compress["internal/compress<br><i>tool-output shrinking</i>"] --> tools
+
+    style main fill:#e8e8e8
+    style app fill:#dde7f0
 ```
 
-Dependency direction is strictly downward: `app` wires everything, `tui` and `engine` sit above `provider`/`tools`, and none of the lower layers know about the layers above them. `internal/constants` holds shared limits (byte caps, min TUI width) so lower layers never import config.
+Dependency direction is strictly upward: `main` and `app` wire everything; `engine` and `tui` call down into `provider`, `tools`, and `session`; none of the lower layers know about the layers above them. `internal/constants` holds shared limits (byte caps, min TUI width) so lower layers never import config.
 
 ## Layer by layer
 
