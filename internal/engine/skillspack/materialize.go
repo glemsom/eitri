@@ -13,8 +13,7 @@ import (
 type Warnf func(format string, args ...any)
 
 // BuiltinRootName is the data-directory relative path the materialized builtin
-// skill packs land under: <dataDir>/skills-builtin. The app feeds this root to
-// skill discovery as the "builtin" scope.
+// skill packs land under: <dataDir>/skills-builtin.
 const BuiltinRootName = "skills-builtin"
 
 // Materialize writes the builtin skill packs embedded in fsys into
