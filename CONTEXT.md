@@ -73,11 +73,15 @@ _Avoid_: Scratchpad, tmp (the ambiguous system-wide /tmp)
 ### Skills
 
 **Skill**:
-A discovered, validated pack of agent instructions (body plus resources) installed under a user or project scope, activated by the human via `/skillname` or read by the model itself through `bash`.
+A discovered, validated pack of agent instructions (body plus resources) installed under the builtin, user, or project scope, activated by the human via `/skillname` or read by the model itself through `bash`.
 _Avoid_: Prompt template, plugin
 
+**Builtin skills root**:
+The binary-owned ROM at `$EITRI_DIR/skills-builtin` where embedded builtin skill packs are materialized at boot. Refreshed only on content mismatch (upgrades win, edits reverted by design); a builtin is overridden by a same-named skill in the user or project scope.
+_Avoid_: Engine skills, embedded skills
+
 **Skill catalog**:
-The filtered, trust-gated set of skills for a run, backing both the human slash surface and the model-facing skill index. Project scope shadows user scope on name collision.
+The filtered, trust-gated set of skills for a run, backing both the human slash surface and the model-facing skill index. On exact-name collision the strongest claim wins: project > user > builtin.
 _Avoid_: Skill list, registry
 
 **Model-invocable skill**:
