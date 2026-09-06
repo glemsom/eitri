@@ -6,10 +6,8 @@ model-invocable: true
 
 ## Subagents
 
-Parallelize independent work by launching one batch-mode subagent per task
-in the background — or offload a single task to run while the session
-continues. Give each subagent an isolated execution directory and always
-wait for it before reading its result. The same pattern works for one or
+For each batch-mode subagent, use an isolated execution directory and always
+wait for it before reading the result. The same pattern works for one or
 many subagents:
 ```sh
 for task_number in 1 2; do
