@@ -63,7 +63,7 @@ The host directory the session operates in; writable by design.
 _Avoid_: Project root, cwd (cwd is the incidental current directory; the workspace is the session's declared scope)
 
 **Sandbox**:
-The bubblewrap cage confining every `bash` execution by default: read-only root, writable workspace and session temp, isolated PID/`/proc`/`/dev` namespaces. Dropped only by the explicit `--yolo-unsafe` opt-out, which the binary then honestly discloses in its prompt rather than claiming containment.
+The bubblewrap cage confining every `bash` execution by default: read-only root, writable workspace and session temp, isolated PID/`/proc`/`/dev` namespaces. Dropped only by the explicit `--yolo-unsafe` opt-out. The prompt claims no containment either way: the sandbox sentence moved with the batch-subagent guidance into the `subagents` skill.
 _Avoid_: Cage, jail (colloquially fine, but "sandbox" is canonical)
 
 **Session temp**:

@@ -101,8 +101,7 @@ type RunRequest struct {
 	ReasoningEffort string
 
 	// Yolo selects the unsandboxed (--yolo-unsafe) session variant of the
-	// embedded system prompt, whose subagent guidance never claims a
-	// terminating sandbox because no cage runs.
+	// embedded system prompt.
 	Yolo bool
 
 	// ProviderID is the provider family this run targets, chosen by config, so

@@ -54,7 +54,7 @@ Owns one **run**: the bounded turn loop over the provider seam. This is the hear
   4. On `provider.ErrContextOverflow` (sentinel or 4xx body signals), trigger **emergency compaction** and retry once.
 - `message_partition.go` — partitions a message slice into `StableHead` (persona + per-run directives), `Transient` (skill-injected content), and persisted `History`.
 - `compact.go` — proactive compaction: when prompt usage crosses a fraction of the context window, older turns are summarized by the model itself, preserving the stable head and recent tail; also forced reactively on overflow.
-- `prompt.go` / `prompt.md` / `prompt_yolo.md` — the embedded system prompt. The sandboxed and `--yolo-unsafe` variants are honest about which world the agent runs in.
+- `prompt.go` / `prompt.md` / `prompt_yolo.md` — the embedded system prompt. The batch-subagent recipe no longer lives in the persona: it ships as the builtin `subagents` skill, and both prompt variants carry a one-line pointer to it.
 - `skillspack/` — the embedded builtin skill packs (`go:embed`), materialized by `internal/app` into `<dataDir>/skills-builtin` at boot so the normal skill roots can span them. The dir is binary-owned ROM: files are rewritten only on content mismatch (upgrades win, edits reverted by design), and an unwritable data directory is warn-and-skip, not fatal.
 - `events.go` — the typed live event stream (`StreamEvent` for reasoning/answer deltas, tool events, turn events) delivered synchronously to a single `Listener`; this is the only channel the TUI renders a live run from.
 - `validate.go`, `cache_test.go` / `stable_head_test.go` — the **byte-stable cache head** invariant: the system head must be byte-identical across turns so provider prompt caches stay warm; tests enforce it.
@@ -121,7 +121,7 @@ These are the properties the architecture exists to protect; several have dedica
 3. **Compaction ≠ compression.** Two distinct mechanisms (see the glossary in [CONTEXT.md](CONTEXT.md)); both preserve the stable head.
 4. **Stop is a sentinel, not an error.** User cancellation surfaces as `ErrStopped` (wrapping `context.Canceled`) so callers distinguish it from failure.
 5. **Append-only sessions.** Sessions are GUID-named, append-only JSONL transcripts — the ground truth for debugging (see [CONTEXT.md](CONTEXT.md)).
-6. **Honesty about containment.** The sandboxed and `--yolo-unsafe` prompts are separate embedded variants (see the glossary's *Sandbox* entry); the unsandboxed one claims no terminating sandbox.
+6. **Honesty about containment.** Neither prompt variant claims a terminating sandbox (see the glossary's *Sandbox* entry): the sentence that used to carry that claim moved with the batch-subagent guidance into the `subagents` skill.
 7. **The engine is the only caller of the provider; the TUI only sees events.** Live rendering flows through the typed event stream with stale-run rejection, never through shared mutable state.
 
 ## Testing shape

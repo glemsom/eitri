@@ -38,16 +38,24 @@ func TestSystemPromptYoloMakesNoSandboxOrCageClaim(t *testing.T) {
 	}
 }
 
-// TestSystemPromptYoloIsADistinctVariant anchors the yolo prompt as its own
-// byte-stable head: it differs from the default, and the default still carries
-// the sandbox sentence the yolo variant honestly drops — so the no-claim test
-// cannot silently pass on an unchanged copy.
-func TestSystemPromptYoloIsADistinctVariant(t *testing.T) {
+// TestSystemPromptVariantsCarrySubagentPointerOnly guards the subagents trim:
+// both prompt variants must point at the `subagents` skill instead of
+// embedding the batch recipe. The full guidance ships as the builtin skill
+// (discoverable via the skill index), and the one-line pointer is the
+// fallback trigger when the skill cannot be materialized.
+func TestSystemPromptVariantsCarrySubagentPointerOnly(t *testing.T) {
 	t.Parallel()
-	if SystemPromptYoloContent() == SystemPromptContent() {
-		t.Fatal("yolo variant must differ from the default prompt")
-	}
-	if !strings.Contains(SystemPromptContent(), "sandbox") {
-		t.Fatal("default prompt lost its sandbox guidance; the yolo no-claim test is no longer meaningful")
+	for name, content := range map[string]string{
+		"default": SystemPromptContent(),
+		"yolo":    SystemPromptYoloContent(),
+	} {
+		if !strings.Contains(content, "see the `subagents` skill") {
+			t.Errorf("%s prompt lost the subagents pointer", name)
+		}
+		for _, recipe := range []string{"mktemp -d", "agent_settled", "TMPDIR/subagent"} {
+			if strings.Contains(content, recipe) {
+				t.Errorf("%s prompt still embeds the subagents recipe (%q); the full guidance lives in the `subagents` skill", name, recipe)
+			}
+		}
 	}
 }
