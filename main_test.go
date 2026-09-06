@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -131,6 +132,50 @@ func TestRenderDiagnosticsDocsDescribeSupportedWorkflows(t *testing.T) {
 	for _, removed := range []string{"DiagnosticsConfig", "FrameSnapshotDir", "RawFrameCaptureDir", "RenderDiagnosticFrames"} {
 		if strings.Contains(doc, removed) {
 			t.Fatalf("render diagnostics docs still describe removed TUI diagnostic %q", removed)
+		}
+	}
+}
+
+func TestCLIUnknownFormatDiesBeforeBoot(t *testing.T) {
+	// `eitri -b "x" --format bogus` must die at flag parse with the unknown-format
+	// usage message, exit 1, before any provider boot — no session directory
+	// (indeed no data directory) is created.
+	bin := buildBinary(t)
+	dataDir := filepath.Join(t.TempDir(), ".eitri")
+	cmd := exec.Command(bin, "-b", "hello", "--format", "bogus")
+	cmd.Env = append(cleanEnvs(t, "EITRI_DIR", "OPENCODE_API_KEY", "EITRI_PROVIDER_URL"), "EITRI_DIR="+dataDir)
+
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("eitri --format bogus exited zero, output:\n%s", out)
+	}
+	if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 1 {
+		t.Fatalf("unknown --format exit = %v, want exit code 1", err)
+	}
+	if !strings.Contains(string(out), `unknown --format "bogus" (want: text, json)`) {
+		t.Fatalf("unknown-format output %q lacks the want: text, json usage message", out)
+	}
+	if _, statErr := os.Stat(dataDir); statErr == nil {
+		t.Fatalf("data dir %s was created before format validation refused boot", dataDir)
+	}
+}
+
+func TestCLIJSONFormatPrintsEnvelope(t *testing.T) {
+	srv := stubProviderServer(t)
+	bin := buildBinary(t)
+	cmd := exec.Command(bin, "-b", "hello", "--format", "json")
+	cmd.Env, _ = batchRunEnv(t, srv.URL)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("eitri -b --format json exit error = %v, output:\n%s", err, out)
+	}
+	var env map[string]any
+	if jerr := json.Unmarshal([]byte(strings.TrimSpace(string(out))), &env); jerr != nil {
+		t.Fatalf("--format json stdout %q is not one JSON object: %v", out, jerr)
+	}
+	for _, key := range []string{"answer", "session", "turns", "stopped"} {
+		if _, ok := env[key]; !ok {
+			t.Fatalf("--format json envelope lacks key %q: %v", key, env)
 		}
 	}
 }

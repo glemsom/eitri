@@ -110,6 +110,13 @@ type Result struct {
 	Answer    string
 	Reasoning string
 	Usage     *provider.Usage
+
+	// Turns is the number of provider request/response cycles the run performed.
+	Turns int
+
+	// Stopped reports whether the run ended in a user stop (ErrStopped) rather
+	// than a normal completion or a failure.
+	Stopped bool
 }
 
 // systemPromptHead returns the byte-stable embedded Eitri system prompt as the
@@ -192,13 +199,15 @@ type AgentOptions struct {
 	lastUsage *provider.Usage
 }
 
-func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions) (Result, error) {
+func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions) (final Result, _ error) {
 	if len(opts.Tools) > 0 && opts.Executor == nil {
 		return Result{}, errors.New("declared tools require a tool executor")
 	}
 	runID := e.claimRunID()
 	if ctx.Err() != nil {
-		return Result{}, ErrStopped
+		stopped := true
+		defer func() { final.Stopped = stopped }()
+		return final, ErrStopped
 	}
 	messages := systemPromptHead()
 	if req.Workspace != "" {
@@ -217,10 +226,15 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 	}
 	messages = append(messages, provider.Message{Role: provider.RoleUser, Content: userContent})
 	var (
-		final         Result
 		stopContent   string
 		stopReasoning string
 	)
+	cycles := 0
+	stopped := false
+	defer func() {
+		final.Turns = cycles
+		final.Stopped = stopped
+	}()
 
 	enforceSchema := false
 	if opts.ToolSchemaEnforcement {
@@ -239,8 +253,10 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 
 	recoveredContextOverflow := false
 	for turn := 0; ; turn++ {
+		cycles++
 		var content, reasoning string
 		if ctx.Err() != nil {
+			stopped = true
 			final.Answer = stopContent
 			final.Reasoning = stopReasoning
 			e.finishStopped(final, req.Prompt, runID, turn)
@@ -287,6 +303,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 			c, err := s.Next()
 			if errors.Is(err, io.EOF) {
 				if e.stopped(ctx) {
+					stopped = true
 					stopContent += content
 					stopReasoning += reasoning
 					final.Answer = stopContent
@@ -298,6 +315,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 			}
 			if err != nil {
 				if e.stopped(ctx) {
+					stopped = true
 					stopContent += content
 					stopReasoning += reasoning
 					final.Answer = stopContent
@@ -354,6 +372,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		messages = append(messages, assistant)
 		for _, tc := range done.ToolCalls {
 			if e.stopped(ctx) {
+				stopped = true
 				stopContent += content
 				stopReasoning += reasoning
 				final.Answer = stopContent
