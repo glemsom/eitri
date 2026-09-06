@@ -116,8 +116,8 @@ func TestYoloBatchSelectsYoloSystemPromptHead(t *testing.T) {
 	if len(heads) != 1 {
 		t.Fatalf("captured %d request heads, want 1", len(heads))
 	}
-	if heads[0] != engine.SystemPromptYoloContent() {
-		t.Fatalf("yolo batch head = %q, want SystemPromptYoloContent", heads[0])
+	if heads[0] != engine.SystemPromptContent() {
+		t.Fatalf("yolo batch head = %q, want SystemPromptContent", heads[0])
 	}
 }
 

@@ -48,13 +48,13 @@ Key pieces:
 Owns one **run**: the bounded turn loop over the provider seam. This is the heart of the agent.
 
 - `engine.go` — `RunAgent(ctx, RunRequest, AgentOptions)`:
-  1. Assemble messages: byte-stable persona head (embedded from `prompt.md` / `prompt_yolo.md` via `go:embed`), then per-run system-layer directives (workspace, skill index, repository `AGENTS.md`) as *separate* messages, then session history, then the user prompt (optionally bound to an activated skill's content).
+  1. Assemble messages: byte-stable persona head (embedded from `prompt.md` via `go:embed`), then per-run system-layer directives (workspace, skill index, repository `AGENTS.md`) as *separate* messages, then session history, then the user prompt (optionally bound to an activated skill's content).
   2. Negotiate generation controls (e.g. tool-schema enforcement) with the provider.
   3. Loop: stream a response, emit typed `Event`s to a listener, dispatch tool calls (`dispatch`/`ExecutorFunc`), append tool results, until a final answer, `ErrMaxTurns` (with a `CanContinue` continuation hook the TUI grants interactively), or `ErrStopped` — the dedicated stop sentinel wrapping `context.Canceled` so a user stop is distinguishable from failure.
   4. On `provider.ErrContextOverflow` (sentinel or 4xx body signals), trigger **emergency compaction** and retry once.
 - `message_partition.go` — partitions a message slice into `StableHead` (persona + per-run directives), `Transient` (skill-injected content), and persisted `History`.
 - `compact.go` — proactive compaction: when prompt usage crosses a fraction of the context window, older turns are summarized by the model itself, preserving the stable head and recent tail; also forced reactively on overflow.
-- `prompt.go` / `prompt.md` / `prompt_yolo.md` — the embedded system prompt. The batch-subagent recipe no longer lives in the persona: it ships as the builtin `subagents` skill, and both prompt variants carry a one-line pointer to it.
+- `prompt.go` / `prompt.md` — the embedded system prompt. The batch-subagent recipe no longer lives in the persona: it ships as the builtin `subagents` skill, and the prompt carries a one-line pointer to it.
 - `skillspack/` — the embedded builtin skill packs (`go:embed`), materialized by `internal/app` into `<dataDir>/skills-builtin` at boot so the normal skill roots can span them. The dir is binary-owned ROM: files are rewritten only on content mismatch (upgrades win, edits reverted by design), and an unwritable data directory is warn-and-skip, not fatal.
 - `events.go` — the typed live event stream (`StreamEvent` for reasoning/answer deltas, tool events, turn events) delivered synchronously to a single `Listener`; this is the only channel the TUI renders a live run from.
 - `validate.go`, `cache_test.go` / `stable_head_test.go` — the **byte-stable cache head** invariant: the system head must be byte-identical across turns so provider prompt caches stay warm; tests enforce it.
@@ -135,7 +135,7 @@ These are the properties the architecture exists to protect; several have dedica
 | How does a turn execute? | `internal/engine/engine.go` (`RunAgent`) |
 | How does the wire request get built? | `internal/provider/chatdialect.go` |
 | How is bash sandboxed? | `internal/tools/sandbox.go` |
-| What does the agent see in its system prompt? | `internal/engine/prompt.md` / `prompt_yolo.md` |
+| What does the agent see in its system prompt? | `internal/engine/prompt.md` |
 | How does the TUI react to a live run? | `internal/tui/turn_runtime.go`, `internal/engine/events.go` |
 | Where does session data live on disk? | `internal/session/session.go` |
 | How does tool output get bounded? | `internal/compress/compress.go` |
