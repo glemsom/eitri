@@ -49,13 +49,13 @@ stdout, and branch on the exit code.
 
 ```sh
 git diff | eitri -b "Review this diff"
-# machine-parseable answer + metadata, thinking kept off stdout:
+# machine-parseable answer + metadata:
 git diff | eitri -b "Review this diff" --format json | jq -r .answer
 ```
 
-Exit codes stay minimal: `0` means the run answered, `1` anything else. The
-full piped-stdin rules, the JSON envelope schema, and the exit-code promise
-live in [`docs/batch-mode.md`](docs/batch-mode.md).
+Exit codes stay minimal: `0` when the run answers, `1` when it refuses or
+fails. The full piped-stdin rules, the JSON envelope schema, and the exit-code
+promise live in [`docs/batch-mode.md`](docs/batch-mode.md).
 
 ### Sandboxing and `--yolo-unsafe`
 

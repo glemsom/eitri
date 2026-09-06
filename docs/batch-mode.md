@@ -83,9 +83,14 @@ Exit codes stay minimal and stable:
 
 - **`0`** — the run answered: it reached a final answer and printed it (text or
   JSON envelope).
-- **`1`** — everything else: refusals (oversized stdin, piped stdin without
-  `-b`, unknown `--format`, missing declared toolset) and failures (provider
-  errors, max-turn cap, run errors).
+- **`1`** — batch outcomes that are not an answer: refusals (oversized stdin,
+  piped stdin without `-b`, unknown `--format`, missing declared toolset) and
+  failures (provider errors, max-turn cap, run errors).
+
+This 0/1 promise covers the run itself. A malformed command line (an unknown
+flag, a missing `-b` argument) is rejected by the flag parser before boot,
+printing the usage text to stderr and exiting 2 — so `$?` is one of `0`
+(answered), `1` (refused or failed), or `2` (never started: bad usage).
 
 For callers that need more than 0/1, the JSON envelope carries `turns` and
 `stopped`.
