@@ -1,5 +1,9 @@
 # Eitri
 
+<p align="center">
+  <img src="internal/tui/face-removebg-preview.png" alt="The Eitri face" width="160">
+</p>
+
 Named after the Norse blacksmith who forged Mjölnir. Eitri is an AI assistant that runs on your own machine — it reads, writes, and runs code in your workspace, guided by natural language conversations.
 
 ## Philosophy
