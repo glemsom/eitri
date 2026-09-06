@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/glemsom/eitri/internal/engine/skillspack"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/tui"
 )
@@ -48,6 +50,27 @@ func TestRunToleratesExistingDataDir(t *testing.T) {
 
 	if err := Run(Options{DataDir: dataDir, LookPath: okLookPath}); err != nil {
 		t.Fatalf("Run() error = %v, want nil when data dir already exists", err)
+	}
+}
+
+func TestRunMaterializesBuiltinSkills(t *testing.T) {
+	stubTUI(t)
+	dir := t.TempDir()
+	dataDir := filepath.Join(dir, ".eitri")
+
+	if err := Run(Options{DataDir: dataDir, LookPath: okLookPath}); err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	got, err := os.ReadFile(filepath.Join(dataDir, "skills-builtin", "subagents", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("builtin skills not materialized at boot: %v", err)
+	}
+	embedded, err := skillspack.FS.ReadFile(filepath.Join("subagents", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read embedded subagents/SKILL.md: %v", err)
+	}
+	if !bytes.Equal(got, embedded) {
+		t.Fatal("materialized bytes differ from the embedded pack")
 	}
 }
 
