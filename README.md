@@ -42,6 +42,21 @@ make build          # 1. build ./bin/eitri
 | `eitri --yolo-unsafe` | Run unsandboxed: `bash` executes directly as your user with full host permissions, no bubblewrap cage |
 | `eitri --version` | Print the version and exit |
 
+### Unix filter
+
+`eitri -b` composes with pipes: feed context in on stdin, read the answer on
+stdout, and branch on the exit code.
+
+```sh
+git diff | eitri -b "Review this diff"
+# machine-parseable answer + metadata, thinking kept off stdout:
+git diff | eitri -b "Review this diff" --format json | jq -r .answer
+```
+
+Exit codes stay minimal: `0` means the run answered, `1` anything else. The
+full piped-stdin rules, the JSON envelope schema, and the exit-code promise
+live in [`docs/batch-mode.md`](docs/batch-mode.md).
+
 ### Sandboxing and `--yolo-unsafe`
 
 By default every `bash` command Eitri runs is confined by a **bubblewrap cage**: root is read-only, the workspace and session temp are writable, and the command runs in its own PID, `/dev`, and `/proc` namespace. That is the sandboxed-by-default guarantee.

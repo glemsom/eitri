@@ -117,8 +117,12 @@ _Avoid_: Interrupt, cancel (cancel implies the ambient context cancellation; Sto
 ### Modes
 
 **Batch mode**:
-One-shot execution: `eitri -b "<prompt>"` runs a single run and exits, which is also the substrate for subagent dispatch.
+One-shot execution: `eitri -b "<prompt>"` runs a single run and exits. Piped (non-TTY) stdin rides as fenced **stdin context** after the prompt, and `--format json` prints one machine-parseable envelope `{answer, session, turns, stopped}` instead of the plain answer; batch is also the substrate for subagent dispatch.
 _Avoid_: Headless mode, non-interactive mode
+
+**Stdin context**:
+The fenced `Stdin input:` block batch mode appends after the `-b` prompt when stdin is piped (non-TTY), so upstream data is declared input — never instructions. Empty stdin appends nothing; input over the 1 MiB cap is refused rather than truncated; stdin piped without `-b` refuses the launch because the TUI would silently drain it.
+_Avoid_: Piped context, fenced input block
 
 **Debug mode**:
 `-d`: additionally records raw HTTP request/response bodies into the session directory.
