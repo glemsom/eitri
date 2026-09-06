@@ -52,6 +52,7 @@ func TestRunBatchSuppressesThinkingByDefault(t *testing.T) {
 
 func TestRunBatchVerboseShowsThinking(t *testing.T) {
 	var out bytes.Buffer
+	var errOut bytes.Buffer
 	dir := t.TempDir()
 
 	err := Run(Options{
@@ -60,13 +61,20 @@ func TestRunBatchVerboseShowsThinking(t *testing.T) {
 		Prompt:   "Say hello",
 		Verbose:  true,
 		Stdout:   &out,
+		Stderr:   &errOut,
 		Provider: provider.NewFake("../provider/testdata/hello.sse"),
 	})
 	if err != nil {
 		t.Fatalf("Run(batch -v) error = %v, want nil", err)
 	}
-	if !strings.Contains(out.String(), "think step by step") {
-		t.Fatalf("verbose output %q missing reasoning", out.String())
+	if !strings.Contains(errOut.String(), "think step by step") {
+		t.Fatalf("verbose reasoning did not stream to stderr: %q", errOut.String())
+	}
+	if strings.Contains(out.String(), "think step by step") {
+		t.Fatalf("reasoning leaked to stdout: %q", out.String())
+	}
+	if strings.TrimSpace(out.String()) != "Hello world" {
+		t.Fatalf("stdout = %q, want only the final answer", out.String())
 	}
 }
 

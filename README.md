@@ -36,7 +36,8 @@ make build          # 1. build ./bin/eitri
 | --- | --- |
 | `eitri` | Launch the interactive TUI |
 | `eitri -b "<prompt>"` | Run once in batch mode and exit; piped (non-TTY) stdin is appended after the prompt as fenced context |
-| `eitri -b "<prompt>" -v` | Batch mode, plus print the model's thinking/reasoning to stdout |
+| `eitri -b "<prompt>" --format json` | Batch mode, printing one machine-parseable JSON envelope `{answer, session, turns, stopped}` to stdout |
+| `eitri -b "<prompt>" -v` | Batch mode, plus print the model's thinking/reasoning to stderr (stdout stays parseable) |
 | `eitri -d` | Debug mode: write full HTTP traces to/from the provider |
 | `eitri --yolo-unsafe` | Run unsandboxed: `bash` executes directly as your user with full host permissions, no bubblewrap cage |
 | `eitri --version` | Print the version and exit |

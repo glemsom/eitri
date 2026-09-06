@@ -30,7 +30,9 @@ Flags:
 
   -b <prompt>    run once in batch mode with the given prompt and exit;
                  piped (non-TTY) stdin is appended after the prompt as fenced context
-  -v             in batch mode, print the model's thinking/reasoning to stdout
+  --format <fmt> batch output format: text (streamed final answer, default) or json
+                 (one machine-parseable envelope object {answer, session, turns, stopped})
+  -v             in batch mode, print the model's thinking/reasoning to stderr
   -d             enable debug mode (writes full HTTP traces to/from the provider)
   --yolo-unsafe  run unsandboxed: bash executes directly as your user, no
                  bubblewrap cage
@@ -62,16 +64,23 @@ func main() {
 
 	var (
 		prompt     = flag.String("b", "", "run once in batch mode with the given prompt and exit")
-		verbose    = flag.Bool("v", false, "print the model's thinking to stdout in batch mode")
+		verbose    = flag.Bool("v", false, "print the model's thinking to stderr in batch mode")
 		debug      = flag.Bool("d", false, "enable debug mode")
 		yolo       = flag.Bool("yolo-unsafe", false, "run unsandboxed: bash executes directly, no bubblewrap cage")
 		pprofAddr  = flag.String("pprof", "", "enable localhost pprof diagnostics, optionally with an address")
 		pprofMutex = flag.Bool("pprof-mutex", false, "include mutex profile evidence when --pprof is enabled")
 		pprofBlock = flag.Bool("pprof-block", false, "include block profile evidence when --pprof is enabled")
 		showVers   = flag.Bool("version", false, "print the version and exit")
+		format     = flag.String("format", app.DefaultFormat, "batch output format: text or json")
 	)
 	flag.Usage = func() { fmt.Fprint(os.Stderr, usage) }
 	flag.Parse()
+
+	// Reject unknown --format values at flag parse, before any provider boot or
+	// session directory is created.
+	if err := app.ValidateFormat(*format); err != nil {
+		die(err)
+	}
 
 	if *showVers {
 		if err := app.Run(app.Options{Version: true}); err != nil {
@@ -84,6 +93,7 @@ func main() {
 		DataDir: os.Getenv(app.DataDirEnv),
 		Debug:   *debug,
 		Prompt:  *prompt,
+		Format:  *format,
 		Verbose: *verbose,
 		Yolo:    *yolo,
 		Pprof: app.PprofOptions{

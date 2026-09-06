@@ -78,6 +78,20 @@ func isDumbTerm(term string) bool {
 	return lower == "" || lower == "dumb" || strings.HasPrefix(lower, "dumb-")
 }
 
+// DefaultFormat is the batch-mode stdout format when none is given: the
+// byte-identical pre-feature behavior, a streamed final answer only.
+const DefaultFormat = "text"
+
+// ValidateFormat reports whether format is a supported batch output format.
+// The empty string is accepted as the default (text). Unknown values are
+// rejected before any provider boot or session creation.
+func ValidateFormat(format string) error {
+	if format != "" && format != "text" && format != "json" {
+		return fmt.Errorf("unknown --format %q (want: text, json)", format)
+	}
+	return nil
+}
+
 // Options control a single Run invocation.
 type Options struct {
 	Version bool
@@ -90,6 +104,10 @@ type Options struct {
 
 	Prompt string
 
+	// Format selects the batch-mode stdout output: "text" (default, streamed
+	// final answer only) or "json" (a single machine-parseable envelope).
+	Format string
+
 	Verbose bool
 
 	Yolo bool
@@ -101,6 +119,10 @@ type Options struct {
 	Stdin io.Reader
 
 	Stdout io.Writer
+
+	// Stderr is where batch mode streams the model's thinking under -v. Nil
+	// falls back to host stderr, keeping stdout parseable under --format json.
+	Stderr io.Writer
 
 	Provider provider.Provider
 
@@ -116,6 +138,9 @@ func Run(opts Options) error {
 	if opts.Version {
 		fmt.Println(Version)
 		return nil
+	}
+	if err := ValidateFormat(opts.Format); err != nil {
+		return err
 	}
 	if err := startPprof(opts.Pprof); err != nil {
 		return err
@@ -223,12 +248,49 @@ func Run(opts Options) error {
 	if out == nil {
 		out = os.Stdout
 	}
+	errOut := opts.Stderr
+	if errOut == nil {
+		errOut = os.Stderr
+	}
 	if opts.Verbose && res.Reasoning != "" {
-		fmt.Fprintf(out, "‹thinking›\n%s\n‹/thinking›\n", res.Reasoning)
+		fmt.Fprintf(errOut, "‹thinking›\n%s\n‹/thinking›\n", res.Reasoning)
+	}
+	format := opts.Format
+	if format == "" {
+		format = DefaultFormat
+	}
+	if format == "json" {
+		return writeBatchEnvelope(out, sess.GUID(), res)
 	}
 	fmt.Fprintln(out, res.Answer)
 
 	return nil
+}
+
+// batchEnvelope is the single machine-parseable object --format json prints at
+// run end: the answer plus run metadata a script needs that exit codes alone
+// don't carry (turns, stopped).
+type batchEnvelope struct {
+	Answer  string `json:"answer"`
+	Session string `json:"session"`
+	Turns   int    `json:"turns"`
+	Stopped bool   `json:"stopped"`
+}
+
+// writeBatchEnvelope marshals the run result into one JSON object and writes it
+// as the final stdout output.
+func writeBatchEnvelope(out io.Writer, sessionGUID string, res engine.Result) error {
+	env, err := json.Marshal(batchEnvelope{
+		Answer:  res.Answer,
+		Session: sessionGUID,
+		Turns:   res.Turns,
+		Stopped: res.Stopped,
+	})
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(out, string(env))
+	return err
 }
 
 // discoverSkills discovers Agent Skill packs from the builtin root
