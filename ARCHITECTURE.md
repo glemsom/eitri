@@ -19,8 +19,10 @@ flowchart BT
 
     compress["internal/compress<br><i>tool-output shrinking</i>"] --> tools
 
-    style main fill:#e8e8e8
+    style main fill:#dde7f0
     style app fill:#dde7f0
+    classDef node fill:#dde7f0,stroke:#555,color:#222
+    class main,app,config,engine,tui,provider,tools,session,compress node
 ```
 
 Dependency direction is strictly upward: `main` and `app` wire everything; `engine` and `tui` call down into `provider`, `tools`, and `session`; none of the lower layers know about the layers above them. `internal/constants` holds shared limits (byte caps, min TUI width) so lower layers never import config.
