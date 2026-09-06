@@ -49,7 +49,7 @@ func TestSkillDiscoverScopes(t *testing.T) {
 	writeSkill(t, proj, "proj-skill", "a project skill", "proj body", nil)
 
 	cb := &warningSink{}
-	catalog, err := Discover(user, proj, cb)
+	catalog, err := Discover(user, proj, t.TempDir(), cb)
 	if err != nil {
 		t.Fatalf("Discover error = %v, want nil", err)
 	}
@@ -81,7 +81,7 @@ func TestSkillProjectShadowsUser(t *testing.T) {
 	writeSkill(t, user, "dupe", "user version", "USER BODY", nil)
 	writeSkill(t, proj, "dupe", "project version", "PROJECT BODY", nil)
 
-	catalog, err := Discover(user, proj, &warningSink{})
+	catalog, err := Discover(user, proj, t.TempDir(), &warningSink{})
 	if err != nil {
 		t.Fatalf("Discover error = %v, want nil", err)
 	}
@@ -91,6 +91,77 @@ func TestSkillProjectShadowsUser(t *testing.T) {
 	s := catalog.Skill("dupe")
 	if s == nil || !strings.Contains(s.Body, "PROJECT BODY") {
 		t.Fatalf("shadowing failed: %+v", s)
+	}
+}
+
+func TestSkillBuiltinScopeDiscovered(t *testing.T) {
+	t.Parallel()
+	builtin := t.TempDir()
+	writeSkill(t, builtin, "builtin-skill", "a builtin skill", "builtin body", nil)
+
+	catalog, err := Discover(t.TempDir(), t.TempDir(), builtin, &warningSink{})
+	if err != nil {
+		t.Fatalf("Discover error = %v, want nil", err)
+	}
+	if catalog.Scope("builtin-skill") != "builtin" {
+		t.Fatalf("builtin-skill scope = %q, want builtin", catalog.Scope("builtin-skill"))
+	}
+	idx := catalog.RenderIndex()
+	if !strings.Contains(idx, "<name>builtin-skill</name>") {
+		t.Fatalf("builtin skill missing from rendered index: %q", idx)
+	}
+	// The rendered path must be a real, cat-able SKILL.md.
+	path := filepath.Join(catalog.Skill("builtin-skill").Dir, "SKILL.md")
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("builtin SKILL.md path not readable: %v", err)
+	}
+}
+
+func TestSkillUserShadowsBuiltin(t *testing.T) {
+	t.Parallel()
+	user := t.TempDir()
+	builtin := t.TempDir()
+	writeSkill(t, user, "dupe", "user version", "USER BODY", nil)
+	writeSkill(t, builtin, "dupe", "builtin version", "BUILTIN BODY", nil)
+
+	catalog, err := Discover(user, t.TempDir(), builtin, &warningSink{})
+	if err != nil {
+		t.Fatalf("Discover error = %v, want nil", err)
+	}
+	if len(catalog.Names()) != 1 {
+		t.Fatalf("names = %v, want exactly 1 (user shadows builtin)", catalog.Names())
+	}
+	s := catalog.Skill("dupe")
+	if s == nil || !strings.Contains(s.Body, "USER BODY") {
+		t.Fatalf("user did not shadow builtin: %+v", s)
+	}
+	if catalog.Scope("dupe") != "user" {
+		t.Fatalf("dupe scope = %q, want user (user shadows builtin)", catalog.Scope("dupe"))
+	}
+}
+
+func TestSkillProjectShadowsUserAndBuiltin(t *testing.T) {
+	t.Parallel()
+	proj := t.TempDir()
+	user := t.TempDir()
+	builtin := t.TempDir()
+	writeSkill(t, builtin, "dupe", "builtin version", "BUILTIN BODY", nil)
+	writeSkill(t, user, "dupe", "user version", "USER BODY", nil)
+	writeSkill(t, proj, "dupe", "project version", "PROJECT BODY", nil)
+
+	catalog, err := Discover(user, proj, builtin, &warningSink{})
+	if err != nil {
+		t.Fatalf("Discover error = %v, want nil", err)
+	}
+	if len(catalog.Names()) != 1 {
+		t.Fatalf("names = %v, want exactly 1 (project shadows both)", catalog.Names())
+	}
+	s := catalog.Skill("dupe")
+	if s == nil || !strings.Contains(s.Body, "PROJECT BODY") {
+		t.Fatalf("project did not shadow user and builtin: %+v", s)
+	}
+	if catalog.Scope("dupe") != "project" {
+		t.Fatalf("dupe scope = %q, want project", catalog.Scope("dupe"))
 	}
 }
 
@@ -105,7 +176,7 @@ func TestSkillUnparseableOmittedFailClosed(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 	cb := &warningSink{}
-	catalog, err := Discover(user, t.TempDir(), cb)
+	catalog, err := Discover(user, t.TempDir(), t.TempDir(), cb)
 	if err != nil {
 		t.Fatalf("Discover error = %v, want nil", err)
 	}
@@ -124,7 +195,7 @@ func TestActivateSkillRendersStrippedPayload(t *testing.T) {
 		"## Instructions\n\nuse the script below",
 		map[string]string{"scripts/run.sh": "#!/bin/sh\n", "references/api.md": "ref content\n"})
 
-	catalog, err := Discover(user, t.TempDir(), &warningSink{})
+	catalog, err := Discover(user, t.TempDir(), t.TempDir(), &warningSink{})
 	if err != nil {
 		t.Fatalf("Discover error = %v, want nil", err)
 	}
@@ -157,7 +228,7 @@ func TestActivateSkillUnknownName(t *testing.T) {
 	t.Parallel()
 	user := t.TempDir()
 	writeSkill(t, user, "s1", "first", "body", nil)
-	catalog, err := Discover(user, t.TempDir(), &warningSink{})
+	catalog, err := Discover(user, t.TempDir(), t.TempDir(), &warningSink{})
 	if err != nil {
 		t.Fatalf("Discover error = %v, want nil", err)
 	}
@@ -173,7 +244,7 @@ func TestActivateSkillReappliesEveryTime(t *testing.T) {
 	// the full payload, never dedupe against a prior activation.
 	user := t.TempDir()
 	writeSkill(t, user, "s1", "first", "long body A\n", nil)
-	catalog, err := Discover(user, t.TempDir(), &warningSink{})
+	catalog, err := Discover(user, t.TempDir(), t.TempDir(), &warningSink{})
 	if err != nil {
 		t.Fatalf("Discover error = %v, want nil", err)
 	}
@@ -193,7 +264,7 @@ func TestSkillCatalogDoesNotExposeModelTool(t *testing.T) {
 	t.Parallel()
 	user := t.TempDir()
 	writeSkill(t, user, "s1", "first", "body", nil)
-	catalog, err := Discover(user, t.TempDir(), &warningSink{})
+	catalog, err := Discover(user, t.TempDir(), t.TempDir(), &warningSink{})
 	if err != nil {
 		t.Fatalf("Discover error = %v, want nil", err)
 	}
@@ -214,7 +285,7 @@ func TestModelInvocableDefaultTrue(t *testing.T) {
 	t.Parallel()
 	user := t.TempDir()
 	writeSkill(t, user, "default-on", "visible by default", "body", nil)
-	catalog, err := Discover(user, t.TempDir(), &warningSink{})
+	catalog, err := Discover(user, t.TempDir(), t.TempDir(), &warningSink{})
 	if err != nil {
 		t.Fatalf("Discover error = %v, want nil", err)
 	}
@@ -238,7 +309,7 @@ func TestModelInvocableParsesSynonyms(t *testing.T) {
 		user := t.TempDir()
 		name := fmt.Sprintf("s%d", i)
 		writeSkillMeta(t, user, name, "desc", "body", nil, []string{tc.front})
-		catalog, err := Discover(user, t.TempDir(), &warningSink{})
+		catalog, err := Discover(user, t.TempDir(), t.TempDir(), &warningSink{})
 		if err != nil {
 			t.Fatalf("Discover error = %v, want nil", err)
 		}
@@ -253,7 +324,7 @@ func TestCatalogModelVisibleSkillsSortedAndFiltered(t *testing.T) {
 	user := t.TempDir()
 	writeSkillMeta(t, user, "b-skill", "b desc", "b", nil, []string{"model-invocable: false"})
 	writeSkill(t, user, "a-skill", "a desc", "a", nil)
-	catalog, err := Discover(user, t.TempDir(), &warningSink{})
+	catalog, err := Discover(user, t.TempDir(), t.TempDir(), &warningSink{})
 	if err != nil {
 		t.Fatalf("Discover error = %v, want nil", err)
 	}
@@ -273,7 +344,7 @@ func TestRenderIndexBlock(t *testing.T) {
 	// project shadows user on name collision
 	writeSkill(t, user, "dupe", "user version", "u", nil)
 	writeSkill(t, proj, "dupe", "PROJECT version", "p", nil)
-	catalog, err := Discover(user, proj, &warningSink{})
+	catalog, err := Discover(user, proj, t.TempDir(), &warningSink{})
 	if err != nil {
 		t.Fatalf("Discover error = %v, want nil", err)
 	}
@@ -294,7 +365,7 @@ func TestRenderIndexBlock(t *testing.T) {
 
 func TestRenderIndexEmpty(t *testing.T) {
 	t.Parallel()
-	catalog, err := Discover(t.TempDir(), t.TempDir(), &warningSink{})
+	catalog, err := Discover(t.TempDir(), t.TempDir(), t.TempDir(), &warningSink{})
 	if err != nil {
 		t.Fatalf("Discover error = %v, want nil", err)
 	}
@@ -307,7 +378,7 @@ func TestRenderIndexAllHidden(t *testing.T) {
 	t.Parallel()
 	user := t.TempDir()
 	writeSkillMeta(t, user, "s1", "desc", "body", nil, []string{"model-invocable: false"})
-	catalog, err := Discover(user, t.TempDir(), &warningSink{})
+	catalog, err := Discover(user, t.TempDir(), t.TempDir(), &warningSink{})
 	if err != nil {
 		t.Fatalf("Discover error = %v, want nil", err)
 	}
@@ -359,7 +430,7 @@ func TestSkillInvocationAliasesRejectConflict(t *testing.T) {
 		"disable-model-invocation: true",
 	})
 	warnings := &warningSink{}
-	catalog, err := Discover(user, t.TempDir(), warnings)
+	catalog, err := Discover(user, t.TempDir(), t.TempDir(), warnings)
 	if err != nil {
 		t.Fatalf("Discover error = %v, want nil", err)
 	}
@@ -383,7 +454,7 @@ func TestSkillFrontmatterRejectsMalformedSyntaxAndValues(t *testing.T) {
 		user := t.TempDir()
 		name := fmt.Sprintf("bad%d", i)
 		writeSkillMeta(t, user, name, "desc", "body", nil, []string{line})
-		catalog, err := Discover(user, t.TempDir(), &warningSink{})
+		catalog, err := Discover(user, t.TempDir(), t.TempDir(), &warningSink{})
 		if err != nil {
 			t.Fatalf("%q: Discover error = %v, want nil", line, err)
 		}
@@ -400,7 +471,7 @@ func TestSkillInvocationAliasesAllowAgreement(t *testing.T) {
 		"model-invocable: false",
 		"disable-model-invocation: true",
 	})
-	catalog, err := Discover(user, t.TempDir(), &warningSink{})
+	catalog, err := Discover(user, t.TempDir(), t.TempDir(), &warningSink{})
 	if err != nil {
 		t.Fatalf("Discover error = %v, want nil", err)
 	}
@@ -421,7 +492,7 @@ func TestSkillFrontmatterKeepsExistingAncillaryMetadataCompatible(t *testing.T) 
 		"    bins:",
 		"      - go",
 	})
-	catalog, err := Discover(user, t.TempDir(), &warningSink{})
+	catalog, err := Discover(user, t.TempDir(), t.TempDir(), &warningSink{})
 	if err != nil {
 		t.Fatalf("Discover error = %v, want nil", err)
 	}
