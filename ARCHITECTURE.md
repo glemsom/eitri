@@ -36,7 +36,7 @@ Resolves the data directory (`EITRI_DIR`, default `~/.eitri`), loads config, ver
 
 Key pieces:
 
-- `app.go` — the boot sequence and `Options` (single `Run` for both batch and TUI modes; an injected `provider.Provider` and `LookPath` make the whole boot testable without network or real binaries).
+- `app.go` — the boot sequence and `Options` (single `Run` for both batch and TUI modes; an injected `provider.Provider` and `LookPath` make the whole boot testable without network or real binaries). Before skill discovery it materializes the embedded builtin skill packs to `<dataDir>/skills-builtin` (`internal/engine/skillspack`; see below).
 - `deps.go` — the declared-dependency table and verification.
 - `tui.go` — builds the `tools.Registry`, the engine, the session, and launches the bubbletea program. Also the TUI boot guard (`ErrTUINotInteractive`: TTY, real TERM, ≥ min width).
 - `sessioncmd.go` / `sessionentry.go` — the `eitri session list/show/talk/grep` CLI over recorded sessions.
@@ -55,6 +55,7 @@ Owns one **run**: the bounded turn loop over the provider seam. This is the hear
 - `message_partition.go` — partitions a message slice into `StableHead` (persona + per-run directives), `Transient` (skill-injected content), and persisted `History`.
 - `compact.go` — proactive compaction: when prompt usage crosses a fraction of the context window, older turns are summarized by the model itself, preserving the stable head and recent tail; also forced reactively on overflow.
 - `prompt.go` / `prompt.md` / `prompt_yolo.md` — the embedded system prompt. The sandboxed and `--yolo-unsafe` variants are honest about which world the agent runs in.
+- `skillspack/` — the embedded builtin skill packs (`go:embed`), materialized by `internal/app` into `<dataDir>/skills-builtin` at boot so the normal skill roots can span them. The dir is binary-owned ROM: files are rewritten only on content mismatch (upgrades win, edits reverted by design), and an unwritable data directory is warn-and-skip, not fatal.
 - `events.go` — the typed live event stream (`StreamEvent` for reasoning/answer deltas, tool events, turn events) delivered synchronously to a single `Listener`; this is the only channel the TUI renders a live run from.
 - `validate.go`, `cache_test.go` / `stable_head_test.go` — the **byte-stable cache head** invariant: the system head must be byte-identical across turns so provider prompt caches stay warm; tests enforce it.
 

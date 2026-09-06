@@ -18,6 +18,7 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/constants"
 	"github.com/glemsom/eitri/internal/engine"
+	"github.com/glemsom/eitri/internal/engine/skillspack"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/tools"
@@ -149,6 +150,12 @@ func Run(opts Options) error {
 	if err != nil {
 		return err
 	}
+	// Materialize the embedded builtin skill packs to <dir>/skills-builtin before
+	// discovery so the normal skill roots can span them. The dir is binary-owned
+	// ROM: rewrites happen on content mismatch and edits are reverted by design;
+	// an unwritable $EITRI_DIR is warn-and-skip, boot continues without builtin
+	// skills.
+	skillspack.Materialize(dir, skillspack.FS, stderrWarner{}.Warnf)
 	skills := discoverSkills(workspace)
 	defer func() { _ = os.RemoveAll(tempHost) }()
 	reg, err := tools.NewRegistry(tools.Deps{
