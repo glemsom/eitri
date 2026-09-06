@@ -1,0 +1,34 @@
+---
+name: subagents
+description: Run parallel or background subagent tasks with isolated batch runs, waiting for each and reading settled results in the same Bash call.
+model-invocable: true
+---
+
+## Subagents
+
+Parallelize independent work by launching one batch-mode subagent per task
+in the background — or offload a single task to run while the session
+continues. Give each subagent an isolated execution directory and always
+wait for it before reading its result. The same pattern works for one or
+many subagents:
+```sh
+for task_number in 1 2; do
+  task="<task $task_number>"
+  agent_dir=$(mktemp -d "$TMPDIR/subagent.XXXXXX")
+  EITRI_DIR="$agent_dir" EITRI_CONFIG="${EITRI_CONFIG:-$HOME/.eitri/config.json}" \
+    eitri -b "$task" > "$TMPDIR/sa-$task_number.out" 2> "$TMPDIR/sa-$task_number.err" &
+  pids[$task_number]=$!
+done
+for task_number in 1 2; do
+  wait "${pids[$task_number]}"
+  echo "=== subagent $task_number exit=$? ==="
+done
+echo "=== settled markers ==="
+rg -c 'agent_settled' "$TMPDIR"/sa-*.out || echo "no settled markers found"
+```
+
+Change both ranges to `1` for one subagent. Always launch, wait for every
+process, and read the results in the same Bash tool call: in sandboxed mode
+the sandbox terminates child processes when the tool call returns; elsewhere
+they merely keep running — waiting and reading within the same call is what
+guarantees the results are there to collect.
