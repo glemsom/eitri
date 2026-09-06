@@ -129,5 +129,5 @@ _Avoid_: Piped context, fenced input block
 _Avoid_: Verbose, trace mode (trace is the artifact, not the mode)
 
 **Subagent**:
-A batch-mode Eitri process launched by the agent itself in an isolated execution directory and awaited in the same shell invocation.
+A batch-mode Eitri process launched by the agent itself in an isolated execution directory and awaited in the same shell invocation; its result is collected from the `--format json` envelope's `answer` field, never parsed out of prose stdout.
 _Avoid_: Child agent, worker

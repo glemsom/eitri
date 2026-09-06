@@ -14,16 +14,20 @@ for task_number in 1 2; do
   task="<task $task_number>"
   agent_dir=$(mktemp -d "$TMPDIR/subagent.XXXXXX")
   EITRI_DIR="$agent_dir" EITRI_CONFIG="${EITRI_CONFIG:-$HOME/.eitri/config.json}" \
-    eitri -b "$task" > "$TMPDIR/sa-$task_number.out" 2> "$TMPDIR/sa-$task_number.err" &
+    eitri -b "$task" --format json > "$TMPDIR/sa-$task_number.json" 2> "$TMPDIR/sa-$task_number.err" &
   pids[$task_number]=$!
 done
 for task_number in 1 2; do
   wait "${pids[$task_number]}"
   echo "=== subagent $task_number exit=$? ==="
 done
-echo "=== settled markers ==="
-rg -c 'agent_settled' "$TMPDIR"/sa-*.out || echo "no settled markers found"
+echo "=== answers ==="
+for task_number in 1 2; do
+  jq -r .answer "$TMPDIR/sa-$task_number.json"
+done
 ```
+
+Each subagent run prints one `--format json` envelope; `jq -r .answer` extracts the answer field from it instead of parsing prose stdout.
 
 Change both ranges to `1` for one subagent. Always launch, wait for every
 process, and read the results in the same Bash tool call: in sandboxed mode

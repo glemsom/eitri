@@ -83,11 +83,18 @@ func TestEmbeddedSubagentsPackBodyContract(t *testing.T) {
 		`EITRI_DIR="$agent_dir"`,
 		`EITRI_CONFIG="${EITRI_CONFIG:-$HOME/.eitri/config.json}"`,
 		`wait "${pids[`,
-		"agent_settled",
+		"--format json",
+		"jq -r .answer",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing verbatim recipe fragment %q", want)
 		}
+	}
+
+	// Subagent results are read from the --format json envelope's answer field,
+	// never parsed out of prose stdout (no agent_settled marker hunting).
+	if strings.Contains(body, "agent_settled") {
+		t.Fatal("body still parses prose stdout for settled markers; read the answer field from the --format json envelope instead")
 	}
 
 	// The one clause the default and yolo prompt sections differ on becomes a
