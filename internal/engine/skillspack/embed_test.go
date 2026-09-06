@@ -44,7 +44,7 @@ func TestEmbeddedSubagentsPackDiscoversAsModelInvocableSkill(t *testing.T) {
 	writeEmbeddedPack(t, root)
 
 	quiet := &warningSink{}
-	catalog, err := tools.Discover(root, t.TempDir(), quiet)
+	catalog, err := tools.Discover(root, t.TempDir(), t.TempDir(), quiet)
 	if err != nil {
 		t.Fatalf("Discover error = %v, want nil", err)
 	}

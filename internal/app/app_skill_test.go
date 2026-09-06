@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/engine"
+	"github.com/glemsom/eitri/internal/engine/skillspack"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/tools"
 	"github.com/glemsom/eitri/internal/tui"
@@ -38,7 +39,7 @@ func TestTUISlashSkillThroughEngineSeam(t *testing.T) {
 	}
 	defer func() { _ = os.Chdir(oldWd) }()
 
-	skills := discoverSkills(ws)
+	skills := discoverSkills(t.TempDir(), ws)
 	reg, _ := tools.NewRegistry(tools.Deps{
 		Workspace: ws,
 		TempHost:  t.TempDir(),
@@ -83,7 +84,7 @@ func TestTUISlashRepeatedActivationReapplies(t *testing.T) {
 	}
 	defer func() { _ = os.Chdir(oldWd) }()
 
-	skills := discoverSkills(ws)
+	skills := discoverSkills(t.TempDir(), ws)
 	reg, _ := tools.NewRegistry(tools.Deps{
 		Workspace: ws,
 		TempHost:  t.TempDir(),
@@ -129,7 +130,7 @@ func TestTUISlashListsHiddenSkill(t *testing.T) {
 		t.Fatalf("write SKILL.md: %v", err)
 	}
 
-	skills := discoverSkills(ws)
+	skills := discoverSkills(t.TempDir(), ws)
 	reg, _ := tools.NewRegistry(tools.Deps{
 		Workspace: ws,
 		TempHost:  t.TempDir(),
@@ -158,6 +159,27 @@ func TestTUISlashListsHiddenSkill(t *testing.T) {
 
 }
 
+func TestDiscoverSkillsFindsMaterializedBuiltinRoot(t *testing.T) {
+	dataDir := t.TempDir()
+	skillspack.Materialize(dataDir, skillspack.FS, func(format string, args ...any) {
+		t.Fatalf("materialize warning: "+format, args...)
+	})
+	ws := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+
+	skills := discoverSkills(dataDir, ws)
+	if skills == nil || skills.Skill("subagents") == nil {
+		names := "<nil>"
+		if skills != nil {
+			names = strings.Join(skills.Names(), ",")
+		}
+		t.Fatalf("materialized builtin skill not discovered; catalog names = %s, want subagents", names)
+	}
+	if got := skills.Scope("subagents"); got != "builtin" {
+		t.Fatalf("subagents scope = %q, want builtin", got)
+	}
+}
+
 func TestDiscoverSkillsUserGlobalRoot(t *testing.T) {
 	home := t.TempDir()
 	skillDir := filepath.Join(home, ".agents", "skills", "user-skill")
@@ -170,7 +192,7 @@ func TestDiscoverSkillsUserGlobalRoot(t *testing.T) {
 	}
 
 	t.Setenv("HOME", home)
-	skills := discoverSkills(t.TempDir())
+	skills := discoverSkills(t.TempDir(), t.TempDir())
 	if skills == nil || skills.Skill("user-skill") == nil {
 		names := "<nil>"
 		if skills != nil {
@@ -206,7 +228,7 @@ func TestTUISlashHiddenSkillThroughEngineSeamWithArgs(t *testing.T) {
 	}
 	defer func() { _ = os.Chdir(oldWd) }()
 
-	skills := discoverSkills(ws)
+	skills := discoverSkills(t.TempDir(), ws)
 	reg, _ := tools.NewRegistry(tools.Deps{
 		Workspace: ws,
 		TempHost:  t.TempDir(),
@@ -332,7 +354,7 @@ func TestTUISlashArgsPutsSkillInProviderContext(t *testing.T) {
 	}
 	defer func() { _ = os.Chdir(oldWd) }()
 
-	skills := discoverSkills(ws)
+	skills := discoverSkills(t.TempDir(), ws)
 	reg, _ := tools.NewRegistry(tools.Deps{
 		Workspace: ws,
 		TempHost:  t.TempDir(),
@@ -413,7 +435,7 @@ func TestTUISlashBarePutsSkillInProviderContext(t *testing.T) {
 	}
 	defer func() { _ = os.Chdir(oldWd) }()
 
-	skills := discoverSkills(ws)
+	skills := discoverSkills(t.TempDir(), ws)
 	reg, _ := tools.NewRegistry(tools.Deps{
 		Workspace: ws,
 		TempHost:  t.TempDir(),

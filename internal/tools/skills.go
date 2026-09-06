@@ -31,8 +31,8 @@ type Skill struct {
 // model still has no `skill` tool and loads pack bodies itself via `bash cat`.
 type Catalog struct {
 	skills map[string]*Skill
-	scopes map[string]string // skill name -> install scope ("user" or "project")
-	order  []string          // skill names, sorted, project-shadows-user by name
+	scopes map[string]string // skill name -> install scope ("builtin", "user", or "project")
+	order  []string          // skill names, sorted, project-shadows-user-by-name
 }
 
 func (c *Catalog) Names() []string {
@@ -101,13 +101,18 @@ func (c *Catalog) Scope(name string) string {
 	return c.scopes[name]
 }
 
-// Discover scans the user-global root (~/.agents/skills) and the project root (.agents/skills) for skill packs (a subdir containing a parseable SKILL.md).
-func Discover(userRoot, projectRoot string, w SkillWarner) (*Catalog, error) {
+// Discover scans the user-global root (~/.agents/skills), the project root (.agents/skills), and the builtin root (the materialized $EITRI_DIR/skills-builtin) for skill packs (a subdir containing a parseable SKILL.md). On exact-name collision the strongest claim wins: project shadows user, and user shadows builtin; builtin is the weakest claim and inherits trust from being part of the binary.
+func Discover(userRoot, projectRoot, builtinRoot string, w SkillWarner) (*Catalog, error) {
 	c := &Catalog{
 		skills: map[string]*Skill{},
 		scopes: map[string]string{},
 	}
 
+	// Builtin is discovered first so the higher scopes overwrite it: discovery
+	// order is the shadowing order (project > user > builtin).
+	if err := discoverScope(builtinRoot, c, "builtin", w); err != nil {
+		return nil, err
+	}
 	if err := discoverScope(userRoot, c, "user", w); err != nil {
 		return nil, err
 	}

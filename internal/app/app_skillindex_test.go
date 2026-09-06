@@ -29,7 +29,7 @@ func TestRunAgentInjectsSkillIndex(t *testing.T) {
 		t.Fatalf("write SKILL.md: %v", err)
 	}
 
-	skills := discoverSkills(ws)
+	skills := discoverSkills(t.TempDir(), ws)
 	reg, _ := tools.NewRegistry(tools.Deps{TempHost: t.TempDir(), Runner: tools.RealRunner, Workspace: ws, Skills: skills})
 
 	cap := &captureSkillRequests{}
@@ -67,7 +67,7 @@ func TestRunAgentNoIndexWhenNoModelVisibleSkills(t *testing.T) {
 	ws := t.TempDir()
 	t.Setenv("HOME", t.TempDir())
 
-	skills := discoverSkills(ws)
+	skills := discoverSkills(t.TempDir(), ws)
 	reg, _ := tools.NewRegistry(tools.Deps{TempHost: t.TempDir(), Runner: tools.RealRunner, Workspace: ws, Skills: skills})
 
 	cap := &captureSkillRequests{}

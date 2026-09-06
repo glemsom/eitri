@@ -156,7 +156,7 @@ func Run(opts Options) error {
 	// an unwritable $EITRI_DIR is warn-and-skip, boot continues without builtin
 	// skills.
 	skillspack.Materialize(dir, skillspack.FS, stderrWarner{}.Warnf)
-	skills := discoverSkills(workspace)
+	skills := discoverSkills(dir, workspace)
 	defer func() { _ = os.RemoveAll(tempHost) }()
 	reg, err := tools.NewRegistry(tools.Deps{
 		Workspace:     workspace,
@@ -213,8 +213,11 @@ func Run(opts Options) error {
 	return nil
 }
 
-// discoverSkills discovers Agent Skill packs from the user-global ~/.agents/skills root and the project .agents/skills root under workspace (project shadows user on exact-name collision).
-func discoverSkills(workspace string) *tools.Catalog {
+// discoverSkills discovers Agent Skill packs from the builtin root
+// (<dataDir>/skills-builtin, materialized from the binary), the user-global
+// ~/.agents/skills root, and the project .agents/skills root under workspace
+// (project shadows user, and user shadows builtin on exact-name collision).
+func discoverSkills(dataDir, workspace string) *tools.Catalog {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "eitri: resolve home for skill discovery: %v\n", err)
@@ -223,6 +226,7 @@ func discoverSkills(workspace string) *tools.Catalog {
 	c, err := tools.Discover(
 		filepath.Join(home, ".agents", "skills"),
 		filepath.Join(workspace, ".agents", "skills"),
+		filepath.Join(dataDir, skillspack.BuiltinRootName),
 		stderrWarner{},
 	)
 	if err != nil {
