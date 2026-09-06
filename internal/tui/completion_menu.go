@@ -73,6 +73,16 @@ func (m *completionMenu) Dismiss() {
 
 func (m *completionMenu) CandidateCount() int { return len(m.view) }
 
+// popoverRows reports how many terminal rows the rendered popover occupies,
+// including its two border rows. An open popover with zero candidates still
+// renders one empty body row, so it is three rows tall, not two.
+func (m *completionMenu) popoverRows() int {
+	if len(m.view) == 0 {
+		return 3
+	}
+	return len(m.view) + 2
+}
+
 func (m *completionMenu) RenderCompletionBody(th Theme) string {
 	if !m.open {
 		return ""

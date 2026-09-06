@@ -241,3 +241,23 @@ func TestMentionSelect_PreservesOtherMentions(t *testing.T) {
 		t.Errorf("Select = %q, want only the first mention replaced and @b preserved", next)
 	}
 }
+
+func TestModel_mentionZeroCandidatesCaretStaysInComposer(t *testing.T) {
+	t.Parallel()
+	ws := mentionWorkspace(t)
+	m := mentionModel(t, ws)
+	m = typeText(t, m, "@zzz")
+	m = feedMentionWalk(t, m, ws)
+	if !m.mention.isOpen() || m.mention.CandidateCount() != 0 {
+		t.Fatalf("mention must stay open with zero candidates, open=%v cands=%d", m.mention.isOpen(), m.mention.CandidateCount())
+	}
+	// The caret must sit on the composer's first text row, not on the panel's
+	// top border above it: the popover (2 borders + 1 empty body row) plus the
+	// composer panel border sit between the view top and the text.
+	var band strings.Builder
+	m.renderBand(&band)
+	wantY := lineCount(view(m)) - lineCount(band.String()) + m.composerPreRows()
+	if c := caret(t, m); c.Y != wantY {
+		t.Errorf("caret Y with empty mention popover = %d, want %d (first composer text row)", c.Y, wantY)
+	}
+}

@@ -276,9 +276,9 @@ func fitBandLine(s string, width int) string {
 func (m Model) composerPreRows() int {
 	n := 0
 	if m.slash.isOpen() {
-		n += m.slash.CandidateCount() + 2 // slash popover borders
+		n += m.slash.popoverRows()
 	} else if m.mention.isOpen() {
-		n += m.mention.CandidateCount() + 2 // mention popover borders
+		n += m.mention.popoverRows()
 	}
 	n++ // titled composer panel top border
 	return n
