@@ -12,7 +12,7 @@ func TestDirectRunnerExecutesBashDirectly(t *testing.T) {
 	t.Parallel()
 	rr := &recordingRunner{out: &Output{Stdout: "ok"}}
 	ws := "/home/u/proj"
-	temp := filepath.Join("/tmp", "session")
+	temp := filepath.Join(t.TempDir(), "session")
 	dr := &directRunner{workspace: ws, tempHost: temp, run: rr}
 	if _, err := dr.Run(context.Background(), "echo hi"); err != nil {
 		t.Fatalf("Run() error = %v, want nil", err)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -165,13 +166,15 @@ func TestCLIJSONFormatPrintsEnvelope(t *testing.T) {
 	bin := buildBinary(t)
 	cmd := exec.Command(bin, "-b", "hello", "--format", "json")
 	cmd.Env, _ = batchRunEnv(t, srv.URL)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("eitri -b --format json exit error = %v, output:\n%s", err, out)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("eitri -b --format json exit error = %v, stderr:\n%s", err, stderr.String())
 	}
 	var env map[string]any
-	if jerr := json.Unmarshal([]byte(strings.TrimSpace(string(out))), &env); jerr != nil {
-		t.Fatalf("--format json stdout %q is not one JSON object: %v", out, jerr)
+	if jerr := json.Unmarshal(bytes.TrimSpace(stdout.Bytes()), &env); jerr != nil {
+		t.Fatalf("--format json stdout %q is not one JSON object: %v", stdout.String(), jerr)
 	}
 	for _, key := range []string{"answer", "session", "turns", "stopped"} {
 		if _, ok := env[key]; !ok {
@@ -215,8 +218,14 @@ func stubProviderServer(t *testing.T) *httptest.Server {
 func batchRunEnv(t *testing.T, providerURL string) ([]string, string) {
 	t.Helper()
 	dataDir := filepath.Join(t.TempDir(), ".eitri")
+	// Point HOME at a virgin temp dir so the booted binary's skill discovery
+	// never reads the developer's ~/.agents/skills.
+	home := filepath.Join(t.TempDir(), "home")
 	env := append(
 		cleanEnvs(t, "EITRI_DIR", "OPENCODE_API_KEY", "EITRI_PROVIDER_URL"),
+		"HOME="+home,
+		"XDG_CONFIG_HOME="+filepath.Join(home, ".config"),
+		"XDG_CACHE_HOME="+filepath.Join(home, ".cache"),
 		"EITRI_DIR="+dataDir, "EITRI_PROVIDER_URL="+providerURL, "OPENCODE_API_KEY=test-key",
 	)
 	return env, dataDir
@@ -294,6 +303,10 @@ func buildBinary(t *testing.T) string {
 
 func cleanEnvs(t *testing.T, names ...string) []string {
 	t.Helper()
+	// Drop HOME and the XDG homes as well: a spawned eitri must not see the
+	// developer's real ~/.agents/skills, whose user-skill skip warnings would
+	// pollute a pure --format json stdout.
+	names = append(names, "HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME")
 	drop := make(map[string]bool, len(names))
 	for _, n := range names {
 		drop[n] = true
