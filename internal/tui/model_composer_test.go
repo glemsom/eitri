@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"github.com/glemsom/eitri/internal/tui/telemetry"
 	"strings"
 	"testing"
 
@@ -168,7 +169,7 @@ func TestModel_composerLongDraftBandPinned(t *testing.T) {
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
-		Telemetry: NewTelemetry("deepseek-v4-flash", "low", true, 250),
+		Telemetry: telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250),
 	})
 	m = resizeTo(t, m, 80, 12)
 
@@ -216,7 +217,7 @@ func TestModel_statusAndSlashPinnedAboveComposer(t *testing.T) {
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
-		Telemetry: NewTelemetry("deepseek-v4-flash", "low", true, 250),
+		Telemetry: telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250),
 		Skills: &SkillsSurface{Items: []SkillItem{
 			{Name: skillName},
 		}},

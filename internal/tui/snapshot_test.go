@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"github.com/glemsom/eitri/internal/tui/telemetry"
 	"os"
 	"path/filepath"
 	"testing"
@@ -19,8 +20,8 @@ func newSnapshotRail() *Rail {
 	return r
 }
 
-func snapshotDeps(cfg config.Config) (Dependencies, *Telemetry) {
-	te := NewTelemetry("deepseek-v4-flash", "high", true, 10)
+func snapshotDeps(cfg config.Config) (Dependencies, *telemetry.Telemetry) {
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "high", true, 10)
 	return Dependencies{
 		Turn:          streamingTurn,
 		WorkspacePath: "/home/dev/acme",
@@ -86,8 +87,8 @@ func TestSnapshot_frames(t *testing.T) {
 	m = resizeTo(t, m, 120, 40)
 	writeFrame(t, out, "01_idle", m)
 
-	m = upd(t, m, telemetryUpdateMsg{update: TelemetryUpdate{Kind: TelemetryTurn}})
-	m = upd(t, m, telemetryUpdateMsg{update: TelemetryUpdate{Kind: TelemetryUsage, Hit: 12400, Miss: 3600, Output: 2100}})
+	m = upd(t, m, telemetryUpdateMsg{update: telemetry.TelemetryUpdate{Kind: telemetry.TelemetryTurn}})
+	m = upd(t, m, telemetryUpdateMsg{update: telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 12400, Miss: 3600, Output: 2100}})
 
 	m = typeText(t, m, "Fix the flaky login test")
 	m, _ = submitBusy(t, m)
@@ -130,8 +131,8 @@ func TestSnapshot_frames(t *testing.T) {
 		prompt: "Add retry with exponential backoff to the HTTP client",
 		answer: "I added a jittered exponential backoff to the client's `send()` path:\n\n- retry up to 3 attempts\n- base delay 250ms, doubling per attempt\n- ±20% jitter so concurrent clients don't re-collide\n- honors the `Retry-After` header when present\n\nThe MDN fetch failed on DNS, so I honored the spec default instead.",
 	})
-	m = upd(t, m, telemetryUpdateMsg{update: TelemetryUpdate{Kind: TelemetryTurn}})
-	m = upd(t, m, telemetryUpdateMsg{update: TelemetryUpdate{Kind: TelemetryUsage, Hit: 8900, Miss: 1200, Output: 3400}})
+	m = upd(t, m, telemetryUpdateMsg{update: telemetry.TelemetryUpdate{Kind: telemetry.TelemetryTurn}})
+	m = upd(t, m, telemetryUpdateMsg{update: telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 8900, Miss: 1200, Output: 3400}})
 	writeFrame(t, out, "04_chat", m)
 
 	m = keypress(t, m, "ctrl+e")
@@ -196,8 +197,8 @@ func scriptedChat(t *testing.T, cfg config.Config, w, h int) Model {
 	m := NewModelCfg(deps)
 	m = resizeTo(t, m, w, h)
 
-	m = upd(t, m, telemetryUpdateMsg{update: TelemetryUpdate{Kind: TelemetryTurn}})
-	m = upd(t, m, telemetryUpdateMsg{update: TelemetryUpdate{Kind: TelemetryUsage, Hit: 12400, Miss: 3600, Output: 2100}})
+	m = upd(t, m, telemetryUpdateMsg{update: telemetry.TelemetryUpdate{Kind: telemetry.TelemetryTurn}})
+	m = upd(t, m, telemetryUpdateMsg{update: telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 12400, Miss: 3600, Output: 2100}})
 
 	m = typeText(t, m, "Fix the flaky login test")
 	m, _ = submitBusy(t, m)
@@ -237,8 +238,8 @@ func scriptedChat(t *testing.T, cfg config.Config, w, h int) Model {
 		prompt: "Add retry with exponential backoff to the HTTP client",
 		answer: "I added a jittered exponential backoff to the client's `send()` path:\n\n- retry up to 3 attempts\n- base delay 250ms, doubling per attempt\n- ±20% jitter so concurrent clients don't re-collide\n- honors the `Retry-After` header when present\n\nThe MDN fetch failed on DNS, so I honored the spec default instead.",
 	})
-	m = upd(t, m, telemetryUpdateMsg{update: TelemetryUpdate{Kind: TelemetryTurn}})
-	m = upd(t, m, telemetryUpdateMsg{update: TelemetryUpdate{Kind: TelemetryUsage, Hit: 8900, Miss: 1200, Output: 3400}})
+	m = upd(t, m, telemetryUpdateMsg{update: telemetry.TelemetryUpdate{Kind: telemetry.TelemetryTurn}})
+	m = upd(t, m, telemetryUpdateMsg{update: telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 8900, Miss: 1200, Output: 3400}})
 	return m
 }
 

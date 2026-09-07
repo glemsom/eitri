@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"github.com/glemsom/eitri/internal/tui/telemetry"
 	"strings"
 	"testing"
 
@@ -74,13 +75,13 @@ func newTallHistoryModel(t *testing.T) Model {
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "answer " + prompt}, nil
 		},
-		Telemetry: NewTelemetry("deepseek-v4-flash", "low", true, 250),
+		Telemetry: telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250),
 	})
 	for i := 1; i <= 5; i++ {
 		m = typeText(t, m, "q"+string(rune('a'+i-1)))
 		m = submitAndWait(t, m)
 	}
-	nm, _ := m.Update(telemetryUpdateMsg{update: TelemetryUpdate{Kind: TelemetryUsage, Hit: 1, Miss: 1, Output: 1}})
+	nm, _ := m.Update(telemetryUpdateMsg{update: telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 1, Miss: 1, Output: 1}})
 	m = asModel(t, nm)
 	return m
 }

@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"github.com/glemsom/eitri/internal/tui/livekey"
+	"github.com/glemsom/eitri/internal/tui/telemetry"
 	"path/filepath"
 	"strings"
 	"time"
@@ -131,16 +132,16 @@ func (r *Rail) ApplyConfig(cfg config.Config) {
 }
 
 // render returns the rail's rendered sections for tests and non-live callers.
-func (r *Rail) render(te *Telemetry, th Theme, railWidth int) string {
+func (r *Rail) render(te *telemetry.Telemetry, th Theme, railWidth int) string {
 	return r.renderLive(te, th, railWidth, PhaseIdle, 0)
 }
 
 // renderLive returns the rail's rendered STATS/CONTEXT/MODEL block, each section tinted with its per-section hue from the theme palette — the header bold, the body lines in the same hue — so the sections read apart at a glance.
-func (r *Rail) renderLive(te *Telemetry, th Theme, railWidth int, phase Phase, spinner int) string {
+func (r *Rail) renderLive(te *telemetry.Telemetry, th Theme, railWidth int, phase Phase, spinner int) string {
 	return r.renderLiveWithTools(te, th, railWidth, phase, spinner, nil)
 }
 
-func (r *Rail) renderLiveWithTools(te *Telemetry, th Theme, railWidth int, phase Phase, spinner int, log *toolLog) string {
+func (r *Rail) renderLiveWithTools(te *telemetry.Telemetry, th Theme, railWidth int, phase Phase, spinner int, log *toolLog) string {
 	var b strings.Builder
 	b.WriteString(r.renderStats(te, th, railWidth))
 	b.WriteString("\n")
@@ -151,7 +152,7 @@ func (r *Rail) renderLiveWithTools(te *Telemetry, th Theme, railWidth int, phase
 }
 
 // renderStats renders the STATS section: the live usage picture from the telemetry surface as numeric lines only — cache hit %, turns, elapsed session time, and token in/out.
-func (r *Rail) renderStats(te *Telemetry, th Theme, railWidth int) string {
+func (r *Rail) renderStats(te *telemetry.Telemetry, th Theme, railWidth int) string {
 	var b strings.Builder
 	b.WriteString(th.railHeader(railStats, "STATS") + "\n")
 
@@ -161,11 +162,12 @@ func (r *Rail) renderStats(te *Telemetry, th Theme, railWidth int) string {
 	elapsed := time.Duration(0)
 	liveCtx := 0
 	if te != nil {
-		hits, misses, out = te.cacheHit, te.cacheMiss, te.output
-		turns = te.turns
-		compacted = te.compacted
-		elapsed = time.Since(te.startedAt)
-		liveCtx = te.liveContextSize()
+		st := te.Stats()
+		hits, misses, out = st.CacheHit, st.CacheMiss, st.Output
+		turns = st.Turns
+		compacted = st.Compacted
+		elapsed = st.Elapsed
+		liveCtx = te.LiveContextSize()
 	}
 	totalIn := hits + misses
 	pct := 0.0
@@ -174,7 +176,7 @@ func (r *Rail) renderStats(te *Telemetry, th Theme, railWidth int) string {
 	}
 	maxTurns := 0
 	if te != nil {
-		maxTurns = te.maxTurns
+		maxTurns = te.Stats().MaxTurns
 	}
 	var body strings.Builder
 	kw := railKeyWidth(railWidth)

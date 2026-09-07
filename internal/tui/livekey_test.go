@@ -2,6 +2,7 @@ package tui
 
 import (
 	"github.com/glemsom/eitri/internal/tui/livekey"
+	"github.com/glemsom/eitri/internal/tui/telemetry"
 	"strings"
 	"testing"
 )
@@ -15,13 +16,13 @@ func TestRailReflectsMutableSessionKey(t *testing.T) {
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
 	r.SetLiveKey(live)
 
-	view := r.render(NewTelemetry("deepseek-v4-flash", "high", true, 250), defaultTheme, defaultRailWidth)
+	view := r.render(telemetry.NewTelemetry("deepseek-v4-flash", "high", true, 250), defaultTheme, defaultRailWidth)
 	if !strings.Contains(view, "session eitri-1") {
 		t.Fatalf("rail CONTEXT missing initial session id, got: %q", view)
 	}
 
 	live.Set("eitri-2") // `/new` re-mints the session key
-	view = r.render(NewTelemetry("deepseek-v4-flash", "high", true, 250), defaultTheme, defaultRailWidth)
+	view = r.render(telemetry.NewTelemetry("deepseek-v4-flash", "high", true, 250), defaultTheme, defaultRailWidth)
 	if !strings.Contains(view, "session eitri-2") {
 		t.Errorf("rail CONTEXT did not refresh to new session id after live key changed, got: %q", view)
 	}

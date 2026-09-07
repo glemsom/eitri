@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/glemsom/eitri/internal/tui/livekey"
+	"github.com/glemsom/eitri/internal/tui/telemetry"
 	"net/http"
 
 	tea "charm.land/bubbletea/v2"
@@ -74,7 +75,7 @@ func runTUI(e *engine.Engine, logged *provider.LoggingProvider, cfg config.Confi
 	if !cfg.ThinkingEnabled {
 		effort = ""
 	}
-	te := tui.NewTelemetry(cfg.Model, effort, cfg.ThinkingEnabled, cfg.MaxTurns)
+	te := telemetry.NewTelemetry(cfg.Model, effort, cfg.ThinkingEnabled, cfg.MaxTurns)
 	live := livekey.NewLiveSessionKey(sessionKey)
 	rail := tui.NewRail(cfg.Provider, cfg.Model, effort, cfg.ThinkingEnabled, sessionKey, sessionTemp)
 	rail.SetLiveKey(live)
@@ -123,7 +124,7 @@ func runTUI(e *engine.Engine, logged *provider.LoggingProvider, cfg config.Confi
 }
 
 // feedEngineEvents wires the engine's live event stream into the TUI's status strip and onto the single merged FIFO feed in the exact order the engine emitted the events: every stream delta and tool observation lands on that one feed, so the live TUI records the model's true arrival order.
-func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, events *tui.EventFeed) {
+func feedEngineEvents(e *engine.Engine, te *telemetry.Telemetry, events *tui.EventFeed) {
 	teCh := te.UpdateChan()
 	mCh := events.UpdateChan()
 	e.SetListener(func(evt engine.Event) {
@@ -138,16 +139,16 @@ func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, events *tui.EventFeed
 				pushEvent(mCh, tui.Event{RunID: ev.RunID, Stream: &u})
 			}
 		case engine.UsageEvent:
-			pushTelemetry(teCh, tui.TelemetryUpdate{Kind: tui.TelemetryUsage,
+			pushTelemetry(teCh, telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage,
 				Hit: ev.Usage.PromptCacheHitTokens, Miss: ev.Usage.PromptCacheMissTokens, Output: ev.Usage.CompletionTokens,
 				Ctx: ev.Usage.PromptTokens})
 		case engine.TurnEvent:
 			if ev.Start {
-				pushTelemetry(teCh, tui.TelemetryUpdate{Kind: tui.TelemetryTurn})
+				pushTelemetry(teCh, telemetry.TelemetryUpdate{Kind: telemetry.TelemetryTurn})
 				pushEvent(mCh, tui.Event{RunID: ev.RunID, TurnStart: true})
 			}
 		case engine.CompactedEvent:
-			pushTelemetry(teCh, tui.TelemetryUpdate{Kind: tui.TelemetryCompacted})
+			pushTelemetry(teCh, telemetry.TelemetryUpdate{Kind: telemetry.TelemetryCompacted})
 		case engine.ToolCallEvent:
 			u := tui.ToolUpdate{Start: &tui.ToolStart{Name: ev.Name, Args: ev.Arguments}}
 			pushEvent(mCh, tui.Event{RunID: ev.RunID, Tool: &u})
@@ -163,7 +164,7 @@ func feedEngineEvents(e *engine.Engine, te *tui.Telemetry, events *tui.EventFeed
 }
 
 // pushTelemetry delivers an update to the strip's channel without blocking the engine's event-goroutine: if the buffered channel is full the update is dropped, because the strip is best-effort telemetry that must never stall a live run.
-func pushTelemetry(ch chan<- tui.TelemetryUpdate, u tui.TelemetryUpdate) {
+func pushTelemetry(ch chan<- telemetry.TelemetryUpdate, u telemetry.TelemetryUpdate) {
 	select {
 	case ch <- u:
 	default:

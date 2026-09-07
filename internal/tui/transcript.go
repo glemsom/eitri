@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/glemsom/eitri/internal/tui/telemetry"
 	"strings"
 	"time"
 
@@ -39,7 +40,7 @@ type Transcript struct {
 	// render paths can read the live event log; a bare Transcript has none.
 	live              *TurnSession
 	layout            transcriptLayout
-	telemetry         *Telemetry
+	telemetry         *telemetry.Telemetry
 	weaver            selectionWeaver
 	pendingToolClick  bool
 	liveMarkdownCache liveMarkdownCache

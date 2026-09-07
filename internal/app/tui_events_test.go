@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"github.com/glemsom/eitri/internal/tui/telemetry"
 	"testing"
 	"time"
 
@@ -36,7 +37,7 @@ func scriptedInterleavedTurn() *provider.Scripted {
 func TestFeedEngineEventsMergedArrivalOrder(t *testing.T) {
 	e := engine.New(scriptedInterleavedTurn(), mockTranscript{})
 	merged := tui.NewEventFeed()
-	feedEngineEvents(e, tui.NewTelemetry("deepseek-v4-flash", "low", true, 250),
+	feedEngineEvents(e, telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250),
 		merged)
 
 	if _, err := e.RunAgent(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "go"},
@@ -122,7 +123,7 @@ func TestFeedEngineEventsMergedCarriesAnswerDelta(t *testing.T) {
 	// The merged feed is the engine-to-TUI stream: every answer delta lands on
 	// the single FIFO feed the TUI model reads, with no legacy side channels.
 	merged := tui.NewEventFeed()
-	feedEngineEvents(e, tui.NewTelemetry("deepseek-v4-flash", "low", true, 250),
+	feedEngineEvents(e, telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250),
 		merged)
 
 	if _, err := e.RunAgent(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}, engine.AgentOptions{}); err != nil {

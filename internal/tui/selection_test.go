@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"github.com/glemsom/eitri/internal/tui/telemetry"
 	"strings"
 	"testing"
 
@@ -573,7 +574,7 @@ func TestDragSelect_scrolledViewportMapsRows(t *testing.T) {
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "answer " + prompt}, nil
 		},
-		Telemetry: NewTelemetry("deepseek-v4-flash", "low", true, 250),
+		Telemetry: telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250),
 		Clipboard: func(s string) error { copied = s; return nil },
 	})
 	for i := 1; i <= 5; i++ {

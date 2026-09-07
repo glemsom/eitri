@@ -1,4 +1,4 @@
-package tui
+package telemetry
 
 import (
 	"time"
@@ -59,8 +59,8 @@ func (t *Telemetry) UpdateChan() chan<- TelemetryUpdate { return t.updates }
 // Updates exposes the same feed for reading (tests/observation).
 func (t *Telemetry) Updates() <-chan TelemetryUpdate { return t.updates }
 
-// apply folds one engine-derived update into the live counters.
-func (t *Telemetry) apply(u TelemetryUpdate) {
+// Apply folds one engine-derived update into the live counters.
+func (t *Telemetry) Apply(u TelemetryUpdate) {
 	switch u.Kind {
 	case TelemetryTurn:
 		t.turns++
@@ -87,14 +87,42 @@ func (t *Telemetry) Reset() {
 	t.startedAt = time.Now()
 }
 
-// liveContextSize returns the live per-turn context-window size in tokens (0 before the first usage event).
-func (t *Telemetry) liveContextSize() int { return t.liveCtx }
+// LiveContextSize returns the live per-turn context-window size in tokens (0 before the first usage event).
+func (t *Telemetry) LiveContextSize() int { return t.liveCtx }
 
-// hitPercent returns the prompt-cache hit ratio as a percentage, 0 when no input tokens have been billed yet.
-func (t *Telemetry) hitPercent() float64 {
+// HitPercent returns the prompt-cache hit ratio as a percentage, 0 when no input tokens have been billed yet.
+func (t *Telemetry) HitPercent() float64 {
 	in := t.cacheHit + t.cacheMiss
 	if in == 0 {
 		return 0
 	}
 	return float64(t.cacheHit) / float64(in) * 100
+}
+
+// Stats is an immutable snapshot of the accumulated live session counters,
+// consumed by the right-rail renderer and by tests. It replaces direct reads
+// of unexported fields from outside the package, keeping the counters owned
+// by Telemetry alone.
+type Stats struct {
+	Turns     int
+	CacheHit  int
+	CacheMiss int
+	Output    int
+	Compacted bool
+	Elapsed   time.Duration
+	MaxTurns  int
+}
+
+// Stats returns a snapshot of the current accumulated counters and the
+// elapsed wall-clock time since the session was started or last Reset.
+func (t *Telemetry) Stats() Stats {
+	return Stats{
+		Turns:     t.turns,
+		CacheHit:  t.cacheHit,
+		CacheMiss: t.cacheMiss,
+		Output:    t.output,
+		Compacted: t.compacted,
+		Elapsed:   time.Since(t.startedAt),
+		MaxTurns:  t.maxTurns,
+	}
 }

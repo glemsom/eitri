@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"github.com/glemsom/eitri/internal/tui/telemetry"
 	"image/color"
 	"os"
 	"strings"
@@ -57,7 +58,7 @@ type settingsForm struct {
 	selectedPath        int
 	pickerActive        bool
 	picker              filepicker.Model
-	telemetry           *Telemetry
+	telemetry           *telemetry.Telemetry
 	discoverState       discoverState
 	discoverErr         string
 	thinkingSuppression func() bool
@@ -361,7 +362,7 @@ const (
 // openSettingsOverlay seeds the overlay from the loaded config + discovery,
 // borrowing the live theme and telemetry for rendering (the cost readout was
 // available it arms the loading state and returns the discovery command.
-func openSettingsOverlay(cfg config.Config, models []string, theme Theme, telemetry *Telemetry, thinkingSuppressed func() bool, deps Dependencies) (*SettingsOverlay, tea.Cmd) {
+func openSettingsOverlay(cfg config.Config, models []string, theme Theme, telemetry *telemetry.Telemetry, thinkingSuppressed func() bool, deps Dependencies) (*SettingsOverlay, tea.Cmd) {
 	if cfg.Provider == "" {
 		cfg = config.Default()
 	}
@@ -677,7 +678,7 @@ func settingsView(f settingsForm) string {
 
 	if f.telemetry != nil {
 		b.WriteString(th.statusStyle.Render(fmt.Sprintf(
-			"   cache:%.0f%%", f.telemetry.hitPercent(),
+			"   cache:%.0f%%", f.telemetry.HitPercent(),
 		)))
 		b.WriteString("\n")
 	}

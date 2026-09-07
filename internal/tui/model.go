@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/glemsom/eitri/internal/tui/livekey"
+	"github.com/glemsom/eitri/internal/tui/telemetry"
 	"io"
 	"strings"
 	"time"
@@ -59,7 +60,7 @@ type turnDoneMsg struct {
 
 // telemetryUpdateMsg carries one queued live telemetry update from the engine seam into the UI loop.
 type telemetryUpdateMsg struct {
-	update TelemetryUpdate
+	update telemetry.TelemetryUpdate
 }
 
 // skillDoneMsg reports a slash-command skill activation's result. name is the activated skill; args, when non-empty, carries the trailing `/skillname <args>` remainder that becomes the turn prompt, and a bare `/skillname` falls back to a default prompt so a turn always runs.
@@ -116,7 +117,7 @@ type Dependencies struct {
 	SaveBack            func(config.Config)
 	Login               func(ctx context.Context, onCode func(LoginCode)) (config.Config, error)
 	Skills              *SkillsSurface
-	Telemetry           *Telemetry
+	Telemetry           *telemetry.Telemetry
 	Events              *EventFeed
 	Rail                *Rail
 	ThinkingSuppression func() bool
@@ -187,7 +188,7 @@ type Model struct {
 	skillCancel  context.CancelFunc
 	skillSeq     int
 
-	telemetry *Telemetry
+	telemetry *telemetry.Telemetry
 
 	runtime *TurnRuntime
 
@@ -358,7 +359,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.telemetry == nil {
 			return m, nil
 		}
-		m.telemetry.apply(msgi.update)
+		m.telemetry.Apply(msgi.update)
 		return m, telemetryWait(m.telemetry)
 
 	case eventMsg:
@@ -899,9 +900,9 @@ func (m Model) viewString() string {
 }
 
 // telemetryWait returns a command that blocks until the next live telemetry update arrives on the engine seam channel, then delivers it to the UI loop as a telemetryUpdateMsg.
-func telemetryWait(te *Telemetry) tea.Cmd {
+func telemetryWait(te *telemetry.Telemetry) tea.Cmd {
 	return func() tea.Msg {
-		u, ok := <-te.updates
+		u, ok := <-te.Updates()
 		if !ok {
 			return nil
 		}

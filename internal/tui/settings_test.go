@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/glemsom/eitri/internal/tui/telemetry"
 	"os"
 	"path/filepath"
 	"strings"
@@ -304,8 +305,8 @@ func TestSettingsView_RendersWritableListWhenFocused(t *testing.T) {
 
 func TestSettingsView_RendersLiveCacheReadout(t *testing.T) {
 	t.Parallel()
-	te := NewTelemetry("deepseek-v4-flash", "high", true, 250)
-	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "high", true, 250)
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
 
 	f := newSettingsForm(cfgFixture(), []string{"grok-2"})
 	f.telemetry = te

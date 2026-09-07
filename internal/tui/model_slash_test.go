@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"github.com/glemsom/eitri/internal/tui/livekey"
+	"github.com/glemsom/eitri/internal/tui/telemetry"
 	"strings"
 	"testing"
 
@@ -255,9 +256,9 @@ func TestModel_newCommandMintsFreshSession(t *testing.T) {
 func TestModel_newCommandResetsLiveStats(t *testing.T) {
 	t.Parallel()
 	live := livekey.NewLiveSessionKey("old")
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
-	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryTurn})
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, _ string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -267,8 +268,9 @@ func TestModel_newCommandResetsLiveStats(t *testing.T) {
 		Telemetry: te,
 	})
 	m = resize(t, m)
-	if te.turns == 0 || te.cacheHit == 0 || te.output == 0 {
-		t.Fatalf("setup did not seed live stats (turns=%d hit=%d out=%d)", te.turns, te.cacheHit, te.output)
+	st := te.Stats()
+	if st.Turns == 0 || st.CacheHit == 0 || st.Output == 0 {
+		t.Fatalf("setup did not seed live stats (turns=%d hit=%d out=%d)", st.Turns, st.CacheHit, st.Output)
 	}
 
 	m = typeText(t, m, "/new")
@@ -277,11 +279,12 @@ func TestModel_newCommandResetsLiveStats(t *testing.T) {
 	if m.telemetry == nil {
 		t.Fatal("model telemetry unset")
 	}
-	if m.telemetry.turns != 0 || m.telemetry.cacheHit != 0 || m.telemetry.cacheMiss != 0 || m.telemetry.output != 0 {
+	ms := m.telemetry.Stats()
+	if ms.Turns != 0 || ms.CacheHit != 0 || ms.CacheMiss != 0 || ms.Output != 0 {
 		t.Fatalf("`/new` did not reset live stats (turns=%d hit=%d miss=%d out=%d)",
-			m.telemetry.turns, m.telemetry.cacheHit, m.telemetry.cacheMiss, m.telemetry.output)
+			ms.Turns, ms.CacheHit, ms.CacheMiss, ms.Output)
 	}
-	if m.telemetry.compacted {
+	if ms.Compacted {
 		t.Fatal("`/new` left the compaction marker set")
 	}
 }

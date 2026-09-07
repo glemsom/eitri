@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"github.com/glemsom/eitri/internal/tui/telemetry"
 	"strings"
 	"testing"
 
@@ -10,7 +11,7 @@ import (
 
 func railBandModel(t *testing.T, w, h int) Model {
 	t.Helper()
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
 	m := NewModelCfg(Dependencies{
 		Turn:      fakeSess("hi"),

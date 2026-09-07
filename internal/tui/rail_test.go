@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"github.com/glemsom/eitri/internal/tui/telemetry"
 	"strings"
 	"testing"
 
@@ -43,9 +44,9 @@ func TestRailApplyConfigKeepsBootDefaults(t *testing.T) {
 
 func TestRailRenderStats(t *testing.T) {
 	t.Parallel()
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
-	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryTurn})
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
 
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
 	view := r.render(te, defaultTheme, defaultRailWidth)
@@ -73,7 +74,7 @@ func TestRailRenderStats(t *testing.T) {
 func TestRailRenderModel(t *testing.T) {
 	t.Parallel()
 	r := NewRail("opencode-go", "deepseek-v4-flash", "high", false, "sess-1", "/tmp/sess-1")
-	view := r.render(NewTelemetry("deepseek-v4-flash", "high", false, 250), defaultTheme, defaultRailWidth)
+	view := r.render(telemetry.NewTelemetry("deepseek-v4-flash", "high", false, 250), defaultTheme, defaultRailWidth)
 
 	if !strings.Contains(view, "MODEL") {
 		t.Errorf("rail missing MODEL section, got: %q", view)
@@ -92,7 +93,7 @@ func TestRailRenderModel(t *testing.T) {
 func TestRailRenderContext(t *testing.T) {
 	t.Parallel()
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c", "/tmp/eitri-9f2c")
-	view := r.render(NewTelemetry("deepseek-v4-flash", "low", true, 250), defaultTheme, defaultRailWidth)
+	view := r.render(telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250), defaultTheme, defaultRailWidth)
 
 	if !strings.Contains(view, "CONTEXT") {
 		t.Errorf("rail missing CONTEXT section, got: %q", view)
@@ -110,8 +111,8 @@ func TestRailRenderContext(t *testing.T) {
 
 func TestRailRenderSectionHues(t *testing.T) {
 	t.Parallel()
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c", "/tmp/eitri-9f2c")
 	view := r.render(te, defaultTheme, defaultRailWidth)
 
@@ -142,11 +143,11 @@ func TestRailRenderSectionHues(t *testing.T) {
 
 func TestRailRenderStatsNoGraph(t *testing.T) {
 	t.Parallel()
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
-	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 0, Miss: 100, Output: 100})
-	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
-	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 0, Miss: 300, Output: 300})
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryTurn})
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 0, Miss: 100, Output: 100})
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryTurn})
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 0, Miss: 300, Output: 300})
 
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c", "/tmp/eitri-9f2c")
 	view := r.render(te, defaultTheme, defaultRailWidth)
@@ -169,7 +170,7 @@ func TestRailRenderStatsNoGraph(t *testing.T) {
 
 func TestModelRailAlwaysOn(t *testing.T) {
 	t.Parallel()
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
 	m := NewModelCfg(Dependencies{
 		Turn:      fakeSess("hi"),
@@ -202,7 +203,7 @@ func TestModelRailAlwaysOn(t *testing.T) {
 
 func TestModelRailTranscriptFloor(t *testing.T) {
 	t.Parallel()
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
 	m := NewModelCfg(Dependencies{
 		Turn:      fakeSess("hi"),
@@ -222,7 +223,7 @@ func TestModelRailTranscriptFloor(t *testing.T) {
 
 func TestModelRailNoToggle(t *testing.T) {
 	t.Parallel()
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
 	m := NewModelCfg(Dependencies{
 		Turn:      fakeSess("hi"),
@@ -244,7 +245,7 @@ func TestModelRailNoToggle(t *testing.T) {
 
 func TestModelRailLiveUpdates(t *testing.T) {
 	t.Parallel()
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
 	m := NewModelCfg(Dependencies{
 		Turn:      fakeSess("hi"),
@@ -254,7 +255,7 @@ func TestModelRailLiveUpdates(t *testing.T) {
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 140, Height: 24})
 	m = asModel(t, nm)
 
-	te.updates <- TelemetryUpdate{Kind: TelemetryUsage, Hit: 90_000, Miss: 10_000, Output: 5_000}
+	te.UpdateChan() <- telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 90_000, Miss: 10_000, Output: 5_000}
 	cmd := telemetryWait(te)
 	msg := cmd()
 	nm, _ = m.Update(msg)
@@ -326,7 +327,7 @@ func TestModelRailNoPanicWithoutFeed(t *testing.T) {
 
 func TestModelBandSpansFullWidthWhileTranscriptStaysRailShrunk(t *testing.T) {
 	t.Parallel()
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
 	m := NewModelCfg(Dependencies{
 		Turn:      fakeSess("hi"),
@@ -376,7 +377,7 @@ func TestModelBandWidthRailHiddenTiny(t *testing.T) {
 
 func TestModelBandWidthIndependentOfComposer(t *testing.T) {
 	t.Parallel()
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
 	m := NewModelCfg(Dependencies{
 		Turn:      fakeSess("hi"),
@@ -404,9 +405,9 @@ func TestModelBandWidthIndependentOfComposer(t *testing.T) {
 
 func TestRailRenderCtxLine(t *testing.T) {
 	t.Parallel()
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000, Ctx: 137_000})
-	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000, Ctx: 137_000})
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryTurn})
 
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
 	view := r.render(te, defaultTheme, defaultRailWidth)
@@ -424,8 +425,8 @@ func TestRailRenderCtxLine(t *testing.T) {
 
 func TestRailRenderCtxWarnAboveThreshold(t *testing.T) {
 	t.Parallel()
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000, Ctx: 160_000})
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000, Ctx: 160_000})
 
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
 	view := r.render(te, defaultTheme, defaultRailWidth)
@@ -440,8 +441,8 @@ func TestRailRenderCtxWarnAboveThreshold(t *testing.T) {
 
 func TestRailRenderStatsShowsContextOverflowRecovery(t *testing.T) {
 	t.Parallel()
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	te.apply(TelemetryUpdate{Kind: TelemetryCompacted})
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryCompacted})
 
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
 	view := r.render(te, defaultTheme, defaultRailWidth)
@@ -456,10 +457,10 @@ func TestRailRenderStatsShowsContextOverflowRecovery(t *testing.T) {
 
 func TestRailRenderCtxPostRecoveryRollback(t *testing.T) {
 	t.Parallel()
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000, Ctx: 160_000})
-	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
-	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000, Ctx: 48_000})
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000, Ctx: 160_000})
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryTurn})
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000, Ctx: 48_000})
 
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
 	view := r.render(te, defaultTheme, defaultRailWidth)
@@ -474,9 +475,9 @@ func TestRailRenderCtxPostRecoveryRollback(t *testing.T) {
 
 func TestRailRenderStatsWide(t *testing.T) {
 	t.Parallel()
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
-	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryTurn})
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
 
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
 	view := r.render(te, defaultTheme, 50)
@@ -498,7 +499,7 @@ func TestRailRenderStatsWide(t *testing.T) {
 func TestRailRenderModelWide(t *testing.T) {
 	t.Parallel()
 	r := NewRail("opencode-go", "deepseek-v4-flash", "high", false, "sess-1", "/tmp/sess-1")
-	view := r.render(NewTelemetry("deepseek-v4-flash", "high", false, 250), defaultTheme, 50)
+	view := r.render(telemetry.NewTelemetry("deepseek-v4-flash", "high", false, 250), defaultTheme, 50)
 
 	if !strings.Contains(view, "provider     opencode-go") || !strings.Contains(view, "model        deepseek-v4-flash") {
 		t.Errorf("rail MODEL should show separated provider/model at wide width 50, got: %q", view)
@@ -510,9 +511,9 @@ func TestRailRenderModelWide(t *testing.T) {
 
 func TestRailRenderStatsNarrow(t *testing.T) {
 	t.Parallel()
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
-	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryTurn})
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
 
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
 	view := r.render(te, defaultTheme, 24)
@@ -530,9 +531,9 @@ func TestRailRenderStatsNarrow(t *testing.T) {
 
 func TestRailDefaultWidthUnchanged(t *testing.T) {
 	t.Parallel()
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
-	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryTurn})
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
 
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
 	view := r.render(te, defaultTheme, defaultRailWidth)
@@ -550,9 +551,9 @@ func TestRailDefaultWidthUnchanged(t *testing.T) {
 
 func TestRailWideAlignment(t *testing.T) {
 	t.Parallel()
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
-	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryTurn})
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
 
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
 	view := r.renderStats(te, defaultTheme, 50)
@@ -573,9 +574,9 @@ func TestRailWideAlignment(t *testing.T) {
 
 func TestRailRenderWideNoOverflow(t *testing.T) {
 	t.Parallel()
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
-	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryTurn})
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
 
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
 	for _, w := range []int{40, 50, 60, 80} {
@@ -591,14 +592,14 @@ func TestRailRenderWideNoOverflow(t *testing.T) {
 
 func TestRailWideValuesFuller(t *testing.T) {
 	t.Parallel()
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
-	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryTurn})
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
 
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
 
-	defView := r.render(NewTelemetry("deepseek-v4-flash", "low", true, 250), defaultTheme, defaultRailWidth)
-	wideView := r.render(NewTelemetry("deepseek-v4-flash", "low", true, 250), defaultTheme, 55)
+	defView := r.render(telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250), defaultTheme, defaultRailWidth)
+	wideView := r.render(telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250), defaultTheme, 55)
 
 	if !strings.Contains(defView, "provider opencode-go") || !strings.Contains(defView, "model deepseek-v4-flash") {
 		t.Errorf("default width should show separated provider/model, got: %q", defView)
@@ -642,7 +643,7 @@ func TestRail_truncateCellWidthWideRunes(t *testing.T) {
 func TestRailStatsContextMeterStates(t *testing.T) {
 	t.Parallel()
 	r := NewRail("opencode-go", "deepseek", "low", true, "sid", "/tmp/sid")
-	te := NewTelemetry("deepseek", "low", true, 250)
+	te := telemetry.NewTelemetry("deepseek", "low", true, 250)
 
 	empty := r.renderStats(te, defaultTheme, 36)
 	emptyCtx := lineContaining(empty, "ctx")
@@ -650,7 +651,7 @@ func TestRailStatsContextMeterStates(t *testing.T) {
 		t.Fatalf("empty ctx should render numeric without meter, got: %q", empty)
 	}
 
-	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Ctx: 75_000})
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Ctx: 75_000})
 	normal := r.renderStats(te, defaultTheme, 36)
 	if !strings.Contains(ansiStrip(normal), "ctx        75.0k [===---]") {
 		t.Fatalf("normal ctx meter missing, got: %q", normal)
@@ -659,7 +660,7 @@ func TestRailStatsContextMeterStates(t *testing.T) {
 		t.Fatalf("normal ctx meter used warning color: %q", lineContaining(normal, "ctx 75.0k"))
 	}
 
-	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Ctx: 150_000})
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Ctx: 150_000})
 	warn := r.renderStats(te, defaultTheme, 36)
 	if !strings.Contains(ansiStrip(warn), "ctx        150.0k [======]") {
 		t.Fatalf("warning ctx meter missing, got: %q", warn)
@@ -684,8 +685,8 @@ func TestRailStatsCacheMeterStates(t *testing.T) {
 		{"full", 10, 0, "100% [======]"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			te := NewTelemetry("deepseek", "low", true, 250)
-			te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: tc.hit, Miss: tc.miss})
+			te := telemetry.NewTelemetry("deepseek", "low", true, 250)
+			te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: tc.hit, Miss: tc.miss})
 			view := r.renderStats(te, defaultTheme, 36)
 			if !strings.Contains(ansiStrip(view), tc.want) {
 				t.Fatalf("cache meter missing %q, got: %q", tc.want, view)

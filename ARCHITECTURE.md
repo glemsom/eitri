@@ -105,15 +105,15 @@ Bubbletea v2 / lipgloss v2. The largest package; organized as small single-owner
 - `transcript.go` — the single owner of the scrolling rendered transcript region (layout, scroll, follow, render).
 - `composer.go`, `completion_menu.go`, `mention.go`, `prompt_history.go` — input, completion, history recall.
 - `turn_session.go` — the owner of one run's lifecycle: cancelable per-turn context, stop (`ErrStopped`), stream cursor, commit-to-transcript on settle. `turn_runtime.go` layers live event acceptance (run-ID-based stale-event rejection) on top; `turnflow.go`, `fold.go`, `phase.go` project engine events into the visual timeline.
-- `livekey.go` — the live session key holder: a mutable reference so `/new` re-mints the GUID and every surface observes it at the next turn boundary.
+- `internal/tui/livekey` — the live session key holder (`LiveSessionKey`), a compiler-enforced single-owner leaf: a mutable reference so `/new` re-mints the GUID and every surface observes it at the next turn boundary.
 - `skill_activation.go`, `settings.go`, `login.go`, `help.go` — slash-command surfaces.
 - `markdown.go`, `flowrender.go`, `expansion.go`, `collapsefocus.go`, `scrollreg.go`, `selection*.go`, `clipboard.go`, and the `internal/osc52` package — rendering: glamour markdown, expand/collapse of tool and chain-of-thought blocks, drag-select text, OSC 52 clipboard escape sequences.
 - `styles.go`, `theme`, `glyphs.go`, `spinner.go`, `face.go` — theming and chrome.
-- `telemetry.go` — in-TUI performance counters feeding the render-diagnostics workflow (`docs/render-diagnostics.md`).
+- `internal/tui/telemetry` — in-TUI performance counters (`Telemetry`) feeding the render-diagnostics workflow (`docs/render-diagnostics.md`); a compiler-enforced single-owner leaf exposing an `Apply`/`Stats` seam instead of raw field access.
 
-### `internal/osc52`, `internal/testutil`, `internal/constants`
+### `internal/osc52`, `internal/testutil`, `internal/constants`, `internal/tui/livekey`, `internal/tui/telemetry`
 
-Small leaves: the OSC 52 clipboard writer, shared test doubles, and cross-layer numeric constants.
+Small leaves: the OSC 52 clipboard writer, shared test doubles, cross-layer numeric constants, and the first TUI leaves extracted from the monolithic `internal/tui` package into compiler-enforced single-owner sub-packages. The remaining hot modules (`transcript`, `render`, `composer`, `turn session`) still live in package `tui` and share mutable state directly; their extraction to sub-packages is staged (see `docs/agents/de-monolith-tui.md`).
 
 ## Cross-cutting invariants
 

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"github.com/glemsom/eitri/internal/tui/telemetry"
 	"testing"
 	"time"
 
@@ -24,7 +25,7 @@ func TestFeedTelemetryBridgesUsageEvent(t *testing.T) {
 		), nil
 	}), mockTranscript{})
 
-	te := tui.NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	feedEngineEvents(e, te, tui.NewEventFeed())
 
 	if _, err := e.RunAgent(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "hi"}, engine.AgentOptions{}); err != nil {
@@ -33,7 +34,7 @@ func TestFeedTelemetryBridgesUsageEvent(t *testing.T) {
 
 	if u, ok := <-te.Updates(); !ok {
 		t.Fatal("telemetry channel closed")
-	} else if u.Kind != tui.TelemetryTurn {
+	} else if u.Kind != telemetry.TelemetryTurn {
 		t.Fatalf("first update kind = %v, want TelemetryTurn", u.Kind)
 	}
 
@@ -41,7 +42,7 @@ func TestFeedTelemetryBridgesUsageEvent(t *testing.T) {
 	if !ok {
 		t.Fatal("telemetry channel closed")
 	}
-	if u.Kind != tui.TelemetryUsage || u.Hit != 90_000 || u.Miss != 10_000 || u.Output != 5_000 || u.Ctx != 100_000 {
+	if u.Kind != telemetry.TelemetryUsage || u.Hit != 90_000 || u.Miss != 10_000 || u.Output != 5_000 || u.Ctx != 100_000 {
 		t.Fatalf("usage update = %+v, want hit=90000 miss=10000 out=5000 ctx=100000", u)
 	}
 }
@@ -54,7 +55,7 @@ func TestFeedTelemetryBridgesTurnEvent(t *testing.T) {
 		), nil
 	}), mockTranscript{})
 
-	te := tui.NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	feedEngineEvents(e, te, tui.NewEventFeed())
 
 	for i := 0; i < 2; i++ {
@@ -65,7 +66,7 @@ func TestFeedTelemetryBridgesTurnEvent(t *testing.T) {
 		if !ok {
 			t.Fatal("telemetry channel closed")
 		}
-		if u.Kind != tui.TelemetryTurn {
+		if u.Kind != telemetry.TelemetryTurn {
 			t.Fatalf("update kind = %v, want TelemetryTurn", u.Kind)
 		}
 	}
@@ -81,7 +82,7 @@ func TestFeedEngineEventsBridgesAnswerDelta(t *testing.T) {
 		), nil
 	}), mockTranscript{})
 
-	te := tui.NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	events := tui.NewEventFeed()
 	feedEngineEvents(e, te, events)
 
@@ -144,7 +145,7 @@ func scriptedToolEditTurn() *provider.Scripted {
 func TestFeedEngineEventsBridgesToolEvents(t *testing.T) {
 	e := engine.New(scriptedToolEditTurn(), mockTranscript{})
 	merged := tui.NewEventFeed()
-	feedEngineEvents(e, tui.NewTelemetry("deepseek-v4-flash", "low", true, 250), merged)
+	feedEngineEvents(e, telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250), merged)
 
 	if _, err := e.RunAgent(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "edit"},
 		engine.AgentOptions{
@@ -227,7 +228,7 @@ func TestFeedTelemetryUsageOncePerCycle(t *testing.T) {
 		), nil
 	}), mockTranscript{})
 
-	te := tui.NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	feedEngineEvents(e, te, tui.NewEventFeed())
 
 	if _, err := e.RunAgent(context.Background(), engine.RunRequest{Model: "deepseek-v4-flash", Prompt: "go"},
@@ -241,7 +242,7 @@ func TestFeedTelemetryUsageOncePerCycle(t *testing.T) {
 		t.Fatalf("RunAgent() error = %v", err)
 	}
 
-	var usage []tui.TelemetryUpdate
+	var usage []telemetry.TelemetryUpdate
 	timeout := time.After(5 * time.Second)
 	for len(usage) < 2 {
 		select {
@@ -249,7 +250,7 @@ func TestFeedTelemetryUsageOncePerCycle(t *testing.T) {
 			if !ok {
 				t.Fatal("telemetry channel closed")
 			}
-			if u.Kind == tui.TelemetryUsage {
+			if u.Kind == telemetry.TelemetryUsage {
 				usage = append(usage, u)
 			}
 		case <-timeout:

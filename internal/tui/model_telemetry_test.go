@@ -2,13 +2,14 @@ package tui
 
 import (
 	"context"
+	"github.com/glemsom/eitri/internal/tui/telemetry"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 )
 
-func newTelemetryModel(t *testing.T, te *Telemetry, rail *Rail) Model {
+func newTelemetryModel(t *testing.T, te *telemetry.Telemetry, rail *Rail) Model {
 	t.Helper()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -22,8 +23,8 @@ func newTelemetryModel(t *testing.T, te *Telemetry, rail *Rail) Model {
 
 func TestModelStatusStripHintsOnly(t *testing.T) {
 	t.Parallel()
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
-	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
 	m := newTelemetryModel(t, te, r)
 
@@ -53,11 +54,11 @@ func TestModelStatusStripHintsOnly(t *testing.T) {
 
 func TestModelTelemetryDrainsLiveUpdates(t *testing.T) {
 	t.Parallel()
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
 	m := newTelemetryModel(t, te, r)
 
-	te.updates <- TelemetryUpdate{Kind: TelemetryUsage, Hit: 90_000, Miss: 10_000, Output: 5_000}
+	te.UpdateChan() <- telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 90_000, Miss: 10_000, Output: 5_000}
 	cmd := telemetryWait(te)
 	if cmd == nil {
 		t.Fatal("expected a telemetry waiter command")
@@ -73,7 +74,7 @@ func TestModelTelemetryDrainsLiveUpdates(t *testing.T) {
 
 func TestModelStatusStripHintsOnNarrow(t *testing.T) {
 	t.Parallel()
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	m := newTelemetryModel(t, te, nil)
 
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 60, Height: 24})
@@ -92,7 +93,7 @@ func TestModelStatusStripHintsOnNarrow(t *testing.T) {
 
 func TestModelStatusStripBusySpinner(t *testing.T) {
 	t.Parallel()
-	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	m := newTelemetryModel(t, te, nil)
 	m = typeText(t, m, "hi")
 	m, _ = submitBusy(t, m)

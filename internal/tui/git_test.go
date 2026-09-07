@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/glemsom/eitri/internal/tui/telemetry"
 	"os"
 	"path/filepath"
 	"strings"
@@ -48,12 +49,12 @@ func TestGitBranch(t *testing.T) {
 func TestRailBranchRenders(t *testing.T) {
 	t.Parallel()
 	r := NewRail("opencode-go", "deepseek-v4-flash", "high", true, "sess-1", "/tmp/sess-1")
-	view := r.render(NewTelemetry("deepseek-v4-flash", "high", true, 250), defaultTheme, defaultRailWidth)
+	view := r.render(telemetry.NewTelemetry("deepseek-v4-flash", "high", true, 250), defaultTheme, defaultRailWidth)
 	if contains := strings.Contains(view, "branch"); contains {
 		t.Errorf("no branch set: CONTEXT must omit the branch line, got: %q", view)
 	}
 	r.SetBranch("main")
-	view = r.render(NewTelemetry("deepseek-v4-flash", "high", true, 250), defaultTheme, defaultRailWidth)
+	view = r.render(telemetry.NewTelemetry("deepseek-v4-flash", "high", true, 250), defaultTheme, defaultRailWidth)
 	if !strings.Contains(view, "branch main") {
 		t.Errorf("CONTEXT missing branch line, got: %q", view)
 	}
