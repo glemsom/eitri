@@ -63,6 +63,47 @@ func benchBusyTx() *Transcript {
 	return tx
 }
 
+// benchStreamingLiveReason returns a transcript whose one live turn carries a
+// reasoning block of reasonKB KiB. Streaming reasoning auto-expands (thinkingExpandedForBlock)
+// regardless of the collapsed-by-default config, so the expanded markdown pane is
+// (re)rendered per frame — the path that previously grew super-linear with stream
+// length and pinned a core on a long CoT passthrough. Per-frame cost must stay
+// flat (bounded by liveStreamingMarkdownWindow) as reasonKB grows.
+func benchStreamingLiveReason(reasonKB int) *Transcript {
+	tx := benchBusyTx()
+	tx.configTheme = config.DefaultTheme
+	reason := strings.Repeat("paragraph of analysis and reasoning tokens repeated some words here ", 2000)[:reasonKB*1000]
+	tx.messages = append(tx.messages, message{role: "you", content: "live prompt"})
+	tx.messages = append(tx.messages, message{role: "eitri", streaming: true, thinkingRequested: true,
+		reasoning: reason, content: "", expansion: ExpansionState{}})
+	s := NewTurnSession(nil)
+	s.flow.Observe(ReasoningStream, reason)
+	tx.live = s
+	tx.busy = true
+	return tx
+}
+
+// BenchmarkStreamingAutoExpandReason is the regression guard for the live-streaming
+// markdown window fix: rendering a streaming auto-expanded reasoning block must cost
+// a constant amount no matter how long the single turn's CoT grows. Before the fix
+// the 100KiB case cost ~linearly more than 30KiB (re-rendering + width-measuring the
+// whole accumulated markdown every frame); after it both land near one another,
+// bounded by liveStreamingMarkdownWindow.
+//
+// Run: go test ./internal/tui -run xxx -bench BenchmarkStreamingAutoExpandReason -benchtime 200x
+func BenchmarkStreamingAutoExpandReason(b *testing.B) {
+	b.Setenv("EITRI_ASCII_GLYPHS", "1")
+	for _, kb := range []int{30, 100} {
+		b.Run("reason_"+strconv.Itoa(kb)+"kiB", func(b *testing.B) {
+			tx := benchStreamingLiveReason(kb)
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_ = tx.renderPaneContent()
+			}
+		})
+	}
+}
+
 func benchBusyHistory(tx *Transcript, turns int) {
 	for i := 0; i < turns; i++ {
 		tx.messages = append(tx.messages, message{role: "you", content: "a moderately long user prompt describing a task"})

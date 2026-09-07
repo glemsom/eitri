@@ -297,6 +297,32 @@ func (r flowRenderer) reasoningBlock(msg message, msgIdx int, it flowItem, isFoc
 	return renderReasoningBlockCached(r.markdownCache, r.theme, r.config, r.width, r.effort, msg, msgIdx, it.fragIdx, it.text, it.expanded, focused)
 }
 
+// liveStreamingMarkdownWindow bounds the markdown that is (re)rendered per frame
+// for a block that is still streaming. A live expanded reasoning or answer block
+// grows with every delta, and rendering + width-measuring the full accumulated
+// text on every invalidated frame is super-linear in stream length — a long
+// thinking passthrough (tens of KB) pins a core while it streams. The user is
+// watching the tail of the live block; a committed turn renders its full
+// authoritative snapshot exactly once after the stream ends, so final output is
+// unaffected. Rendering only the trailing window keeps per-frame cost bounded
+// regardless of how long a single block runs.
+const liveStreamingMarkdownWindow = 8 << 10 // 8 KiB
+
+// liveStreamingText returns the text to markdown-render for a block: the full
+// text when it is committed (or small), otherwise just the trailing window while
+// it is still streaming. The window is bytes, trimmed to the first newline so the
+// rendered tail starts on a fresh line rather than mid-sequence.
+func liveStreamingText(msg message, text string) string {
+	if !msg.streaming || len(text) <= liveStreamingMarkdownWindow {
+		return text
+	}
+	window := text[len(text)-liveStreamingMarkdownWindow:]
+	if i := strings.IndexByte(window, '\n'); i >= 0 {
+		window = window[i+1:]
+	}
+	return window
+}
+
 func renderReasoningBlockCached(cache *liveMarkdownCache, theme Theme, config string, width int, effort string, msg message, msgIdx, fragIdx int, text string, expanded, focused bool) string {
 	var b strings.Builder
 	h := thinkingHeader(theme, text, effort)
@@ -307,7 +333,7 @@ func renderReasoningBlockCached(cache *liveMarkdownCache, theme Theme, config st
 	if !expanded {
 		return b.String() // collapsed: the hint is the block
 	}
-	md, _ := renderCachedMarkdown(cache, text, width-2, config)
+	md, _ := renderCachedMarkdown(cache, liveStreamingText(msg, text), width-2, config)
 	pane := theme.thinkingPaneStyle
 	if msg.streaming {
 		pane = theme.streamingThinkingPaneStyle
@@ -337,7 +363,7 @@ func renderAnswerBlockCached(cache *liveMarkdownCache, theme Theme, config strin
 	if text == "" {
 		return ""
 	}
-	md, _ := renderCachedMarkdown(cache, text, width-2, config)
+	md, _ := renderCachedMarkdown(cache, liveStreamingText(msg, text), width-2, config)
 	pane := theme.agentPaneStyle
 	if msg.stopped {
 		pane = theme.stoppedPaneStyle
