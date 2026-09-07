@@ -181,7 +181,14 @@ func (m Model) renderBand(b *strings.Builder) {
 		inner.WriteString(renderTitledPanel(m.forgeTitle(), m.tx.bandWidth(), style, body))
 	} else {
 		if m.slash.isOpen() {
-			inner.WriteString(renderTitledPanel("Commands", m.tx.bandWidth(), m.tx.theme.bandSeparatorStyle, m.slash.RenderCompletionBody(m.tx.theme)))
+			body := m.slash.RenderCompletionBody(m.tx.theme)
+			if badge := m.slash.skipBadge(m.tx.theme); badge != "" {
+				if body != "" {
+					body += "\n"
+				}
+				body += badge
+			}
+			inner.WriteString(renderTitledPanel("Commands", m.tx.bandWidth(), m.tx.theme.bandSeparatorStyle, body))
 			inner.WriteByte('\n')
 		} else if m.mention.isOpen() {
 			inner.WriteString(renderTitledPanel("Workspace mentions", m.tx.bandWidth(), m.tx.theme.bandSeparatorStyle, m.mention.RenderCompletionBody(m.tx.theme)))
@@ -277,6 +284,9 @@ func (m Model) composerPreRows() int {
 	n := 0
 	if m.slash.isOpen() {
 		n += m.slash.popoverRows()
+		if m.slash.skipBadge(m.tx.theme) != "" {
+			n++
+		}
 	} else if m.mention.isOpen() {
 		n += m.mention.popoverRows()
 	}

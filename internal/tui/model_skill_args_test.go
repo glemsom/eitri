@@ -178,3 +178,58 @@ func TestModel_slashSkillActivationError(t *testing.T) {
 		t.Errorf("activation failure should render, got: %q", content)
 	}
 }
+
+func TestSkillActivation_skipBadge(t *testing.T) {
+	t.Parallel()
+	th := defaultTheme
+
+	none := NewSkillActivation(Dependencies{Skills: &SkillsSurface{Items: []SkillItem{{Name: "ok"}}}})
+	if got := ansiStrip(none.skipBadge(th)); got != "" {
+		t.Fatalf("skipBadge with no skipped skills = %q, want empty", got)
+	}
+
+	withSkip := NewSkillActivation(Dependencies{Skills: &SkillsSurface{
+		Items:   []SkillItem{{Name: "ok"}},
+		Skipped: []string{"broken-a", "broken-b"},
+	}})
+	got := ansiStrip(withSkip.skipBadge(th))
+	if !strings.Contains(got, "2 unparseable skill") || !strings.Contains(got, "broken-a") || !strings.Contains(got, "broken-b") {
+		t.Fatalf("skipBadge = %q, want a badge naming both skipped packs", got)
+	}
+}
+
+func TestModel_skillSkippedBadgeShownInListing(t *testing.T) {
+	t.Parallel()
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+		Skills: &SkillsSurface{
+			Items:   []SkillItem{{Name: "my-skill"}},
+			Skipped: []string{"broken"},
+		},
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "/")
+	content := ansiStrip(view(m))
+	if !strings.Contains(content, "skipped 1 unparseable skill") || !strings.Contains(content, "broken") {
+		t.Fatalf("slash listing missing skip badge, got: %q", content)
+	}
+}
+
+func TestModel_skillNoBadgeWithoutSkipped(t *testing.T) {
+	t.Parallel()
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+		Skills: &SkillsSurface{
+			Items: []SkillItem{{Name: "my-skill"}},
+		},
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "/")
+	if strings.Contains(ansiStrip(view(m)), "unparseable skill") {
+		t.Fatalf("slash listing showed a skip badge with nothing skipped: %q", ansiStrip(view(m)))
+	}
+}

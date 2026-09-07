@@ -262,6 +262,16 @@ func Run(opts Options) error {
 	if format == "json" {
 		return writeBatchEnvelope(out, sess.GUID(), res)
 	}
+	if batches := skills.SkippedSkills(); len(batches) > 0 {
+		// The lenient discovery drop is only safe if it is audible: give the
+		// batch text run an explicit notice (on stderr, so the --format text
+		// stdout answer stays byte-stable) naming the skipped packs.
+		names := make([]string, 0, len(batches))
+		for _, b := range batches {
+			names = append(names, b.Name)
+		}
+		fmt.Fprintf(errOut, "eitri: warning: %d skill pack(s) skipped (unparseable SKILL.md): %s\n", len(names), strings.Join(names, ", "))
+	}
 	fmt.Fprintln(out, res.Answer)
 
 	return nil

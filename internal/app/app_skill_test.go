@@ -484,3 +484,36 @@ func TestTUISlashBarePutsSkillInProviderContext(t *testing.T) {
 	}
 
 }
+
+func TestSkillSurfaceSurfacesSkippedOnly(t *testing.T) {
+	ws := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	badDir := filepath.Join(ws, ".agents", "skills", "broken-only")
+	if err := os.MkdirAll(badDir, 0o700); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(badDir, "SKILL.md"), []byte("# no frontmatter\n"), 0o600); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(ws); err != nil {
+		t.Fatalf("chdir workspace: %v", err)
+	}
+	defer func() { _ = os.Chdir(oldWd) }()
+
+	skills := discoverSkills(t.TempDir(), ws)
+	surface := skillSurface(nil, skills)
+	if surface == nil {
+		t.Fatal("skillSurface = nil with only skipped skills, want non-nil so its badge is visible")
+	}
+	if len(surface.Items) != 0 {
+		t.Fatalf("surface items = %+v, want none", surface.Items)
+	}
+	if len(surface.Skipped) != 1 || surface.Skipped[0] != "broken-only" {
+		t.Fatalf("surface skipped = %v, want the broken-only pack", surface.Skipped)
+	}
+}

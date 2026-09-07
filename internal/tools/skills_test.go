@@ -500,3 +500,114 @@ func TestSkillFrontmatterKeepsExistingAncillaryMetadataCompatible(t *testing.T) 
 		t.Fatal("valid existing ancillary metadata caused skill rejection")
 	}
 }
+
+func TestParseFrontmatterBlockScalars(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		front string
+		want  string
+	}{
+		{
+			name:  "literal",
+			front: "description: |\n  line one\n  line two\n",
+			want:  "line one\nline two\n",
+		},
+		{
+			name:  "literal strip chomp",
+			front: "description: |-\n  line one\n  line two\n",
+			want:  "line one\nline two",
+		},
+		{
+			name:  "literal keep chomp",
+			front: "description: |+\n  line one\n\n  line two\n",
+			want:  "line one\n\nline two\n",
+		},
+		{
+			name:  "folded",
+			front: "description: >\n  Spawn and manage subagents.\n  Use when the user wants a free bash.\n",
+			want:  "Spawn and manage subagents. Use when the user wants a free bash.\n",
+		},
+		{
+			name:  "folded strip chomp",
+			front: "description: >-\n  alpha bravo\n  charlie\n",
+			want:  "alpha bravo charlie",
+		},
+		{
+			name:  "folded keeps blank as newline",
+			front: "description: >\n  alpha\n\n  bravo\n",
+			want:  "alpha\nbravo\n",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			meta, err := parseFrontmatter(tc.front)
+			if err != nil {
+				t.Fatalf("parseFrontmatter error = %v, want nil", err)
+			}
+			if got := meta["description"]; got != tc.want {
+				t.Fatalf("description = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSkillDiscoverFoldedDescription(t *testing.T) {
+	t.Parallel()
+	user := t.TempDir()
+	dir := filepath.Join(user, "folded-skill")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	front := "---\nname: folded-skill\ndescription: >\n  Spawn and manage subagents.\n  Use when the user wants a free bash.\n---\n\nbody\n"
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(front), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	warnings := &warningSink{}
+	catalog, err := Discover(user, t.TempDir(), t.TempDir(), warnings)
+	if err != nil {
+		t.Fatalf("Discover error = %v, want nil", err)
+	}
+	s := catalog.Skill("folded-skill")
+	if s == nil {
+		t.Fatalf("folded-description skill was skipped; warnings = %v", warnings.warns)
+	}
+	if want := "Spawn and manage subagents. Use when the user wants a free bash."; s.Description != want {
+		t.Fatalf("description = %q, want %q", s.Description, want)
+	}
+	if warnings.count != 0 {
+		t.Fatalf("unexpected warnings = %v, want none", warnings.warns)
+	}
+}
+
+func TestSkillDiscoverRecordsSkippedSurface(t *testing.T) {
+	t.Parallel()
+	user := t.TempDir()
+	// One valid skill so the catalog is non-trivially populated, one broken.
+	writeSkill(t, user, "good", "a good skill", "body", nil)
+	bad := filepath.Join(user, "broken")
+	if err := os.MkdirAll(bad, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(bad, "SKILL.md"), []byte("# no frontmatter\n"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	warnings := &warningSink{}
+	catalog, err := Discover(user, t.TempDir(), t.TempDir(), warnings)
+	if err != nil {
+		t.Fatalf("Discover error = %v, want nil", err)
+	}
+	skipped := catalog.SkippedSkills()
+	if len(skipped) != 1 {
+		t.Fatalf("SkippedSkills() = %+v, want exactly the broken pack", skipped)
+	}
+	if skipped[0].Name != "broken" || skipped[0].Scope != "user" || skipped[0].Reason == "" {
+		t.Fatalf("skipped detail = %+v, want name=broken scope=user and a reason", skipped[0])
+	}
+	if len(catalog.Names()) != 1 || catalog.Names()[0] != "good" {
+		t.Fatalf("catalog names = %v, want only [good]", catalog.Names())
+	}
+	if warnings.count == 0 {
+		t.Fatal("expected a warning for the skipped skill, got none")
+	}
+}

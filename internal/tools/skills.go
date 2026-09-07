@@ -25,14 +25,24 @@ type Skill struct {
 	ModelInvocable bool
 }
 
+// Skipped records a skill pack whose SKILL.md failed to parse, so a lenient
+// discovery drop is never silent: callers surface it in the TUI skill listing
+// and the batch notice.
+type Skipped struct {
+	Name   string
+	Scope  string
+	Reason string
+}
+
 // Catalog is the filtered, trust-gated set of discoverable skills for a run.
 // It backs the human `/skillname` slash surface and, via RenderIndex, supplies
 // the model a name/path/description inventory of model-invocable skills. The
 // model still has no `skill` tool and loads pack bodies itself via `bash cat`.
 type Catalog struct {
-	skills map[string]*Skill
-	scopes map[string]string // skill name -> install scope ("builtin", "user", or "project")
-	order  []string          // skill names, sorted, project-shadows-user-by-name
+	skills  map[string]*Skill
+	scopes  map[string]string // skill name -> install scope ("builtin", "user", or "project")
+	order   []string          // skill names, sorted, project-shadows-user-by-name
+	skipped []Skipped         // packs skipped for an unparseable SKILL.md, in discovery order
 }
 
 func (c *Catalog) Names() []string {
@@ -101,6 +111,15 @@ func (c *Catalog) Scope(name string) string {
 	return c.scopes[name]
 }
 
+// SkippedSkills returns the packs skipped during discovery (in discovery order),
+// so lenient rejection can be surfaced rather than silently dropping them.
+func (c *Catalog) SkippedSkills() []Skipped {
+	if c == nil {
+		return nil
+	}
+	return c.skipped
+}
+
 // Discover scans the user-global root (~/.agents/skills), the project root (.agents/skills), and the builtin root (the materialized $EITRI_DIR/skills-builtin) for skill packs (a subdir containing a parseable SKILL.md). On exact-name collision the strongest claim wins: project shadows user, and user shadows builtin; builtin is the weakest claim and inherits trust from being part of the binary.
 func Discover(userRoot, projectRoot, builtinRoot string, w SkillWarner) (*Catalog, error) {
 	c := &Catalog{
@@ -151,6 +170,7 @@ func discoverScope(root string, c *Catalog, scope string, w SkillWarner) error {
 			if w != nil {
 				w.Warnf("skill %q: skipping unparseable SKILL.md in scope %s: %v", name, scope, parseErr)
 			}
+			c.skipped = append(c.skipped, Skipped{Name: name, Scope: scope, Reason: parseErr.Error()})
 			continue
 		}
 		c.skills[name] = skill
@@ -267,53 +287,156 @@ func splitFrontmatter(s string) (body, front string, ok bool) {
 	return "", "", false
 }
 
-// parseFrontmatter accepts only flat key/scalar fields and indented plain-text
-// continuations for description. Duplicate fields and YAML collection syntax
-// are rejected rather than interpreted partially.
+// parseFrontmatter accepts flat key/scalar fields, indented plain-text
+// continuations for description, and YAML literal (`|`) and folded (`>`) block
+// scalars for scalar fields (with `-`/`+` chomping). Duplicate fields and
+// unsupported YAML collection syntax are rejected rather than interpreted
+// partially, while ancillary metadata subtrees of unknown keys are ignored so
+// real-world SKILL.md frontmatter stays discoverable.
 func parseFrontmatter(s string) (map[string]string, error) {
 	out := map[string]string{}
+	lines := strings.Split(s, "\n")
 	var curKey string
-	for lineNo, line := range strings.Split(s, "\n") {
+	for i := 0; i < len(lines); {
+		line := lines[i]
 		if strings.TrimSpace(line) == "" {
+			i++
 			continue
 		}
 		if line[0] == ' ' || line[0] == '\t' {
 			continuation := strings.TrimSpace(line)
 			if curKey == "description" && !strings.Contains(continuation, ":") {
 				out[curKey] += " " + continuation
+				i++
 				continue
 			}
 			if curKey != "name" && curKey != "description" && curKey != "model-invocable" && curKey != "disable-model-invocation" {
 				if strings.HasPrefix(continuation, "- ") || strings.Contains(continuation, ":") {
+					i++
 					continue
 				}
 			}
-			return nil, fmt.Errorf("frontmatter line %d: unsupported nested or continuation syntax", lineNo+1)
+			return nil, fmt.Errorf("frontmatter line %d: unsupported nested or continuation syntax", i+1)
 		}
 		idx := strings.IndexByte(line, ':')
 		if idx <= 0 {
-			return nil, fmt.Errorf("frontmatter line %d: expected key: value", lineNo+1)
+			return nil, fmt.Errorf("frontmatter line %d: expected key: value", i+1)
 		}
 		key := strings.ToLower(strings.TrimSpace(line[:idx]))
 		if key == "" || strings.ContainsAny(key, " []{}#,\t") {
-			return nil, fmt.Errorf("frontmatter line %d: invalid key", lineNo+1)
+			return nil, fmt.Errorf("frontmatter line %d: invalid key", i+1)
 		}
 		if _, exists := out[key]; exists {
-			return nil, fmt.Errorf("frontmatter line %d: duplicate key %q", lineNo+1, key)
+			return nil, fmt.Errorf("frontmatter line %d: duplicate key %q", i+1, key)
 		}
 		value := strings.TrimSpace(line[idx+1:])
+		if ind, chomp, ok := parseBlockIndicator(value); ok {
+			// A block scalar's content is the run of lines indented past the
+			// key's column; consume them and advance past the block.
+			j := i + 1
+			var block []string
+			for j < len(lines) && (lines[j] == "" || lines[j][0] == ' ' || lines[j][0] == '\t') {
+				block = append(block, lines[j])
+				j++
+			}
+			v, err := decodeBlockScalar(ind, chomp, block)
+			if err != nil {
+				return nil, fmt.Errorf("frontmatter line %d: %v", i+1, err)
+			}
+			out[key] = v
+			curKey = key
+			i = j
+			continue
+		}
 		if strings.HasPrefix(value, "[") || strings.HasPrefix(value, "{") || strings.HasPrefix(value, "-") || strings.HasPrefix(value, "|") || strings.HasPrefix(value, ">") {
-			return nil, fmt.Errorf("frontmatter line %d: unsupported value syntax", lineNo+1)
+			return nil, fmt.Errorf("frontmatter line %d: unsupported value syntax", i+1)
 		}
 		if len(value) >= 2 && ((value[0] == '"' && value[len(value)-1] == '"') || (value[0] == '\'' && value[len(value)-1] == '\'')) {
 			value = value[1 : len(value)-1]
 		} else if strings.HasPrefix(value, "\"") || strings.HasPrefix(value, "'") {
-			return nil, fmt.Errorf("frontmatter line %d: unterminated quoted scalar", lineNo+1)
+			return nil, fmt.Errorf("frontmatter line %d: unterminated quoted scalar", i+1)
 		}
 		out[key] = value
 		curKey = key
+		i++
 	}
 	return out, nil
+}
+
+// parseBlockIndicator recognizes a YAML literal (`|`) or folded (`>`) block
+// scalar indicator with optional chomping (`-` strip, `+` keep) and an optional
+// explicit indentation digit. It reports false for any value that is not a bare
+// block indicator so plain scalars and flow collections fall through to normal
+// handling.
+func parseBlockIndicator(v string) (ind byte, chomp byte, ok bool) {
+	if v == "" || (v[0] != '|' && v[0] != '>') {
+		return 0, 0, false
+	}
+	ind = v[0]
+	rest := v[1:]
+	chomp = 0
+	if rest != "" {
+		c := rest[0]
+		switch {
+		case c == '-' || c == '+':
+			chomp = c
+			rest = rest[1:]
+		case c >= '0' && c <= '9':
+			rest = rest[1:]
+			if rest != "" && (rest[0] == '-' || rest[0] == '+') {
+				chomp = rest[0]
+				rest = rest[1:]
+			}
+		}
+	}
+	if strings.TrimSpace(rest) != "" {
+		return 0, 0, false
+	}
+	return ind, chomp, true
+}
+
+// decodeBlockScalar assembles the collected lines of a YAML block scalar into
+// its string value: literal `|` keeps line breaks verbatim, folded `>` joins
+// consecutive non-empty lines with a single space and preserves blank lines as
+// newlines. chomp applies the trailing-newline policy (0 = clip to one,
+// '-' = strip, '+' = keep).
+func decodeBlockScalar(ind byte, chomp byte, block []string) (string, error) {
+	lines := make([]string, len(block))
+	for i, l := range block {
+		lines[i] = strings.TrimSpace(l)
+	}
+	var body string
+	if ind == '|' {
+		body = strings.Join(lines, "\n")
+	} else {
+		var b strings.Builder
+		prevBlank := true
+		for _, l := range lines {
+			if l == "" {
+				b.WriteByte('\n')
+				prevBlank = true
+				continue
+			}
+			if !prevBlank {
+				b.WriteByte(' ')
+			}
+			b.WriteString(l)
+			prevBlank = false
+		}
+		body = b.String()
+	}
+	switch chomp {
+	case '-':
+		return strings.TrimRight(body, "\n"), nil
+	case '+':
+		return body, nil
+	default: // clip: at most one trailing newline
+		body = strings.TrimRight(body, "\n")
+		if body != "" {
+			body += "\n"
+		}
+		return body, nil
+	}
 }
 
 // renderSkillPayload builds the structured agentskills-io payload: the body wrapped in <skill_content name="..."> plus a <skill_resources> listing of the bundled files.

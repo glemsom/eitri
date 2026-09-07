@@ -184,3 +184,70 @@ func TestRunBatchUnknownFormatFailsBeforeBoot(t *testing.T) {
 		t.Fatalf("data dir %s was created before format validation", dataDir)
 	}
 }
+
+// TestRunBatchTextNoticeForSkippedSkills verifies that a --format text batch
+// run surfaces a lenient skill-discovery drop as an explicit notice on stderr
+// (naming the skipped pack) while stdout stays a clean, byte-stable answer.
+func TestRunBatchTextNoticeForSkippedSkills(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	bad := filepath.Join(home, ".agents", "skills", "broken")
+	if err := os.MkdirAll(bad, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(bad, "SKILL.md"), []byte("# no frontmatter\n"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	err := Run(Options{
+		DataDir:  filepath.Join(t.TempDir(), ".eitri"),
+		LookPath: okLookPath,
+		Prompt:   "Say hello",
+		Stdout:   &out,
+		Stderr:   &errOut,
+		Provider: provider.NewFake("../provider/testdata/hello.sse"),
+	})
+	if err != nil {
+		t.Fatalf("Run(batch text) error = %v, want nil", err)
+	}
+	if !strings.Contains(errOut.String(), "unparseable SKILL.md") || !strings.Contains(errOut.String(), "broken") {
+		t.Fatalf("stderr missing skip notice, got: %q", errOut.String())
+	}
+	if strings.TrimSpace(out.String()) != "Hello world" {
+		t.Fatalf("text stdout = %q, want clean answer \"Hello world\"", out.String())
+	}
+}
+
+// TestRunBatchJSONNoSkipNoticeOnStdout verifies under --format json a skipped
+// skill is surfaced only on stderr and never pollutes the stdout envelope.
+func TestRunBatchJSONNoSkipNoticeOnStdout(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	bad := filepath.Join(home, ".agents", "skills", "broken")
+	if err := os.MkdirAll(bad, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(bad, "SKILL.md"), []byte("# no frontmatter\n"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	err := Run(Options{
+		DataDir:  filepath.Join(t.TempDir(), ".eitri"),
+		LookPath: okLookPath,
+		Prompt:   "Say hello",
+		Format:   "json",
+		Stdout:   &out,
+		Stderr:   &errOut,
+		Provider: provider.NewFake("../provider/testdata/hello.sse"),
+	})
+	if err != nil {
+		t.Fatalf("Run(batch json) error = %v, want nil", err)
+	}
+	if !json.Valid([]byte(out.String())) {
+		t.Fatalf("stdout %q is not valid JSON with a skipped skill present", out.String())
+	}
+}

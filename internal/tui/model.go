@@ -98,6 +98,10 @@ type SkillItem struct {
 type SkillsSurface struct {
 	Items    []SkillItem
 	Activate func(ctx context.Context, name string) (string, error)
+	// Skipped names packs whose SKILL.md failed to parse and so were dropped
+	// from the surface; the TUI surfaces them as a warning badge so a lenient
+	// discovery drop is never silent.
+	Skipped []string
 }
 
 // Dependencies wires a Model to its environment: the conversation Turn, model discovery + loaded config for the Settings surface, and a persistence seam.

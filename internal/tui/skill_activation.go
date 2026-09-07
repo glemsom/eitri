@@ -13,6 +13,7 @@ import (
 type SkillActivation struct {
 	completionMenu
 	skills      []SkillItem
+	skipped     []string
 	slashPrefix string
 	lastValue   string
 }
@@ -22,9 +23,21 @@ type SkillActivation struct {
 // or empty.
 func NewSkillActivation(d Dependencies) *SkillActivation {
 	if d.Skills != nil {
-		return &SkillActivation{skills: d.Skills.Items}
+		return &SkillActivation{skills: d.Skills.Items, skipped: d.Skills.Skipped}
 	}
 	return &SkillActivation{}
+}
+
+// skipBadge renders the visible warning badge for skill packs dropped during
+// discovery, or "" when nothing was skipped. Appended below the candidates, it
+// makes a lenient parse drop audible in the TUI's slash listing instead of a
+// lone stderr line nobody reads.
+func (s *SkillActivation) skipBadge(th Theme) string {
+	if len(s.skipped) == 0 {
+		return ""
+	}
+	names := strings.Join(s.skipped, ", ")
+	return th.outcomeErrStyle.Render(g("⚠ ", "! ") + fmt.Sprintf("skipped %d unparseable skill(s): %s", len(s.skipped), names))
 }
 
 // Command reports whether prompt is a `/skillname` activation command for a detected skill.

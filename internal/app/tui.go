@@ -173,15 +173,20 @@ func pushEvent(ch chan<- tui.Event, u tui.Event) {
 
 // skillSurface adapts the run's skill catalog to the TUI's slash-command surface: Items lists the detected skill names for `/` completion and Activate renders the named skill's payload through the registry's slash-activation seam.
 func skillSurface(reg *tools.Registry, c *tools.Catalog) *tui.SkillsSurface {
-	if c == nil || len(c.Names()) == 0 {
+	if c == nil || (len(c.Names()) == 0 && len(c.SkippedSkills()) == 0) {
 		return nil
 	}
 	items := make([]tui.SkillItem, 0, len(c.Names()))
 	for _, name := range c.Names() {
 		items = append(items, tui.SkillItem{Name: name})
 	}
+	skipped := make([]string, 0, len(c.SkippedSkills()))
+	for _, sk := range c.SkippedSkills() {
+		skipped = append(skipped, sk.Name)
+	}
 	return &tui.SkillsSurface{
-		Items: items,
+		Items:   items,
+		Skipped: skipped,
 		Activate: func(ctx context.Context, name string) (string, error) {
 			res, err := reg.ActivateSkill(ctx, name)
 			if err != nil {
