@@ -104,6 +104,49 @@ func BenchmarkStreamingAutoExpandReason(b *testing.B) {
 	}
 }
 
+// BenchmarkBusyRender_LiveTailGrows is the regression guard for the fold
+// re-accumulation fix: a live reasoning stretch that grows with every delta
+// must cost a constant per frame no matter how long the single turn's CoT
+// grows nor how many deltas it took to get there. Before the fix fold() re-
+// concatenated the whole accumulated reasoning from every event on every
+// frame (super-linear: 2000 deltas cost ~4.6x the 100-delta case and
+// ~570KB/frame); after it the pending fragment is sliced out of the message's
+// incremental snapshot, so per-frame cost stays flat.
+//
+// Run: go test ./internal/tui -run xxx -bench BenchmarkBusyRender_LiveTailGrows -benchtime 200x
+func BenchmarkBusyRender_LiveTailGrows(b *testing.B) {
+	b.Setenv("EITRI_ASCII_GLYPHS", "1")
+	delta := "chain of thought reasoning tokens here and more analysis "
+	for _, kb := range []int{2, 8, 16} {
+		b.Run("reason_"+strconv.Itoa(kb)+"kiB", func(b *testing.B) {
+			total := kb * 1024
+			tx := benchBusyTx()
+			tx.configTheme = config.DefaultTheme
+			tx.messages = append(tx.messages, message{role: "you", content: "live prompt"})
+			tx.messages = append(tx.messages, message{role: "eitri", streaming: true, thinkingRequested: true,
+				reasoning: "", content: "", expansion: ExpansionState{}})
+			s := NewTurnSession(nil)
+			tx.live = s
+			tx.busy = true
+			// Pre-fill to the target size one delta at a time, mirroring a real
+			// stream where each Observe adds one arrival-ordered event.
+			for len(tx.messages[1].reasoning) < total {
+				tx.live.flow.Observe(ReasoningStream, delta)
+				tx.messages[1].reasoning += delta
+				tx.syncStreamSnapshots(1, "", tx.messages[1].reasoning)
+			}
+			_ = tx.renderPaneContent() // warm the markdown cache
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				tx.live.flow.Observe(ReasoningStream, delta)
+				tx.messages[1].reasoning += delta
+				tx.syncStreamSnapshots(1, "", tx.messages[1].reasoning)
+				_ = tx.renderPaneContent()
+			}
+		})
+	}
+}
+
 // BenchmarkRemapMarkdownColors is the regression guard for the fast-path rewrite
 // of remapMarkdownColors: the streaming live tail re-renders the reasoning/answer
 // block pane every delta, and the old regexp-based implementation (ReplaceAllStringFunc

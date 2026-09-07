@@ -125,7 +125,6 @@ func RenderFlow(in flowInput) (string, []toolRowRange) {
 func (r flowRenderer) fold(events []TimelineEvent, msg message) []flowItem {
 	items := []flowItem{}
 	ti := 0
-	var reasoning, answer strings.Builder
 	reasoningEmitted := false
 	reasoningFragIdx := 0
 	anyStreamedAnswer := false
@@ -133,11 +132,61 @@ func (r flowRenderer) fold(events []TimelineEvent, msg message) []flowItem {
 	snapshotAnswerEmitted := false
 	emittedAnswerLen := 0 // answer text already flushed as delta fragments this turn
 
+	// fold runs once per frame over the live turn's full event log. A live
+	// reasoning/answer stretch grows with every delta, so re-accumulating the
+	// whole block from each event on every frame is super-linear in stream
+	// length and pinned a core on a long thinking passthrough. For a streaming
+	// turn the message already carries the authoritative snapshot —
+	// msg.reasoning and msg.content are exactly the concatenation of the
+	// observed deltas, kept incrementally by Fold and copied onto the message
+	// each delta — so each flush slices the pending fragment by cumulative byte
+	// offset instead of rebuilding it from the events. The builders remain the
+	// fallback for a streaming message with an empty snapshot (a delta-driven
+	// stream whose concatenation has not yet landed on the message) and for
+	// committed reconciliation.
+	var reasoning, answer strings.Builder
+	reasoningStart, reasoningEnd := 0, 0 // byte slice of msg.reasoning owned by the pending reasoning fragment
+	answerStart, answerEnd := 0, 0       // byte slice of msg.content owned by the pending answer fragment
+	// The snapshot-slice fast path is valid only when the message snapshot is
+	// byte-exactly the concatenation of the event deltas — production does this
+	// (TurnFlow accumulates f.reasoning/f.content with `+=`, Fold copies them
+	// onto the message each delta) — so the pending fragment is the same bytes
+	// whether read as a slice of the snapshot or rebuilt from events. Curated
+	// fixtures sometimes carry a snapshot that differs from the delta
+	// concatenation (e.g. an extra separating space); length equality catches
+	// the divergence, and those cases fall back to the builder path with
+	// identical output.
+	var liveReason bool
+	if msg.streaming && msg.reasoning != "" {
+		lens := 0
+		for _, ev := range events {
+			if ev.Kind == EventReasoning {
+				lens += len(ev.Delta)
+			}
+		}
+		liveReason = lens == len(msg.reasoning)
+	}
+	var liveAnswer bool
+	if msg.streaming && msg.content != "" {
+		lens := 0
+		for _, ev := range events {
+			if ev.Kind == EventAnswer {
+				lens += len(ev.Delta)
+			}
+		}
+		liveAnswer = lens == len(msg.content)
+	}
+
 	flushReasoning := func() {
 		var txt string
 		if msg.streaming {
-			txt = reasoning.String() // the live delta fragment accumulated since the last flush
-			reasoning.Reset()
+			if liveReason {
+				txt = msg.reasoning[reasoningStart:reasoningEnd]
+				reasoningStart = reasoningEnd
+			} else {
+				txt = reasoning.String() // the live delta fragment accumulated since the last flush
+				reasoning.Reset()
+			}
 		} else {
 			if reasoningEmitted {
 				return // a committed turn's snapshot renders once
@@ -163,8 +212,14 @@ func (r flowRenderer) fold(events []TimelineEvent, msg message) []flowItem {
 	}
 
 	flushAnswer := func(final bool) {
-		txt := answer.String()
-		answer.Reset()
+		var txt string
+		if liveAnswer {
+			txt = msg.content[answerStart:answerEnd]
+			answerStart = answerEnd
+		} else {
+			txt = answer.String()
+			answer.Reset()
+		}
 		// Committed turns own an authoritative snapshot. When this is the tail
 		// and the turn is done, whatever of the snapshot has not yet been
 		// flushed wins: the full answer must survive even if its bytes never
@@ -224,7 +279,11 @@ func (r flowRenderer) fold(events []TimelineEvent, msg message) []flowItem {
 	for _, ev := range events {
 		switch ev.Kind {
 		case EventReasoning:
-			reasoning.WriteString(ev.Delta)
+			if liveReason {
+				reasoningEnd += len(ev.Delta)
+			} else {
+				reasoning.WriteString(ev.Delta)
+			}
 		case EventToolStart:
 			flushReasoning()
 			flushAnswer(false)
@@ -243,7 +302,11 @@ func (r flowRenderer) fold(events []TimelineEvent, msg message) []flowItem {
 			flushAnswer(false)
 		case EventAnswer:
 			anyStreamedAnswer = true
-			answer.WriteString(ev.Delta)
+			if liveAnswer {
+				answerEnd += len(ev.Delta)
+			} else {
+				answer.WriteString(ev.Delta)
+			}
 		}
 	}
 	flushReasoning()
