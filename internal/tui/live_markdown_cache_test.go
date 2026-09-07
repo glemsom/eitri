@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/glemsom/eitri/internal/config"
 )
@@ -11,6 +12,14 @@ func TestBusyLiveTailReusesUnchangedRenderedMarkdown(t *testing.T) {
 	tx := benchBusyTx()
 	tx.cotExpanded = true
 	benchBusyLive(tx, 2000)
+	// Deterministic clock advancing 200ms per read: the changed-window renders
+	// below must always land past liveMarkdownMinRenderInterval so the throttle
+	// never suppresses them.
+	var tnow time.Time
+	tx.liveMarkdownCache.clock = func() time.Time {
+		tnow = tnow.Add(200 * time.Millisecond)
+		return tnow
+	}
 
 	first := tx.renderPaneContent()
 	second := tx.renderPaneContent()
@@ -94,6 +103,13 @@ func TestPaneVariantReRender(t *testing.T) {
 	tx := benchBusyTx()
 	tx.configTheme = config.DefaultTheme
 	c := &tx.liveMarkdownCache
+	// Deterministic clock: each new render lands one interval later so the
+	// throttle never suppresses the pane-variant re-render.
+	var tnow time.Time
+	c.clock = func() time.Time {
+		tnow = tnow.Add(200 * time.Millisecond)
+		return tnow
+	}
 	text := strings.Repeat("md inline `code` and **bold** here. ", 40)
 
 	s1 := c.renderPaneBody(text, 118, config.DefaultTheme, mdPaneStreamingThinking, th)
@@ -115,5 +131,44 @@ func TestPaneVariantReRender(t *testing.T) {
 	}
 	if s3 == s1 {
 		t.Fatalf("pane-variant change must not reuse the other pane's body")
+	}
+}
+
+// TestLiveMarkdownThrottleBoundsFastStream asserts the throttle suppresses the
+// expensive re-render during a fast burst of changed windows: a series of
+// distinct large windows arriving inside liveMarkdownMinRenderInterval must be
+// served from the cached body (hits), re-rendering only once the interval
+// elapses. This is the regression guard for the live-stream CPU fix. Only
+// windows at/past liveStreamingMarkdownWindow are throttled — small live blocks
+// still update every delta.
+func TestLiveMarkdownThrottleBoundsFastStream(t *testing.T) {
+	th := themeFor(config.DefaultTheme)
+	c := &liveMarkdownCache{}
+	var now time.Time
+	step := 10 * time.Millisecond
+	c.clock = func() time.Time { now = now.Add(step); return now }
+
+	// Distinct windows large enough to cross the streaming window bound.
+	base := strings.Repeat("streaming reasoning token mix of prose and markdown \n", 900)
+	for i := 0; i < 5; i++ {
+		c.renderPaneBody(base+string(rune('a'+i)), 118, "dark", mdPaneStreamingThinking, th)
+	}
+	if len(base) < liveStreamingMarkdownWindow {
+		t.Fatalf("test window too small: got %d, want >= %d", len(base), liveStreamingMarkdownWindow)
+	}
+	// Five distinct windows inside 50ms (well under the 100ms interval): only
+	// the first should have re-rendered.
+	if c.misses != 1 {
+		t.Fatalf("fast burst inside the render interval re-rendered %d times, want 1", c.misses)
+	}
+	if c.hits < 4 {
+		t.Fatalf("fast burst should be served from cache, got %d hits", c.hits)
+	}
+
+	// Let the interval elapse; the next distinct window must re-render once.
+	now = now.Add(liveMarkdownMinRenderInterval)
+	c.renderPaneBody(base+"z", 118, "dark", mdPaneStreamingThinking, th)
+	if c.misses != 2 {
+		t.Fatalf("after the interval a changed window should re-render, got %d misses", c.misses)
 	}
 }

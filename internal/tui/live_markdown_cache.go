@@ -2,9 +2,22 @@ package tui
 
 import (
 	"strings"
+	"time"
 
 	"charm.land/lipgloss/v2"
 )
+
+// liveMarkdownMinRenderInterval bounds how often the live streaming block's
+// expensive glamour+goldmark render may run. Streaming reasoning/answer grows
+// the accumulated block every DrainReady batch, so the cache key changes each
+// batch and every frame would otherwise re-parse the whole window (a real
+// 8KiB block costs ~7ms in goldmark+glamour+remap). During a fast stream a
+// batch arrives every few ms; without throttling one core is pinned. Rendering
+// the live tail (a trailing window; the user watches the moving tail, not the
+// stable head) at most every interval bounds CPU while the stream still looks
+// live: deltas coalesce, nothing loses bytes — the next allowed render just
+// spans more of them.
+const liveMarkdownMinRenderInterval = 100 * time.Millisecond
 
 // liveMarkdownCache caches the glamour markdown render AND its final pane-wrapped
 // body for a streaming block, keyed on the rendered windowed text plus an explicit
@@ -16,11 +29,15 @@ import (
 // spinner/face ticks between batches). Caching the finished pane body makes
 // unchanged-window frames a single slot hit.
 type liveMarkdownCache struct {
-	key    liveMarkdownCacheKey
-	out    string
-	valid  bool
-	hits   int
-	misses int
+	key       liveMarkdownCacheKey
+	out       string
+	valid     bool
+	hits      int
+	misses    int
+	lastFresh time.Time
+	// clock, when non-nil, overrides time.Now so tests exercise the throttle
+	// deterministically without wall-clock sleeps.
+	clock func() time.Time
 }
 
 // liveMarkdownCacheKey identifies one cache slot: the fully windowed text that
@@ -77,6 +94,27 @@ func (th Theme) paneStyleFor(id liveMarkdownPaneID) lipgloss.Style {
 // text, using cache when the installed key matches (same text+strip+theme+pane).
 // When no cache is provided (committed/legacy paths) it renders directly, so the
 // cached and fresh output cannot drift.
+//
+// now returns the cache's clock source: c.clock when injected for tests, else
+// time.Now.
+func (c *liveMarkdownCache) now() time.Time {
+	if c.clock != nil {
+		return c.clock()
+	}
+	return time.Now()
+}
+
+// renderPaneBody returns the pane-wrapped markdown body for the given windowed
+// text, using cache when the installed key matches (same text+strip+theme+pane).
+// When no cache is provided (committed/legacy paths) it renders directly, so the
+// cached and fresh output cannot drift.
+//
+// A changed window is the only path that re-parses markdown. That render is
+// throttled to liveMarkdownMinRenderInterval: if the window changed but the
+// last fresh render is recent, the previous body is returned (its hits counter
+// still advances) and the whole change batch is absorbed into the next allowed
+// render. This bounds goldmark+glamour cost during a fast stream while keeping
+// the visible tail live — the window slides, never drops bytes.
 func (c *liveMarkdownCache) renderPaneBody(text string, width int, theme string, paneID liveMarkdownPaneID, th Theme) string {
 	if c == nil {
 		return renderPaneBodyFresh(text, width, theme, paneID, th)
@@ -86,10 +124,25 @@ func (c *liveMarkdownCache) renderPaneBody(text string, width int, theme string,
 		c.hits++
 		return c.out
 	}
+	// Throttle: hold the previous render when the expensive re-render would run
+	// too soon after the last one. Only large windows (past the streaming window
+	// bound) are throttled: small blocks render so cheaply that live per-frame
+	// updates are worth it, and model tests and routine short reasoning depend on
+	// seeing each delta immediately. Once a block crosses the window, rendering
+	// it from scratch each frame is what pins a core, so the stale body (the
+	// prior window) is served between intervals. The stream briefly lags at most
+	// liveMarkdownMinRenderInterval behind; it is never dropped, and coalescing
+	// turns a burst of deltas into one render.
+	if c.valid && liveMarkdownMinRenderInterval > 0 && len(text) >= liveStreamingMarkdownWindow &&
+		c.now().Sub(c.lastFresh) < liveMarkdownMinRenderInterval {
+		c.hits++ // a cheap slot hit: the bytes drawn are slightly stale, but no re-parse
+		return c.out
+	}
 	body := renderPaneBodyFresh(text, width, theme, paneID, th)
 	c.key = key
 	c.out = body
 	c.valid = true
+	c.lastFresh = c.now()
 	c.misses++
 	return body
 }
