@@ -333,12 +333,12 @@ func renderReasoningBlockCached(cache *liveMarkdownCache, theme Theme, config st
 	if !expanded {
 		return b.String() // collapsed: the hint is the block
 	}
-	md, _ := renderCachedMarkdown(cache, liveStreamingText(msg, text), width-2, config)
-	pane := theme.thinkingPaneStyle
+	paneID := mdPaneThinking
 	if msg.streaming {
-		pane = theme.streamingThinkingPaneStyle
+		paneID = mdPaneStreamingThinking
 	}
-	b.WriteString(fmt.Sprintf("%s\n", pane.Render(strings.TrimRight(md, "\n"))))
+	body := cache.renderPaneBody(liveStreamingText(msg, text), width-2, config, paneID, theme)
+	b.WriteString(fmt.Sprintf("%s\n", body))
 	return b.String()
 }
 
@@ -363,20 +363,21 @@ func renderAnswerBlockCached(cache *liveMarkdownCache, theme Theme, config strin
 	if text == "" {
 		return ""
 	}
-	md, _ := renderCachedMarkdown(cache, liveStreamingText(msg, text), width-2, config)
-	pane := theme.agentPaneStyle
-	if msg.stopped {
-		pane = theme.stoppedPaneStyle
-	} else if strings.HasPrefix(text, failurePrefix()) {
+	paneID := mdPaneAgent
+	switch {
+	case msg.stopped:
+		paneID = mdPaneStopped
+	case strings.HasPrefix(text, failurePrefix()):
 		if msg.streaming {
-			pane = theme.streamingErrorPaneStyle
+			paneID = mdPaneStreamingError
 		} else {
-			pane = theme.errorPaneStyle
+			paneID = mdPaneError
 		}
-	} else if msg.streaming {
-		pane = theme.streamingPaneStyle
+	case msg.streaming:
+		paneID = mdPaneStreaming
 	}
-	s := fmt.Sprintf("%s\n", pane.Render(strings.TrimRight(md, "\n")))
+	body := cache.renderPaneBody(liveStreamingText(msg, text), width-2, config, paneID, theme)
+	s := fmt.Sprintf("%s\n", body)
 	if final && msg.stopped {
 		s += theme.statusStyle.Render(stoppedMarker()) + "\n"
 	}

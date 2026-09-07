@@ -69,7 +69,6 @@ func TestStreamingWindowedReasoningRendersTail(t *testing.T) {
 		}
 	}
 }
-
 func TestBusyLiveTailCacheDoesNotChangeRenderedOutput(t *testing.T) {
 	cachedTx := benchBusyTx()
 	cachedTx.cotExpanded = true
@@ -83,5 +82,38 @@ func TestBusyLiveTailCacheDoesNotChangeRenderedOutput(t *testing.T) {
 
 	if cached != uncached {
 		t.Fatalf("cached live-tail render changed output")
+	}
+}
+
+// TestPaneVariantReRender asserts a pane-variant change (streaming -> committed)
+// is not served stale cached body bytes: the pane id is part of the cache key,
+// so a different pane variant re-renders its markdown once rather than reusing
+// the other pane's body.
+func TestPaneVariantReRender(t *testing.T) {
+	th := themeFor(config.DefaultTheme)
+	tx := benchBusyTx()
+	tx.configTheme = config.DefaultTheme
+	c := &tx.liveMarkdownCache
+	text := strings.Repeat("md inline `code` and **bold** here. ", 40)
+
+	s1 := c.renderPaneBody(text, 118, config.DefaultTheme, mdPaneStreamingThinking, th)
+	mAfterStream := c.misses
+	// Stable frames under the same pane must be cache hits (no re-render).
+	s2 := c.renderPaneBody(text, 118, config.DefaultTheme, mdPaneStreamingThinking, th)
+	if c.misses != mAfterStream {
+		t.Fatalf("same-pane stable frame re-rendered markdown")
+	}
+	if s1 != s2 {
+		t.Fatalf("same-pane unchanged body drifted")
+	}
+
+	// Different pane variant must re-render exactly once (stale body must not
+	// leak under the new pane's border).
+	s3 := c.renderPaneBody(text, 118, config.DefaultTheme, mdPaneThinking, th)
+	if c.misses != mAfterStream+1 {
+		t.Fatalf("pane-variant change should render exactly once more, got %d (after %d)", c.misses, mAfterStream)
+	}
+	if s3 == s1 {
+		t.Fatalf("pane-variant change must not reuse the other pane's body")
 	}
 }
