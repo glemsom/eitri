@@ -91,6 +91,63 @@ func containsClassicColor(s string) bool {
 	return false
 }
 
+// TestRemapMarkdownColors_matchesReference guards the fast-path rewrite of
+// remapMarkdownColors: the streaming live tail re-renders the reasoning/answer
+// block every delta, and the old regexp-based implementation rebuilt every SGR
+// (split + join per sequence) even when it carried no mapped 256-color index —
+// ~28ms for one 8KiB block, pinning a core during long streaming (render
+// diagnostics). The manual scanner is only correct if it emits byte-identical
+// output to the reference implementation on every theme, well-formed input, and
+// malformed input.
+func TestRemapMarkdownColors_matchesReference(t *testing.T) {
+	t.Parallel()
+	for _, theme := range []string{"dark", "light", "dracula", "tokyo-night", "pink", "nord", "gruvbox", "solarized", "dark-daltonized", "light-daltonized", "notty"} {
+		th := themeFor(theme)
+		inputs := []string{
+			"# H **b** `c` *i*",
+			"## heading `code` and **bold** and normal tokens\nX\n",
+			"", "plain no escapes",
+			"\x1b[1m\x1b[38;5;39mhi\x1b[0m",
+			"\x1b[38;5;30mlink\x1b[m", "\x1b", "\x1bX", "\x1b[", "\x1b[999m",
+			"a\x1b[38;5;27;1mb\x1b[0m", "\x1b[38;5;999mc", // unmapped index & index+bold
+		}
+		for _, in := range inputs {
+			s, err := RenderMarkdown(in, 100, theme)
+			if err != nil {
+				t.Fatalf("RenderMarkdown(theme=%q): %v", theme, err)
+			}
+			if got, want := remapMarkdownColors(s, th), remapMarkdownColorsReference(s, th); got != want {
+				t.Errorf("theme=%q input=%q\n got=%q\nwant=%q", theme, in, got, want)
+			}
+		}
+	}
+}
+
+// remapMarkdownColorsReference is the pre-optimization implementation, kept as
+// the authoritative spec of the rewrite so the fast path can be regression-tested
+// against it.
+func remapMarkdownColorsReference(s string, th Theme) string {
+	m := markdownRemapFor(th)
+	if len(m) == 0 {
+		return s
+	}
+	return sgrParamRe.ReplaceAllStringFunc(s, func(seq string) string {
+		params := strings.Split(seq[2:len(seq)-1], ";")
+		var out []string
+		for i := 0; i < len(params); i++ {
+			if params[i] == "38" && i+2 < len(params) && params[i+1] == "5" {
+				if repl, ok := m["38;5;"+params[i+2]]; ok {
+					out = append(out, strings.Split(repl, ";")...)
+					i += 2
+					continue
+				}
+			}
+			out = append(out, params[i])
+		}
+		return "\x1b[" + strings.Join(out, ";") + "m"
+	})
+}
+
 func hasSGRBold(s string) bool {
 	return strings.Contains(s, ";1m") || strings.Contains(s, "\x1b[1m")
 }

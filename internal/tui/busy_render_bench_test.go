@@ -104,6 +104,28 @@ func BenchmarkStreamingAutoExpandReason(b *testing.B) {
 	}
 }
 
+// BenchmarkRemapMarkdownColors is the regression guard for the fast-path rewrite
+// of remapMarkdownColors: the streaming live tail re-renders the reasoning/answer
+// block pane every delta, and the old regexp-based implementation (ReplaceAllStringFunc
+// rebuilding every SGR via split+join) cost ~28ms for one 8KiB markdown block,
+// pinning a core during long streaming reasoning. The manual scanner must stay in
+// the single-digit-ms range on an 8KiB block.
+//
+// Run: go test ./internal/tui -run xxx -bench BenchmarkRemapMarkdownColors -benchtime 100x
+func BenchmarkRemapMarkdownColors(b *testing.B) {
+	b.Setenv("EITRI_ASCII_GLYPHS", "1")
+	body := strings.Repeat("## heading paragraph with `code` and **bold** reasoning tokens\n", 400)
+	s, err := RenderMarkdown(body, 100, "dark")
+	if err != nil {
+		b.Fatal(err)
+	}
+	th := themeFor("dark")
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = remapMarkdownColors(s, th)
+	}
+}
+
 func benchBusyHistory(tx *Transcript, turns int) {
 	for i := 0; i < turns; i++ {
 		tx.messages = append(tx.messages, message{role: "you", content: "a moderately long user prompt describing a task"})

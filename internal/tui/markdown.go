@@ -107,30 +107,91 @@ func markdownRemapFor(th Theme) map[string]string {
 	}
 }
 
-// sgrParamRe matches a full SGR sequence (ESC [ params m).
+// sgrParamRe matches a full SGR sequence (ESC [ params m). Used by
+// reattachBubbleBackground, which rewrites every SGR so a fast-path is unnecessary.
 var sgrParamRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 // remapMarkdownColors rewrites mapped 256-color foreground indices in a glamour-rendered string to the given theme's chrome-family truecolor equivalents.
+//
+// This runs once per markdown render inside the streaming live tail (every delta
+// invalidates the block cache), so it is deliberately allocation-light. It does a
+// single manual pass hunting for ESC [ … m sequences and fast-paths past any
+// sequence that carries no foreground 256-color index: such a sequence is copied
+// byte-for-byte instead of being split, reassembled, and re-joined. Only a
+// sequence that actually contains a mapped `38;5;N` index is rewritten. The old
+// regexp-based ReplaceAllStringFunc rebuilt every SGR — split + join per sequence,
+// plus a full regexp scan of the whole string — turning one 8KiB block's remap
+// into ~28ms and pinning a core during long streaming reasoning.
 func remapMarkdownColors(s string, th Theme) string {
 	m := markdownRemapFor(th)
-	if len(m) == 0 {
+	if len(m) == 0 || !strings.Contains(s, "38;5;") {
 		return s
 	}
-	return sgrParamRe.ReplaceAllStringFunc(s, func(seq string) string {
-		params := strings.Split(seq[2:len(seq)-1], ";")
-		var out []string
-		for i := 0; i < len(params); i++ {
-			if params[i] == "38" && i+2 < len(params) && params[i+1] == "5" {
-				if repl, ok := m["38;5;"+params[i+2]]; ok {
-					out = append(out, strings.Split(repl, ";")...)
-					i += 2
-					continue
-				}
-			}
-			out = append(out, params[i])
+
+	if strings.IndexByte(s, 0x1b) < 0 {
+		return s
+	}
+	b := strings.Builder{}
+	b.Grow(len(s))
+	for len(s) > 0 {
+		i := strings.IndexByte(s, 0x1b)
+		if i < 0 {
+			b.WriteString(s)
+			return b.String()
 		}
-		return "\x1b[" + strings.Join(out, ";") + "m"
-	})
+		b.WriteString(s[:i])
+		j := i + 1
+		// Mirror sgrParamRe exactly: ESC [ params m where params are digits and
+		// semicolons. A bare ESC or a sequence that strays outside the [0-9;]
+		// charset is passed through byte-by-byte so malformed-input behavior is
+		// unchanged from the regexp version.
+		if j >= len(s) || s[j] != '[' {
+			b.WriteByte(0x1b)
+			s = s[j:]
+			continue
+		}
+		j++
+		start := j
+		for j < len(s) && (s[j] >= '0' && s[j] <= '9' || s[j] == ';') {
+			j++
+		}
+		if j >= len(s) || s[j] != 'm' {
+			b.WriteByte(0x1b)
+			s = s[i+1:]
+			continue
+		}
+		seq := s[i : j+1] // "\x1b[paramsm" — params run [start, j)
+		// Only a params substring that actually carries a mapped foreground
+		// 256-color index is rewritten; any other SGR (bold, bg, classic fg,
+		// reset) is copied verbatim instead of being pulled apart and rebuilt.
+		if strings.Contains(s[start:j], "38;5;") {
+			b.WriteString(remapSGR(seq, m))
+		} else {
+			b.WriteString(seq)
+		}
+		s = s[j+1:]
+	}
+	return b.String()
+}
+
+// remapSGR rewrites every `38;5;<index>` foreground spec inside one SGR sequence
+// to the mapped truecolor equivalent (or leaves it in place when unmapped). It
+// only splits the params of a sequence known to carry at least one such index.
+func remapSGR(seq string, m map[string]string) string {
+	sub := seq[2 : len(seq)-1]
+	params := strings.Split(sub, ";")
+	out := make([]string, 0, len(params)+4)
+	for i := 0; i < len(params); i++ {
+		if params[i] == "38" && i+2 < len(params) && params[i+1] == "5" {
+			if repl, ok := m["38;5;"+params[i+2]]; ok {
+				out = append(out, strings.Split(repl, ";")...)
+				i += 2
+				continue
+			}
+		}
+		out = append(out, params[i])
+	}
+	return "\x1b[" + strings.Join(out, ";") + "m"
 }
 
 // bubbleBgSGR returns the SGR command that asserts the theme's bubble tint as the active background (48;2;R;G;B).
