@@ -6,6 +6,7 @@ package tui
 
 import (
 	"context"
+	"github.com/glemsom/eitri/internal/tui/livekey"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -17,7 +18,7 @@ import (
 // the Model, not the transcript or session (T2/T3 + T5).
 func TestT6ArrowsAcrossNew(t *testing.T) {
 	t.Parallel()
-	live := NewLiveSessionKey("old")
+	live := livekey.NewLiveSessionKey("old")
 	var mint int
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, _ string, _ string) (TurnResult, error) {
@@ -70,7 +71,7 @@ func TestT6ArrowsAcrossNew(t *testing.T) {
 func TestT6PersistAcrossRestart(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "prompt_history.json")
-	mk := func(live *LiveSessionKey) Model {
+	mk := func(live *livekey.LiveSessionKey) Model {
 		m := NewModelCfg(Dependencies{
 			Turn: func(_ context.Context, _ string, _ string) (TurnResult, error) {
 				return TurnResult{Answer: "ok"}, nil
@@ -83,12 +84,12 @@ func TestT6PersistAcrossRestart(t *testing.T) {
 		return m
 	}
 
-	m := mk(NewLiveSessionKey("old"))
+	m := mk(livekey.NewLiveSessionKey("old"))
 	m = typeText(t, m, "persisted prompt")
 	m = submitAndWait(t, m)
 
 	// "Restart": a fresh program on the same data dir loads the persisted ring.
-	reopened := mk(NewLiveSessionKey("old"))
+	reopened := mk(livekey.NewLiveSessionKey("old"))
 	if got := reopened.history.Entries(); !equalStrings(got, []string{"persisted prompt"}) {
 		t.Fatalf("restart-load history = %v, want [persisted prompt]", got)
 	}
@@ -106,7 +107,7 @@ func TestT6PersistAcrossRestart(t *testing.T) {
 // engine session history on the new key (T1 + T5).
 func TestT6NewYieldsFreshEngineContext(t *testing.T) {
 	t.Parallel()
-	live := NewLiveSessionKey("old")
+	live := livekey.NewLiveSessionKey("old")
 	var seen []string
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, _ string, _ string) (TurnResult, error) {
@@ -134,7 +135,7 @@ func TestT6NewYieldsFreshEngineContext(t *testing.T) {
 // reflects the re-minted live key after a `/new` (T1 rail seam + T5).
 func TestT6RailIdentityAfterNew(t *testing.T) {
 	t.Parallel()
-	live := NewLiveSessionKey("old")
+	live := livekey.NewLiveSessionKey("old")
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, _ string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil

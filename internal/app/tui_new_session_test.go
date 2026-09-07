@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"github.com/glemsom/eitri/internal/tui/livekey"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,7 +13,6 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/session"
 	"github.com/glemsom/eitri/internal/tools"
-	"github.com/glemsom/eitri/internal/tui"
 )
 
 // TestRunEngineTurnRebindsSessionArtifactsAfterNew guards the `/new` TUI seam:
@@ -30,7 +30,7 @@ func TestRunEngineTurnRebindsSessionArtifactsAfterNew(t *testing.T) {
 		return provider.StreamFunc(provider.Chunk{Content: "ok"}, provider.Chunk{Done: true, FinishReason: "stop"}), nil
 	}), oldSess.MessageLogSink())
 	e := engine.New(logged, oldSess)
-	live := tui.NewLiveSessionKey("old")
+	live := livekey.NewLiveSessionKey("old")
 	bind := func(key string) error {
 		sess, err := session.NewWithGUID(dataDir, key, false)
 		if err != nil {

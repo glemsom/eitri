@@ -2,13 +2,13 @@ package app
 
 import (
 	"context"
+	"github.com/glemsom/eitri/internal/tui/livekey"
 	"testing"
 
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/engine"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/tools"
-	"github.com/glemsom/eitri/internal/tui"
 )
 
 // TestRunEngineTurnReadsLiveSessionKey guards the T1 seam: the engine's
@@ -24,7 +24,7 @@ func TestRunEngineTurnReadsLiveSessionKey(t *testing.T) {
 
 	reg, _ := tools.NewRegistry(tools.Deps{TempHost: t.TempDir(), Runner: tools.RealRunner, Workspace: t.TempDir()})
 	cfg := config.Default()
-	key := tui.NewLiveSessionKey("sess-a")
+	key := livekey.NewLiveSessionKey("sess-a")
 	turn := runEngineTurn(e, func() config.Config { return cfg }, reg, key, nil, nil, nil)
 
 	if _, err := turn(context.Background(), "first", ""); err != nil {

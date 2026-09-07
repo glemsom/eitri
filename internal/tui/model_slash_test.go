@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"github.com/glemsom/eitri/internal/tui/livekey"
 	"strings"
 	"testing"
 
@@ -213,7 +214,7 @@ func TestModel_slashCompletionDismissedOnEmptyLine(t *testing.T) {
 func TestModel_newCommandMintsFreshSession(t *testing.T) {
 	t.Parallel()
 	var prompted string
-	live := NewLiveSessionKey("old")
+	live := livekey.NewLiveSessionKey("old")
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
 			prompted = prompt
@@ -253,7 +254,7 @@ func TestModel_newCommandMintsFreshSession(t *testing.T) {
 
 func TestModel_newCommandResetsLiveStats(t *testing.T) {
 	t.Parallel()
-	live := NewLiveSessionKey("old")
+	live := livekey.NewLiveSessionKey("old")
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 250)
 	te.apply(TelemetryUpdate{Kind: TelemetryTurn})
 	te.apply(TelemetryUpdate{Kind: TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
@@ -288,7 +289,7 @@ func TestModel_newCommandResetsLiveStats(t *testing.T) {
 func TestModel_newCommandClearsOldSessionHistory(t *testing.T) {
 	t.Parallel()
 	var cleared string
-	live := NewLiveSessionKey("old")
+	live := livekey.NewLiveSessionKey("old")
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, _ string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -311,7 +312,7 @@ func TestModel_newCommandClearsOldSessionHistory(t *testing.T) {
 
 func TestModel_newCommandBlockedWhileBusy(t *testing.T) {
 	t.Parallel()
-	live := NewLiveSessionKey("old")
+	live := livekey.NewLiveSessionKey("old")
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, _ string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -335,7 +336,7 @@ func TestModel_newCommandBlockedWhileBusy(t *testing.T) {
 
 func TestModel_newCommandBlockedWhileSettingsOpen(t *testing.T) {
 	t.Parallel()
-	live := NewLiveSessionKey("old")
+	live := livekey.NewLiveSessionKey("old")
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, _ string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
@@ -359,7 +360,7 @@ func TestModel_newCommandBlockedWhileSettingsOpen(t *testing.T) {
 
 func TestModel_newCommandBlockedWhileSkillPending(t *testing.T) {
 	t.Parallel()
-	live := NewLiveSessionKey("old")
+	live := livekey.NewLiveSessionKey("old")
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, _ string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil

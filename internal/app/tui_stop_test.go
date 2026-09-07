@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"github.com/glemsom/eitri/internal/tui/livekey"
 	"testing"
 	"time"
 
@@ -36,7 +37,7 @@ func TestRunEngineTurnCancelsStreamedTurn(t *testing.T) {
 	reg, _ := tools.NewRegistry(tools.Deps{TempHost: t.TempDir(), Runner: tools.RealRunner, Workspace: t.TempDir()})
 	cfg := config.Config{Model: "deepseek-v4-flash", ThinkingEnabled: true, ReasoningEffort: "low", ContextOverflowRecovery: true}
 
-	turn := runEngineTurn(e, func() config.Config { return cfg }, reg, tui.NewLiveSessionKey("sess"), nil, nil, nil)
+	turn := runEngineTurn(e, func() config.Config { return cfg }, reg, livekey.NewLiveSessionKey("sess"), nil, nil, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

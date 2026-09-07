@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/glemsom/eitri/internal/tui/livekey"
 	"net/http"
 
 	tea "charm.land/bubbletea/v2"
@@ -25,7 +26,7 @@ func bindSessionArtifacts(e *engine.Engine, logged *provider.LoggingProvider, re
 	return nil
 }
 
-func runEngineTurn(e *engine.Engine, cfg func() config.Config, reg *tools.Registry, sessionKey *tui.LiveSessionKey, catalog *tools.Catalog, canContinue func() bool, bind func(string) error) func(context.Context, string, string) (tui.TurnResult, error) {
+func runEngineTurn(e *engine.Engine, cfg func() config.Config, reg *tools.Registry, sessionKey *livekey.LiveSessionKey, catalog *tools.Catalog, canContinue func() bool, bind func(string) error) func(context.Context, string, string) (tui.TurnResult, error) {
 	return func(ctx context.Context, prompt string, payload string) (tui.TurnResult, error) {
 		cur := cfg()
 		key := sessionKey.Get()
@@ -74,7 +75,7 @@ func runTUI(e *engine.Engine, logged *provider.LoggingProvider, cfg config.Confi
 		effort = ""
 	}
 	te := tui.NewTelemetry(cfg.Model, effort, cfg.ThinkingEnabled, cfg.MaxTurns)
-	live := tui.NewLiveSessionKey(sessionKey)
+	live := livekey.NewLiveSessionKey(sessionKey)
 	rail := tui.NewRail(cfg.Provider, cfg.Model, effort, cfg.ThinkingEnabled, sessionKey, sessionTemp)
 	rail.SetLiveKey(live)
 	rail.SetBranch(tui.GitBranch(workspace))

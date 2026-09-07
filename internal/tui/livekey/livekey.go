@@ -1,4 +1,4 @@
-package tui
+package livekey
 
 import "sync"
 

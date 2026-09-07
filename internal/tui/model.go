@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/glemsom/eitri/internal/tui/livekey"
 	"io"
 	"strings"
 	"time"
@@ -129,7 +130,7 @@ type Dependencies struct {
 	// rail read per turn; `/new` mints a fresh GUID onto it so the next turn
 	// opens a clean engine session history while the old GUID's on-disk session
 	// stays orphaned and auditable.
-	LiveKey *LiveSessionKey
+	LiveKey *livekey.LiveSessionKey
 	// NewGUID mints a fresh session GUID string for `/new`; nil falls back to the
 	// session package's random hex mint.
 	NewGUID func() string
@@ -171,7 +172,7 @@ type Model struct {
 
 	// liveKey is the shared mutable session key wired via Dependencies; `/new`
 	// re-mints it to a fresh GUID on confirm.
-	liveKey *LiveSessionKey
+	liveKey *livekey.LiveSessionKey
 
 	settings *SettingsOverlay
 	feedback composerFeedback
@@ -608,7 +609,7 @@ func (m *Model) mintNewSession() {
 		m.deps.SessionCleared(oldKey)
 	}
 	if m.liveKey == nil {
-		m.liveKey = NewLiveSessionKey(m.newGUID())
+		m.liveKey = livekey.NewLiveSessionKey(m.newGUID())
 	} else {
 		m.liveKey.Set(m.newGUID())
 	}

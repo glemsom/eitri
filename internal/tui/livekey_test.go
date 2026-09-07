@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/glemsom/eitri/internal/tui/livekey"
 	"strings"
 	"testing"
 )
@@ -10,7 +11,7 @@ import (
 // so a later `/new` re-mint is reflected in the on-screen session identity
 // without re-wiring the rail closure.
 func TestRailReflectsMutableSessionKey(t *testing.T) {
-	live := NewLiveSessionKey("eitri-1")
+	live := livekey.NewLiveSessionKey("eitri-1")
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1")
 	r.SetLiveKey(live)
 

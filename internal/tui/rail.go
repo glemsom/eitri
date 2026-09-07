@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"github.com/glemsom/eitri/internal/tui/livekey"
 	"path/filepath"
 	"strings"
 	"time"
@@ -21,7 +22,7 @@ type Rail struct {
 	sessionID   string
 	sessionTemp string
 	branch      string
-	sessionKey  *LiveSessionKey
+	sessionKey  *livekey.LiveSessionKey
 }
 
 // NewRail builds the right-context rail seeded with the run's static session state (provider, model, effort, thinking, session id, session temp path).
@@ -194,7 +195,7 @@ func (r *Rail) SetBranch(branch string) { r.branch = branch }
 // SetLiveKey wires the shared mutable session key into the rail, so the
 // CONTEXT session id stays live across a `/new` re-mint. Nil keeps the static
 // sessionID seeded at construction.
-func (r *Rail) SetLiveKey(l *LiveSessionKey) { r.sessionKey = l }
+func (r *Rail) SetLiveKey(l *livekey.LiveSessionKey) { r.sessionKey = l }
 
 func (r *Rail) currentSessionTemp(sessionID string) string {
 	if r.sessionKey == nil || sessionID == r.sessionID || r.sessionTemp == "" {
