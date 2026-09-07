@@ -2,6 +2,8 @@ package tui
 
 import (
 	"encoding/base64"
+	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -10,6 +12,7 @@ import (
 )
 
 func TestKittyImageEncodesEmbeddedFaceAtRailWidth(t *testing.T) {
+	t.Cleanup(CleanupKittyFace) // the scratch PNG leaks nothing on the test host
 	t.Setenv("EITRI_KITTY_IMAGES", "1")
 	cols, rows := railFaceRows(30)
 	if cols != 24 || rows != 12 {
@@ -33,6 +36,7 @@ func TestKittyImageEncodesEmbeddedFaceAtRailWidth(t *testing.T) {
 }
 
 func TestStyledRailBottomReservesFaceRailWithoutInlineImage(t *testing.T) {
+	t.Cleanup(CleanupKittyFace) // the scratch PNG leaks nothing on the test host
 	t.Setenv("EITRI_KITTY_IMAGES", "1")
 	rail := styledRailWithFace("STATS\nCONTEXT\nMODEL", 24, 30)
 	if strings.Contains(rail, "\x1b_G") {
@@ -44,6 +48,7 @@ func TestStyledRailBottomReservesFaceRailWithoutInlineImage(t *testing.T) {
 }
 
 func TestStyledRailWithFaceHasContinuousLeftBorder(t *testing.T) {
+	t.Cleanup(CleanupKittyFace) // the scratch PNG leaks nothing on the test host
 	t.Setenv("EITRI_KITTY_IMAGES", "1")
 	rail := styledRailWithFace("STATS\nCONTEXT\nMODEL", 24, 30)
 	lines := strings.Split(rail, "\n")
@@ -58,6 +63,7 @@ func TestStyledRailWithFaceHasContinuousLeftBorder(t *testing.T) {
 }
 
 func TestClockTickDoesNotRedrawFace(t *testing.T) {
+	t.Cleanup(CleanupKittyFace) // the scratch PNG leaks nothing on the test host
 	t.Setenv("EITRI_KITTY_IMAGES", "1")
 	m := NewModelCfg(Dependencies{Rail: NewRail("provider", "model", "low", true, "session", "/tmp/session")})
 	m = resizeTo(t, m, 120, 30)
@@ -73,6 +79,7 @@ func TestClockTickDoesNotRedrawFace(t *testing.T) {
 }
 
 func TestStreamingFollowReanchorsFaceAfterRendererScroll(t *testing.T) {
+	t.Cleanup(CleanupKittyFace) // the scratch PNG leaks nothing on the test host
 	t.Setenv("EITRI_KITTY_IMAGES", "1")
 	m := NewModelCfg(Dependencies{
 		Turn:   streamingTurn,
@@ -99,6 +106,7 @@ func TestStreamingFollowReanchorsFaceAfterRendererScroll(t *testing.T) {
 }
 
 func TestMouseWheelDoesNotRedrawProtectedFace(t *testing.T) {
+	t.Cleanup(CleanupKittyFace) // the scratch PNG leaks nothing on the test host
 	t.Setenv("EITRI_KITTY_IMAGES", "1")
 	m := NewModelCfg(Dependencies{Rail: NewRail("provider", "model", "low", true, "session", "/tmp/session")})
 	m = resizeTo(t, m, 120, 30)
@@ -110,6 +118,7 @@ func TestMouseWheelDoesNotRedrawProtectedFace(t *testing.T) {
 }
 
 func TestKittyFaceUsesVirtualUploadAndInBandPlaceholders(t *testing.T) {
+	t.Cleanup(CleanupKittyFace) // the scratch PNG leaks nothing on the test host
 	t.Setenv("EITRI_KITTY_IMAGES", "1")
 	upload := kittyFaceUpload(30)
 	if !strings.Contains(upload, ",U=1,z=-1,") {
@@ -126,4 +135,20 @@ func TestKittyFaceUsesVirtualUploadAndInBandPlaceholders(t *testing.T) {
 	if strings.Contains(rail, "\x1b_G") {
 		t.Fatal("rail frame contains out-of-band Kitty graphics commands")
 	}
+}
+
+func TestCleanupKittyFaceRemovesScratchFile(t *testing.T) {
+	t.Setenv("EITRI_KITTY_IMAGES", "1")
+	path := kittyFaceFile()
+	if path == "" {
+		t.Fatal("kittyFaceFile returned an empty path")
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("scratch file %s missing right after creation: %v", path, err)
+	}
+	CleanupKittyFace()
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("scratch file %s still present after CleanupKittyFace (stat err = %v)", path, err)
+	}
+	CleanupKittyFace() // must be idempotent: a second call is a no-op
 }

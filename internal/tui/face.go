@@ -17,28 +17,51 @@ import (
 var eitriFacePNG []byte
 
 var (
-	kittyFacePathOnce sync.Once
-	kittyFacePath     string
+	kittyFaceMu   sync.Mutex
+	kittyFacePath string
 )
 
+// kittyFaceFile returns the path of the scratch PNG uploaded to a Kitty
+// terminal on the first face render, writing it into the temp dir on demand.
+// The path is owned by the process (runTUI defers CleanupKittyFace) and is
+// re-created here if a previous cleanup removed it, so a stale path is a
+// cache miss that heals itself, never a hard precondition.
 func kittyFaceFile() string {
-	kittyFacePathOnce.Do(func() {
-		img, err := png.Decode(bytes.NewReader(eitriFacePNG))
-		if err != nil {
-			return
+	kittyFaceMu.Lock()
+	defer kittyFaceMu.Unlock()
+	if kittyFacePath != "" {
+		if _, err := os.Stat(kittyFacePath); err == nil {
+			return kittyFacePath
 		}
-		f, err := os.CreateTemp("", "tty-graphics-protocol-eitri-face-*.png")
-		if err != nil {
-			return
-		}
-		defer f.Close()
-		if err := png.Encode(f, img); err != nil {
-			_ = os.Remove(f.Name())
-			return
-		}
-		kittyFacePath = f.Name()
-	})
+		// A prior CleanupKittyFace removed the file; recreate on next use.
+	}
+	img, err := png.Decode(bytes.NewReader(eitriFacePNG))
+	if err != nil {
+		return ""
+	}
+	f, err := os.CreateTemp("", "tty-graphics-protocol-eitri-face-*.png")
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	if err := png.Encode(f, img); err != nil {
+		_ = os.Remove(f.Name())
+		return ""
+	}
+	kittyFacePath = f.Name()
 	return kittyFacePath
+}
+
+// CleanupKittyFace removes the scratch PNG the Kitty-graphics face upload
+// writes on first use, if one was created during this process. It is
+// idempotent and safe to call before any TUI run; runTUI defers it so a Kitty
+// terminal never leaks a ~170 KB PNG per launch into the temp dir.
+func CleanupKittyFace() {
+	kittyFaceMu.Lock()
+	defer kittyFaceMu.Unlock()
+	if p := kittyFacePath; p != "" {
+		_ = os.Remove(p)
+	}
 }
 
 const kittyFaceImageID = 1162433618 // "EITR" as a stable Kitty image ID.

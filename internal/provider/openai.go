@@ -170,7 +170,8 @@ func (o *OpenAICompatible) Stream(ctx context.Context, req Request) (Stream, err
 		resp.Body.Close()
 		return nil, &HTTPError{Code: resp.StatusCode, Body: string(body)}
 	}
-	return closeBodyOnDone(chatDialect.Stream(resp.Body), resp.Body), nil
+	streamBody := watchForIdle(resp.Body)
+	return closeBodyOnDone(chatDialect.Stream(streamBody), streamBody), nil
 }
 
 // SupportedGenerationControls delegates to the Chat-Completions dialect's declared capabilities.

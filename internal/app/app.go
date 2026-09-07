@@ -10,8 +10,10 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"golang.org/x/term"
 
@@ -133,6 +135,14 @@ type Options struct {
 	Pprof PprofOptions
 }
 
+// batchSignalContext returns a context cancelled by the first SIGINT/SIGTERM
+// received by the process, plus a stop function. It is a package var so tests
+// can drive the graceful-stop envelope path deterministically instead of
+// signalling the test process.
+var batchSignalContext = func() (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+}
+
 // Run performs the Eitri boot sequence and returns the first error it hits, so a caller can map it to an exit status.
 func Run(opts Options) error {
 	if opts.Version {
@@ -240,8 +250,23 @@ func Run(opts Options) error {
 			return err
 		}
 	}
-	res, err := runAgent(context.Background(), e, cfg, reg, key, prompt, skills, nil, nil)
-	if err != nil {
+	// Batch runs bind the process's interrupt signals to the run context: the
+	// first SIGINT/SIGTERM cancels the turn gracefully (the run stops, the json
+	// envelope still flushes with stopped:true, and the session-temp defer runs),
+	// while a second signal hard-exits for a user who is not waiting on the
+	// graceful path.
+	ctx, stop := batchSignalContext()
+	defer stop()
+	go func() {
+		<-ctx.Done() // the first signal is already being handled gracefully
+		ch := make(chan os.Signal, 1)
+		signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
+		<-ch // the next signal means graceful shutdown is not fast enough
+		os.Exit(1)
+	}()
+
+	res, err := runAgent(ctx, e, cfg, reg, key, prompt, skills, nil, nil)
+	if err != nil && !errors.Is(err, engine.ErrStopped) {
 		return err
 	}
 	out := opts.Stdout
@@ -258,6 +283,16 @@ func Run(opts Options) error {
 	format := opts.Format
 	if format == "" {
 		format = DefaultFormat
+	}
+	if err != nil {
+		// Graceful stop (SIGINT/SIGTERM): honor the json envelope contract with
+		// stopped:true so a script can tell an interrupted run from a failure; a
+		// text run emits no partial answer. Both return nil so the session-temp
+		// defer above runs before exit.
+		if format == "json" {
+			return writeBatchEnvelope(out, sess.GUID(), res)
+		}
+		return nil
 	}
 	if format == "json" {
 		return writeBatchEnvelope(out, sess.GUID(), res)
@@ -332,7 +367,7 @@ func (stderrWarner) Warnf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "eitri: "+format+"\n", args...)
 }
 
-// runAgent drives one agent turn (user prompt → assistant answer) over the shared run engine, session transcript, and tool registry that both the TUI and batch use. The model-visible index and the per-run workspace directive are each carried as their own system message so they reach the model without perturbing the byte-stable system prompt; a catalog with none renders to a nil index that keeps the no-index wire bytes intact. ctx is threaded through to the engine so the TUI's per-turn cancellation (Ctrl+C/Esc) reaches an in-flight run; batch passes context.Background() (no stop binding).
+// runAgent drives one agent turn (user prompt → assistant answer) over the shared run engine, session transcript, and tool registry that both the TUI and batch use. The model-visible index and the per-run workspace directive are each carried as their own system message so they reach the model without perturbing the byte-stable system prompt; a catalog with none renders to a nil index that keeps the no-index wire bytes intact. ctx is threaded through to the engine so the TUI's per-turn cancellation (Ctrl+C/Esc) and batch's interrupt binding (SIGINT/SIGTERM cancel the run) both reach an in-flight run.
 func runAgent(ctx context.Context, e *engine.Engine, cfg config.Config, reg *tools.Registry, sessionKey, prompt string, catalog *tools.Catalog, skillInject *string, canContinue func() bool) (engine.Result, error) {
 	compaction, err := e.ResolveCompaction(ctx, cfg.ContextOverflowRecovery)
 	if err != nil {
