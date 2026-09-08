@@ -81,7 +81,7 @@ The binary-owned ROM at `$EITRI_DIR/skills-builtin` where embedded builtin skill
 _Avoid_: Engine skills, embedded skills
 
 **Skillspack source**:
-The repo directory `internal/engine/skillspack/` — the single place builtin skill packs are authored and edited. The materialized skills-builtin root is its output, and from inside an agent sandbox `~/.eitri` is read-only (only the workspace, the session's `$TMPDIR`, and `~/.cache` are writable), so agent edits to builtin skills land in the skillspack source, never in the materialized ROM.
+The repo directory `internal/engine/skillspack/` — the single place builtin skill packs are authored and edited. The materialized skills-builtin root is its output, and from inside an agent sandbox `~/.eitri` is read-only (only the workspace, the session's `$TMPDIR`, and any user-configured `extra_writable_paths` are writable), so agent edits to builtin skills land in the skillspack source, never in the materialized ROM.
 _Avoid_: Skills-builtin editing, builtin skill patching
 
 **Skill catalog**:
