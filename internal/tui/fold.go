@@ -58,6 +58,9 @@ func (f *Fold) attachToLastAssistant(tx *Transcript, ev TimelineEvent) {
 		if tx.messages[i].role == "eitri" {
 			ev.Seq = len(tx.messages[i].events)
 			tx.messages[i].events = append(tx.messages[i].events, ev)
+			// The appended event changes a settled message's rendered flow bytes,
+			// so the committed memo entry for that turn is stale and must drop.
+			tx.invalidateCommittedMemo()
 			return
 		}
 	}
