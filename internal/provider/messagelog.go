@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"time"
 )
 
@@ -48,8 +49,8 @@ type loggingStream struct {
 	inner Stream
 	sink  MessageLogSink
 
-	content   string
-	reasoning string
+	content   strings.Builder
+	reasoning strings.Builder
 	usage     *Usage
 	finish    string
 	toolCalls []ToolCall
@@ -60,8 +61,8 @@ type loggingStream struct {
 func (l *loggingStream) Next() (Chunk, error) {
 	c, err := l.inner.Next()
 	if err == nil {
-		l.content += c.Content
-		l.reasoning += c.ReasoningContent
+		l.content.WriteString(c.Content)
+		l.reasoning.WriteString(c.ReasoningContent)
 		if c.Usage != nil {
 			l.usage = c.Usage
 		}
@@ -90,7 +91,7 @@ func (l *loggingStream) emit() {
 	if !l.emitted {
 		l.sink.LogResponse(ResponseLog{
 			Time: time.Now(), Dir: "resp",
-			Content: l.content, ReasoningContent: l.reasoning,
+			Content: l.content.String(), ReasoningContent: l.reasoning.String(),
 			ToolCalls: l.toolCalls, FinishReason: l.finish,
 			Usage: l.usage, Error: l.errorText,
 		})

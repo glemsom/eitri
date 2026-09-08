@@ -254,7 +254,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 	recoveredContextOverflow := false
 	for turn := 0; ; turn++ {
 		cycles++
-		var content, reasoning string
+		var content, reasoning strings.Builder
 		if ctx.Err() != nil {
 			stopped = true
 			final.Answer = stopContent
@@ -304,8 +304,8 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 			if errors.Is(err, io.EOF) {
 				if e.stopped(ctx) {
 					stopped = true
-					stopContent += content
-					stopReasoning += reasoning
+					stopContent += content.String()
+					stopReasoning += reasoning.String()
 					final.Answer = stopContent
 					final.Reasoning = stopReasoning
 					e.finishStopped(final, req.Prompt, runID, turn)
@@ -316,8 +316,8 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 			if err != nil {
 				if e.stopped(ctx) {
 					stopped = true
-					stopContent += content
-					stopReasoning += reasoning
+					stopContent += content.String()
+					stopReasoning += reasoning.String()
 					final.Answer = stopContent
 					final.Reasoning = stopReasoning
 					e.finishStopped(final, req.Prompt, runID, turn)
@@ -326,11 +326,11 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 				return final, err
 			}
 			if c.Content != "" {
-				content += c.Content
+				content.WriteString(c.Content)
 				e.emit(StreamEvent{RunID: runID, Turn: turn, Kind: AnswerStream, Delta: c.Content})
 			}
 			if c.ReasoningContent != "" {
-				reasoning += c.ReasoningContent
+				reasoning.WriteString(c.ReasoningContent)
 				e.emit(StreamEvent{RunID: runID, Turn: turn, Kind: ReasoningStream, Delta: c.ReasoningContent})
 			}
 			if c.Usage != nil {
@@ -353,17 +353,17 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 
 		assistant := provider.Message{
 			Role:             provider.RoleAssistant,
-			Content:          content,
-			ReasoningContent: reasoning,
+			Content:          content.String(),
+			ReasoningContent: reasoning.String(),
 		}
 
 		if len(done.ToolCalls) == 0 {
 			messages = append(messages, assistant)
-			final.Answer = content
-			final.Reasoning = reasoning
+			final.Answer = content.String()
+			final.Reasoning = reasoning.String()
 			e.storeSessionHistory(req.SessionKey, messages)
 			if e.transcript != nil {
-				_ = e.transcript.WriteTranscript(fmt.Appendf(nil, "=== %s ===\n%s\n", req.Prompt, content))
+				_ = e.transcript.WriteTranscript(fmt.Appendf(nil, "=== %s ===\n%s\n", req.Prompt, content.String()))
 			}
 			return final, nil
 		}
@@ -373,8 +373,8 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		for _, tc := range done.ToolCalls {
 			if e.stopped(ctx) {
 				stopped = true
-				stopContent += content
-				stopReasoning += reasoning
+				stopContent += content.String()
+				stopReasoning += reasoning.String()
 				final.Answer = stopContent
 				final.Reasoning = stopReasoning
 				e.finishStopped(final, req.Prompt, runID, turn)
@@ -390,8 +390,8 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 				Content:    delivered,
 			})
 		}
-		stopContent += content
-		stopReasoning += reasoning
+		stopContent += content.String()
+		stopReasoning += reasoning.String()
 	}
 }
 

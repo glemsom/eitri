@@ -169,6 +169,26 @@ func BenchmarkRemapMarkdownColors(b *testing.B) {
 	}
 }
 
+// BenchmarkRemapSGR_Allocs guards the allocation cost of remapSGR, the per-SGR
+// color-remap primitive that runs on every glamour render in the streaming live
+// tail. The token-scan rewrite eliminated the Split/Join allocations: a 100-SGR
+// block dropped from ~530 to ~130 allocs. This guard documents that the primitive
+// stays token-scan (allocation-light) rather than silently regressing to split/
+// join per sequence.
+//
+// Run: go test ./internal/tui -run xxx -bench BenchmarkRemapSGR_Allocs -benchtime 200x
+func BenchmarkRemapSGR_Allocs(b *testing.B) {
+	th := themeFor("dark")
+	// 100 mapped 256-color SGR sequences with mixed surrounding params, the shape
+	// glamour emits for a long highlighted markdown block.
+	s := strings.Repeat("\x1b[38;5;30;1mred\x1b[0m", 100)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = remapMarkdownColors(s, th)
+	}
+}
+
 func benchBusyHistory(tx *Transcript, turns int) {
 	for i := 0; i < turns; i++ {
 		tx.messages = append(tx.messages, message{role: "you", content: "a moderately long user prompt describing a task"})

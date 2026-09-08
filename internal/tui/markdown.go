@@ -176,22 +176,56 @@ func remapMarkdownColors(s string, th Theme) string {
 
 // remapSGR rewrites every `38;5;<index>` foreground spec inside one SGR sequence
 // to the mapped truecolor equivalent (or leaves it in place when unmapped). It
-// only splits the params of a sequence known to carry at least one such index.
+// scans the params substring token-by-token (no allocation for Split/Join) to
+// keep the streaming render path cheap: this runs on every glamour render, and
+// the prior Split/Join implementation was the dominant allocator in a live
+// TUI CPU/heap profile.
 func remapSGR(seq string, m map[string]string) string {
 	sub := seq[2 : len(seq)-1]
-	params := strings.Split(sub, ";")
-	out := make([]string, 0, len(params)+4)
-	for i := 0; i < len(params); i++ {
-		if params[i] == "38" && i+2 < len(params) && params[i+1] == "5" {
-			if repl, ok := m["38;5;"+params[i+2]]; ok {
-				out = append(out, strings.Split(repl, ";")...)
-				i += 2
-				continue
+	var b strings.Builder
+	b.Grow(len(seq) + 16)
+	b.WriteByte(0x1b)
+	b.WriteByte('[')
+	for i := 0; i < len(sub); {
+		// token [i,j)
+		j := i
+		for j < len(sub) && sub[j] != ';' {
+			j++
+		}
+		tok := sub[i:j]
+		if tok == "38" {
+			// Look ahead for the `5;<index>` part of a possible `38;5;<index>` triple.
+			n1s := j + 1
+			n1e := n1s
+			for n1e < len(sub) && sub[n1e] != ';' {
+				n1e++
+			}
+			if n1s < len(sub) && sub[n1s:n1e] == "5" {
+				n2s := n1e + 1
+				n2e := n2s
+				for n2e < len(sub) && sub[n2e] != ';' {
+					n2e++
+				}
+				if n2s < len(sub) {
+					if repl, ok := m["38;5;"+sub[n2s:n2e]]; ok {
+						b.WriteString(repl)
+						if n2e < len(sub) {
+							b.WriteByte(';')
+						}
+						i = n2e + 1
+						continue
+					}
+				}
 			}
 		}
-		out = append(out, params[i])
+		b.WriteString(tok)
+		if j < len(sub) {
+			b.WriteByte(';')
+		}
+		i = j + 1
 	}
-	return "\x1b[" + strings.Join(out, ";") + "m"
+	b.WriteByte('m')
+	return b.String()
 }
 
 // bubbleBgSGR returns the SGR command that asserts the theme's bubble tint as the active background (48;2;R;G;B).
