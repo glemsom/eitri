@@ -3,8 +3,6 @@ package tui
 import (
 	"strconv"
 	"testing"
-
-	"github.com/glemsom/eitri/internal/config"
 )
 
 // buildCommittedTurns appends n settled turns directly and materializes them
@@ -65,19 +63,10 @@ func TestCommittedCommitCostFlatInHistorySize(t *testing.T) {
 // Run: go test ./internal/tui -run xxx -bench BenchmarkCommittedCommitCost -benchmem -benchtime 30x
 func BenchmarkCommittedCommitCost_FlatInHistory(b *testing.B) {
 	b.Setenv("EITRI_ASCII_GLYPHS", "1")
-	th := themeFor(config.DefaultTheme)
 	for _, n := range []int{10, 100, 1000} {
 		b.Run("N="+strconv.Itoa(n), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				tx := &Transcript{
-					theme:           th,
-					configTheme:     config.DefaultTheme,
-					reasoningEffort: "medium",
-					width:           100,
-					height:          30,
-					histFollow:      true,
-					histViewport:    newHistoryViewport(),
-				}
+				tx := memoTestTx()
 				buildCommittedTurns(tx, n)
 				b.ResetTimer()
 				tx.messages = append(tx.messages, message{role: "you", content: "one more"})
