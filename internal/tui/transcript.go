@@ -455,11 +455,12 @@ func (t *Transcript) invalidateCommittedMemo() {
 // committed memo and renderMessageRange's settled branch, so memoized units
 // cannot drift from a fresh full render. anchor is the owning turn's prompt
 // index the flow's tool entries index against; it is irrelevant for a prompt
-// card. Committed units carry no live clock (now stays zero and pulse is off
-// for the settled entries), so their bytes are a pure function of the settled
-// snapshot, width, theme, and expansion — never of when they were rendered. It
-// returns the text, the tool-entry row ranges in message-local coordinates,
-// and the content rows (newline count) it occupies.
+// card. Committed units carry no live clock: now stays zero, so a settled
+// entry's elapsed timer reads from its fixed doneAt rather than advancing, and
+// the bytes are a pure function of the settled snapshot, width, theme, and
+// expansion — never of when they were rendered. It returns the text, the
+// tool-entry row ranges in message-local coordinates, and the content rows
+// (newline count) it occupies.
 func (t *Transcript) committedEmission(i, anchor int) (string, []toolRowRange, int) {
 	var b strings.Builder
 	nl := 0
