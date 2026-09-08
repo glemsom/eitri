@@ -60,6 +60,14 @@ func TestStreamingWindowedReasoningRendersTail(t *testing.T) {
 	tx.busy = true
 
 	nl := func(s string) int { return strings.Count(s, "\n") }
+	// Advance a fast clock each read so the throttle never holds a stale body:
+	// this test is about the render *window* staying bounded as the stream grows,
+	// not about throttle coalescing (covered by TestLiveMarkdownThrottleBoundsFastStream).
+	var tnow time.Time
+	tx.liveMarkdownCache.clock = func() time.Time {
+		tnow = tnow.Add(200 * time.Millisecond)
+		return tnow
+	}
 	prev := tx.renderPaneContent()
 	if strings.Contains(plain(prev), "HEADMARKER") {
 		t.Fatalf("streaming windowed render must not include the reasoning head, got a window too wide")
@@ -112,10 +120,10 @@ func TestPaneVariantReRender(t *testing.T) {
 	}
 	text := strings.Repeat("md inline `code` and **bold** here. ", 40)
 
-	s1 := c.renderPaneBody(text, 118, config.DefaultTheme, mdPaneStreamingThinking, th)
+	s1 := c.renderPaneBody(text, 118, config.DefaultTheme, mdPaneStreamingThinking, th, false)
 	mAfterStream := c.misses
 	// Stable frames under the same pane must be cache hits (no re-render).
-	s2 := c.renderPaneBody(text, 118, config.DefaultTheme, mdPaneStreamingThinking, th)
+	s2 := c.renderPaneBody(text, 118, config.DefaultTheme, mdPaneStreamingThinking, th, false)
 	if c.misses != mAfterStream {
 		t.Fatalf("same-pane stable frame re-rendered markdown")
 	}
@@ -125,7 +133,7 @@ func TestPaneVariantReRender(t *testing.T) {
 
 	// Different pane variant must re-render exactly once (stale body must not
 	// leak under the new pane's border).
-	s3 := c.renderPaneBody(text, 118, config.DefaultTheme, mdPaneThinking, th)
+	s3 := c.renderPaneBody(text, 118, config.DefaultTheme, mdPaneThinking, th, false)
 	if c.misses != mAfterStream+1 {
 		t.Fatalf("pane-variant change should render exactly once more, got %d (after %d)", c.misses, mAfterStream)
 	}
@@ -139,8 +147,8 @@ func TestPaneVariantReRender(t *testing.T) {
 // distinct large windows arriving inside liveMarkdownMinRenderInterval must be
 // served from the cached body (hits), re-rendering only once the interval
 // elapses. This is the regression guard for the live-stream CPU fix. Only
-// windows at/past liveStreamingMarkdownWindow are throttled — small live blocks
-// still update every delta.
+// throttled streaming windows (windowed=true) are held; small live blocks still
+// update every delta.
 func TestLiveMarkdownThrottleBoundsFastStream(t *testing.T) {
 	th := themeFor(config.DefaultTheme)
 	c := &liveMarkdownCache{}
@@ -151,7 +159,7 @@ func TestLiveMarkdownThrottleBoundsFastStream(t *testing.T) {
 	// Distinct windows large enough to cross the streaming window bound.
 	base := strings.Repeat("streaming reasoning token mix of prose and markdown \n", 900)
 	for i := 0; i < 5; i++ {
-		c.renderPaneBody(base+string(rune('a'+i)), 118, "dark", mdPaneStreamingThinking, th)
+		c.renderPaneBody(base+string(rune('a'+i)), 118, "dark", mdPaneStreamingThinking, th, true)
 	}
 	if len(base) < liveStreamingMarkdownWindow {
 		t.Fatalf("test window too small: got %d, want >= %d", len(base), liveStreamingMarkdownWindow)
@@ -167,8 +175,54 @@ func TestLiveMarkdownThrottleBoundsFastStream(t *testing.T) {
 
 	// Let the interval elapse; the next distinct window must re-render once.
 	now = now.Add(liveMarkdownMinRenderInterval)
-	c.renderPaneBody(base+"z", 118, "dark", mdPaneStreamingThinking, th)
+	c.renderPaneBody(base+"z", 118, "dark", mdPaneStreamingThinking, th, true)
 	if c.misses != 2 {
 		t.Fatalf("after the interval a changed window should re-render, got %d misses", c.misses)
+	}
+}
+
+// TestLiveLargeStreamingReasoningThrottlesThroughRenderPath is the production
+// regression guard for the live-stream CPU fix. It drives the real
+// reasoningBlock -> liveStreamingText -> renderPaneBody path (via
+// renderPaneContent) with a reasoning blob already past
+// liveStreamingMarkdownWindow, then appends deltas within the render interval.
+// Before the fix the throttle gate read the post-trim window length, which
+// liveStreamingText trims below the window bound, so every delta re-glamed the
+// full window; here the throttle flag is derived from the windowed decision and
+// must hold the body, keeping re-renders roughly one per interval.
+func TestLiveLargeStreamingReasoningThrottlesThroughRenderPath(t *testing.T) {
+	tx := benchBusyTx()
+	// Fast clock: many deltas arrive inside liveMarkdownMinRenderInterval,
+	// so the throttle must coalesce them (serve stale body) rather than re-render.
+	var now time.Time
+	step := 5 * time.Millisecond
+	tx.liveMarkdownCache.clock = func() time.Time { now = now.Add(step); return now }
+
+	big := strings.Repeat("streaming reasoning prose with markdown `code` and newline\n", 1200) // ~70KB, past window
+	tx.messages = append(tx.messages, message{role: "you", content: "live prompt"})
+	tx.messages = append(tx.messages, message{role: "eitri", streaming: true, thinkingRequested: true,
+		reasoning: big, content: "", expansion: ExpansionState{}})
+	s := NewTurnSession(nil)
+	s.flow.Observe(ReasoningStream, big)
+	tx.live = s
+	tx.busy = true
+
+	// Prime the render; the first large frame renders once.
+	tx.renderPaneContent()
+	missesAfterPrime := tx.liveMarkdownCache.misses
+	if missesAfterPrime == 0 {
+		t.Fatalf("large streaming reasoning should have rendered at least once")
+	}
+
+	// A burst of deltas all arriving inside the render interval: each changes
+	// the window but the throttle must coalesce, so re-renders stay flat.
+	for i := 0; i < 5; i++ {
+		tx.live.flow.Observe(ReasoningStream, " more token ")
+		tx.messages[len(tx.messages)-1].reasoning += " more token "
+		tx.renderPaneContent()
+	}
+	if tx.liveMarkdownCache.misses != missesAfterPrime {
+		t.Fatalf("fast large-stream deltas re-rendered (misses %d -> %d); throttle should have held the body",
+			missesAfterPrime, tx.liveMarkdownCache.misses)
 	}
 }

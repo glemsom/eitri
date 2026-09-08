@@ -371,19 +371,23 @@ func (r flowRenderer) reasoningBlock(msg message, msgIdx int, it flowItem, isFoc
 // regardless of how long a single block runs.
 const liveStreamingMarkdownWindow = 8 << 10 // 8 KiB
 
-// liveStreamingText returns the text to markdown-render for a block: the full
-// text when it is committed (or small), otherwise just the trailing window while
-// it is still streaming. The window is bytes, trimmed to the first newline so the
-// rendered tail starts on a fresh line rather than mid-sequence.
-func liveStreamingText(msg message, text string) string {
+// liveStreamingText returns the text to markdown-render for a block and whether
+// that text was a trimmed streaming window. When the block is streaming and its
+// accumulated text exceeds liveStreamingMarkdownWindow, only the trailing window
+// (trimmed to the first newline) is rendered; otherwise the full text is
+// returned with a false windowed flag. The windowed flag tells the markdown
+// cache to throttle re-renders (see liveMarkdownCache): the post-trim length
+// alone cannot be trusted to exceed the window bound, so the caller must pass
+// the fact that windowing occurred rather than relying on a length check.
+func liveStreamingText(msg message, text string) (string, bool) {
 	if !msg.streaming || len(text) <= liveStreamingMarkdownWindow {
-		return text
+		return text, false
 	}
 	window := text[len(text)-liveStreamingMarkdownWindow:]
 	if i := strings.IndexByte(window, '\n'); i >= 0 {
 		window = window[i+1:]
 	}
-	return window
+	return window, true
 }
 
 func renderReasoningBlockCached(cache *liveMarkdownCache, theme Theme, config string, width int, effort string, msg message, msgIdx, fragIdx int, text string, expanded, focused bool) string {
@@ -400,7 +404,8 @@ func renderReasoningBlockCached(cache *liveMarkdownCache, theme Theme, config st
 	if msg.streaming {
 		paneID = mdPaneStreamingThinking
 	}
-	body := cache.renderPaneBody(liveStreamingText(msg, text), width-2, config, paneID, theme)
+	body, windowed := liveStreamingText(msg, text)
+	body = cache.renderPaneBody(body, width-2, config, paneID, theme, windowed)
 	b.WriteString(fmt.Sprintf("%s\n", body))
 	return b.String()
 }
@@ -439,7 +444,8 @@ func renderAnswerBlockCached(cache *liveMarkdownCache, theme Theme, config strin
 	case msg.streaming:
 		paneID = mdPaneStreaming
 	}
-	body := cache.renderPaneBody(liveStreamingText(msg, text), width-2, config, paneID, theme)
+	body, windowed := liveStreamingText(msg, text)
+	body = cache.renderPaneBody(body, width-2, config, paneID, theme, windowed)
 	s := fmt.Sprintf("%s\n", body)
 	if final && msg.stopped {
 		s += theme.statusStyle.Render(stoppedMarker()) + "\n"
