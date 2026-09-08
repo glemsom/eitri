@@ -460,10 +460,12 @@ func (t *Transcript) invalidateCommittedMemo() {
 // invalidateCommittedUnit marks one memo unit stale in place: the unit whose
 // bytes a scoped input change re-derives (an expansion toggle of a block inside
 // it, the focus marker's old or new position, or a committed tool observation
-// its flow draws). All other units keep their rendered bytes, so a rebuild
-// re-renders only the marked unit instead of the whole history. A unit the memo
-// does not yet materialize needs no drop — there are no stale bytes to
-// discard, and the next materialization renders it fresh. The single-slot
+// its flow draws). idx is the message index — the memo's entries are indexed
+// by the message they render, so the memo's own index space and the message
+// index space are the same. All other units keep their rendered bytes, so a
+// rebuild re-renders only the marked unit instead of the whole history. A unit
+// the memo does not yet materialize needs no drop — there are no stale bytes
+// to discard, and the next materialization renders it fresh. The single-slot
 // markdown cache is dropped beside the unit so the rebuild cannot be served
 // another unit's pane bodies (or a throttled stale window) — the same
 // guarantee the full-memo invalidation gives its rebuild.
@@ -503,6 +505,14 @@ func (t Transcript) unitIndexesForBlock(blk collapsibleBlock) []int {
 // each settled message of the entry's turn pairs the anchored log entries
 // against its tool-start boundaries from position 0, so the entry is drawn by
 // every such message whose start count reaches the entry's arrival position.
+//
+// This mirrors flowrender.RenderFlow's fold: its ti counter advances at every
+// EventToolStart and draws r.tools[ti] when ti is in range, with r.tools being
+// anchoredIndices(anchor) — so the k-th start boundary draws the k-th anchored
+// entry. Keeping the two in sync is what scopes invalidation to exactly the
+// units that own the entry's bytes; assertLayoutMatchesFreshFullRender (and
+// assertBusyRenderMatchesFresh) net any drift by requiring every invalidation
+// path's memo bytes to equal a fresh full render.
 func (t Transcript) unitIndexesForTool(idx int) []int {
 	if idx < 0 || idx >= len(t.log.entries) {
 		return nil
