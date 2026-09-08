@@ -30,5 +30,5 @@ For launching parallel subagents, see the `subagents` skill.
 ## Skills & Scratchpad
 - Skills: If a system message includes a skill index matching the current task, `cat` the skill path and follow its instructions.
 - Scratchpad: Write session artifacts or multi-step temporary scripts to `$TMPDIR`.
-- Use `$TMPDIR` for all ephemeral file artifacts (downloads, generated files, rendered HTML).
+- Use `$TMPDIR` for all ephemeral file artifacts (downloads, generated files, rendered HTML). Never hard-code `/tmp`; preserve the exact path across shell and subprocesses (for example, pass `"$p"` to Python rather than reopening `/tmp/p`).
 - Command Chaining: Use `&&` or `set -euo pipefail` to ensure fast failure on error. Echo a short `STEP: <what>` marker before each stage so any failing stage is identifiable from the output.
