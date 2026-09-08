@@ -57,10 +57,13 @@ type Transcript struct {
 	// units is the per-settled-message render memo: units[i] caches message i's
 	// rendered bytes (plus row accounting) so a commit renders only the new
 	// turn and concatenates the prior units. An entry is valid exactly while no
-	// settled-message byte changed since it was rendered: every in-place
-	// committed mutation drops the memo (invalidateCommittedMemo), while pure
-	// appends and live-tail-only activity leave it intact so the next extension
-	// renders only the gap.
+	// settled-message byte changed since it was rendered: an in-place committed
+	// mutation drops the whole memo (invalidateCommittedMemo) when every unit
+	// re-wraps (width/theme/expand-all/collapse-all), or marks only the unit(s)
+	// whose flow draws the changed input (invalidateCommittedUnit — an
+	// expansion toggle, the focus marker, a committed tool observation), while
+	// pure appends and live-tail-only activity leave it intact so the next
+	// extension renders only the gap.
 	units []committedUnit
 	// committedUnitRenders counts settled messages freshly rendered into the
 	// memo, letting tests prove a commit re-renders only its own turn.
@@ -95,11 +98,15 @@ type toolRowRange struct {
 // in unit-local coordinates. recordLayout and the busy-prefix concat reassemble
 // the rendered text and both hit-test indexes by offsetting per unit, so a memo
 // of settled messages and a fresh full render produce identical bytes and
-// identical row accounting.
+// identical row accounting. valid is false only for a unit whose inputs
+// changed after it was rendered (a scoped invalidation dropped the unit in
+// place); invalid units are re-rendered by ensureCommittedUnits while every
+// other unit stays served from the memo.
 type committedUnit struct {
 	text  string
 	lines int
 	rows  []toolRowRange
+	valid bool
 }
 
 // msgRowRange maps a content-line span to the owning message, exposing a
@@ -433,12 +440,13 @@ func (t Transcript) busyTailIndex() int {
 	return 0
 }
 
-// invalidateCommittedMemo drops the per-settled-message render memo after an
-// in-place change to a settled message's bytes (an expansion toggle, a
-// width/theme change, a committed tool observation, or the block-focus marker
-// moving): the memo must never serve bytes a fresh full render would not
-// produce. Pure appends and live-tail-only activity do not call it, so a
-// commit extends the memo instead of re-rendering prior units.
+// invalidateCommittedMemo drops the whole per-settled-message render memo
+// after a committed change that re-wraps or re-colors every unit's bytes — a
+// width or theme change, an expand-all/collapse-all mode flip, or a rail width
+// change. The memo must never serve bytes a fresh full render would not
+// produce, and every unit re-derives on the next materialization. Changes
+// scoped to single blocks use invalidateCommittedUnit instead, so the rest of
+// the memo stays served.
 func (t *Transcript) invalidateCommittedMemo() {
 	t.units = nil
 	// The single-slot markdown cache holds committed-history pane bytes keyed on
@@ -447,6 +455,107 @@ func (t *Transcript) invalidateCommittedMemo() {
 	// configTheme key unchanged — a memo rebuild must not be served stale bytes,
 	// so drop the slot alongside the memo.
 	t.liveMarkdownCache = liveMarkdownCache{}
+}
+
+// invalidateCommittedUnit marks one memo unit stale in place: the unit whose
+// bytes a scoped input change re-derives (an expansion toggle of a block inside
+// it, the focus marker's old or new position, or a committed tool observation
+// its flow draws). All other units keep their rendered bytes, so a rebuild
+// re-renders only the marked unit instead of the whole history. A unit the memo
+// does not yet materialize needs no drop — there are no stale bytes to
+// discard, and the next materialization renders it fresh. The single-slot
+// markdown cache is dropped beside the unit so the rebuild cannot be served
+// another unit's pane bodies (or a throttled stale window) — the same
+// guarantee the full-memo invalidation gives its rebuild.
+func (t *Transcript) invalidateCommittedUnit(idx int) {
+	if idx < 0 || idx >= len(t.units) {
+		return
+	}
+	t.units[idx].valid = false
+	t.liveMarkdownCache = liveMarkdownCache{}
+}
+
+// unitIndexesForBlock returns the committed-memo unit indexes whose rendered
+// flow draws the given collapsible block: only those units' bytes can change
+// when the block's expansion or focus marker changes, so the invalidation of a
+// single block is scoped to exactly them. A reasoning block lives in the unit
+// of the message that carries its flow; a tool block lives in every settled
+// message after its anchor whose flow pairs the entry at a tool-start boundary
+// (each message's flow re-pairs anchored entries from position 0, so one entry
+// can be drawn by several units once events attach to a trailing note). A block
+// no memoized unit draws — a live-tail block, a dangling tool entry, or an
+// entry beyond every flow's drawn start count — yields no units: its bytes are
+// not baked into the memo, so nothing needs invalidating.
+func (t Transcript) unitIndexesForBlock(blk collapsibleBlock) []int {
+	switch blk.kind {
+	case blockReasoning:
+		if blk.msgIdx >= 0 && blk.msgIdx < len(t.messages) {
+			return []int{blk.msgIdx}
+		}
+	case blockTool:
+		return t.unitIndexesForTool(blk.toolIdx)
+	}
+	return nil
+}
+
+// unitIndexesForTool returns the committed-memo unit indexes whose flows draw
+// tool-log entry idx, by the same positional pairing the flow renderer uses:
+// each settled message of the entry's turn pairs the anchored log entries
+// against its tool-start boundaries from position 0, so the entry is drawn by
+// every such message whose start count reaches the entry's arrival position.
+func (t Transcript) unitIndexesForTool(idx int) []int {
+	if idx < 0 || idx >= len(t.log.entries) {
+		return nil
+	}
+	a := t.log.entries[idx].anchor
+	pos := -1
+	for k, ti := range t.log.anchoredIndices(a) {
+		if ti == idx {
+			pos = k
+			break
+		}
+	}
+	if pos < 0 {
+		return nil
+	}
+	var units []int
+	for m := a + 1; m < len(t.messages); m++ {
+		if t.messages[m].role == "you" {
+			break // the turn ended; a later prompt's flows pair their own entries
+		}
+		msg := t.messages[m]
+		if len(msg.events) == 0 {
+			continue // a settled message with no flow draws nothing
+		}
+		starts := 0
+		for _, ev := range msg.events {
+			if ev.Kind == EventToolStart {
+				starts++
+			}
+		}
+		if pos < starts {
+			units = append(units, m)
+		}
+	}
+	return units
+}
+
+// invalidateCommittedUnitsForBlock drops every memo unit whose flow draws the
+// given block, scoping an expansion toggle or focus-marker move to exactly the
+// units whose bytes could change.
+func (t *Transcript) invalidateCommittedUnitsForBlock(blk collapsibleBlock) {
+	for _, u := range t.unitIndexesForBlock(blk) {
+		t.invalidateCommittedUnit(u)
+	}
+}
+
+// invalidateCommittedUnitsForTool drops every memo unit whose flow draws the
+// given tool-log entry, scoping a tool expansion toggle or a committed tool
+// observation to exactly the units whose bytes could change.
+func (t *Transcript) invalidateCommittedUnitsForTool(idx int) {
+	for _, u := range t.unitIndexesForTool(idx) {
+		t.invalidateCommittedUnit(u)
+	}
 }
 
 // committedEmission renders settled message i exactly as the history loop
@@ -486,27 +595,29 @@ func (t *Transcript) committedEmission(i, anchor int) (string, []toolRowRange, i
 }
 
 // ensureCommittedUnits makes the committed memo cover the settled messages
-// [0, cover): it renders only the units not yet materialized. A memo dropped by
-// a committed mutation re-renders from the first settled message; a valid memo
-// extends only over newly committed messages — so a commit renders only the new
-// turn and prior units come from the memo, never re-derived. The anchor scan
-// resumes from the memo length so the tool pairing cannot drift across
-// extensions.
+// [0, cover): it re-renders invalid units in place and renders units not yet
+// materialized. A memo dropped by a whole-memo invalidation re-renders from
+// the first settled message; a scoped invalidation marked only the affected
+// unit(s) invalid, so they re-render while every other unit comes from the
+// memo — a commit renders only the new turn, and an expansion toggle only the
+// block's unit. The anchor scan runs alongside the loop so the tool pairing
+// cannot drift across re-renders or extensions.
 func (t *Transcript) ensureCommittedUnits(cover int) {
 	if cover > len(t.messages) {
 		cover = len(t.messages)
 	}
 	anchor := -1
-	for i := 0; i < len(t.units) && i < len(t.messages); i++ {
-		if t.messages[i].role == "you" {
-			anchor = i
+	for i := 0; i < cover; i++ {
+		if i >= len(t.units) || !t.units[i].valid {
+			text, rows, lines := t.committedEmission(i, anchor)
+			u := committedUnit{text: text, lines: lines, rows: rows, valid: true}
+			if i < len(t.units) {
+				t.units[i] = u
+			} else {
+				t.units = append(t.units, u)
+			}
+			t.committedUnitRenders++
 		}
-	}
-	for len(t.units) < cover {
-		i := len(t.units)
-		text, rows, lines := t.committedEmission(i, anchor)
-		t.units = append(t.units, committedUnit{text: text, lines: lines, rows: rows})
-		t.committedUnitRenders++
 		if t.messages[i].role == "you" {
 			anchor = i
 		}
@@ -968,7 +1079,10 @@ func (t *Transcript) toggleToolEntry(idx int) {
 	}
 	t.layout.dirty = true // an entry expanded/collapsed changes its rendered rows
 	t.busyPrefixDirty = true
-	t.invalidateCommittedMemo()
+	// An expansion toggle is input-scoped: only the units whose flows draw the
+	// entry re-render, and every other committed unit stays served from the
+	// memo — a long-session toggle touches exactly one turn, never the history.
+	t.invalidateCommittedUnitsForTool(idx)
 }
 
 // onToolCard reports whether the given content line falls inside any tool
@@ -1030,7 +1144,10 @@ func (t *Transcript) applyTool(u ToolUpdate) {
 	t.layout.dirty = true
 	if i >= 0 && t.toolEntryIsCommitted(i) {
 		t.busyPrefixDirty = true
-		t.invalidateCommittedMemo()
+		// A committed observation re-renders only the unit(s) whose flow draws
+		// the touched entry; a live tail observation (i committed-anchored before
+		// the running turn) falls through with no memo drop at all.
+		t.invalidateCommittedUnitsForTool(i)
 	}
 }
 
@@ -1218,18 +1335,6 @@ func reasoningFragments(events []TimelineEvent) []string {
 	return out
 }
 
-// focusNext advances the block focus to the next collapsible block, wrapping;
-// the first Tab activates the focus cursor on the first block; a transcript
-// with no collapsible blocks stays unfocused. Moving the cursor changes the
-// focus marker baked into every committed unit's bytes, so it drops the memo:
-// the next commit (or busy frame) re-renders units at the new cursor rather
-// than serving stale markers. T3 scopes this to the focused block alone.
-func (t *Transcript) focusNext() {
-	t.focus.focusNext(len(t.collapsibleBlocks()))
-	t.busyPrefixDirty = true
-	t.invalidateCommittedMemo()
-}
-
 // focused returns the block currently under the focus cursor.
 func (t Transcript) focused() (collapsibleBlock, bool) {
 	blocks := t.collapsibleBlocks()
@@ -1304,9 +1409,31 @@ func (t Transcript) thinkingExpandedForFragment(msg message, fragIdx int) bool {
 	return thinkingExpandedForFrag(msg, fragIdx, t.expansionConfig())
 }
 
-// toggleThinkingFragment flips the expansion of one reasoning fragment (Enter on
-// a focused interleaved fragment), targeting only that fragment's rendering while
-// the others keep their own state — the independent per-fragment collapse of
+// focusNext advances the block focus to the next collapsible block, wrapping;
+// the first Tab activates the focus cursor on the first block; a transcript
+// with no collapsible blocks stays unfocused. Moving the cursor changes the
+// focus marker baked into the units that draw the old and new focused blocks,
+// so exactly those units drop from the memo and the frame re-renders only
+// them — the marker renders without ever rebuilding the whole history.
+func (t *Transcript) focusNext() {
+	old, oldOK := t.focused()
+	t.focus.focusNext(len(t.collapsibleBlocks()))
+	new, newOK := t.focused()
+	t.layout.dirty = true // the marker's bytes changed in the affected units
+	t.busyPrefixDirty = true
+	if oldOK {
+		t.invalidateCommittedUnitsForBlock(old)
+	}
+	if newOK {
+		t.invalidateCommittedUnitsForBlock(new)
+	}
+}
+
+// toggleThinkingFragment flips the expansion of one reasoning fragment (Enter
+// on a focused interleaved fragment), targeting only that fragment's rendering
+// while the others keep their own state — the independent per-fragment
+// collapse of a multi-fragment turn. The toggle is input-scoped: only the
+// message's own unit re-renders, never the whole committed history.
 func (t *Transcript) toggleThinkingFragment(i, fragIdx int) {
 	if i < 0 || i >= len(t.messages) {
 		return
@@ -1315,7 +1442,7 @@ func (t *Transcript) toggleThinkingFragment(i, fragIdx int) {
 	e.set(blockReasoning, fragIdx, !t.thinkingExpandedForFragment(t.messages[i], fragIdx))
 	t.layout.dirty = true // one fragment expanded/collapsed changes its rendered rows
 	t.busyPrefixDirty = true
-	t.invalidateCommittedMemo()
+	t.invalidateCommittedUnit(i)
 }
 
 // clearReasoningFragments drops the per-fragment reasoning forces of message i

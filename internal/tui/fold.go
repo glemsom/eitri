@@ -59,8 +59,9 @@ func (f *Fold) attachToLastAssistant(tx *Transcript, ev TimelineEvent) {
 			ev.Seq = len(tx.messages[i].events)
 			tx.messages[i].events = append(tx.messages[i].events, ev)
 			// The appended event changes a settled message's rendered flow bytes,
-			// so the committed memo entry for that turn is stale and must drop.
-			tx.invalidateCommittedMemo()
+			// so that message's committed memo unit is stale and must drop —
+			// scoped to the one unit, never the whole history.
+			tx.invalidateCommittedUnit(i)
 			return
 		}
 	}

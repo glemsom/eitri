@@ -66,3 +66,15 @@ go test ./internal/tui -run xxx -bench BenchmarkCommittedCommitCost -benchmem -b
 ```
 
 The size-sweep builds N committed turns for N in {10, 100, 1000} and measures the marginal cost of committing one more. "Flat" means the marginal commit re-renders exactly the new turn's two committed units (its prompt + its answer) and nothing else, at every N — never the prior history. If a change re-derives prior units on commit, the marginal cost exceeds 2 and the excess grows with N, so the 1000-turn case flags the regression where a small fixture would not. The benchmark's alloc count should stay near zero and flat across N; growth with N is the same regression surfacing empirically.
+
+### Input-scoped memo invalidation
+
+Invalidation of the committed render memo is scoped to the inputs that actually feed it, so an in-place committed change never re-renders the whole history. An expansion toggle, a committed tool observation, or a block-focus marker move marks only the unit(s) whose flow draws the affected block (`invalidateCommittedUnit`); a width, theme, or expand/collapse-all change re-wraps everything and drops the whole memo (`invalidateCommittedMemo`). After every invalidation the memo must serve bytes a fresh full render would produce.
+
+The behavioral guard is in `internal/tui/committed_scoped_invalidation_test.go`:
+
+```sh
+go test ./internal/tui -run 'TestReasoningToggleRerendersOnlyItsUnit|TestToolToggleRerendersOnlyItsUnit'
+```
+
+The deterministic thresholds: an expansion toggle re-renders exactly the toggled block's unit (1 fresh committed render) and nothing else — the rest of the memo is served as-is; a width or theme change re-renders all committed units but the result stays byte-identical to a fresh full render (`assertLayoutMatchesFreshFullRender`). The size-sweep form (`TestScopedToggleCostFlatInHistorySize`, N in {10, 100, 1000}) proves a toggle's invalidation cost stays at exactly one unit regardless of prior-history length, the same flat-cost property under a different input. A regression that falls back to whole-memo drops makes these counts grow with N.
