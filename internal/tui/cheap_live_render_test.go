@@ -81,3 +81,50 @@ func TestRendererSwitchesToCheapOnlyForStreamingPanes(t *testing.T) {
 		t.Errorf("committed reasoning pane must keep glamour list bullets, got: %q", ansiStrip(committed))
 	}
 }
+
+// TestCommittedParityCheapRendererNeverLeaksIntoCommitted panes locks scratch
+// issue 03's byte-parity contract: a committed turn must render byte-identical
+// to the glamour path whether or not the cheap live renderer exists. The cheap
+// path is registered for exactly the two streaming pane ids; every committed,
+// error, and stopped pane id must render through glamour (renderPaneBodyFresh's
+// non-cheap branch), so a committed answer with the same text must not differ
+// from its own direct glamour render. The comparison is byte-for-byte on the
+// pane-wrapped body, the same bytes the transcript paints.
+func TestCommittedParityCheapRendererNeverLeaksIntoCommitted(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	th := themeFor(config.DefaultTheme)
+
+	sample := "A **bold** lead, a `code` span, and\n\n- a bullet list\n\nanother paragraph with *em* text."
+	const width = 80
+
+	md, err := RenderMarkdown(sample, width, config.DefaultTheme)
+	if err != nil {
+		t.Fatalf("RenderMarkdown: %v", err)
+	}
+
+	// The committed pane must equal a direct glamour render exactly. The fresh
+	// render path is the same function the live renderer dispatches through, so
+	// this also pins that the cheap branch runs ONLY for the streaming ids:
+	// every other pane goes through RenderMarkdown and must come out identical
+	// to full glamour, byte for byte.
+	for _, paneID := range []liveMarkdownPaneID{mdPaneThinking, mdPaneAgent, mdPaneError, mdPaneStopped} {
+		committed := renderPaneBodyFresh(sample, width, config.DefaultTheme, paneID, th)
+
+		want := th.paneStyleFor(paneID).Render(trimBody(md))
+		if committed != want {
+			t.Errorf("pane %d: committed render diverged from glamour\n got %q\nwant %q", paneID, committed, want)
+		}
+	}
+
+	// The streaming panes must NOT route through glamour: their body carries
+	// the cheap ANSI word-wrap (distinct bytes), so a regression that widens the
+	// cheap branch to a committed pane would fail the parity loop above.
+	cheap := renderPaneBodyFresh(sample, width, config.DefaultTheme, mdPaneStreamingThinking, th)
+	glam := th.paneStyleFor(mdPaneStreamingThinking).Render(trimBody(md))
+	if cheap == glam {
+		t.Errorf("streaming pane rendered through glamour; cheap live renderer lost")
+	}
+	if !hasSGRBold(cheap) {
+		t.Errorf("cheap streaming pane must still render bold as SGR, got %q", ansiStrip(cheap))
+	}
+}
