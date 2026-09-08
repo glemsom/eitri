@@ -352,6 +352,10 @@ func TestModel_themeSeam(t *testing.T) {
 	alt.accent = lipgloss.Color("#FF0000")
 	alt.agentPaneStyle = answerPane(alt.accent)
 	m.tx.theme = alt
+	// A theme swap re-wraps the committed history, so it must drop the
+	// committed render memo (the applySettings seam does this too) or the next
+	// idle layout would serve the old theme's bytes.
+	m.tx.invalidateCommittedMemo()
 	m.tx.layout.dirty = true
 
 	pane = lineContaining(view(m), "plain")

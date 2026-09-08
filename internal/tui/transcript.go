@@ -54,6 +54,17 @@ type Transcript struct {
 	// the busy+follow fast path renders only a bounded window, never the full
 	// committed prefix; recomputed alongside the prefix via lastNLines.
 	busyPrefixTail string
+	// units is the per-settled-message render memo: units[i] caches message i's
+	// rendered bytes (plus row accounting) so a commit renders only the new
+	// turn and concatenates the prior units. An entry is valid exactly while no
+	// settled-message byte changed since it was rendered: every in-place
+	// committed mutation drops the memo (invalidateCommittedMemo), while pure
+	// appends and live-tail-only activity leave it intact so the next extension
+	// renders only the gap.
+	units []committedUnit
+	// committedUnitRenders counts settled messages freshly rendered into the
+	// memo, letting tests prove a commit re-renders only its own turn.
+	committedUnitRenders int
 	// viewportStale marks the persisted histViewport stale after a busy+follow
 	// fast-path frame skipped it, so ensureViewportSynced re-feeds it before
 	// anything reads or scrolls.
@@ -77,6 +88,18 @@ type Transcript struct {
 
 type toolRowRange struct {
 	start, end, idx int
+}
+
+// committedUnit is the memo entry for one settled message: its rendered bytes,
+// the content rows (newline count) it occupies, and the tool-entry row ranges
+// in unit-local coordinates. recordLayout and the busy-prefix concat reassemble
+// the rendered text and both hit-test indexes by offsetting per unit, so a memo
+// of settled messages and a fresh full render produce identical bytes and
+// identical row accounting.
+type committedUnit struct {
+	text  string
+	lines int
+	rows  []toolRowRange
 }
 
 // msgRowRange maps a content-line span to the owning message, exposing a
@@ -134,6 +157,8 @@ func (t *Transcript) Reset() {
 	t.busyPrefix = ""
 	t.busyPrefixTail = ""
 	t.busyPrefixDirty = true
+	t.units = nil
+	t.committedUnitRenders = 0
 	t.viewportStale = false
 	t.histFollow = true
 	t.busy = false
@@ -257,6 +282,7 @@ func (t *Transcript) SetSize(width, height int) {
 	t.height = height
 	t.layout.dirty = true
 	t.busyPrefixDirty = true
+	t.invalidateCommittedMemo()
 }
 
 func (t *Transcript) applySettings(cfg config.Config) {
@@ -266,6 +292,7 @@ func (t *Transcript) applySettings(cfg config.Config) {
 	t.toolResultsExpanded = !cfg.ToolResultsCollapsedByDefault
 	t.layout.dirty = true
 	t.busyPrefixDirty = true
+	t.invalidateCommittedMemo()
 }
 
 // appendUserMsg appends a user message (a slash/skill/login activation prompt) to the transcript and marks the shared layout cache dirty in the same step, so callers never invalidate by hand around the append.
@@ -283,6 +310,7 @@ func (t *Transcript) setRailWidth(w int) {
 	t.railWidth = w
 	t.layout.dirty = true
 	t.busyPrefixDirty = true
+	t.invalidateCommittedMemo()
 }
 
 // renderPane renders the transcript + composer surface into the left pane.
@@ -405,14 +433,108 @@ func (t Transcript) busyTailIndex() int {
 	return 0
 }
 
-// renderBusyPrefix renders and caches the committed prefix. It must use
-// renderMessageRange so cached bytes match a fresh full render exactly;
-// committed tool entries use doneAt so the live clock does not invalidate
-// the cache.
-func (t *Transcript) renderBusyPrefix() {
+// invalidateCommittedMemo drops the per-settled-message render memo after an
+// in-place change to a settled message's bytes (an expansion toggle, a
+// width/theme change, a committed tool observation, or the block-focus marker
+// moving): the memo must never serve bytes a fresh full render would not
+// produce. Pure appends and live-tail-only activity do not call it, so a
+// commit extends the memo instead of re-rendering prior units.
+func (t *Transcript) invalidateCommittedMemo() {
+	t.units = nil
+	// The single-slot markdown cache holds committed-history pane bytes keyed on
+	// the same render inputs (text/width/theme/pane) as the memo. When a
+	// committed input changes — including a direct theme swap that leaves the
+	// configTheme key unchanged — a memo rebuild must not be served stale bytes,
+	// so drop the slot alongside the memo.
+	t.liveMarkdownCache = liveMarkdownCache{}
+}
+
+// committedEmission renders settled message i exactly as the history loop
+// emits it — a you message's prompt card, or a committed eitri message's flat
+// event-log flow. It is the single settled-message emitter shared by the
+// committed memo and renderMessageRange's settled branch, so memoized units
+// cannot drift from a fresh full render. anchor is the owning turn's prompt
+// index the flow's tool entries index against; it is irrelevant for a prompt
+// card. Committed units carry no live clock: now stays zero, so a settled
+// entry's elapsed timer reads from its fixed doneAt rather than advancing, and
+// the bytes are a pure function of the settled snapshot, width, theme, and
+// expansion — never of when they were rendered. It returns the text, the
+// tool-entry row ranges in message-local coordinates, and the content rows
+// (newline count) it occupies.
+func (t *Transcript) committedEmission(i, anchor int) (string, []toolRowRange, int) {
 	var b strings.Builder
-	t.renderMessageRange(&b, nil, nil, 0, t.busyTailIndex(), true, false)
-	t.busyPrefix = b.String()
+	nl := 0
+	emit := func(s string) {
+		b.WriteString(s)
+		nl += strings.Count(s, "\n")
+	}
+	var rows []toolRowRange
+	msg := t.messages[i]
+	if msg.role == "you" {
+		w := t.transcriptWidth()
+		md, _ := RenderPromptMarkdown(msg.content, w-4, t.configTheme)
+		emit(renderUserPromptCard(t.theme, md, w) + "\n")
+	} else if len(msg.events) > 0 {
+		base := nl
+		block, rrows := t.renderEventFlow(msg.events, anchor, msg, i, time.Time{})
+		emit(block)
+		for _, r := range rrows {
+			rows = append(rows, toolRowRange{start: base + r.start, end: base + r.end, idx: r.idx})
+		}
+	}
+	return b.String(), rows, nl
+}
+
+// ensureCommittedUnits makes the committed memo cover the settled messages
+// [0, cover): it renders only the units not yet materialized. A memo dropped by
+// a committed mutation re-renders from the first settled message; a valid memo
+// extends only over newly committed messages — so a commit renders only the new
+// turn and prior units come from the memo, never re-derived. The anchor scan
+// resumes from the memo length so the tool pairing cannot drift across
+// extensions.
+func (t *Transcript) ensureCommittedUnits(cover int) {
+	if cover > len(t.messages) {
+		cover = len(t.messages)
+	}
+	anchor := -1
+	for i := 0; i < len(t.units) && i < len(t.messages); i++ {
+		if t.messages[i].role == "you" {
+			anchor = i
+		}
+	}
+	for len(t.units) < cover {
+		i := len(t.units)
+		text, rows, lines := t.committedEmission(i, anchor)
+		t.units = append(t.units, committedUnit{text: text, lines: lines, rows: rows})
+		t.committedUnitRenders++
+		if t.messages[i].role == "you" {
+			anchor = i
+		}
+	}
+}
+
+// unitsText concatenates the memoized committed-unit bytes in [lo, hi), the
+// committed side of the busy-prefix concatenation.
+func (t *Transcript) unitsText(lo, hi int) string {
+	if lo >= hi {
+		return ""
+	}
+	var b strings.Builder
+	for i := lo; i < hi && i < len(t.units); i++ {
+		b.WriteString(t.units[i].text)
+	}
+	return b.String()
+}
+
+// renderBusyPrefix renders and caches the committed prefix. It is served as a
+// concatenation of the per-settled-message memo units (see ensureCommittedUnits)
+// so a new turn's Begin concatenates the prior committed units without
+// re-rendering them; committed tool entries use doneAt so the live clock does
+// not invalidate the cache.
+func (t *Transcript) renderBusyPrefix() {
+	cover := t.busyTailIndex()
+	t.ensureCommittedUnits(cover)
+	t.busyPrefix = t.unitsText(0, cover)
 	t.busyPrefixTail = lastNLines(t.busyPrefix, followWindowLines)
 	t.busyPrefixDirty = false
 }
@@ -493,29 +615,38 @@ func (t *Transcript) renderMessageRange(b *strings.Builder, toolRows *[]toolRowR
 	for i := startMsg; i < endMsg; i++ {
 		msg := t.messages[i]
 		msgStart := nl // content row where this message's block begins
-		w := t.transcriptWidth()
 
-		if msg.role == "you" {
+		switch {
+		case t.busy && msg.role == "you" && t.isLiveTurnPrompt(i):
+			// The running turn renders as a flat flow from the moment the prompt
+			// lands: its prompt card plus the in-progress timeline — tools appear
+			// at their arrival positions once events arrive; the pre-stream gap
+			// renders the synthesized minimal (empty) log. There is no fallback
+			// render path.
 			anchor = i
-			md, _ := RenderPromptMarkdown(msg.content, w-4, t.configTheme)
-			bubble := renderUserPromptCard(t.theme, md, w)
-			emit(bubble + "\n")
-			if t.isLiveTurnPrompt(i) {
-				// The running turn renders as a flat flow from the moment the
-				// prompt lands: its tools appear at their arrival positions once
-				// events arrive; the pre-stream gap renders the synthesized
-				// minimal (empty) log. There is no fallback render path.
-				flow, _ := t.turnFlowEvents(i)
-				emitFlow(flow, anchor, i, message{})
-			}
-		} else if len(msg.events) > 0 {
-			// Committed turn: walk its typed event log as one continuous flow
-			// through the shared FlowRenderer emitter.
-			emitFlow(msg.events, anchor, i, msg)
-		} else if t.busy && msg.streaming && len(t.LiveTimeline()) > 0 {
+			card, _, _ := t.committedEmission(i, i)
+			emit(card)
+			flow, _ := t.turnFlowEvents(i)
+			emitFlow(flow, anchor, i, message{})
+		case t.busy && msg.streaming && len(t.LiveTimeline()) > 0:
 			// Live turn: walk the in-progress timeline as one continuous flow
 			// through the shared FlowRenderer emitter.
 			emitFlow(t.LiveTimeline(), anchor, i, msg)
+		default:
+			// Settled message — committed history, an appended note, or a
+			// non-streaming turn. It emits through the shared settled emitter
+			// (the same one the committed memo stores), so the loop and the memo
+			// can never drift.
+			if msg.role == "you" {
+				anchor = i
+			}
+			text, rows, _ := t.committedEmission(i, anchor)
+			emit(text)
+			if toolRows != nil {
+				for _, r := range rows {
+					*toolRows = append(*toolRows, toolRowRange{start: msgStart + r.start, end: msgStart + r.end, idx: r.idx})
+				}
+			}
 		}
 
 		if msgRows != nil {
@@ -784,11 +915,39 @@ func (t *Transcript) ensureLayout() {
 // same builder, storing both indexes and clearing dirty.
 func (t *Transcript) recordLayout() {
 	l := &t.layout
-	var hist strings.Builder
 	l.rows = l.rows[:0]
 	l.msgs = l.msgs[:0]
-	t.renderHistory(&hist, &l.rows, &l.msgs)
-	l.rendered = hist.String()
+
+	if t.busy {
+		// The live tail (the running prompt's flow and its streaming reply) is
+		// not memoizable, so a busy record — forced by a mouse hit-test or drag
+		// while a turn runs — renders the whole current state through the
+		// history loop, as before.
+		var hist strings.Builder
+		t.renderHistory(&hist, &l.rows, &l.msgs)
+		l.rendered = hist.String()
+	} else {
+		// Idle: serve the committed history from the per-message memo. A commit
+		// extends the memo over only the new turn's units and concatenates the
+		// prior ones, so long-session commits stay bounded by the new turn
+		// rather than re-rendering the whole history.
+		t.ensureCommittedUnits(len(t.messages))
+		var hist strings.Builder
+		if len(t.messages) == 0 {
+			hist.WriteString(idleWelcome(t.theme))
+		}
+		row := 0
+		for i, u := range t.units {
+			for _, r := range u.rows {
+				l.rows = append(l.rows, toolRowRange{start: row + r.start, end: row + r.end, idx: r.idx})
+			}
+			l.msgs = append(l.msgs, msgRowRange{start: row, end: row + u.lines - 1, idx: i})
+			hist.WriteString(u.text)
+			row += u.lines
+		}
+		l.rendered = hist.String()
+	}
+
 	l.renderedLines = strings.Split(l.rendered, "\n")
 	l.plain = l.plain[:0]
 	for _, line := range l.renderedLines {
@@ -809,6 +968,7 @@ func (t *Transcript) toggleToolEntry(idx int) {
 	}
 	t.layout.dirty = true // an entry expanded/collapsed changes its rendered rows
 	t.busyPrefixDirty = true
+	t.invalidateCommittedMemo()
 }
 
 // onToolCard reports whether the given content line falls inside any tool
@@ -870,6 +1030,7 @@ func (t *Transcript) applyTool(u ToolUpdate) {
 	t.layout.dirty = true
 	if i >= 0 && t.toolEntryIsCommitted(i) {
 		t.busyPrefixDirty = true
+		t.invalidateCommittedMemo()
 	}
 }
 
@@ -922,6 +1083,7 @@ func (t *Transcript) setExpandAll(v bool) {
 	}
 	t.layout.dirty = true // showing/hiding blocks re-wraps the transcript
 	t.busyPrefixDirty = true
+	t.invalidateCommittedMemo()
 }
 
 // setCollapseAll enters or leaves the collapse-all-to-hints mode: every
@@ -936,6 +1098,7 @@ func (t *Transcript) setCollapseAll(v bool) {
 	}
 	t.layout.dirty = true // collapsing/hiding blocks re-wraps the transcript
 	t.busyPrefixDirty = true
+	t.invalidateCommittedMemo()
 }
 
 // clearCollapseForces drops every per-block force-collapse flag so the
@@ -1057,9 +1220,14 @@ func reasoningFragments(events []TimelineEvent) []string {
 
 // focusNext advances the block focus to the next collapsible block, wrapping;
 // the first Tab activates the focus cursor on the first block; a transcript
-// with no collapsible blocks stays unfocused.
+// with no collapsible blocks stays unfocused. Moving the cursor changes the
+// focus marker baked into every committed unit's bytes, so it drops the memo:
+// the next commit (or busy frame) re-renders units at the new cursor rather
+// than serving stale markers. T3 scopes this to the focused block alone.
 func (t *Transcript) focusNext() {
 	t.focus.focusNext(len(t.collapsibleBlocks()))
+	t.busyPrefixDirty = true
+	t.invalidateCommittedMemo()
 }
 
 // focused returns the block currently under the focus cursor.
@@ -1147,6 +1315,7 @@ func (t *Transcript) toggleThinkingFragment(i, fragIdx int) {
 	e.set(blockReasoning, fragIdx, !t.thinkingExpandedForFragment(t.messages[i], fragIdx))
 	t.layout.dirty = true // one fragment expanded/collapsed changes its rendered rows
 	t.busyPrefixDirty = true
+	t.invalidateCommittedMemo()
 }
 
 // clearReasoningFragments drops the per-fragment reasoning forces of message i
