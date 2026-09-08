@@ -162,6 +162,15 @@ func (c *liveMarkdownCache) renderPaneBody(text string, width int, theme string,
 // windowed text changed (cache key miss); an unchanged re-glam cannot happen
 // through the cache front door.
 func renderPaneBodyFresh(text string, width int, theme string, paneID liveMarkdownPaneID, th Theme) string {
+	// Streaming reasoning/answer panes render their body with the cheap ANSI
+	// word-wrap instead of the full glamour+goldmark pipeline: a live block
+	// re-renders its tail every delta, so per-delta cost must drop by an order
+	// of magnitude (scratch issue 02). Committed, error, and stopped panes keep
+	// the full glamour render so committed output does not diverge.
+	if paneID == mdPaneStreamingThinking || paneID == mdPaneStreaming {
+		pane := th.paneStyleFor(paneID)
+		return pane.Render(renderCheapLiveBody(text, width))
+	}
 	md, _ := RenderMarkdown(text, width, theme)
 	pane := th.paneStyleFor(paneID)
 	return pane.Render(trimBody(md))
