@@ -50,3 +50,19 @@ benchstat old.txt new.txt
 Use `benchstat` for statistical comparison rather than eyeballing raw nanosecond deltas. If pprof shows hot work inside a render seam, pair the benchmark run with a CPU profile so the profile and the numbers point at the same code path.
 
 Existing render benchmarks remain the starting point. Add a new benchmark only when the existing ones cannot express the seam you changed.
+
+### Committed-history render-cost guard
+
+A long conversation must not cost more per turn just because history is long. The committed render memo (`Transcript.units`) makes committing a new turn render only that turn and serve the prior units from the memo, so per-turn commit cost stays flat in prior-history length instead of re-rendering (and re-wrapping) the whole transcript each commit — the quadratic crawl this memo exists to remove.
+
+The regression guard for that property is the size-sweep in `internal/tui/committed_render_cost_test.go`:
+
+```sh
+# deterministic threshold, runs in the normal test suite
+go test ./internal/tui -run TestCommittedCommitCostFlatInHistorySize
+
+# empirical wall-clock / allocation surface
+go test ./internal/tui -run xxx -bench BenchmarkCommittedCommitCost -benchmem -benchtime 30x
+```
+
+The size-sweep builds N committed turns for N in {10, 100, 1000} and measures the marginal cost of committing one more. "Flat" means the marginal commit re-renders exactly the new turn's two committed units (its prompt + its answer) and nothing else, at every N — never the prior history. If a change re-derives prior units on commit, the marginal cost exceeds 2 and the excess grows with N, so the 1000-turn case flags the regression where a small fixture would not. The benchmark's alloc count should stay near zero and flat across N; growth with N is the same regression surfacing empirically.

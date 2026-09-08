@@ -27,7 +27,7 @@ func memoTestTx() *Transcript {
 // commitTurn drives one full streaming+commit turn through the TurnSession
 // verbs and renders the settled transcript (idle) so the committed memo has to
 // materialize the new turn's units.
-func commitTurn(t *testing.T, tx *Transcript, prompt, answer string) {
+func commitTurn(t testing.TB, tx *Transcript, prompt, answer string) {
 	t.Helper()
 	s := NewTurnSession(stubTurn(answer, nil))
 	cmd := s.Begin(tx, prompt, "")
