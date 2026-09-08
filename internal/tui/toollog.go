@@ -92,8 +92,13 @@ func (l *toolLog) SetStart(i int, t time.Time) {
 	l.entries[i].startedAt = t
 }
 
-// Apply folds one tool-call observation into the log: a Start appends a fresh incomplete entry anchored to the current turn; a Result pairs back to the most recent not-yet-complete entry for that tool name and fills in its result/compression/line-delta metadata and marks it complete.
-func (l *toolLog) Apply(u ToolUpdate) {
+// Apply folds one tool-call observation into the log and returns the log index
+// of the entry the observation touched (-1 when nothing matched). A Start
+// appends a fresh incomplete entry anchored to the current turn; a Result pairs
+// back to the most recent not-yet-complete entry for that tool name and fills in
+// its result/compression/line-delta metadata and marks it complete. The index
+// lets the Transcript scope invalidation by the touched entry's anchor.
+func (l *toolLog) Apply(u ToolUpdate) int {
 	if u.Start != nil {
 		// A Start appends a fresh incomplete entry; the completed-entry memo is
 		// left alone because toolLog entries are append-only, so earlier indexes
@@ -106,7 +111,7 @@ func (l *toolLog) Apply(u ToolUpdate) {
 			anchor:    l.curAnchor,
 			startedAt: time.Now(),
 		})
-		return
+		return len(l.entries) - 1
 	}
 	if u.Result != nil {
 		for i := len(l.entries) - 1; i >= 0; i-- {
@@ -120,10 +125,11 @@ func (l *toolLog) Apply(u ToolUpdate) {
 				l.entries[i].complete = true
 				l.initCache()
 				delete(l.entryCache.m, i) // the completed entry re-renders once with its filled result
-				return
+				return i
 			}
 		}
 	}
+	return -1
 }
 
 // Expand pins one entry force-expanded on the seam so the per-block toggle can

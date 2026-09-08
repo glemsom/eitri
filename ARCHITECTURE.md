@@ -102,7 +102,7 @@ Zero-LLM compression at the tool-result boundary: ANSI stripping, a 500-line cap
 Bubbletea v2 / lipgloss v2. The largest package; organized as small single-owner modules around a `Model` that delegates rather than accumulates state:
 
 - `model.go` — the bubbletea model: wires the composer, transcript, rail, and turn session together.
-- `transcript.go` — the single owner of the scrolling rendered transcript region (layout, scroll, follow, render).
+- `transcript.go` — the single owner of the scrolling rendered transcript region (layout, scroll, follow, render). It splits invalidation into two tiers: `layout.dirty` marks a render-visible change (stream deltas and tool observations included), while `busyPrefixDirty` marks a genuine committed-history change (turn commit, user append, expansion toggle, resize, theme change, or a tool observation landing on a committed turn). Live-only activity — per-delta stream snapshots, live tool observations on the running turn, and idle/timer/clock frames — dirties only the former, so a long, tool-heavy live turn never forces a full committed-history rebuild.
 - `composer.go`, `completion_menu.go`, `mention.go`, `prompt_history.go` — input, completion, history recall.
 - `turn_session.go` — the owner of one run's lifecycle: cancelable per-turn context, stop (`ErrStopped`), stream cursor, commit-to-transcript on settle. `turn_runtime.go` layers live event acceptance (run-ID-based stale-event rejection) on top; `turnflow.go`, `fold.go`, `phase.go` project engine events into the visual timeline.
 - `internal/tui/livekey` — the live session key holder (`LiveSessionKey`), a compiler-enforced single-owner leaf: a mutable reference so `/new` re-mints the GUID and every surface observes it at the next turn boundary.

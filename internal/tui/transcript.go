@@ -377,10 +377,12 @@ func (t *Transcript) renderPaneContent() string {
 		return t.layout.rendered
 	}
 	// Busy: stream snapshots mark the message layout dirty each delta, but they
-	// never touch the committed prefix. Only committed-history mutations
-	// (appends, tool changes, toggles, resize) set busyPrefixDirty, so across a
-	// reasoning/answer burst the prefix renders once and each delta re-renders
-	// only the trailing live turn.
+	// never touch the committed prefix. Only genuine committed-history mutations
+	// (appends, expansion toggles, resize, theme change, or a tool observation
+	// on a committed turn) set busyPrefixDirty; live tool observations on the
+	// running turn and per-delta snapshots do not, so across a reasoning/answer
+	// burst or a tool-heavy turn the prefix renders once and each delta
+	// re-renders only the trailing live turn.
 	if t.busyPrefixDirty || t.busyPrefix == "" {
 		t.renderBusyPrefix()
 	}
@@ -857,11 +859,33 @@ func (t *Transcript) syncStreamSnapshots(i int, content, reasoning string) {
 	t.layout.dirty = true
 }
 
-// applyTool routes one tool observation into the tool log and marks the shared layout cache dirty in the same step: an entry changes the tool log's rendered rows.
+// applyTool routes one tool observation into the tool log and marks the layout
+// caches dirty in the same step: an entry changes the tool log's rendered rows.
+// The committed-prefix cache is invalidated only when the observation touches a
+// committed entry — a tool landing on the running turn's own log is live-only
+// (it renders in the live tail), so a tool-heavy live turn never forces a
+// full-history prefix rebuild per observation.
 func (t *Transcript) applyTool(u ToolUpdate) {
-	t.log.Apply(u)
+	i := t.log.Apply(u)
 	t.layout.dirty = true
-	t.busyPrefixDirty = true
+	if i >= 0 && t.toolEntryIsCommitted(i) {
+		t.busyPrefixDirty = true
+	}
+}
+
+// toolEntryIsCommitted reports whether the tool-log entry at index i is part of
+// the committed history whose rebuild busyPrefixDirty gates. While a turn runs,
+// an entry anchored to the running turn's prompt renders in the live tail, so a
+// change to it is live-only; an entry anchored before the live tail — or any
+// entry when no turn runs — is a genuine committed-unit change.
+func (t Transcript) toolEntryIsCommitted(i int) bool {
+	if i < 0 || i >= len(t.log.entries) {
+		return false
+	}
+	if !t.busy {
+		return true
+	}
+	return t.log.entries[i].anchor < t.busyTailIndex()
 }
 
 // endTurn clears the busy state after a completed turn and marks the shared layout cache dirty, so completion-time message finalization re-wraps without caller-side invalidation.
