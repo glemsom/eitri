@@ -1,8 +1,11 @@
 package tools
 
 import (
+	"context"
 	"strings"
 	"testing"
+
+	"github.com/glemsom/eitri/internal/compress"
 )
 
 func TestBashDescriptionGuidance(t *testing.T) {
@@ -53,6 +56,31 @@ func TestYoloBashDescriptionOmitsSandboxClaim(t *testing.T) {
 	}
 	if !strings.Contains(folded, "host") && !strings.Contains(folded, "direct") {
 		t.Fatalf("yolo bash description must state it runs directly on the host: %s", desc)
+	}
+}
+
+// fakeBackend stubs the sandbox boundary so a bash tool run is testable without bwrap.
+type fakeBackend struct {
+	out *Output
+	err error
+}
+
+func (f fakeBackend) Run(_ context.Context, _ string) (*Output, error) { return f.out, f.err }
+func (fakeBackend) setTempHost(string)                                 {}
+
+func TestBashToolReportsSandboxDroppedBytes(t *testing.T) {
+	t.Parallel()
+	const upstream = 8<<20 - compress.DefaultByteCap
+	b := &bashTool{backend: fakeBackend{out: &Output{
+		Stdout:  strings.Repeat("payload line\n", 200),
+		Dropped: upstream,
+	}}}
+	res, err := b.Run(context.Background(), map[string]any{"command": "true"})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if res.BytesDropped != upstream {
+		t.Fatalf("ToolResult.BytesDropped = %d, want %d (the sandbox's rejected bytes must ride with the result so the byte cap can fold them into one count)", res.BytesDropped, upstream)
 	}
 }
 

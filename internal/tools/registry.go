@@ -22,6 +22,11 @@ type ToolResult struct {
 	Text       string
 	Compressed bool
 	Dropped    int
+
+	// BytesDropped is the count of bytes an upstream memory bound (the sandbox
+	// buffer) already rejected from this result's stream; the engine's byte cap
+	// folds it into the single authoritative truncation marker.
+	BytesDropped int
 }
 
 type Tool interface {
