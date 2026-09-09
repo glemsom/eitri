@@ -205,6 +205,13 @@ type Model struct {
 	// started from an empty draft.
 	histIdx   int
 	histDraft string
+
+	// faceDirty marks the kitty face as needing (re)upload. It is set only by
+	// damage that actually moves or resizes the face (boot/terminal resize,
+	// rail-width change, theme change, live turn events) and cleared by the
+	// upload attempt itself, so an idle model uploads the face once and then
+	// stops: the 50 ms faceDrawTick loop only runs while dirty.
+	faceDirty bool
 }
 
 // newModelHistory builds the Model's prompt-history ring: file-backed when a
@@ -368,6 +375,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.tx.SetSize(msgi.Width, msgi.Height)
 		m.syncWidths()
+		// Any size change moves the face on screen; the boot-time resize is what
+		// triggers the single idle upload.
+		m.faceDirty = true
 		if m.settings != nil {
 			next, cmd := m.updateSettings(msgi)
 			return next, cmd
@@ -477,10 +487,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Non-slash draft: fall through to the textarea, which handles the tab.
 		case "ctrl+x":
 			m.adjustRailWidth(-2)
-			return m, nil
+			m, cmd := m.markFaceDamage()
+			return m, cmd
 		case "ctrl+z":
 			m.adjustRailWidth(+2)
-			return m, nil
+			m, cmd := m.markFaceDamage()
+			return m, cmd
 		}
 		// While a turn streams the composer sits behind the forge panel with no
 		// caret, so editing it would type into an invisible draft that resurfaces
@@ -514,7 +526,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, clockTick()
 
 	case faceDrawMsg:
-		return m, m.drawFaceCmd()
+		m, cmd := m.drawFaceCmd()
+		return m, cmd
 
 	case spinnerTickMsg:
 		if !m.tx.busy || !motionEnabled() {
@@ -911,22 +924,43 @@ func telemetryWait(te *telemetry.Telemetry) tea.Cmd {
 }
 
 func (m Model) queueFaceDrawCmd() tea.Cmd {
-	if !m.canDrawFace() {
+	if !m.faceNeedsDraw() {
 		return nil
 	}
 	return faceDrawTick()
 }
 
-func (m Model) drawFaceCmd() tea.Cmd {
-	if !m.canDrawFace() {
-		return nil
+// markFaceDamage records that the face's placement or size may have changed
+// and returns the model plus the command that (re)uploads it once the canvas
+// is drawable. Dropping the returned command is safe: the flag itself survives
+// on the returned model, so a later damage path can still arm the upload.
+func (m Model) markFaceDamage() (Model, tea.Cmd) {
+	m.faceDirty = true
+	return m, m.queueFaceDrawCmd()
+}
+
+// faceNeedsDraw reports whether the face carries unrendered damage on a
+// canvas that can show it.
+func (m Model) faceNeedsDraw() bool {
+	return m.faceDirty && m.canDrawFace()
+}
+
+// drawFaceCmd uploads the kitty face when damage demands it and the canvas
+// exists, returning the model with the face marked clean after the attempt. A
+// stray tick with a clean face is a no-op, so an idle model never re-uploads;
+// an upload the terminal cannot display (no kitty graphics, unwritable scratch
+// PNG) is also final, so the flag never sticks true between damage events.
+func (m Model) drawFaceCmd() (Model, tea.Cmd) {
+	if !m.faceNeedsDraw() {
+		return m, nil
 	}
 	railWidth := m.tx.railWidthOrDefault()
 	seq := kittyFaceUpload(railWidth)
+	m.faceDirty = false
 	if seq == "" {
-		return nil
+		return m, nil
 	}
-	return tea.Raw(seq)
+	return m, tea.Raw(seq)
 }
 
 func (m Model) canDrawFace() bool {
@@ -952,5 +986,9 @@ func (m Model) applyEvent(update Event) (tea.Model, tea.Cmd) {
 		m.runtime.Observe(m.tx, update)
 	}
 	m.runtime.DrainReady(m.tx)
-	return m, tea.Batch(m.queueFaceDrawCmd(), m.runtime.Wait())
+	// A live turn's deltas can re-layout the rail and move the face's placement
+	// under follow, so every event is face damage while the turn streams; once
+	// the feed quiets the loop dies with the clean flag.
+	m, cmd := m.markFaceDamage()
+	return m, tea.Batch(cmd, m.runtime.Wait())
 }

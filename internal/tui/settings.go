@@ -739,6 +739,9 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch res.outcome {
 	case outcomeClosed:
 		m.settings = nil
+		// Closing the overlay can reveal a face made dirty by the session's
+		// last save; arm its upload so the theme/rail-width change lands.
+		return m, tea.Batch(res.cmd, m.queueFaceDrawCmd())
 	case outcomeSaved:
 		if res.applied {
 			m.feedback = successFeedback(res.status)
@@ -748,12 +751,24 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.feedback = neutralFeedback(res.status)
 		}
 		if res.applied {
+			// Only changes the face actually renders at are damage: its theme
+			// styling and the rail width it derives its column count from (rail
+			// width has no settings knob; ctrl+x/z own it, and an unset width
+			// resolves to the default like the transcript does).
+			savedRailWidth := res.saved.RailWidth
+			if savedRailWidth == 0 {
+				savedRailWidth = defaultRailWidth
+			}
+			faceChanged := res.saved.Theme != m.tx.configTheme || savedRailWidth != m.tx.railWidthOrDefault()
 			m.deps.Config = *res.saved
 			m.tx.applySettings(*res.saved)
 			m.tx.reasoningEffort = res.saved.ReasoningEffort
 			m.runtime.SetThinkingEnabled(res.saved.ThinkingEnabled)
 			if m.deps.Rail != nil {
 				m.deps.Rail.ApplyConfig(*res.saved)
+			}
+			if faceChanged {
+				m.faceDirty = true
 			}
 		}
 	}
