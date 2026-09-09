@@ -12,10 +12,11 @@ import (
 	"github.com/glemsom/eitri/internal/compress"
 )
 
-// Output is the result of a sandboxed command: separated stdout/stderr so callers can decide how to combine them (the bash tool returns combined output for token efficiency).
+// Output is the result of a sandboxed command: separated stdout/stderr so callers can decide how to combine them (the bash tool returns combined output for token efficiency). Dropped counts the bytes each stream produced beyond its retention bound; it is carried (not rendered) so the downstream byte cap can fold it into one authoritative truncation count.
 type Output struct {
-	Stdout string
-	Stderr string
+	Stdout  string
+	Stderr  string
+	Dropped int
 }
 
 // RunSpec is a fully-resolved system call a backend wants to execute: the
@@ -55,7 +56,7 @@ func (defaultRunner) Run(ctx context.Context, spec RunSpec) (*Output, error) {
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	err := cmd.Run()
-	return &Output{Stdout: stdout.String(), Stderr: stderr.String()}, err
+	return &Output{Stdout: stdout.String(), Stderr: stderr.String(), Dropped: stdout.Dropped() + stderr.Dropped()}, err
 }
 
 type boundedBuffer struct {
@@ -77,20 +78,12 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 }
 
 func (b *boundedBuffer) String() string {
-	if b.total <= b.limit {
-		return string(b.buf)
-	}
+	return string(b.buf)
+}
 
-	dropped := b.total - b.limit
-	for {
-		marker := fmt.Sprintf("+%d bytes truncated\n", dropped)
-		keep := b.limit - len(marker)
-		actual := b.total - keep
-		if actual == dropped {
-			return string(b.buf[:keep]) + marker
-		}
-		dropped = actual
-	}
+// Dropped reports how many stream bytes the buffer rejected past its retention limit.
+func (b *boundedBuffer) Dropped() int {
+	return b.total - len(b.buf)
 }
 
 // Sandbox runs shell commands inside the bubblewrap cage.

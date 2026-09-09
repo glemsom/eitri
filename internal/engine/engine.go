@@ -165,13 +165,19 @@ func (e *Engine) finishStopped(res Result, prompt string, runID, turn int) {
 	}
 }
 
-// ToolExecutor executes an agent tool call.
+// ToolExecResult is one tool call's outcome as the engine sees it.
 type ToolExecResult struct {
 	Text       string
 	Compressed bool
 	Dropped    int
+
+	// BytesDropped is the count of bytes an upstream memory bound (the sandbox
+	// buffer) already rejected from the result's stream; the engine's byte cap
+	// folds it into the single authoritative truncation marker.
+	BytesDropped int
 }
 
+// ToolExecutor executes an agent tool call.
 type ToolExecutor interface {
 	Execute(ctx context.Context, name string, argsJSON string) (ToolExecResult, error)
 }
@@ -382,7 +388,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 			}
 			e.emit(ToolCallEvent{RunID: runID, Turn: turn, ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments})
 			result := execToolCall(ctx, opts, tc)
-			delivered, dropped := compress.CapBytes(result.Text, compress.DefaultByteCap, result.Dropped)
+			delivered, dropped := compress.CapBytes(result.Text, compress.DefaultByteCap, result.Dropped, result.BytesDropped)
 			e.emit(newToolResultEvent(runID, turn, tc.ID, tc.Name, result, dropped))
 			messages = append(messages, provider.Message{
 				Role:       provider.RoleTool,
@@ -432,7 +438,7 @@ func execToolCall(ctx context.Context, opts AgentOptions, tc provider.ToolCall) 
 		if result.Text != "" {
 			msg += "\n" + result.Text
 		}
-		return ToolExecResult{Text: msg, Compressed: result.Compressed, Dropped: result.Dropped}
+		return ToolExecResult{Text: msg, Compressed: result.Compressed, Dropped: result.Dropped, BytesDropped: result.BytesDropped}
 	}
 	return result
 }

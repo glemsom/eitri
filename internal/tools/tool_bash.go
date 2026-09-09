@@ -60,10 +60,10 @@ func (b *bashTool) Run(ctx context.Context, args map[string]any) (ToolResult, er
 		if o == nil {
 			return ToolResult{}, err
 		}
-		return ToolResult{Text: o.Combined()}, err
+		return ToolResult{Text: o.Combined(), BytesDropped: o.Dropped}, err
 	}
 	text, compressed, dropped := compress.CompressResult(o.Combined())
-	return ToolResult{Text: text, Compressed: compressed, Dropped: dropped}, nil
+	return ToolResult{Text: text, Compressed: compressed, Dropped: dropped, BytesDropped: o.Dropped}, nil
 }
 
 // Combined returns stdout then stderr joined, prioritizing stdout for token efficiency while keeping stderr visible.

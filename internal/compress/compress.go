@@ -65,9 +65,9 @@ func itoa(i int) string {
 	return string(digits)
 }
 
-// CapBytes deterministically caps a tool-result draft to a byte budget at the tool-result boundary: over-budget drafts are head-truncated to the budget and an explicit marker line announcing how many bytes were dropped is appended — never silent.
-func CapBytes(draft string, budget int, linesDropped int) (delivered string, dropped int) {
-	if len(draft) <= budget {
+// CapBytes deterministically caps a tool-result draft to a byte budget at the tool-result boundary: over-budget drafts are head-truncated to the budget and an explicit marker line announcing how many bytes were dropped is appended — never silent. upstreamDropped is the count of bytes an earlier memory bound (the sandbox buffer) already rejected; it folds into the one authoritative marker so the final count is never clipped, under-reported, or doubled.
+func CapBytes(draft string, budget int, linesDropped int, upstreamDropped int) (delivered string, dropped int) {
+	if len(draft) <= budget && upstreamDropped == 0 {
 		return draft, 0
 	}
 
@@ -80,9 +80,10 @@ func CapBytes(draft string, budget int, linesDropped int) (delivered string, dro
 		}
 	}
 
-	plainMarker := "+" + itoa(len(draft)) + " bytes truncated\n"
-	markerReserve := len(merger) + len(plainMarker)
-	keep := budget - len(merger) - markerReserve
+	// Reserve marker space for the worst case (every draft byte plus the upstream
+	// drop), then keep as much of the head as fits the budget.
+	markerReserve := len(merger) + len("+"+itoa(upstreamDropped+len(draft))+" bytes truncated\n")
+	keep := budget - markerReserve
 	if keep < 0 {
 		keep = 0
 	}
@@ -90,12 +91,12 @@ func CapBytes(draft string, budget int, linesDropped int) (delivered string, dro
 		keep = len(draft)
 	}
 
-	for keep > 0 && !utf8.RuneStart(draft[keep]) {
+	for keep > 0 && keep < len(draft) && !utf8.RuneStart(draft[keep]) {
 		keep--
 	}
 
 	head := draft[:keep]
-	dropped = len(draft) - keep
+	dropped = upstreamDropped + len(draft) - keep
 
 	var b strings.Builder
 	b.Grow(budget)

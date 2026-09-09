@@ -293,11 +293,54 @@ func TestDefaultRunnerBoundsLongRunningCommandOutput(t *testing.T) {
 		t.Fatalf("Run() error = %v, want nil", err)
 	}
 	for name, got := range map[string]string{"stdout": o.Stdout, "stderr": o.Stderr} {
-		if len(got) > compress.DefaultByteCap {
-			t.Errorf("%s retained %d bytes, want at most %d", name, len(got), compress.DefaultByteCap)
+		if len(got) != compress.DefaultByteCap {
+			t.Errorf("%s retained %d bytes, want exactly %d (the memory bound keeps the full head)", name, len(got), compress.DefaultByteCap)
 		}
-		if !strings.HasSuffix(got, "+8323097 bytes truncated\n") {
-			t.Errorf("%s missing exact truncation marker; tail = %q", name, got[max(0, len(got)-40):])
+		if strings.Contains(got, "bytes truncated") {
+			t.Errorf("%s carries a text truncation marker; the sandbox buffer must not report (the compress byte cap is the single authority), tail = %q", name, got[max(0, len(got)-40):])
 		}
+	}
+	// Each stream emitted 8 MiB; the buffer rejected everything past the 64 KiB head.
+	if want := 2 * (emitted - compress.DefaultByteCap); o.Dropped != want {
+		t.Errorf("Output.Dropped = %d, want %d (both streams' rejected bytes)", o.Dropped, want)
+	}
+}
+
+func TestBoundedBufferAtLimitRetainsVerbatim(t *testing.T) {
+	t.Parallel()
+	buf := newBoundedBuffer(64)
+	payload := strings.Repeat("x", 64)
+	if _, err := buf.Write([]byte(payload)); err != nil {
+		t.Fatalf("Write() error = %v", err)
+	}
+	if got := buf.String(); got != payload {
+		t.Fatalf("at-limit String() = %d bytes, want the full %d-byte payload retained", len(got), len(payload))
+	}
+	if got := buf.Dropped(); got != 0 {
+		t.Fatalf("Dropped() = %d at the limit, want 0", got)
+	}
+
+	if _, err := buf.Write([]byte("y")); err != nil {
+		t.Fatalf("Write() error = %v", err)
+	}
+	if got := buf.String(); got != payload {
+		t.Fatalf("over-limit buffer must retain the first 64 bytes unchanged")
+	}
+	if got := buf.Dropped(); got != 1 {
+		t.Fatalf("Dropped() = %d after one extra byte, want 1", got)
+	}
+}
+
+func TestBoundedBufferUnderLimitRetainsVerbatim(t *testing.T) {
+	t.Parallel()
+	buf := newBoundedBuffer(64)
+	if _, err := buf.Write([]byte("hello")); err != nil {
+		t.Fatalf("Write() error = %v", err)
+	}
+	if got, want := buf.String(), "hello"; got != want {
+		t.Fatalf("String() = %q, want %q", got, want)
+	}
+	if got := buf.Dropped(); got != 0 {
+		t.Fatalf("Dropped() = %d under the limit, want 0", got)
 	}
 }

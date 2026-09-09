@@ -49,7 +49,7 @@ A provider refusal signaling the request exceeded the context window; detected f
 _Avoid_: Token limit error
 
 **Compression**:
-The deterministic, zero-LLM shrinking of high-volume tool output at the tool-result boundary — line caps, byte caps, ANSI stripping — with an explicit "+N more" marker, never silent truncation.
+The deterministic, zero-LLM shrinking of high-volume tool output at the tool-result boundary — line caps, byte caps, ANSI stripping — with one merged "+N more, +N bytes truncated" hint from a single authoritative byte count, never silent truncation.
 _Avoid_: Compaction (that is the LLM-driven summarization of turns)
 
 ### Tools and sandbox

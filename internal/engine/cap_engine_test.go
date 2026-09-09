@@ -262,6 +262,98 @@ func TestAgentByteCapPreservesLookLikeMarkerContent(t *testing.T) {
 	}
 }
 
+// bytesTruncatedTailRe captures the byte count of the plain tail byte-cap marker.
+var bytesTruncatedTailRe = regexp.MustCompile(`\+([0-9]+) bytes truncated\n$`)
+
+// TestAgentSingleStreamByteDropYieldsOneTrueHint reproduces the double-cap
+// hazard end to end: a single stdout stream larger than the byte budget is
+// head-truncated once by the sandbox's memory bound (whose rejected bytes ride
+// on BytesDropped) and must surface as exactly one merged truncation hint whose
+// byte count equals what the provider message actually lost — never clipped by a
+// second cap, never double-counted, and matching the event metadata the TUI
+// renders.
+func TestAgentSingleStreamByteDropYieldsOneTrueHint(t *testing.T) {
+	t.Parallel()
+	const produced = 8 << 20
+	kept := strings.Repeat("x", compress.DefaultByteCap) // the sandbox retains exactly the head of the stream
+	upstream := produced - len(kept)
+
+	var gotResult *ToolResultEvent
+	var delivered string
+	scripted := provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
+		var toolResults int
+		for _, m := range req.Messages {
+			if m.Role == provider.RoleTool {
+				toolResults++
+				delivered = m.Content
+			}
+		}
+		if toolResults == 0 {
+			return provider.StreamFunc(
+				provider.Chunk{FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{
+					{ID: "call_bash", Name: "bash", Arguments: `{"command":"head -c 8388608 /dev/zero"}`},
+				}, Done: true},
+			), nil
+		}
+		if len(delivered) > compress.DefaultByteCap {
+			t.Errorf("tool message in history = %d bytes, exceeds %d-byte cap", len(delivered), compress.DefaultByteCap)
+		}
+		if got := strings.Count(delivered, "bytes truncated"); got != 1 {
+			t.Errorf("single-stream result carries %d truncation markers, want exactly one merged hint: %q", got, delivered[len(delivered)-80:])
+		}
+		m := bytesTruncatedTailRe.FindStringSubmatch(delivered)
+		if m == nil {
+			t.Errorf("delivered missing plain byte-cap tail: %q", delivered[len(delivered)-80:])
+		}
+		body := strings.TrimSuffix(delivered, bytesTruncatedTailRe.FindString(delivered))
+		want := produced - len(body)
+		if n, _ := strconv.Atoi(m[1]); n != want {
+			t.Errorf("hint reports %d bytes truncated, want %d (the true bytes lost from the %d-byte stream)", n, want, produced)
+		}
+		return provider.StreamFunc(
+			provider.Chunk{Content: "done"},
+			provider.Chunk{FinishReason: "stop", Done: true,
+				Usage: &provider.Usage{PromptTokens: 1, CompletionTokens: 1}},
+		), nil
+	})
+
+	e := New(scripted, &mockTranscript{})
+	e.SetListener(func(evt Event) {
+		if tr, ok := evt.(ToolResultEvent); ok {
+			gotResult = &tr
+		}
+	})
+
+	_, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "dump"},
+		AgentOptions{
+			Tools: byteCapToolDefs(),
+			Executor: ExecutorFunc(func(_ context.Context, name, _ string) (ToolExecResult, error) {
+				if name == "bash" {
+					return ToolExecResult{Text: kept, BytesDropped: upstream}, nil
+				}
+				return ToolExecResult{Text: "result:" + name}, nil
+			}),
+			MaxTurns: 5,
+		})
+	if err != nil {
+		t.Fatalf("RunAgent() error = %v, want nil", err)
+	}
+	if gotResult == nil {
+		t.Fatal("no ToolResultEvent emitted")
+	}
+	if gotResult.Result != kept {
+		t.Errorf("ToolResultEvent.Result is not the sandbox-retained head")
+	}
+	if gotResult.BytesDropped <= 0 {
+		t.Fatalf("ToolResultEvent.BytesDropped = %d, want > 0", gotResult.BytesDropped)
+	}
+	m := bytesTruncatedTailRe.FindStringSubmatch(delivered)
+	n, _ := strconv.Atoi(m[1])
+	if gotResult.BytesDropped != n {
+		t.Errorf("ToolResultEvent.BytesDropped = %d does not match the rendered hint's %d bytes truncated", gotResult.BytesDropped, n)
+	}
+}
+
 func hugeExecutor(results map[string]string) ToolExecutor {
 	return ExecutorFunc(func(_ context.Context, name, _ string) (ToolExecResult, error) {
 		if r, ok := results[name]; ok {

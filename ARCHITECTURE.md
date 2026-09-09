@@ -83,7 +83,7 @@ Everything that touches a model endpoint lives behind this package's interfaces;
 The fixed tool surface plus everything it needs to execute safely.
 
 - `registry.go` — `Registry` owns the toolset (`bash`, `open_in_browser`) and the `Deps` wiring (workspace, session temp, extra writable paths, runner, yolo flag, browser seam, skill catalog). `Definitions()` yields the provider-facing manifest.
-- `sandbox.go` — the **bubblewrap cage**: read-only root, writable workspace and session temp, isolated PID/`/proc`/`/dev` namespaces. Both backends resolve to the same `RunSpec` (program, args, cwd, env) before touching the OS.
+- `sandbox.go` — the **bubblewrap cage**: read-only root, writable workspace and session temp, isolated PID/`/proc`/`/dev` namespaces. Both backends resolve to the same `RunSpec` (program, args, cwd, env) before touching the OS. The runner's `boundedBuffer` caps each stream at the byte budget to bound memory only — it never appends a truncation marker; the bytes it rejected ride on `Output.Dropped` so the compress stage reports them.
 - `direct.go` — the unsandboxed `--yolo-unsafe` backend: same environment contract, no cage.
 - `tool_bash.go` — the `bash` tool; selects the backend via the `bashBackend` interface and returns combined stdout+stderr through compression.
 - `tool_browser.go` / `network.go` — `open_in_browser` backed by `xdg-open`.
@@ -95,7 +95,7 @@ The fixed tool surface plus everything it needs to execute safely.
 
 ### `internal/compress` — deterministic tool-output shrinking
 
-Zero-LLM compression at the tool-result boundary: ANSI stripping, a 500-line cap, and a shared byte cap (64 KiB), always with an explicit `+N more` marker — never silent truncation. Because the head of a result is deterministic, session prompt caches stay byte-stable across turns. This is deliberately *not* compaction, which is the LLM-driven summarization of turns in the engine.
+Zero-LLM compression at the tool-result boundary: ANSI stripping, a 500-line cap, and a shared byte cap (64 KiB), always with an explicit `+N more` / `+N bytes truncated` marker — never silent truncation. The byte cap is the **single truncation authority**: it folds any bytes already rejected by the sandbox's memory bound (carried numerically on the result, not as text) into one merged `+N more, +N bytes truncated` hint, so the count can never be clipped by a second cap, double-counted, or disagree with the TUI hint metadata. Because the head of a result is deterministic, session prompt caches stay byte-stable across turns. This is deliberately *not* compaction, which is the LLM-driven summarization of turns in the engine.
 
 ### `internal/tui` — the terminal surface
 
