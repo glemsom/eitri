@@ -395,19 +395,132 @@ func TestSettingsOverlay_FilePickerCanNavigateBackToParent(t *testing.T) {
 	}
 }
 
+// startAddPathPicker opens the add-folder picker over dir and loads dir's
+// listing so the picker has a deterministic highlight (its first entry).
+func startAddPathPicker(t *testing.T, o *SettingsOverlay, dir string) {
+	t.Helper()
+	o.field = fieldPaths
+	if _, cmd := o.Key(tea.KeyPressMsg{Text: "+", Code: '+'}); cmd == nil {
+		t.Fatalf("add-folder key returned no picker init cmd")
+	}
+	o.picker.CurrentDirectory = dir
+	o.Handle(o.picker.Init()())
+	if !o.pickerActive {
+		t.Fatalf("picker inactive after start")
+	}
+}
+
+func TestSettingsOverlay_AddFolderPickerOpenAndSelectKeysDisjoint(t *testing.T) {
+	t.Parallel()
+	f := newSettingsForm(cfgFixture(), []string{})
+	f.beginAddPath()
+
+	open := map[string]bool{}
+	for _, k := range f.picker.KeyMap.Open.Keys() {
+		open[k] = true
+	}
+	var shared []string
+	selectKeys := f.picker.KeyMap.Select.Keys()
+	for _, k := range selectKeys {
+		if open[k] {
+			shared = append(shared, k)
+		}
+	}
+	if len(shared) != 0 {
+		t.Fatalf("Open and Select share keys %v in the add-folder picker, want disjoint", shared)
+	}
+	selects := map[string]bool{}
+	for _, k := range selectKeys {
+		selects[k] = true
+	}
+	if !selects["ctrl+s"] {
+		t.Fatalf("Select keys = %v, want ctrl+s bound to selection", selectKeys)
+	}
+}
+
+func TestSettingsOverlay_FilePickerSelectAddsHighlightedFolderWithoutDescending(t *testing.T) {
+	dir := t.TempDir()
+	child := filepath.Join(dir, "child")
+	if err := os.Mkdir(child, 0o755); err != nil {
+		t.Fatalf("mkdir child: %v", err)
+	}
+	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, Dependencies{})
+	startAddPathPicker(t, o, dir)
+
+	o.Handle(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+
+	got := o.draft().ExtraWritablePaths
+	if len(got) != 2 || got[1] != child {
+		t.Fatalf("paths after select = %v, want [/srv %q]", got, child)
+	}
+	if o.pickerActive {
+		t.Fatalf("picker active after select, want closed")
+	}
+	if cd := o.picker.CurrentDirectory; cd != dir {
+		t.Fatalf("picker current dir after select = %q, want unchanged %q (select must not descend)", cd, dir)
+	}
+}
+
+func TestSettingsOverlay_FilePickerOpenKeyDescendsNotSelects(t *testing.T) {
+	dir := t.TempDir()
+	child := filepath.Join(dir, "child")
+	if err := os.Mkdir(child, 0o755); err != nil {
+		t.Fatalf("mkdir child: %v", err)
+	}
+	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, Dependencies{})
+	startAddPathPicker(t, o, dir)
+
+	o.Handle(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	if cd := o.picker.CurrentDirectory; cd != child {
+		t.Fatalf("picker current dir after enter = %q, want %q", cd, child)
+	}
+	if !o.pickerActive {
+		t.Fatalf("picker closed after enter, want open")
+	}
+	if got := o.draft().ExtraWritablePaths; len(got) != 1 {
+		t.Fatalf("enter added paths %v, want none added", got)
+	}
+}
+
+func TestSettingsOverlay_FilePickerSelectOnFileAddsNothing(t *testing.T) {
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "sub")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatalf("mkdir sub: %v", err)
+	}
+	file := filepath.Join(dir, "notes.txt")
+	if err := os.WriteFile(file, nil, 0o644); err != nil {
+		t.Fatalf("write notes.txt: %v", err)
+	}
+	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, Dependencies{})
+	startAddPathPicker(t, o, dir) // listing: [sub, notes.txt]
+	o.Handle(tea.KeyPressMsg{Code: tea.KeyDown})
+	o.Handle(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+
+	if !o.pickerActive {
+		t.Fatalf("picker closed after selecting a file, want open")
+	}
+	if got := o.draft().ExtraWritablePaths; len(got) != 1 {
+		t.Fatalf("select on a file added %v, want none", got)
+	}
+}
+
 func TestSettingsOverlay_FilePickerSelectClosesPickerBeforeTab(t *testing.T) {
 	dir := t.TempDir()
+	child := filepath.Join(dir, "child")
+	if err := os.Mkdir(child, 0o755); err != nil {
+		t.Fatalf("mkdir child: %v", err)
+	}
 	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, Dependencies{})
-	o.field = fieldPaths
-	o.beginAddPath()
-	o.picker.Path = dir
-	o.Handle(tea.KeyPressMsg{Text: "s", Code: 's', Mod: tea.ModCtrl})
+	startAddPathPicker(t, o, dir)
+	o.Handle(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
 	o.Handle(tea.KeyPressMsg{Code: tea.KeyTab})
 
 	got := o.draft().ExtraWritablePaths
 	count := 0
 	for _, p := range got {
-		if p == dir {
+		if p == child {
 			count++
 		}
 	}

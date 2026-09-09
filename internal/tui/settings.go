@@ -144,7 +144,7 @@ func (f *settingsForm) beginAddPath() tea.Cmd {
 	f.picker.ShowPermissions = false
 	f.picker.SetHeight(10)
 	f.picker.KeyMap.Back = key.NewBinding(key.WithKeys("h", "u", "backspace", "left"), key.WithHelp("u/left", "parent"))
-	f.picker.KeyMap.Open = key.NewBinding(key.WithKeys("l", "right", "enter", "ctrl+s"), key.WithHelp("enter", "open"))
+	f.picker.KeyMap.Open = key.NewBinding(key.WithKeys("l", "right", "enter"), key.WithHelp("enter", "open"))
 	f.picker.KeyMap.Select = key.NewBinding(key.WithKeys("ctrl+s"), key.WithHelp("ctrl+s", "select folder"))
 	return f.picker.Init()
 }
@@ -455,13 +455,30 @@ func (o *SettingsOverlay) keyAddPath(k tea.KeyPressMsg) (settingsKeyOutcome, tea
 		s.cancelAddPath()
 		return outcomeContinue, nil
 	}
-	var cmd tea.Cmd
-	s.picker, cmd = s.picker.Update(k)
-	if s.picker.Path != "" {
-		s.addPath(s.picker.Path)
+	if key.Matches(k, s.picker.KeyMap.Select) {
+		// bubbles dispatches Open before Select, so a key in both maps would
+		// also descend into the highlighted folder; handle selection here so
+		// it never reaches the picker's Open handler.
+		s.selectHighlightedFolder()
 		return outcomeContinue, nil
 	}
+	var cmd tea.Cmd
+	s.picker, cmd = s.picker.Update(k)
 	return outcomeContinue, cmd
+}
+
+// selectHighlightedFolder adds the folder under the picker cursor as a
+// writable path and closes the picker without opening it.
+func (s *settingsForm) selectHighlightedFolder() {
+	p := s.picker.HighlightedPath()
+	if p == "" {
+		return
+	}
+	info, err := os.Stat(p)
+	if err != nil || !info.IsDir() {
+		return
+	}
+	s.addPath(p)
 }
 
 // settingsResult reports the outcome of one message routed into the open
