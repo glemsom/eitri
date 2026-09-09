@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // mentionWorkspace builds a temp workspace with a known tree for dropdown tests.
@@ -239,6 +240,110 @@ func TestMentionSelect_PreservesOtherMentions(t *testing.T) {
 	}
 	if next != "see alpha.txt and @b" {
 		t.Errorf("Select = %q, want only the first mention replaced and @b preserved", next)
+	}
+}
+
+// draftWithMidLineMention drives the composer to a two-line draft whose
+// @partial sits mid-line with a non-empty tail after it, with the caret parked
+// at the tail of the partial (the state that keeps the dropdown open). The
+// mention is on line two so a caret fix that yanks to the end of the first or
+// last line would be caught.
+func draftWithMidLineMention(t *testing.T, m Model) Model {
+	t.Helper()
+	m = typeText(t, m, "first line")
+	m = newline(t, m)
+	m = typeText(t, m, "see  for refs") // caret at end of line two
+	m.composer.CursorStart()            // back to the start of line two
+	for range 4 {
+		m = keypress(t, m, "right") // past "see "
+	}
+	m = typeText(t, m, "@日")
+	return m
+}
+
+func TestModel_mentionCaretLandsAfterTokenMultiLine(t *testing.T) {
+	t.Parallel()
+	ws := t.TempDir()
+	mustWriteFile(t, filepath.Join(ws, "日本語.md"), "x\n")
+	m := mentionModel(t, ws)
+	m = draftWithMidLineMention(t, m)
+	if !m.mention.isOpen() {
+		t.Fatalf("caret on @日 mid-line should open the mention dropdown")
+	}
+	m = feedMentionWalk(t, m, ws)
+	m = keypress(t, m, "enter")
+
+	if got := m.composer.Value(); got != "first line\nsee 日本語.md for refs" {
+		t.Errorf("after select draft = %q, want completed token with tail kept", got)
+	}
+	if l := m.composer.Line(); l != 1 {
+		t.Errorf("caret row = %d, want 1 (the line that held the mention)", l)
+	}
+	wantCol := utf8.RuneCountInString("see 日本語.md")
+	if c := m.composer.Column(); c != wantCol {
+		t.Errorf("caret column = %d, want %d (immediately after the token); a byte-length column or end-of-line clamp lands elsewhere", c, wantCol)
+	}
+}
+
+func TestModel_mentionCaretLandsAfterTokenSingleLine(t *testing.T) {
+	t.Parallel()
+	ws := t.TempDir()
+	mustWriteFile(t, filepath.Join(ws, "日本語.md"), "x\n")
+	m := mentionModel(t, ws)
+	m = typeText(t, m, "see  for refs")
+	m.composer.CursorStart()
+	for range 4 {
+		m = keypress(t, m, "right")
+	}
+	m = typeText(t, m, "@日")
+	m = feedMentionWalk(t, m, ws)
+	m = keypress(t, m, "enter")
+
+	if got := m.composer.Value(); got != "see 日本語.md for refs" {
+		t.Errorf("after select draft = %q, want completed token with tail kept", got)
+	}
+	wantCol := utf8.RuneCountInString("see 日本語.md")
+	if c := m.composer.Column(); c != wantCol {
+		t.Errorf("caret column = %d, want %d; a byte-length SetCursorColumn overshoots the tail and lands at end of draft", c, wantCol)
+	}
+}
+
+func TestModel_mentionCaretFollowsFolderDescend(t *testing.T) {
+	t.Parallel()
+	ws := mentionWorkspace(t) // src/ dir present
+	m := mentionModel(t, ws)
+	m = typeText(t, m, "see  for refs")
+	m.composer.CursorStart()
+	for range 4 {
+		m = keypress(t, m, "right")
+	}
+	m = typeText(t, m, "@src")
+	m = feedMentionWalk(t, m, ws)
+	if got := m.mention.SelectedCandidate(); got != "src/" {
+		t.Fatalf("expected src/ candidate, got %q", got)
+	}
+
+	// the @-keeping descend keeps the dropdown open and the caret after @src/
+	m = keypress(t, m, "enter")
+	if got := m.composer.Value(); got != "see @src/ for refs" {
+		t.Errorf("after folder descend draft = %q, want @src/ kept", got)
+	}
+	if !m.mention.isOpen() {
+		t.Error("folder descend must keep the mention dropdown open")
+	}
+	wantCol := utf8.RuneCountInString("see @src/")
+	if c := m.composer.Column(); c != wantCol {
+		t.Errorf("caret column after descend = %d, want %d (right after @src/)", c, wantCol)
+	}
+
+	// the file completion closes it with the caret after the full path
+	m = keypress(t, m, "enter")
+	if got := m.composer.Value(); got != "see src/util.go for refs" {
+		t.Errorf("after file select draft = %q, want completed path", got)
+	}
+	wantCol = utf8.RuneCountInString("see src/util.go")
+	if c := m.composer.Column(); c != wantCol {
+		t.Errorf("caret column after file select = %d, want %d", c, wantCol)
 	}
 }
 
