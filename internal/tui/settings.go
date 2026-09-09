@@ -751,6 +751,15 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.feedback = neutralFeedback(res.status)
 		}
 		if res.applied {
+			// Only changes the face actually renders at are damage: its theme
+			// styling and the rail width it derives its column count from (rail
+			// width has no settings knob; ctrl+x/z own it, and an unset width
+			// resolves to the default like the transcript does).
+			savedRailWidth := res.saved.RailWidth
+			if savedRailWidth == 0 {
+				savedRailWidth = defaultRailWidth
+			}
+			faceChanged := res.saved.Theme != m.tx.configTheme || savedRailWidth != m.tx.railWidthOrDefault()
 			m.deps.Config = *res.saved
 			m.tx.applySettings(*res.saved)
 			m.tx.reasoningEffort = res.saved.ReasoningEffort
@@ -758,9 +767,9 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.deps.Rail != nil {
 				m.deps.Rail.ApplyConfig(*res.saved)
 			}
-			// An accepted draft can change the theme or the rail width the face
-			// renders at; mark it for a re-upload once the overlay closes.
-			m.faceDirty = true
+			if faceChanged {
+				m.faceDirty = true
+			}
 		}
 	}
 	return m, res.cmd

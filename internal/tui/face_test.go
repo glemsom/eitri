@@ -182,6 +182,36 @@ func TestThemeChangeReuploadsFace(t *testing.T) {
 	m = faceUpload(t, m)
 }
 
+func TestNonFaceSettingsSaveDoesNotReuploadFace(t *testing.T) {
+	t.Cleanup(CleanupKittyFace) // the scratch PNG leaks nothing on the test host
+	t.Setenv("EITRI_KITTY_IMAGES", "1")
+	m := NewModelCfg(Dependencies{
+		Models: []string{"deepseek-v4-flash"},
+		Config: cfgFixture(),
+		Save:   func(config.Config) error { return nil },
+		Rail:   NewRail("provider", "model", "low", true, "session", "/tmp/session"),
+	})
+	m = resizeTo(t, m, 120, 31)
+	m = faceUpload(t, m)
+
+	// A save that touches no face input (max turns, not theme/rail width) must
+	// not re-upload: the face stays clean, so closing the overlay arms nothing.
+	m = keypress(t, m, "ctrl+s")
+	for i := fieldProvider; i < fieldMaxTurns; i++ {
+		m = keypress(t, m, "enter")
+	}
+	m = keypress(t, m, "right") // bump MaxTurns by one step
+	for i := fieldMaxTurns; i < fieldSave; i++ {
+		m = keypress(t, m, "enter")
+	}
+	m = keypress(t, m, "enter")          // save the draft
+	nm, cmd := m.Update(namedKey("esc")) // close the overlay
+	m = asModel(t, nm)
+	if cmd != nil {
+		t.Fatalf("non-face settings close armed a face draw: %T", cmd())
+	}
+}
+
 func TestClockTickDoesNotRedrawFace(t *testing.T) {
 	t.Cleanup(CleanupKittyFace) // the scratch PNG leaks nothing on the test host
 	t.Setenv("EITRI_KITTY_IMAGES", "1")

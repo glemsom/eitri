@@ -53,7 +53,7 @@ Existing render benchmarks remain the starting point. Add a new benchmark only w
 
 ### Kitty face upload is damage-driven, not a timer loop
 
-The rail's kitty face is a static image; it must be uploaded exactly when its placement or size changes, never while the model is idle. The Model keeps a `faceDirty` flag: only window resize, rail-width change, theme change, and live renderer scroll set it, and the upload itself clears it, so the 50 ms `faceDrawTick` loop dies as soon as the face is clean. An idle Eitri on kitty/ghostty uploads the face once at boot (via the startup `WindowSizeMsg`) and then issues no kitty escapes until the next real damage — no background re-upload and no steady 20 fps repaint on battery.
+The rail's kitty face is a static image; it must be uploaded exactly when its placement or size changes, never while the model is idle. The Model keeps a `faceDirty` flag: only window resize, rail-width change, theme change, and live turn events (whose deltas can re-layout the rail under follow) set it, and the upload attempt itself clears it, so the 50 ms `faceDrawTick` loop dies as soon as the face is clean. An idle Eitri on kitty/ghostty uploads the face once at boot (via the startup `WindowSizeMsg`) and then issues no kitty escapes until the next real damage — no background re-upload and no steady 20 fps repaint on battery. The 1 Hz `clockTick` stays for the statusline elapsed timer and is separately pinned to never schedule face work (`TestClockTickDoesNotRedrawFace`).
 
 The behavioral guard is in `internal/tui/face_test.go`:
 

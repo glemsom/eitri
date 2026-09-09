@@ -319,9 +319,9 @@ func (m *Model) adjustRailWidth(delta int) {
 	m.tx.setRailWidth(w)
 	m.persistRailWidth()
 	m.syncWidths()
-	// The face's column count derives from the rail width; a width change must
-	// re-upload at the new geometry.
-	m.faceDirty = true
+	// The face's column count derives from the rail width; callers run
+	// adjustRailWidth alongside markFaceDamage so the next draw re-uploads at
+	// the new geometry.
 }
 
 // persistRailWidth writes the current rail width into deps.Config and persists it via the Save seam so the width round-trips across sessions.
