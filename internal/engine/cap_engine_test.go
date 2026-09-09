@@ -303,11 +303,15 @@ func TestAgentSingleStreamByteDropYieldsOneTrueHint(t *testing.T) {
 		}
 		m := bytesTruncatedTailRe.FindStringSubmatch(delivered)
 		if m == nil {
-			t.Errorf("delivered missing plain byte-cap tail: %q", delivered[len(delivered)-80:])
+			t.Fatalf("delivered missing plain byte-cap tail: %q", delivered[len(delivered)-80:])
 		}
 		body := strings.TrimSuffix(delivered, bytesTruncatedTailRe.FindString(delivered))
 		want := produced - len(body)
-		if n, _ := strconv.Atoi(m[1]); n != want {
+		n, err := strconv.Atoi(m[1])
+		if err != nil {
+			t.Fatalf("unparsable byte count in delivered tail: %q", m[1])
+		}
+		if n != want {
 			t.Errorf("hint reports %d bytes truncated, want %d (the true bytes lost from the %d-byte stream)", n, want, produced)
 		}
 		return provider.StreamFunc(
@@ -348,7 +352,13 @@ func TestAgentSingleStreamByteDropYieldsOneTrueHint(t *testing.T) {
 		t.Fatalf("ToolResultEvent.BytesDropped = %d, want > 0", gotResult.BytesDropped)
 	}
 	m := bytesTruncatedTailRe.FindStringSubmatch(delivered)
-	n, _ := strconv.Atoi(m[1])
+	if m == nil {
+		t.Fatalf("delivered missing plain byte-cap tail: %q", delivered[len(delivered)-80:])
+	}
+	n, err := strconv.Atoi(m[1])
+	if err != nil {
+		t.Fatalf("unparsable byte count in delivered tail: %q", m[1])
+	}
 	if gotResult.BytesDropped != n {
 		t.Errorf("ToolResultEvent.BytesDropped = %d does not match the rendered hint's %d bytes truncated", gotResult.BytesDropped, n)
 	}
