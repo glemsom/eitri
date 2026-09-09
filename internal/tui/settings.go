@@ -739,6 +739,9 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch res.outcome {
 	case outcomeClosed:
 		m.settings = nil
+		// Closing the overlay can reveal a face made dirty by the session's
+		// last save; arm its upload so the theme/rail-width change lands.
+		return m, tea.Batch(res.cmd, m.queueFaceDrawCmd())
 	case outcomeSaved:
 		if res.applied {
 			m.feedback = successFeedback(res.status)
@@ -755,6 +758,9 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.deps.Rail != nil {
 				m.deps.Rail.ApplyConfig(*res.saved)
 			}
+			// An accepted draft can change the theme or the rail width the face
+			// renders at; mark it for a re-upload once the overlay closes.
+			m.faceDirty = true
 		}
 	}
 	return m, res.cmd

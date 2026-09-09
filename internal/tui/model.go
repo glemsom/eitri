@@ -205,6 +205,13 @@ type Model struct {
 	// started from an empty draft.
 	histIdx   int
 	histDraft string
+
+	// faceDirty marks the kitty face as needing (re)upload. It is set only by
+	// damage that actually moves or resizes the face (boot resize, terminal
+	// resize, rail-width/theme change, live renderer scroll) and cleared by the
+	// upload itself, so an idle model uploads the face once and then stops: the
+	// 50 ms faceDrawTick loop only runs while dirty.
+	faceDirty bool
 }
 
 // newModelHistory builds the Model's prompt-history ring: file-backed when a
@@ -368,6 +375,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.tx.SetSize(msgi.Width, msgi.Height)
 		m.syncWidths()
+		// Any size change moves the face on screen; the boot-time resize is what
+		// triggers the single idle upload.
+		m.faceDirty = true
 		if m.settings != nil {
 			next, cmd := m.updateSettings(msgi)
 			return next, cmd
@@ -477,10 +487,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Non-slash draft: fall through to the textarea, which handles the tab.
 		case "ctrl+x":
 			m.adjustRailWidth(-2)
-			return m, nil
+			return m, m.queueFaceDrawCmd()
 		case "ctrl+z":
 			m.adjustRailWidth(+2)
-			return m, nil
+			return m, m.queueFaceDrawCmd()
 		}
 		// While a turn streams the composer sits behind the forge panel with no
 		// caret, so editing it would type into an invisible draft that resurfaces
@@ -514,7 +524,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, clockTick()
 
 	case faceDrawMsg:
-		return m, m.drawFaceCmd()
+		m, cmd := m.drawFaceCmd()
+		return m, cmd
 
 	case spinnerTickMsg:
 		if !m.tx.busy || !motionEnabled() {
@@ -911,22 +922,27 @@ func telemetryWait(te *telemetry.Telemetry) tea.Cmd {
 }
 
 func (m Model) queueFaceDrawCmd() tea.Cmd {
-	if !m.canDrawFace() {
+	if !m.faceDirty || !m.canDrawFace() {
 		return nil
 	}
 	return faceDrawTick()
 }
 
-func (m Model) drawFaceCmd() tea.Cmd {
-	if !m.canDrawFace() {
-		return nil
+// drawFaceCmd uploads the kitty face when damage demands it and the canvas
+// exists, returning the model with the face marked clean on a successful
+// upload. A stray tick with a clean face is a no-op, so an idle model never
+// re-uploads.
+func (m Model) drawFaceCmd() (Model, tea.Cmd) {
+	if !m.faceDirty || !m.canDrawFace() {
+		return m, nil
 	}
 	railWidth := m.tx.railWidthOrDefault()
 	seq := kittyFaceUpload(railWidth)
 	if seq == "" {
-		return nil
+		return m, nil
 	}
-	return tea.Raw(seq)
+	m.faceDirty = false
+	return m, tea.Raw(seq)
 }
 
 func (m Model) canDrawFace() bool {
@@ -952,5 +968,9 @@ func (m Model) applyEvent(update Event) (tea.Model, tea.Cmd) {
 		m.runtime.Observe(m.tx, update)
 	}
 	m.runtime.DrainReady(m.tx)
+	// A renderer scroll can move the face's rail placement, so every live event
+	// is face damage: it keeps the upload current while the turn streams and
+	// lets the loop die again once the model is idle.
+	m.faceDirty = true
 	return m, tea.Batch(m.queueFaceDrawCmd(), m.runtime.Wait())
 }

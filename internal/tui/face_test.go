@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"os"
@@ -9,6 +10,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi/kitty"
+
+	"github.com/glemsom/eitri/internal/config"
 )
 
 func TestKittyImageEncodesEmbeddedFaceAtRailWidth(t *testing.T) {
@@ -60,6 +63,123 @@ func TestStyledRailWithFaceHasContinuousLeftBorder(t *testing.T) {
 			t.Fatalf("rail row %d has no left border: %q", row, line)
 		}
 	}
+}
+
+// faceUpload runs one faceDrawMsg against m and requires it to issue a kitty
+// raw upload, returning the model with the upload's dirty state applied.
+func faceUpload(t *testing.T, m Model) Model {
+	t.Helper()
+	nm, cmd := m.Update(faceDrawMsg{})
+	m = asModel(t, nm)
+	if cmd == nil {
+		t.Fatal("face draw issued no command")
+	}
+	if _, ok := cmd().(tea.RawMsg); !ok {
+		t.Fatalf("face draw command = %T, want a kitty raw upload", cmd())
+	}
+	return m
+}
+
+func TestFaceUploadsOnceAtBootThenIdles(t *testing.T) {
+	t.Cleanup(CleanupKittyFace) // the scratch PNG leaks nothing on the test host
+	t.Setenv("EITRI_KITTY_IMAGES", "1")
+	m := NewModelCfg(Dependencies{Rail: NewRail("provider", "model", "low", true, "session", "/tmp/session")})
+	m = resizeTo(t, m, 120, 31) // bubbletea delivers one WindowSizeMsg at boot
+
+	m = faceUpload(t, m) // the boot upload
+	if m.faceDirty {
+		t.Fatal("successful upload must clear the face-dirty flag")
+	}
+
+	// A stray face draw (what the old 50 ms polling loop delivered) must be a
+	// no-op while idle: no upload and no re-arm.
+	nm, cmd := m.Update(faceDrawMsg{})
+	m = asModel(t, nm)
+	if cmd != nil {
+		t.Fatalf("idle face draw scheduled work: %T", cmd())
+	}
+	if m.faceDirty {
+		t.Fatal("an idle no-op face draw must not re-dirty the face")
+	}
+}
+
+func TestResizeReuploadsFace(t *testing.T) {
+	t.Cleanup(CleanupKittyFace) // the scratch PNG leaks nothing on the test host
+	t.Setenv("EITRI_KITTY_IMAGES", "1")
+	m := NewModelCfg(Dependencies{Rail: NewRail("provider", "model", "low", true, "session", "/tmp/session")})
+	m = resizeTo(t, m, 120, 31)
+	m = faceUpload(t, m)
+
+	// A terminal resize moves the face: the next face draw must re-upload.
+	m = resizeTo(t, m, 130, 35)
+	m = faceUpload(t, m)
+
+	// ...and the new geometry is clean again until the next damage.
+	nm, cmd := m.Update(faceDrawMsg{})
+	m = asModel(t, nm)
+	if cmd != nil {
+		t.Fatalf("post-resize idle face draw scheduled work: %T", cmd())
+	}
+}
+
+func TestRailWidthChangeReuploadsFace(t *testing.T) {
+	t.Cleanup(CleanupKittyFace) // the scratch PNG leaks nothing on the test host
+	t.Setenv("EITRI_KITTY_IMAGES", "1")
+	m := NewModelCfg(Dependencies{
+		Rail:   NewRail("provider", "model", "low", true, "session", "/tmp/session"),
+		Config: testConfig(40),
+	})
+	m = resizeTo(t, m, 120, 38)
+	m = faceUpload(t, m)
+
+	// Ctrl+z widens the rail, changing the face's column count: the next face
+	// draw must re-upload rather than stay idle.
+	nm, cmd := m.Update(tea.KeyPressMsg{Code: 'z', Mod: tea.ModCtrl})
+	m = asModel(t, nm)
+	if cmd == nil {
+		t.Fatal("rail-width change must arm a face draw")
+	}
+	if _, ok := cmd().(faceDrawMsg); !ok {
+		t.Fatalf("rail-width change armed %T, want a face draw tick", cmd())
+	}
+	m = faceUpload(t, m)
+}
+
+func TestThemeChangeReuploadsFace(t *testing.T) {
+	t.Cleanup(CleanupKittyFace) // the scratch PNG leaks nothing on the test host
+	t.Setenv("EITRI_KITTY_IMAGES", "1")
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, _ string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+		Models: []string{"deepseek-v4-flash"},
+		Config: cfgFixture(),
+		Save:   func(config.Config) error { return nil },
+		Rail:   NewRail("provider", "model", "low", true, "session", "/tmp/session"),
+	})
+	m = resizeTo(t, m, 120, 31)
+	m = faceUpload(t, m)
+
+	// Change the appearance in settings, save, and close the overlay: the
+	// theme swap is face damage and the next face draw must re-upload.
+	m = keypress(t, m, "ctrl+s")
+	for i := fieldProvider; i < fieldTheme; i++ {
+		m = keypress(t, m, "enter")
+	}
+	m = keypress(t, m, "right") // cycle the theme
+	for i := fieldTheme; i < fieldSave; i++ {
+		m = keypress(t, m, "enter")
+	}
+	m = keypress(t, m, "enter") // save the draft
+	if m.settings == nil {
+		t.Fatal("settings overlay must stay open after Save")
+	}
+	nm, cmd := m.Update(namedKey("esc")) // close the overlay
+	m = asModel(t, nm)
+	if cmd == nil {
+		t.Fatal("closing settings after a theme change must arm a face draw")
+	}
+	m = faceUpload(t, m)
 }
 
 func TestClockTickDoesNotRedrawFace(t *testing.T) {
