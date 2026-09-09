@@ -410,6 +410,17 @@ func startAddPathPicker(t *testing.T, o *SettingsOverlay, dir string) {
 	}
 }
 
+// makeChildDir returns a fresh temp dir containing a single child dir.
+func makeChildDir(t *testing.T) (dir, child string) {
+	t.Helper()
+	dir = t.TempDir()
+	child = filepath.Join(dir, "child")
+	if err := os.Mkdir(child, 0o755); err != nil {
+		t.Fatalf("mkdir child: %v", err)
+	}
+	return dir, child
+}
+
 func TestSettingsOverlay_AddFolderPickerOpenAndSelectKeysDisjoint(t *testing.T) {
 	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{})
@@ -420,30 +431,25 @@ func TestSettingsOverlay_AddFolderPickerOpenAndSelectKeysDisjoint(t *testing.T) 
 		open[k] = true
 	}
 	var shared []string
-	selectKeys := f.picker.KeyMap.Select.Keys()
-	for _, k := range selectKeys {
+	hasCtrlS := false
+	for _, k := range f.picker.KeyMap.Select.Keys() {
 		if open[k] {
 			shared = append(shared, k)
+		}
+		if k == "ctrl+s" {
+			hasCtrlS = true
 		}
 	}
 	if len(shared) != 0 {
 		t.Fatalf("Open and Select share keys %v in the add-folder picker, want disjoint", shared)
 	}
-	selects := map[string]bool{}
-	for _, k := range selectKeys {
-		selects[k] = true
-	}
-	if !selects["ctrl+s"] {
-		t.Fatalf("Select keys = %v, want ctrl+s bound to selection", selectKeys)
+	if !hasCtrlS {
+		t.Fatalf("Select keys = %v, want ctrl+s bound to selection", f.picker.KeyMap.Select.Keys())
 	}
 }
 
 func TestSettingsOverlay_FilePickerSelectAddsHighlightedFolderWithoutDescending(t *testing.T) {
-	dir := t.TempDir()
-	child := filepath.Join(dir, "child")
-	if err := os.Mkdir(child, 0o755); err != nil {
-		t.Fatalf("mkdir child: %v", err)
-	}
+	dir, child := makeChildDir(t)
 	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, Dependencies{})
 	startAddPathPicker(t, o, dir)
 
@@ -462,11 +468,7 @@ func TestSettingsOverlay_FilePickerSelectAddsHighlightedFolderWithoutDescending(
 }
 
 func TestSettingsOverlay_FilePickerOpenKeyDescendsNotSelects(t *testing.T) {
-	dir := t.TempDir()
-	child := filepath.Join(dir, "child")
-	if err := os.Mkdir(child, 0o755); err != nil {
-		t.Fatalf("mkdir child: %v", err)
-	}
+	dir, child := makeChildDir(t)
 	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, Dependencies{})
 	startAddPathPicker(t, o, dir)
 
@@ -507,11 +509,7 @@ func TestSettingsOverlay_FilePickerSelectOnFileAddsNothing(t *testing.T) {
 }
 
 func TestSettingsOverlay_FilePickerSelectClosesPickerBeforeTab(t *testing.T) {
-	dir := t.TempDir()
-	child := filepath.Join(dir, "child")
-	if err := os.Mkdir(child, 0o755); err != nil {
-		t.Fatalf("mkdir child: %v", err)
-	}
+	dir, child := makeChildDir(t)
 	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, Dependencies{})
 	startAddPathPicker(t, o, dir)
 	o.Handle(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
