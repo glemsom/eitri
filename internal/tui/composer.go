@@ -58,10 +58,9 @@ func (m Model) composerByteOffset() int {
 // runes from the caret, never moving rows: deleting a span whose tail the caret
 // already sits at keeps the caret on that same line, and each press fires at
 // col >= 1 by construction, so a line-leading span is deleted in place instead
-// of merged into the line above. This is the primitive mention/slash
-// completion use to rebuild a draft without yanking the caret to a row-0 reset
-// (SetValue + a byte-length SetCursorColumn lands a multi-line draft's caret
-// on the wrong line).
+// of merged into the line above. Mention completion uses this to rebuild a
+// draft without yanking the caret to a row-0 reset (SetValue + a byte-length
+// SetCursorColumn lands a multi-line draft's caret on the wrong line).
 func (m *Model) deleteComposerSpan(n int) {
 	for range n {
 		m.composer, _ = m.composer.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
