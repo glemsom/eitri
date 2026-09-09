@@ -54,6 +54,19 @@ func (m Model) composerByteOffset() int {
 	return off + len(string(runes[:col]))
 }
 
+// deleteComposerSpan steps the textarea's own backspace handling backward n
+// runes from the caret, never moving rows: deleting a span whose tail the caret
+// already sits at keeps the caret on that same line, and each press fires at
+// col >= 1 by construction, so a line-leading span is deleted in place instead
+// of merged into the line above. Mention completion uses this to rebuild a
+// draft without yanking the caret to a row-0 reset (SetValue + a byte-length
+// SetCursorColumn lands a multi-line draft's caret on the wrong line).
+func (m *Model) deleteComposerSpan(n int) {
+	for range n {
+		m.composer, _ = m.composer.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	}
+}
+
 // syncComposerHeight grows the composer with its draft up to maxComposerRows, then lets the textarea scroll internally: an empty draft rests at minComposerRows, each new line adds a row up to the bound, and beyond it the composer's internal viewport scrolls so the band never grows past the bound.
 func (m *Model) syncComposerHeight() {
 	rows := composerContentRows(m.composer)

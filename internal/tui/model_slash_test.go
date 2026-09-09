@@ -408,3 +408,20 @@ func TestModel_slashCompletionRendersCommandsPopover(t *testing.T) {
 		t.Fatalf("slash candidates missing selected/non-selected rows, got:\n%s", content)
 	}
 }
+
+func TestModel_slashCompletionCaretLandsAfterCandidate(t *testing.T) {
+	t.Parallel()
+	m := NewModelCfg(Dependencies{Skills: &SkillsSurface{Items: []SkillItem{{Name: "review"}}}})
+	m = resize(t, m)
+	m = typeText(t, m, "/re")
+	if !m.slash.isOpen() {
+		t.Fatalf("typing /re should open slash completion")
+	}
+	m = keypress(t, m, "enter")
+	if got := m.composer.Value(); got != "/review" {
+		t.Fatalf("slash completion = %q, want /review", got)
+	}
+	if l, c := m.composer.Line(), m.composer.Column(); l != 0 || c != len([]rune("/review")) {
+		t.Errorf("caret after slash completion = row %d col %d, want row 0 col %d (immediately after the completed command)", l, c, len([]rune("/review")))
+	}
+}

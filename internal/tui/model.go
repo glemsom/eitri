@@ -9,6 +9,7 @@ import (
 	"io"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
@@ -846,23 +847,38 @@ func (m *Model) trackComposer() tea.Cmd {
 }
 
 // selectMention replaces the tracked @partial with the chosen candidate and
-// closes the dropdown; the resulting composer state is re-tracked.
+// closes the dropdown; the caret stays immediately after the completed token
+// on the same line, before any draft tail.
 func (m Model) selectMention() (tea.Model, tea.Cmd) {
 	value := m.composer.Value()
-	next, ok := m.mention.Select(value)
-	if ok {
-		m.composer.SetValue(next)
-		m.composer.SetCursorColumn(len(next))
-		m.syncComposerHeight()
+	if !m.mention.isOpen() || len(m.mention.cands) == 0 {
+		return m, nil
 	}
+	// Capture the tracked span before Select mutates the mention state: a file
+	// selection resets it, a folder descend re-bases it on the new partial.
+	partial := m.mention.partial
+	cand := m.mention.cands[m.mention.idx]
+	_, ok := m.mention.Select(value)
+	if !ok {
+		return m, nil
+	}
+	insert := cand
+	if isFolderCandidate(cand) {
+		insert = "@" + cand // folder descend keeps the @ so the dropdown re-opens
+	}
+	m.deleteComposerSpan(utf8.RuneCountInString(partial) + 1)
+	m.composer.InsertString(insert)
+	m.syncComposerHeight()
 	return m, nil
 }
 
 // completeSlashCommand accepts highlighted slash completion into composer.
 func (m *Model) completeSlashCommand() {
 	m.slash.Complete(func(candidate string) {
+		// SetValue's insert already trails the caret after the pasted candidate,
+		// so no SetCursorColumn fix-up is needed: a byte-length column would
+		// overshoot non-ASCII skill names.
 		m.composer.SetValue(candidate)
-		m.composer.SetCursorColumn(len(candidate))
 		m.syncComposerHeight()
 	})
 }
