@@ -11,35 +11,61 @@ type helpRow struct {
 	desc string
 }
 
+// helpKeybindingCategory groups keybindings under a named heading.
+type helpKeybindingCategory struct {
+	name string
+	rows []helpRow
+}
+
+// helpKeybindingCategories is the authoritative list of every keybinding the
+// TUI honors. It is the single source for both help rendering and completeness
+// tests.
+var helpKeybindingCategories = []helpKeybindingCategory{
+	{"COMPOSER", []helpRow{
+		{"`up/down`", "navigate completion candidates; recall a prior/next prompt when the completion list is closed"},
+		{"`tab`", "accept highlighted completion or cycle block focus when composer is empty"},
+		{"`esc`", "close completion list, close mention dropdown, or stop a running turn"},
+		{"`enter`", "submit draft or toggle focused block when empty"},
+		{"`shift+enter`", "insert newline"},
+	}},
+	{"NAVIGATION", []helpRow{
+		{"`pgup/pgdn`", "scroll history"},
+		{"`home/end`", "jump to oldest/newest history"},
+		{"`mouse wheel`", "scroll history"},
+	}},
+	{"PANES", []helpRow{
+		{"`ctrl+e`", "toggle expanded/collapsed view"},
+		{"`ctrl+x`", "narrow pane"},
+		{"`ctrl+z`", "widen pane"},
+	}},
+	{"ACTIONS", []helpRow{
+		{"`ctrl+,`", "open settings"},
+		{"`ctrl+c`", "stop a running turn, or quit when idle"},
+	}},
+}
+
 func helpView() string {
 	var b strings.Builder
 
 	b.WriteString("# COMMANDS\n\n")
-	writeHelpRows(&b, []helpRow{
-		{"`/settings`", "open settings panel"},
-		{"`/new`", "start a fresh session (clears this conversation)"},
-		{"`/login`", "interactive provider login"},
-		{"`/help`", "show this help message"},
-	})
+	cmdRows := make([]helpRow, len(BuiltinSlashCommands))
+	for i, bc := range BuiltinSlashCommands {
+		cmdRows[i] = helpRow{"`" + "/" + bc.Name + "`", bc.Desc}
+	}
+	writeHelpRows(&b, cmdRows)
+	b.WriteString("  Type `/` to see all commands, including any discovered skills.\n")
 
 	b.WriteString("\n# KEYBINDINGS\n\n")
-	writeHelpCategory(&b, "COMPOSER", []helpRow{
-		{"`up/down`", "navigate completion candidates; recall a prior/next prompt when the completion list is closed"},
-		{"`tab`", "accept highlighted completion or cycle block focus when composer is empty"},
-		{"`esc`", "close completion list"},
-		{"`enter`", "submit draft or toggle focused block when empty"},
-		{"`shift+enter`", "insert newline"},
-	})
-	writeHelpCategory(&b, "NAVIGATION", []helpRow{
-		{"`pgup/pgdn`", "scroll history"},
-	})
-	writeHelpCategory(&b, "PANES", []helpRow{
-		{"`ctrl+e`", "toggle expanded/collapsed view"},
-		{"`ctrl+x`", "narrow pane"},
-		{"`ctrl+z`", "widen pane"},
-	})
-	writeHelpCategory(&b, "ACTIONS", []helpRow{
-		{"`ctrl+,`", "open settings"},
+	for _, cat := range helpKeybindingCategories {
+		writeHelpCategory(&b, cat.name, cat.rows)
+	}
+
+	b.WriteString("\n# WORKSPACE MENTIONS\n\n")
+	writeHelpRows(&b, []helpRow{
+		{"`@`", "type @ at a word boundary to open the file mention dropdown"},
+		{"`up/down`", "navigate mention candidates"},
+		{"`tab/enter`", "accept the highlighted mention"},
+		{"`esc`", "close the mention dropdown"},
 	})
 
 	b.WriteString("\n# CONCEPTS\n\n")

@@ -1,26 +1,37 @@
 # COMMANDS
 
   `/settings`  open settings panel
-  `/new`       start a fresh session (clears this conversation)
   `/login`     interactive provider login
   `/help`      show this help message
+  `/new`       start a fresh session (clears this conversation)
+  Type `/` to see all commands, including any discovered skills.
 
 # KEYBINDINGS
 
   c COMPOSER
   `up/down`      navigate completion candidates; recall a prior/next prompt when the completion list is closed
   `tab`          accept highlighted completion or cycle block focus when composer is empty
-  `esc`          close completion list
+  `esc`          close completion list, close mention dropdown, or stop a running turn
   `enter`        submit draft or toggle focused block when empty
   `shift+enter`  insert newline
   n NAVIGATION
-  `pgup/pgdn`  scroll history
+  `pgup/pgdn`    scroll history
+  `home/end`     jump to oldest/newest history
+  `mouse wheel`  scroll history
   p PANES
   `ctrl+e`  toggle expanded/collapsed view
   `ctrl+x`  narrow pane
   `ctrl+z`  widen pane
   a ACTIONS
   `ctrl+,`  open settings
+  `ctrl+c`  stop a running turn, or quit when idle
+
+# WORKSPACE MENTIONS
+
+  `@`          type @ at a word boundary to open the file mention dropdown
+  `up/down`    navigate mention candidates
+  `tab/enter`  accept the highlighted mention
+  `esc`        close the mention dropdown
 
 # CONCEPTS
 

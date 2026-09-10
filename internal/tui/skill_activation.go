@@ -8,6 +8,21 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
+// BuiltinSlashCmd is one built-in slash command offered by the TUI.
+type BuiltinSlashCmd struct {
+	Name string
+	Desc string
+}
+
+// BuiltinSlashCommands is the authoritative list of built-in slash commands.
+// It is the single source for both completion and help.
+var BuiltinSlashCommands = []BuiltinSlashCmd{
+	{"settings", "open settings panel"},
+	{"login", "interactive provider login"},
+	{"help", "show this help message"},
+	{"new", "start a fresh session (clears this conversation)"},
+}
+
 // SkillActivation owns leading-slash parsing, candidate discovery, and skill
 // activation while completionMenu supplies shared dropdown interaction.
 type SkillActivation struct {
@@ -156,18 +171,11 @@ func slashCandidates(value string, skills []SkillItem) []string {
 		return nil
 	}
 	partial := strings.TrimSpace(strings.TrimPrefix(value, "/"))
-	cands := make([]string, 0, len(skills)+5)
-	if partial == "" || strings.HasPrefix("settings", partial) {
-		cands = append(cands, "/settings")
-	}
-	if partial == "" || strings.HasPrefix("login", partial) {
-		cands = append(cands, "/login")
-	}
-	if partial == "" || strings.HasPrefix("help", partial) {
-		cands = append(cands, "/help")
-	}
-	if partial == "" || strings.HasPrefix("new", partial) {
-		cands = append(cands, "/new")
+	cands := make([]string, 0, len(skills)+len(BuiltinSlashCommands)+1)
+	for _, bc := range BuiltinSlashCommands {
+		if partial == "" || strings.HasPrefix(bc.Name, partial) {
+			cands = append(cands, "/"+bc.Name)
+		}
 	}
 
 	for _, it := range skills {

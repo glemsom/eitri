@@ -131,7 +131,8 @@ Full detail lives in [`docs/sessions.md`](docs/sessions.md).
 ### In the TUI
 
 - Type a prompt in the **composer** at the bottom and press `enter` to submit.
-- Start slash commands with `/` (e.g. `/settings` to open settings).
+- Start slash commands with `/` (e.g. `/settings` to open settings). Type `/` to see all commands, including any discovered skills.
+- Type `@` at a word boundary in the composer to open the file mention dropdown.
 - Enter `/help` for the complete live reference, which always shows the current bindings.
 
 #### Composer
@@ -139,10 +140,9 @@ Full detail lives in [`docs/sessions.md`](docs/sessions.md).
 | Key | Action |
 | --- | --- |
 | `up` / `down` | Navigate completion candidates; recall a prior/next prompt when the completion list is closed |
-| `tab` / `enter` | Accept the highlighted completion |
-| `esc` | Close the completion list |
-| `tab` | Cycle block focus when the composer is empty |
-| `enter` | Submit the draft, or toggle the focused block when empty |
+| `tab` | Accept highlighted completion or cycle block focus when composer is empty |
+| `esc` | Close completion list, close mention dropdown, or stop a running turn |
+| `enter` | Submit draft or toggle focused block when empty |
 | `shift+enter` | Insert a newline |
 
 #### Navigation
@@ -150,6 +150,8 @@ Full detail lives in [`docs/sessions.md`](docs/sessions.md).
 | Key | Action |
 | --- | --- |
 | `pgup` / `pgdn` | Scroll history |
+| `home` / `end` | Jump to oldest/newest history |
+| `mouse wheel` | Scroll history |
 
 #### Panes
 
@@ -164,6 +166,7 @@ Full detail lives in [`docs/sessions.md`](docs/sessions.md).
 | Key | Action |
 | --- | --- |
 | `ctrl+,` | Open settings |
+| `ctrl+c` | Stop a running turn, or quit when idle |
 
 #### Slash commands
 
@@ -173,6 +176,15 @@ Full detail lives in [`docs/sessions.md`](docs/sessions.md).
 | `/new` | Start a fresh session (clears this conversation) |
 | `/login` | Interactive provider login |
 | `/help` | Show this help message |
+
+#### Workspace mentions
+
+| Key | Action |
+| --- | --- |
+| `@` | Type `@` at a word boundary to open the file mention dropdown |
+| `up` / `down` | Navigate mention candidates |
+| `tab` / `enter` | Accept the highlighted mention |
+| `esc` | Close the mention dropdown |
 
 #### Concepts
 
