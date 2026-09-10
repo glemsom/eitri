@@ -28,11 +28,18 @@ func (h *hotProvider) current() provider.Provider {
 }
 
 func (h *hotProvider) Stream(ctx context.Context, req provider.Request) (provider.Stream, error) {
-	return h.current().Stream(ctx, req)
+	if p := h.current(); p != nil {
+		return p.Stream(ctx, req)
+	}
+	return nil, provider.ErrMissingCredentials
 }
 
 func (h *hotProvider) Models(ctx context.Context) ([]provider.ModelInfo, error) {
-	l, ok := h.current().(provider.ModelLister)
+	p := h.current()
+	if p == nil {
+		return nil, provider.ErrNoDiscovery
+	}
+	l, ok := p.(provider.ModelLister)
 	if !ok {
 		return nil, provider.ErrNoDiscovery
 	}
@@ -40,7 +47,11 @@ func (h *hotProvider) Models(ctx context.Context) ([]provider.ModelInfo, error) 
 }
 
 func (h *hotProvider) SupportedGenerationControls(ctx context.Context) ([]provider.GenerationControl, error) {
-	gp, ok := h.current().(provider.GenerationControlProvider)
+	p := h.current()
+	if p == nil {
+		return nil, nil
+	}
+	gp, ok := p.(provider.GenerationControlProvider)
 	if !ok {
 		return nil, nil
 	}

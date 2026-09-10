@@ -52,7 +52,7 @@ func runEngineTurn(e *engine.Engine, cfg func() config.Config, reg *tools.Regist
 	}
 }
 
-func runTUI(e *engine.Engine, logged *provider.LoggingProvider, cfg config.Config, reg *tools.Registry, sessionKey string, p provider.Provider, cfgPath string, dataDir string, skills *tools.Catalog, workspace string, sessionTemp string) error {
+func runTUI(e *engine.Engine, logged *provider.LoggingProvider, cfg config.Config, reg *tools.Registry, sessionKey string, p provider.Provider, cfgPath string, dataDir string, skills *tools.Catalog, workspace string, sessionTemp string, needsSetup bool) error {
 	// The Kitty face upload is lazily written to a scratch PNG on first render;
 	// own it for the program's lifetime so shutdown never leaks it in /tmp.
 	defer tui.CleanupKittyFace()
@@ -103,6 +103,7 @@ func runTUI(e *engine.Engine, logged *provider.LoggingProvider, cfg config.Confi
 		Skills:              skillSurface(reg, skills),
 		HistoryPath:         tui.PromptHistoryPath(dataDir),
 		LiveKey:             live,
+		NeedsSetup:          needsSetup,
 		SessionCleared: func(oldKey string) {
 			e.ClearSessionHistory(oldKey)
 		},

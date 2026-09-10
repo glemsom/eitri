@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -23,6 +24,10 @@ type ProviderEnv struct {
 	CopilotPersist func(config.CopilotConfig) error
 }
 
+// ErrMissingCredentials is returned by FromConfig when the selected provider
+// has no usable credentials, so the caller can offer setup instead of aborting.
+var ErrMissingCredentials = errors.New("provider credentials missing")
+
 func FromConfig(cfg config.Config, env ProviderEnv) (Provider, error) {
 	switch ProviderID(cfg.Provider) {
 	case ProviderOpenCodeGo:
@@ -35,17 +40,20 @@ func FromConfig(cfg config.Config, env ProviderEnv) (Provider, error) {
 			key = cfg.OpenCodeGo.Key
 		}
 		if key == "" {
-			return nil, fmt.Errorf("opencode-go provider selected but no API key configured (set it in Settings)")
+			return nil, fmt.Errorf("%w: opencode-go provider selected but no API key configured (set it in Settings)", ErrMissingCredentials)
 		}
 		return NewOpenCodeGo(key, url), nil
 
 	case ProviderCustomOpenAI:
 		if cfg.CustomOpenAI.BaseURL == "" {
-			return nil, fmt.Errorf("custom-openai provider selected but no base URL configured (set it in Settings)")
+			return nil, fmt.Errorf("%w: custom-openai provider selected but no base URL configured (set it in Settings)", ErrMissingCredentials)
 		}
 		return NewOpenAICompatible(cfg.CustomOpenAI.Key, cfg.CustomOpenAI.BaseURL), nil
 
 	case ProviderCopilot:
+		if cfg.Copilot.AccessToken == "" && cfg.Copilot.RefreshToken == "" {
+			return nil, fmt.Errorf("%w: github-copilot provider selected but no credential configured (run /login in the TUI)", ErrMissingCredentials)
+		}
 		return NewCopilot(cfg.Copilot, DefaultCopilotURL, env.HTTP, env.CopilotRefresh, env.CopilotPersist), nil
 
 	default:
