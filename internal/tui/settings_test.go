@@ -431,20 +431,20 @@ func TestSettingsOverlay_AddFolderPickerOpenAndSelectKeysDisjoint(t *testing.T) 
 		open[k] = true
 	}
 	var shared []string
-	hasCtrlS := false
+	hasCtrlO := false
 	for _, k := range f.picker.KeyMap.Select.Keys() {
 		if open[k] {
 			shared = append(shared, k)
 		}
-		if k == "ctrl+s" {
-			hasCtrlS = true
+		if k == "ctrl+o" {
+			hasCtrlO = true
 		}
 	}
 	if len(shared) != 0 {
 		t.Fatalf("Open and Select share keys %v in the add-folder picker, want disjoint", shared)
 	}
-	if !hasCtrlS {
-		t.Fatalf("Select keys = %v, want ctrl+s bound to selection", f.picker.KeyMap.Select.Keys())
+	if !hasCtrlO {
+		t.Fatalf("Select keys = %v, want ctrl+o bound to selection", f.picker.KeyMap.Select.Keys())
 	}
 }
 
@@ -453,7 +453,7 @@ func TestSettingsOverlay_FilePickerSelectAddsHighlightedFolderWithoutDescending(
 	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, Dependencies{})
 	startAddPathPicker(t, o, dir)
 
-	o.Handle(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+	o.Handle(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
 
 	got := o.draft().ExtraWritablePaths
 	if len(got) != 2 || got[1] != child {
@@ -512,7 +512,7 @@ func TestSettingsOverlay_FilePickerSelectClosesPickerBeforeTab(t *testing.T) {
 	dir, child := makeChildDir(t)
 	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, Dependencies{})
 	startAddPathPicker(t, o, dir)
-	o.Handle(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+	o.Handle(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
 	o.Handle(tea.KeyPressMsg{Code: tea.KeyTab})
 
 	got := o.draft().ExtraWritablePaths

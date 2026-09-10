@@ -49,7 +49,7 @@ func TestRenderRegions_HistoryVsBandSeparation(t *testing.T) {
 	if strings.Contains(hs, m.composer.View()) {
 		t.Errorf("composer leaked into the scroll region, got:\n%s", hs)
 	}
-	if strings.Contains(hs, "ctrl+s settings") {
+	if strings.Contains(hs, "ctrl+, settings") {
 		t.Errorf("status strip leaked into the scroll region, got:\n%s", hs)
 	}
 

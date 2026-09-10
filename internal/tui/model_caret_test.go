@@ -117,7 +117,7 @@ func TestComposer_CaretAbsentOnNonComposerSurfaces(t *testing.T) {
 		Config: cfgFixture(),
 	})
 	m = resize(t, m)
-	m = keypress(t, m, "ctrl+s")
+	m = keypress(t, m, "ctrl+,")
 	if c := m.View().Cursor; c != nil {
 		t.Errorf("Settings surface must not attach a caret, got %+v", c)
 	}

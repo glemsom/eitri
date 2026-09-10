@@ -163,7 +163,7 @@ Full detail lives in [`docs/sessions.md`](docs/sessions.md).
 
 | Key | Action |
 | --- | --- |
-| `ctrl+s` | Open settings |
+| `ctrl+,` | Open settings |
 
 #### Slash commands
 

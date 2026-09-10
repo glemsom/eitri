@@ -81,7 +81,7 @@ func TestModelStatusStripHintsOnNarrow(t *testing.T) {
 	m = asModel(t, nm)
 
 	content := view(m)
-	if !strings.Contains(content, "ctrl+s settings") {
+	if !strings.Contains(content, "ctrl+, settings") {
 		t.Errorf("narrow status strip should still show keybinding hints, got: %q", content)
 	}
 	for _, gone := range []string{"cache:", "cost:", "effort:", "thinking:"} {

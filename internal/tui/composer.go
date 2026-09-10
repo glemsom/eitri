@@ -325,7 +325,7 @@ func (m Model) composerHint() string {
 	if m.slash.isOpen() || m.mention.isOpen() {
 		return g("↑/↓", "up/down") + " navigate" + sep + "tab/enter select" + sep + "esc close"
 	}
-	return "enter send" + sep + "shift+enter newline" + sep + "ctrl+e expand/collapse" + sep + "ctrl+s settings"
+	return "enter send" + sep + "shift+enter newline" + sep + "ctrl+e expand/collapse" + sep + "ctrl+, settings"
 }
 
 // forgeTitle gives the busy state a restrained metallic glint. The spinner's
