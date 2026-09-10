@@ -26,6 +26,11 @@ type CopilotConfig struct {
 	ExpiresAt    int64  `json:"expires_at,omitempty"`
 }
 
+// OpenCodeGoConfig holds the OpenCode Go API key, persisted so a TUI-established credential is reused by later runs.
+type OpenCodeGoConfig struct {
+	Key string `json:"key,omitempty"`
+}
+
 // OpenAIConfig holds a user-supplied OpenAI-compatible endpoint and API key (custom OpenAI provider).
 type OpenAIConfig struct {
 	BaseURL string `json:"base_url,omitempty"`
@@ -46,10 +51,11 @@ type Config struct {
 	MaxTurns                      int           `json:"max_turns"`
 	ContextOverflowRecovery       bool          `json:"context_overflow_recovery"`
 	ExtraWritablePaths            []string      `json:"extra_writable_paths,omitempty"`
-	Theme                         string        `json:"theme"`
-	RailWidth                     int           `json:"rail_width,omitempty"`
-	Copilot                       CopilotConfig `json:"copilot,omitempty"`
-	CustomOpenAI                  OpenAIConfig  `json:"custom_openai,omitempty"`
+	Theme                         string           `json:"theme"`
+	RailWidth                     int              `json:"rail_width,omitempty"`
+	Copilot                       CopilotConfig    `json:"copilot,omitempty"`
+	OpenCodeGo                    OpenCodeGoConfig `json:"opencode_go,omitempty"`
+	CustomOpenAI                  OpenAIConfig     `json:"custom_openai,omitempty"`
 }
 
 // Default returns a config populated with Eitri's defaults.

@@ -198,7 +198,7 @@ Full detail lives in [`docs/sessions.md`](docs/sessions.md).
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `provider` | string | `opencode-go` | Provider backend |
+| `provider` | string | `opencode-go` | Provider backend: `opencode-go`, `github-copilot`, `custom-openai` |
 | `model` | string | `deepseek-v4-flash` | Model to use |
 | `reasoning_effort` | string | `low` | Reasoning effort level |
 | `thinking_enabled` | bool | `true` | Whether the model reasons/uses thinking |

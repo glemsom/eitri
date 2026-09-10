@@ -30,10 +30,14 @@ func FromConfig(cfg config.Config, env ProviderEnv) (Provider, error) {
 		if url == "" {
 			url = DefaultOpenCodeURL
 		}
-		if env.OpenCodeKey == "" {
-			return nil, fmt.Errorf("opencode-go provider selected but OPENCODE_API_KEY is not set")
+		key := env.OpenCodeKey
+		if key == "" {
+			key = cfg.OpenCodeGo.Key
 		}
-		return NewOpenCodeGo(env.OpenCodeKey, url), nil
+		if key == "" {
+			return nil, fmt.Errorf("opencode-go provider selected but no API key configured (set it in Settings)")
+		}
+		return NewOpenCodeGo(key, url), nil
 
 	case ProviderCustomOpenAI:
 		if cfg.CustomOpenAI.BaseURL == "" {

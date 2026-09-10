@@ -88,6 +88,133 @@ func TestSettingsForm_AdjustsKnobs(t *testing.T) {
 	}
 }
 
+func TestSettingsForm_FieldVisibility(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		provider string
+		visible  []int
+		hidden   []int
+	}{
+		{"opencode-go", []int{fieldProvider, fieldModel, fieldOpenCodeKey}, []int{fieldCustomOpenAIBaseURL, fieldCustomOpenAIKey}},
+		{"custom-openai", []int{fieldProvider, fieldModel, fieldCustomOpenAIBaseURL, fieldCustomOpenAIKey}, []int{fieldOpenCodeKey}},
+		{"github-copilot", []int{fieldProvider, fieldModel}, []int{fieldOpenCodeKey, fieldCustomOpenAIBaseURL, fieldCustomOpenAIKey}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.provider, func(t *testing.T) {
+			f := newSettingsForm(cfgFixture(), []string{})
+			f.cfg.Provider = tc.provider
+			for _, v := range tc.visible {
+				if !f.fieldVisible(v) {
+					t.Fatalf("field %d should be visible for %s", v, tc.provider)
+				}
+			}
+			for _, h := range tc.hidden {
+				if f.fieldVisible(h) {
+					t.Fatalf("field %d should be hidden for %s", h, tc.provider)
+				}
+			}
+		})
+	}
+}
+
+func TestSettingsForm_StepSkipsInvisibleFields(t *testing.T) {
+	t.Parallel()
+	f := newSettingsForm(cfgFixture(), []string{})
+	f.cfg.Provider = "github-copilot"
+	f.field = fieldPaths
+	f.step(1)
+	if f.field != fieldSave {
+		t.Fatalf("field after step from paths = %d, want fieldSave (skipped credential fields)", f.field)
+	}
+}
+
+func TestSettingsForm_TextInputSetsValue(t *testing.T) {
+	t.Parallel()
+	f := newSettingsForm(cfgFixture(), []string{})
+	f.cfg.Provider = "custom-openai"
+	f.field = fieldCustomOpenAIBaseURL
+	f.beginTextInput()
+	if !f.textInputActive {
+		t.Fatal("textInputActive = false after beginTextInput")
+	}
+	f.textInput.SetValue("https://example.com/v1")
+	f.confirmTextInput()
+	if f.textInputActive {
+		t.Fatal("textInputActive = true after confirmTextInput")
+	}
+	if f.cfg.CustomOpenAI.BaseURL != "https://example.com/v1" {
+		t.Fatalf("BaseURL = %q, want https://example.com/v1", f.cfg.CustomOpenAI.BaseURL)
+	}
+}
+
+func TestSettingsForm_TextInputCancelRestores(t *testing.T) {
+	t.Parallel()
+	f := newSettingsForm(cfgFixture(), []string{})
+	f.cfg.Provider = "opencode-go"
+	f.cfg.OpenCodeGo.Key = "original"
+	f.field = fieldOpenCodeKey
+	f.beginTextInput()
+	f.textInput.SetValue("changed")
+	f.cancelTextInput()
+	if f.textInputActive {
+		t.Fatal("textInputActive = true after cancelTextInput")
+	}
+	if f.cfg.OpenCodeGo.Key != "original" {
+		t.Fatalf("Key = %q, want original", f.cfg.OpenCodeGo.Key)
+	}
+}
+
+func TestSettingsForm_ConfigsEqualIncludesCredentials(t *testing.T) {
+	t.Parallel()
+	a := cfgFixture()
+	b := cfgFixture()
+	if !configsEqual(a, b) {
+		t.Fatal("configsEqual = false for identical configs")
+	}
+	a.OpenCodeGo.Key = "different"
+	if configsEqual(a, b) {
+		t.Fatal("configsEqual = true after changing OpenCodeGo.Key")
+	}
+}
+
+func TestSettingsView_RendersProviderCredentials(t *testing.T) {
+	t.Parallel()
+	f := newSettingsForm(cfgFixture(), []string{})
+	f.cfg.Provider = "custom-openai"
+	f.cfg.CustomOpenAI = config.OpenAIConfig{BaseURL: "https://example.com/v1", Key: "secret"}
+	view := settingsView(f)
+	if !strings.Contains(view, "Base URL") {
+		t.Fatalf("settings view %q missing Base URL row", view)
+	}
+	if !strings.Contains(view, "API key") {
+		t.Fatalf("settings view %q missing API key row", view)
+	}
+}
+
+func TestSettingsView_RendersOpenCodeKey(t *testing.T) {
+	t.Parallel()
+	f := newSettingsForm(cfgFixture(), []string{})
+	f.cfg.Provider = "opencode-go"
+	f.cfg.OpenCodeGo = config.OpenCodeGoConfig{Key: "my-key"}
+	view := settingsView(f)
+	if !strings.Contains(view, "OpenCode API key") {
+		t.Fatalf("settings view %q missing OpenCode API key row", view)
+	}
+}
+
+func TestMaskKey(t *testing.T) {
+	t.Parallel()
+	if got := maskKey(""); got != "(not set)" {
+		t.Fatalf("maskKey(\"\") = %q, want (not set)", got)
+	}
+	if got := maskKey("short"); got != "••••••••" {
+		t.Fatalf("maskKey(\"short\") = %q, want ••••••••", got)
+	}
+	if got := maskKey("very-long-secret-key"); got != "very••••-key" {
+		t.Fatalf("maskKey(\"very-long-secret-key\") = %q, want very••••-key", got)
+	}
+}
+
 func TestSettingsForm_EffortCyclesAllTiers(t *testing.T) {
 	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{}) // seeded "high"
