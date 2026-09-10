@@ -38,6 +38,16 @@ const (
 // ErrTUINotInteractive is returned when the interactive TUI cannot render into the host terminal — stdout is not a TTY, TERM is unset or "dumb", or the window is below the minimum width.
 var ErrTUINotInteractive = errors.New("the interactive TUI requires an interactive terminal: stdout must be a TTY, TERM must be set (not \"dumb\"), and the window must be at least 80 columns wide; run in batch mode instead: eitri -b \"<prompt>\"")
 
+// ErrBatchInterrupted is returned when a batch run is cancelled by the first
+// SIGINT or SIGTERM. The process exits with code 130 so a shell script can
+// distinguish an interrupted run from a successful answer (exit 0) and from a
+// genuine failure (exit 1).
+var ErrBatchInterrupted = errors.New("batch run interrupted")
+
+// BatchInterruptedExitCode is the Unix exit code (128 + SIGINT) returned when
+// a batch run is interrupted by SIGINT or SIGTERM.
+const BatchInterruptedExitCode = 130
+
 // minTUIWidth is the narrowest terminal (in columns) the full-screen TUI renders into; below it the transcript is squeezed unusably, so the TUI is refused in favor of batch mode.
 const minTUIWidth = constants.MinTUIWidth
 
@@ -251,10 +261,10 @@ func Run(opts Options) error {
 		}
 	}
 	// Batch runs bind the process's interrupt signals to the run context: the
-	// first SIGINT/SIGTERM cancels the turn gracefully (the run stops, the json
-	// envelope still flushes with stopped:true, and the session-temp defer runs),
-	// while a second signal hard-exits for a user who is not waiting on the
-	// graceful path.
+	// first SIGINT/SIGTERM cancels the turn and returns ErrBatchInterrupted
+	// (exit 130) so a shell script can distinguish an interrupted run from a
+	// successful answer and from a genuine failure. A second signal hard-exits
+	// for a user who is not waiting on the graceful path.
 	ctx, stop := batchSignalContext()
 	defer stop()
 	go func() {
@@ -266,7 +276,10 @@ func Run(opts Options) error {
 	}()
 
 	res, err := runAgent(ctx, e, cfg, reg, key, prompt, skills, nil, nil)
-	if err != nil && !errors.Is(err, engine.ErrStopped) {
+	if err != nil {
+		if errors.Is(err, engine.ErrStopped) {
+			return ErrBatchInterrupted
+		}
 		return err
 	}
 	out := opts.Stdout
@@ -283,16 +296,6 @@ func Run(opts Options) error {
 	format := opts.Format
 	if format == "" {
 		format = DefaultFormat
-	}
-	if err != nil {
-		// Graceful stop (SIGINT/SIGTERM): honor the json envelope contract with
-		// stopped:true so a script can tell an interrupted run from a failure; a
-		// text run emits no partial answer. Both return nil so the session-temp
-		// defer above runs before exit.
-		if format == "json" {
-			return writeBatchEnvelope(out, sess.GUID(), res)
-		}
-		return nil
 	}
 	if format == "json" {
 		return writeBatchEnvelope(out, sess.GUID(), res)

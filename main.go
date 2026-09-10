@@ -2,6 +2,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -111,5 +112,8 @@ func main() {
 
 func die(err error) {
 	fmt.Fprintf(os.Stderr, "eitri: %v\n", err)
+	if errors.Is(err, app.ErrBatchInterrupted) {
+		os.Exit(app.BatchInterruptedExitCode)
+	}
 	os.Exit(1)
 }
