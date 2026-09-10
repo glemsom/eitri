@@ -244,6 +244,31 @@ func TestBootUsesDataDirForConfig(t *testing.T) {
 	}
 }
 
+func TestTUIBootWithMissingCredentialsOpensSetup(t *testing.T) {
+	t.Setenv(ProviderKeyEnv, "")
+	stubTUI(t)
+	dir := t.TempDir()
+	dataDir := filepath.Join(dir, ".eitri")
+
+	if err := Run(Options{DataDir: dataDir, LookPath: okLookPath}); err != nil {
+		t.Fatalf("Run() with missing credentials in TUI mode error = %v, want nil", err)
+	}
+}
+
+func TestBatchWithMissingCredentialsStillErrors(t *testing.T) {
+	t.Setenv(ProviderKeyEnv, "")
+	dir := t.TempDir()
+	dataDir := filepath.Join(dir, ".eitri")
+
+	err := Run(Options{DataDir: dataDir, LookPath: okLookPath, Prompt: "hello"})
+	if err == nil {
+		t.Fatal("Run(batch with missing credentials) = nil error, want error")
+	}
+	if !errors.Is(err, provider.ErrMissingCredentials) {
+		t.Fatalf("Run() error = %v, want ErrMissingCredentials", err)
+	}
+}
+
 var okLookPath = func(name string) (string, error) { return "/usr/bin/" + name, nil }
 
 var missingLookPath = func(name string) (string, error) { return "", errors.New("executable not found") }

@@ -140,6 +140,10 @@ type Dependencies struct {
 	// so the caller can drop any cached state tied to that session (e.g.
 	// the engine's in-memory session history).
 	SessionCleared func(string)
+	// NeedsSetup is true when the selected provider has no usable credentials
+	// at boot; the TUI opens Settings automatically so the user can configure
+	// them instead of exiting with an error.
+	NeedsSetup bool
 }
 
 type feedbackKind int
@@ -279,6 +283,12 @@ func NewModelCfg(d Dependencies) Model {
 	m.runtime.SetThinkingEnabled(d.Config.ThinkingEnabled)
 	if !isSupportedTheme(d.Config.Theme) {
 		m.feedback = neutralFeedback(fmt.Sprintf("unknown theme %q, using %s", d.Config.Theme, config.DefaultTheme))
+	}
+	if d.NeedsSetup {
+		m.tx.appendMsg("Welcome to Eitri! Please configure your provider in Settings to get started.")
+		if o, _ := openSettingsOverlay(d.Config, d.Models, m.tx.theme, m.telemetry, m.deps.ThinkingSuppression, m.deps); o != nil {
+			m.settings = o
+		}
 	}
 	return m
 }

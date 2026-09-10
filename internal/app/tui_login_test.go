@@ -2,13 +2,14 @@ package app
 
 import (
 	"context"
-	"github.com/glemsom/eitri/internal/tui/livekey"
+	"errors"
 	"testing"
 
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/engine"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/tools"
+	"github.com/glemsom/eitri/internal/tui/livekey"
 )
 
 func TestRunEngineTurnReadsCurrentConfig(t *testing.T) {
@@ -125,5 +126,24 @@ func TestHotProviderSwapsCapabilities(t *testing.T) {
 	}
 	if want := []string{"first", "second"}; len(calls) != len(want) || calls[0] != want[0] || calls[1] != want[1] {
 		t.Fatalf("stream call order = %v, want %v", calls, want)
+	}
+}
+
+func TestHotProviderNilReturnsMissingCredentials(t *testing.T) {
+	h := newHotProvider(nil)
+	if _, err := h.Stream(context.Background(), provider.Request{}); !errors.Is(err, provider.ErrMissingCredentials) {
+		t.Fatalf("Stream() error = %v, want ErrMissingCredentials", err)
+	}
+	if _, err := h.Models(context.Background()); !errors.Is(err, provider.ErrNoDiscovery) {
+		t.Fatalf("Models() error = %v, want ErrNoDiscovery", err)
+	}
+	honored, err := provider.NegotiateGenerationControls(context.Background(), h, []provider.ControlRequirement{{
+		Control: provider.GenerationControlThinkingSuppression, Required: false,
+	}})
+	if err != nil {
+		t.Fatalf("NegotiateGenerationControls() error = %v, want nil", err)
+	}
+	if len(honored) != 0 {
+		t.Fatalf("honored controls = %v, want none", honored)
 	}
 }

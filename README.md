@@ -23,7 +23,7 @@ Named after the Norse blacksmith who forged Mjölnir. Eitri is an AI assistant t
 ```sh
 make build          # 1. build ./bin/eitri
 ./bin/eitri         # 2. launch the interactive TUI
-# 3. the first launch asks you to log in to your provider
+# 3. on first launch, Settings opens so you can choose a provider and enter your credentials
 ```
 
 > Eitri refuses to start unless its declared toolset is installed — see [Requirements](#requirements).

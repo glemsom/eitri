@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -232,6 +233,17 @@ func thinkingWireServer(t *testing.T, inspect func(map[string]any)) *httptest.Se
 	return srv
 }
 
+func TestFromConfigCopilotMissingCredentialsFails(t *testing.T) {
+	t.Parallel()
+	_, err := FromConfig(config.Config{Provider: string(ProviderCopilot)}, ProviderEnv{})
+	if err == nil {
+		t.Fatal("FromConfig(github-copilot) without tokens = nil error, want error")
+	}
+	if !errors.Is(err, ErrMissingCredentials) {
+		t.Fatalf("error = %v, want ErrMissingCredentials", err)
+	}
+}
+
 func TestFromConfigUnknownProviderFails(t *testing.T) {
 	t.Parallel()
 	_, err := FromConfig(config.Config{Provider: "nope"}, ProviderEnv{})
@@ -245,6 +257,9 @@ func TestFromConfigOpenCodeMissingCredentialFails(t *testing.T) {
 	_, err := FromConfig(config.Config{Provider: string(ProviderOpenCodeGo)}, ProviderEnv{})
 	if err == nil {
 		t.Fatal("FromConfig(opencode-go) without credential = nil error, want setup error")
+	}
+	if !errors.Is(err, ErrMissingCredentials) {
+		t.Fatalf("error = %v, want ErrMissingCredentials", err)
 	}
 }
 
@@ -295,6 +310,9 @@ func TestFromConfigCustomOpenAIMissingBaseURLErrors(t *testing.T) {
 	if err == nil {
 		t.Fatal("FromConfig(custom-openai) without base URL = nil error, want error")
 	}
+	if !errors.Is(err, ErrMissingCredentials) {
+		t.Fatalf("error = %v, want ErrMissingCredentials", err)
+	}
 	if !strings.Contains(err.Error(), "set it in Settings") {
 		t.Fatalf("error = %q, want message pointing to Settings", err.Error())
 	}
@@ -305,6 +323,9 @@ func TestFromConfigOpenCodeMissingKeyErrors(t *testing.T) {
 	_, err := FromConfig(config.Config{Provider: string(ProviderOpenCodeGo)}, ProviderEnv{})
 	if err == nil {
 		t.Fatal("FromConfig(opencode-go) without key = nil error, want error")
+	}
+	if !errors.Is(err, ErrMissingCredentials) {
+		t.Fatalf("error = %v, want ErrMissingCredentials", err)
 	}
 	if !strings.Contains(err.Error(), "set it in Settings") {
 		t.Fatalf("error = %q, want message pointing to Settings", err.Error())

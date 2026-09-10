@@ -522,3 +522,33 @@ func TestModel_SettingsActionsRemainVisibleAtConstrainedHeight(t *testing.T) {
 		t.Fatalf("settings actions not visible at constrained height: %q", lines)
 	}
 }
+
+func TestModel_NeedsSetupOpensSettingsOnBoot(t *testing.T) {
+	t.Parallel()
+	m := NewModelCfg(Dependencies{
+		Config:     cfgFixture(),
+		Models:     []string{"deepseek-v4-flash"},
+		NeedsSetup: true,
+	})
+	m = resize(t, m)
+
+	if m.settings == nil {
+		t.Fatal("NeedsSetup=true did not open settings overlay")
+	}
+	content := view(m)
+	if !strings.Contains(content, "Eitri Settings") {
+		t.Fatalf("settings content %q missing title", content)
+	}
+	// The welcome message is in the transcript, which is hidden behind the
+	// settings overlay; verify it was appended directly.
+	found := false
+	for _, msg := range m.tx.messages {
+		if strings.Contains(msg.content, "Welcome to Eitri!") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("transcript missing welcome message")
+	}
+}

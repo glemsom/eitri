@@ -233,11 +233,17 @@ func Run(opts Options) error {
 	}
 
 	p := opts.Provider
+	needsSetup := false
 	if p == nil {
 		var err error
 		p, err = buildProvider(cfg, cfgPath)
 		if err != nil {
-			return err
+			if opts.Prompt == "" && errors.Is(err, provider.ErrMissingCredentials) {
+				needsSetup = true
+				p = nil
+			} else {
+				return err
+			}
 		}
 	}
 	liveProvider := newHotProvider(p)
@@ -247,10 +253,12 @@ func Run(opts Options) error {
 	key := sess.GUID() // opt into the session-scoped prompt cache
 
 	if opts.Prompt == "" {
-		if _, err := e.ResolveCompaction(context.Background(), cfg.ContextOverflowRecovery); err != nil {
-			return fmt.Errorf("configure context overflow recovery: %w", err)
+		if !needsSetup {
+			if _, err := e.ResolveCompaction(context.Background(), cfg.ContextOverflowRecovery); err != nil {
+				return fmt.Errorf("configure context overflow recovery: %w", err)
+			}
 		}
-		return runTUI(e, logged, cfg, reg, key, liveProvider, cfgPath, dir, skills, workspace, tempHost)
+		return runTUI(e, logged, cfg, reg, key, liveProvider, cfgPath, dir, skills, workspace, tempHost, needsSetup)
 	}
 
 	prompt := opts.Prompt
