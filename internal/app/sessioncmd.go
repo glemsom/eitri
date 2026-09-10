@@ -115,6 +115,9 @@ func ListSessions(dataDir string, out io.Writer) error {
 		path := filepath.Join(root, e.Name(), "messages.jsonl")
 		fi, err := os.Stat(path)
 		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
 			return fmt.Errorf("session %s unreadable: %w", e.Name(), err)
 		}
 		cycles, err := readCycles(path)
@@ -138,10 +141,13 @@ func ListSessions(dataDir string, out io.Writer) error {
 func ShowSession(dataDir, guid string, turn int, noReasoning bool, out io.Writer) error {
 	cycles, err := readCycles(filepath.Join(dataDir, "sessions", guid, "messages.jsonl"))
 	if err != nil {
-		return fmt.Errorf("session %s unreadable: %w", guid, err)
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("session %s unreadable: %w", guid, err)
+		}
 	}
 	if len(cycles) == 0 {
-		return fmt.Errorf("session %s has no message records", guid)
+		fmt.Fprintf(out, "session %s has no records\n", guid)
+		return nil
 	}
 	if noReasoning {
 		stripReasoning(cycles)
