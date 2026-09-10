@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -254,11 +255,10 @@ func TestRunBatchJSONNoSkipNoticeOnStdout(t *testing.T) {
 }
 
 // TestRunBatchJSONEnvelopeStoppedOnInterrupt verifies the first SIGINT/SIGTERM
-// turns into a graceful stop: --format json still honors the envelope contract
-// with stopped:true (so a script can tell an interrupted run from a failure),
-// and Run returns nil so the session-temp cleanup defers run. The already-
-// cancelled context stands in for the first signal without signalling the test
-// process.
+// returns ErrBatchInterrupted, prints no envelope, and leaves stdout empty so
+// a script cannot misread an interrupted run as a successful answer. The
+// already-cancelled context stands in for the first signal without signalling
+// the test process.
 func TestRunBatchJSONEnvelopeStoppedOnInterrupt(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -275,33 +275,17 @@ func TestRunBatchJSONEnvelopeStoppedOnInterrupt(t *testing.T) {
 		Stdout:   &out,
 		Provider: provider.NewFake("../provider/testdata/hello.sse"),
 	})
-	if err != nil {
-		t.Fatalf("Run(interrupted --format json) error = %v, want nil (graceful stop)", err)
+	if !errors.Is(err, ErrBatchInterrupted) {
+		t.Fatalf("Run(interrupted --format json) error = %v, want ErrBatchInterrupted", err)
 	}
-	var env struct {
-		Answer  string `json:"answer"`
-		Session string `json:"session"`
-		Turns   int    `json:"turns"`
-		Stopped bool   `json:"stopped"`
-	}
-	trimmed := strings.TrimSpace(out.String())
-	if err := json.Unmarshal([]byte(trimmed), &env); err != nil {
-		t.Fatalf("stdout %q is not one JSON envelope: %v", out.String(), err)
-	}
-	if !env.Stopped {
-		t.Fatal("interrupted envelope stopped = false, want true")
-	}
-	if env.Session == "" {
-		t.Fatal("interrupted envelope missing session GUID")
-	}
-	if !json.Valid([]byte(out.String())) {
-		t.Fatalf("stdout %q is not valid JSON on an interrupted run", out.String())
+	if out.Len() != 0 {
+		t.Fatalf("interrupted json run printed %q to stdout, want nothing", out.String())
 	}
 }
 
-// TestRunBatchTextOnInterruptEmitsNothing verifies a graceful stop under the
-// default text format prints no partial answer to stdout and returns nil (the
-// defers that clean up the session temp run before exit).
+// TestRunBatchTextOnInterruptEmitsNothing verifies an interrupted text run
+// returns ErrBatchInterrupted and prints nothing to stdout so a shell script
+// cannot misread it as a successful empty answer.
 func TestRunBatchTextOnInterruptEmitsNothing(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -317,8 +301,8 @@ func TestRunBatchTextOnInterruptEmitsNothing(t *testing.T) {
 		Stdout:   &out,
 		Provider: provider.NewFake("../provider/testdata/hello.sse"),
 	})
-	if err != nil {
-		t.Fatalf("Run(interrupted text) error = %v, want nil (graceful stop)", err)
+	if !errors.Is(err, ErrBatchInterrupted) {
+		t.Fatalf("Run(interrupted text) error = %v, want ErrBatchInterrupted", err)
 	}
 	if trimmed := strings.TrimSpace(out.String()); trimmed != "" {
 		t.Fatalf("interrupted text run printed %q to stdout, want nothing", trimmed)

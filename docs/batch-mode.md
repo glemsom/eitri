@@ -64,7 +64,7 @@ JSON object** at run end:
 | `answer` | string | The final answer text. |
 | `session` | string | The run's session GUID — names the session directory under `sessions/` in the data directory, usable with `eitri session show <guid>`. |
 | `turns` | number | Provider request/response cycles the run performed (tool-calling turns included). |
-| `stopped` | bool | Whether the run ended in a user stop rather than a normal completion. Batch binds no stop, so an envelope printed by a batch run always has `stopped: false`; a stopped or failed run exits non-zero and prints no envelope. |
+| `stopped` | bool | Whether the run ended in a user stop rather than a normal completion. Batch binds no stop, so an envelope printed by a batch run always has `stopped: false`; an interrupted or failed run exits non-zero and prints no envelope. |
 
 Stdout carries nothing but this envelope — no banner, no progress, no thinking.
 Everything else routes to stderr:
@@ -86,14 +86,18 @@ Exit codes stay minimal and stable:
 - **`1`** — batch outcomes that are not an answer: refusals (oversized stdin,
   piped stdin without `-b`, unknown `--format`, missing declared toolset) and
   failures (provider errors, max-turn cap, run errors).
+- **`130`** — the run was interrupted by the first SIGINT/SIGTERM. No envelope
+  is printed, so a script cannot misread an interrupted run as a successful
+  empty answer.
 
-This 0/1 promise covers the run itself. A malformed command line (an unknown
+This 0/1/130 promise covers the run itself. A malformed command line (an unknown
 flag, a missing `-b` argument) is rejected by the flag parser before boot,
 printing the usage text to stderr and exiting 2 — so `$?` is one of `0`
-(answered), `1` (refused or failed), or `2` (never started: bad usage).
+(answered), `1` (refused or failed), `130` (interrupted), or `2` (never
+started: bad usage).
 
-For callers that need more than 0/1, the JSON envelope carries `turns` and
-`stopped`.
+For callers that need more than exit codes, a successful JSON envelope carries
+`turns` and `stopped`.
 
 ## Pipe examples
 
@@ -115,7 +119,8 @@ Summarize a log excerpt, keeping the reasoning out of the answer stream:
 tail -n 500 app.log | eitri -b "Summarize what went wrong" --format json -v 2>thinking.log | jq -r .answer
 ```
 
-Branch on the outcome — exit 0 means answered, 1 means refused or failed:
+Branch on the outcome — exit 0 means answered, 1 or 130 means refused, failed,
+or interrupted:
 
 ```sh
 if git diff | eitri -b "Review this diff" --format json > review.json; then
