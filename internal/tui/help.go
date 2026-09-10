@@ -25,9 +25,8 @@ func helpView() string {
 	b.WriteString("\n# KEYBINDINGS\n\n")
 	writeHelpCategory(&b, "COMPOSER", []helpRow{
 		{"`up/down`", "navigate completion candidates; recall a prior/next prompt when the completion list is closed"},
-		{"`tab/enter`", "accept highlighted completion"},
+		{"`tab`", "accept highlighted completion or cycle block focus when composer is empty"},
 		{"`esc`", "close completion list"},
-		{"`tab`", "cycle block focus when composer is empty"},
 		{"`enter`", "submit draft or toggle focused block when empty"},
 		{"`shift+enter`", "insert newline"},
 	})
@@ -40,7 +39,7 @@ func helpView() string {
 		{"`ctrl+z`", "widen pane"},
 	})
 	writeHelpCategory(&b, "ACTIONS", []helpRow{
-		{"`ctrl+s`", "open settings"},
+		{"`ctrl+,`", "open settings"},
 	})
 
 	b.WriteString("\n# CONCEPTS\n\n")

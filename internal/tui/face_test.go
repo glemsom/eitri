@@ -162,7 +162,7 @@ func TestThemeChangeReuploadsFace(t *testing.T) {
 
 	// Change the appearance in settings, save, and close the overlay: the
 	// theme swap is face damage and the next face draw must re-upload.
-	m = keypress(t, m, "ctrl+s")
+	m = keypress(t, m, "ctrl+,")
 	for i := fieldProvider; i < fieldTheme; i++ {
 		m = keypress(t, m, "enter")
 	}
@@ -196,7 +196,7 @@ func TestNonFaceSettingsSaveDoesNotReuploadFace(t *testing.T) {
 
 	// A save that touches no face input (max turns, not theme/rail width) must
 	// not re-upload: the face stays clean, so closing the overlay arms nothing.
-	m = keypress(t, m, "ctrl+s")
+	m = keypress(t, m, "ctrl+,")
 	for i := fieldProvider; i < fieldMaxTurns; i++ {
 		m = keypress(t, m, "enter")
 	}

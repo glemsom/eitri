@@ -139,7 +139,7 @@ func TestSnapshot_frames(t *testing.T) {
 	writeFrame(t, out, "05_expanded", m)
 	m = keypress(t, m, "ctrl+e")
 
-	m = keypress(t, m, "ctrl+s")
+	m = keypress(t, m, "ctrl+,")
 	writeFrame(t, out, "07_settings", m)
 	m = keypress(t, m, "esc")
 

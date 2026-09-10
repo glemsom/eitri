@@ -21,7 +21,7 @@ func TestModel_OpenSettingsRendersSurface(t *testing.T) {
 		Config: cfgFixture(),
 	})
 	m = resize(t, m)
-	m = keypress(t, m, "ctrl+s")
+	m = keypress(t, m, "ctrl+,")
 
 	content := view(m)
 	if !strings.Contains(content, "Eitri Settings") {
@@ -44,7 +44,7 @@ func TestModel_SettingsSavePersistsAndRemainsOpen(t *testing.T) {
 		Save:   func(c config.Config) error { saved = c; return nil },
 	})
 	m = resize(t, m)
-	m = keypress(t, m, "ctrl+s")
+	m = keypress(t, m, "ctrl+,")
 	for i := fieldProvider; i < fieldSave; i++ {
 		m = keypress(t, m, "enter")
 	}
@@ -73,7 +73,7 @@ func TestModel_SettingsAdjustedValuePersists(t *testing.T) {
 		Save:   func(c config.Config) error { saved = c; return nil },
 	})
 	m = resize(t, m)
-	m = keypress(t, m, "ctrl+s")
+	m = keypress(t, m, "ctrl+,")
 	m = keypress(t, m, "enter") // focus Model
 	m = keypress(t, m, "tab")   // select grok-2
 	for i := fieldModel; i < fieldSave; i++ {
@@ -98,7 +98,7 @@ func TestModel_SettingsEffortSelectingMediumPersists(t *testing.T) {
 		Save:   func(c config.Config) error { saved = c; return nil },
 	})
 	m = resize(t, m)
-	m = keypress(t, m, "ctrl+s")
+	m = keypress(t, m, "ctrl+,")
 	for i := fieldProvider; i < fieldEffort; i++ {
 		m = keypress(t, m, "enter")
 	}
@@ -124,7 +124,7 @@ func TestModel_SettingsSaveAppliesThinkingStateToLiveSession(t *testing.T) {
 		Save:   func(c config.Config) error { return nil },
 	})
 	m = resize(t, m)
-	m = keypress(t, m, "ctrl+s")
+	m = keypress(t, m, "ctrl+,")
 	for i := fieldProvider; i < fieldThinking; i++ {
 		m = keypress(t, m, "enter")
 	}
@@ -156,7 +156,7 @@ func TestModel_SettingsSaveRefreshesRightRail(t *testing.T) {
 		Rail:   NewRail("opencode-go", "deepseek-v4-flash", "high", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a"),
 	})
 	m = resize(t, m)
-	m = keypress(t, m, "ctrl+s")
+	m = keypress(t, m, "ctrl+,")
 	m = keypress(t, m, "enter") // focus Model
 	m = keypress(t, m, "tab")   // deepseek-v4-flash -> grok-2
 	for i := fieldModel; i < fieldSave; i++ {
@@ -192,7 +192,7 @@ func TestModel_SettingsSaveFailureDoesNotApplyLiveConfig(t *testing.T) {
 		},
 	})
 	m = resize(t, m)
-	m = keypress(t, m, "ctrl+s")
+	m = keypress(t, m, "ctrl+,")
 	m = keypress(t, m, "tab") // provider opencode-go -> github-copilot
 	for i := fieldProvider; i < fieldSave; i++ {
 		m = keypress(t, m, "enter")
@@ -222,7 +222,7 @@ func TestModel_SettingsThinkingTogglePersists(t *testing.T) {
 		Save:   func(c config.Config) error { saved = c; return nil },
 	})
 	m = resize(t, m)
-	m = keypress(t, m, "ctrl+s")
+	m = keypress(t, m, "ctrl+,")
 	for i := fieldProvider; i < fieldThinking; i++ {
 		m = keypress(t, m, "enter")
 	}
@@ -255,7 +255,7 @@ func TestModel_SettingsCollapseTogglesPersistAndFlipDefaults(t *testing.T) {
 		Save:   func(c config.Config) error { saved = c; return nil },
 	})
 	m = resize(t, m)
-	m = keypress(t, m, "ctrl+s")
+	m = keypress(t, m, "ctrl+,")
 	for i := fieldProvider; i < fieldCoTCollapsed; i++ {
 		m = keypress(t, m, "enter")
 	}
@@ -293,7 +293,7 @@ func TestModel_SettingsThemeSelectingPersists(t *testing.T) {
 		Save:   func(c config.Config) error { saved = c; return nil },
 	})
 	m = resize(t, m)
-	m = keypress(t, m, "ctrl+s")
+	m = keypress(t, m, "ctrl+,")
 	for i := fieldProvider; i < fieldTheme; i++ {
 		m = keypress(t, m, "enter")
 	}
@@ -354,7 +354,7 @@ func TestModel_SettingsWiringSurfacesThinkingSuppression(t *testing.T) {
 		ThinkingSuppression: func() bool { return false },
 	})
 	m = resize(t, m)
-	m = keypress(t, m, "ctrl+s")
+	m = keypress(t, m, "ctrl+,")
 
 	if m.settings == nil || m.settings.thinkingSuppression == nil {
 		t.Fatal("settings form not seeded with the thinking-suppression seam")
@@ -411,8 +411,8 @@ func keypress(t *testing.T, m Model, key string) Model {
 
 func namedKey(name string) tea.Msg {
 	switch name {
-	case "ctrl+s":
-		return tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl}
+	case "ctrl+,":
+		return tea.KeyPressMsg{Code: ',', Mod: tea.ModCtrl}
 	case "ctrl+c":
 		return tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}
 	case "tab":
@@ -443,7 +443,7 @@ func namedKey(name string) tea.Msg {
 func TestModel_SettingsActionsRemainVisibleAtConstrainedHeight(t *testing.T) {
 	m := NewModelCfg(Dependencies{Config: cfgFixture(), Models: []string{"deepseek-v4-flash"}})
 	m = resizeTo(t, m, 80, 12)
-	m = keypress(t, m, "ctrl+s")
+	m = keypress(t, m, "ctrl+,")
 
 	lines := strings.Split(ansiStrip(view(m)), "\n")
 	if len(lines) > 12 {

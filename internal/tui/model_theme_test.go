@@ -80,7 +80,7 @@ func TestModel_settingsThemeSaveReskinsChrome(t *testing.T) {
 		t.Fatalf("default chrome expected before save, got: %q", pane)
 	}
 
-	m = keypress(t, m, "ctrl+s")
+	m = keypress(t, m, "ctrl+,")
 	for i := fieldProvider; i < fieldTheme; i++ {
 		m = keypress(t, m, "enter")
 	}

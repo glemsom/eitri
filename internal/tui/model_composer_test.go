@@ -253,7 +253,7 @@ func TestModel_statusAndSlashPinnedAboveComposer(t *testing.T) {
 
 	statusIdx, slashIdx := -1, -1
 	for i, ln := range lines {
-		if strings.Contains(ln, "ctrl+s settings") && statusIdx == -1 {
+		if strings.Contains(ln, "ctrl+, settings") && statusIdx == -1 {
 			statusIdx = i
 		}
 		if strings.Contains(ln, "▸") && slashIdx == -1 {

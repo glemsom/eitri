@@ -145,7 +145,7 @@ func (f *settingsForm) beginAddPath() tea.Cmd {
 	f.picker.SetHeight(10)
 	f.picker.KeyMap.Back = key.NewBinding(key.WithKeys("h", "u", "backspace", "left"), key.WithHelp("u/left", "parent"))
 	f.picker.KeyMap.Open = key.NewBinding(key.WithKeys("l", "right", "enter"), key.WithHelp("enter", "open"))
-	f.picker.KeyMap.Select = key.NewBinding(key.WithKeys("ctrl+s"), key.WithHelp("ctrl+s", "select folder"))
+	f.picker.KeyMap.Select = key.NewBinding(key.WithKeys("ctrl+o"), key.WithHelp("ctrl+o", "select folder"))
 	return f.picker.Init()
 }
 
@@ -256,7 +256,7 @@ func settingsHelp(f settingsForm) string {
 		return "Show tool output as compact one-liners until expanded."
 	case fieldPaths:
 		if f.pickerActive {
-			return "Choose a folder with ↑/↓, Enter opens, Left/Backspace/u goes to parent, Ctrl+S adds, Esc cancels."
+			return "Choose a folder with ↑/↓, Enter opens, Left/Backspace/u goes to parent, Ctrl+O selects, Esc cancels."
 		}
 		return "Press + or a to add a folder. ←/→ selects an existing path. Delete removes the selected path."
 	case fieldSave:
@@ -323,7 +323,7 @@ func writePathList(b *strings.Builder, f settingsForm, th Theme) {
 		fmt.Fprintf(b, "     %s%s\n", marker, p)
 	}
 	if f.pickerActive {
-		b.WriteString(th.statusStyle.Render("     Folder picker — Enter opens, Left/Backspace/u parent, Ctrl+S selects, Esc cancels"))
+		b.WriteString(th.statusStyle.Render("     Folder picker — Enter opens, Left/Backspace/u parent, Ctrl+O selects, Esc cancels"))
 		b.WriteString("\n")
 		b.WriteString(f.picker.View())
 	}
@@ -402,7 +402,7 @@ func (o *SettingsOverlay) Key(k tea.KeyPressMsg) (settingsKeyOutcome, tea.Cmd) {
 		return o.keyAddPath(k)
 	}
 	switch k.String() {
-	case "ctrl+s":
+	case "ctrl+,":
 		if s.dirty() {
 			return outcomeSaved, nil
 		}
@@ -649,12 +649,8 @@ func settingsView(f settingsForm) string {
 		b.WriteString(th.statusStyle.Render("   " + hr() + " " + label + " " + hr()))
 		b.WriteString("\n")
 	}
-	writePalette := func(focused bool) {
-		marker := " "
-		if focused {
-			marker = "▸"
-		}
-		fmt.Fprintf(&b, "%-2s%s %-20s", "", marker, "Palette")
+	writePalette := func() {
+		b.WriteString("       Palette ")
 		for _, c := range []color.Color{th.accent, th.ok, th.error, th.shell, th.file, th.web, th.skill} {
 			b.WriteString(" " + lipgloss.NewStyle().Foreground(c).Render(g("██", "##")))
 		}
@@ -675,7 +671,7 @@ func settingsView(f settingsForm) string {
 			writePathList(&b, f, th)
 		}
 		if i == fieldTheme {
-			writePalette(false)
+			writePalette()
 		}
 		if i == fieldThinking && !f.cfg.ThinkingEnabled && f.thinkingSuppression != nil && !f.thinkingSuppression() {
 			b.WriteString(th.statusStyle.Render("   " + g("⚠", "!") + " This provider always uses reasoning"))
@@ -721,7 +717,7 @@ func settingsView(f settingsForm) string {
 	}
 	b.WriteString("\n" + th.statusStyle.Render(strings.Repeat(hr(), 58)) + "\n")
 	b.WriteString(state + "   " + save + "  " + cancel + "\n")
-	b.WriteString(th.statusStyle.Render(g("↑/↓ navigate", "up/down navigate") + " " + g("·", ".") + " " + g("←/→ adjust", "left/right adjust") + " " + g("·", ".") + " ctrl+s save " + g("·", ".") + " esc close"))
+	b.WriteString(th.statusStyle.Render(g("↑/↓ navigate", "up/down navigate") + " " + g("·", ".") + " " + g("←/→ adjust", "left/right adjust") + " " + g("·", ".") + " ctrl+, save " + g("·", ".") + " esc close"))
 	return b.String()
 }
 

@@ -245,9 +245,9 @@ func TestSettingsOverlay_CtrlSSavesFromAnyField(t *testing.T) {
 	o, _ := openSettingsOverlay(cfg, []string{cfg.Model}, defaultTheme, nil, nil, Dependencies{Save: func(config.Config) error { saved = true; return nil }})
 	o.cfg.ThinkingEnabled = !o.cfg.ThinkingEnabled
 
-	res := o.Handle(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+	res := o.Handle(tea.KeyPressMsg{Code: ',', Mod: tea.ModCtrl})
 	if res.outcome != outcomeSaved || !saved {
-		t.Fatalf("ctrl+s outcome/saved = %v/%v, want saved", res.outcome, saved)
+		t.Fatalf("ctrl+, outcome/saved = %v/%v, want saved", res.outcome, saved)
 	}
 }
 

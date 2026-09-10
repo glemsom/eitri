@@ -124,7 +124,7 @@ func idleWelcome(th Theme) string {
 	return th.headerStyle.Render(hr()) + "\n" +
 		th.headerStyle.Render(brandMark()+"  Eitri") + th.statusStyle.Render(g(" — ", " - ")+"your terminal coding agent") + "\n" +
 		th.headerStyle.Render(hr()) + "\n" +
-		th.statusStyle.Render("  "+keyHint()+" ctrl+s settings · /help for commands & keybindings") + "\n"
+		th.statusStyle.Render("  "+keyHint()+" ctrl+, settings · /help for commands & keybindings") + "\n"
 }
 
 // promptView is the interactive max-turns continuation prompt.
@@ -144,5 +144,5 @@ func thinkingHeader(th Theme, reasoning, effort string) string {
 }
 
 func bandHints() string {
-	return strings.Join([]string{"ctrl+s settings", "ctrl+e expand/collapse", "shift+enter newline"}, g(" · ", " . "))
+	return strings.Join([]string{"ctrl+, settings", "ctrl+e expand/collapse", "shift+enter newline"}, g(" · ", " . "))
 }

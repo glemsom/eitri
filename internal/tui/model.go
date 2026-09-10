@@ -442,7 +442,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if recalled {
 				return m, nil
 			}
-		case "ctrl+s":
+		case "ctrl+,":
 			return m.startSettings()
 		case "pgup", "home":
 			m.tx.navigateHistory(msgi.String())

@@ -9,9 +9,8 @@
 
   c COMPOSER
   `up/down`      navigate completion candidates; recall a prior/next prompt when the completion list is closed
-  `tab/enter`    accept highlighted completion
+  `tab`          accept highlighted completion or cycle block focus when composer is empty
   `esc`          close completion list
-  `tab`          cycle block focus when composer is empty
   `enter`        submit draft or toggle focused block when empty
   `shift+enter`  insert newline
   n NAVIGATION
@@ -21,7 +20,7 @@
   `ctrl+x`  narrow pane
   `ctrl+z`  widen pane
   a ACTIONS
-  `ctrl+s`  open settings
+  `ctrl+,`  open settings
 
 # CONCEPTS
 
