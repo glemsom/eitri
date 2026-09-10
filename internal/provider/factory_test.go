@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/glemsom/eitri/internal/config"
@@ -244,6 +245,69 @@ func TestFromConfigOpenCodeMissingCredentialFails(t *testing.T) {
 	_, err := FromConfig(config.Config{Provider: string(ProviderOpenCodeGo)}, ProviderEnv{})
 	if err == nil {
 		t.Fatal("FromConfig(opencode-go) without credential = nil error, want setup error")
+	}
+}
+
+func TestFromConfigOpenCodeReadsKeyFromConfig(t *testing.T) {
+	t.Parallel()
+	cfg := config.Config{
+		Provider:     string(ProviderOpenCodeGo),
+		OpenCodeGo:   config.OpenCodeGoConfig{Key: "cfg-key"},
+	}
+	p, err := FromConfig(cfg, ProviderEnv{})
+	if err != nil {
+		t.Fatalf("FromConfig() error = %v, want nil", err)
+	}
+	if _, ok := p.(*OpenAICompatible); !ok {
+		t.Fatalf("FromConfig(opencode-go) = %T, want *OpenAICompatible", p)
+	}
+}
+
+func TestFromConfigOpenCodePrefersEnvOverConfig(t *testing.T) {
+	t.Parallel()
+	var authorization string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authorization = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: [DONE]\\n\\n"))
+	}))
+	defer srv.Close()
+
+	cfg := config.Config{
+		Provider:   string(ProviderOpenCodeGo),
+		OpenCodeGo: config.OpenCodeGoConfig{Key: "cfg-key"},
+	}
+	p, err := FromConfig(cfg, ProviderEnv{OpenCodeKey: "env-key", OpenCodeURL: srv.URL})
+	if err != nil {
+		t.Fatalf("FromConfig() error = %v, want nil", err)
+	}
+	if _, err := p.Stream(context.Background(), Request{Messages: []Message{{Role: RoleUser, Content: "hi"}}}); err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	if authorization != "Bearer env-key" {
+		t.Fatalf("Authorization = %q, want Bearer env-key", authorization)
+	}
+}
+
+func TestFromConfigCustomOpenAIMissingBaseURLErrors(t *testing.T) {
+	t.Parallel()
+	_, err := FromConfig(config.Config{Provider: string(ProviderCustomOpenAI)}, ProviderEnv{})
+	if err == nil {
+		t.Fatal("FromConfig(custom-openai) without base URL = nil error, want error")
+	}
+	if !strings.Contains(err.Error(), "set it in Settings") {
+		t.Fatalf("error = %q, want message pointing to Settings", err.Error())
+	}
+}
+
+func TestFromConfigOpenCodeMissingKeyErrors(t *testing.T) {
+	t.Parallel()
+	_, err := FromConfig(config.Config{Provider: string(ProviderOpenCodeGo)}, ProviderEnv{})
+	if err == nil {
+		t.Fatal("FromConfig(opencode-go) without key = nil error, want error")
+	}
+	if !strings.Contains(err.Error(), "set it in Settings") {
+		t.Fatalf("error = %q, want message pointing to Settings", err.Error())
 	}
 }
 

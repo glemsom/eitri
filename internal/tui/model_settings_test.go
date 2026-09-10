@@ -308,6 +308,75 @@ func TestModel_SettingsThemeSelectingPersists(t *testing.T) {
 	}
 }
 
+func TestModel_SettingsCustomOpenAICredentialsPersist(t *testing.T) {
+	t.Parallel()
+	var saved config.Config
+	cfg := cfgFixture()
+	cfg.Provider = "custom-openai"
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+		Models: []string{"deepseek-v4-flash"},
+		Config: cfg,
+		Save:   func(c config.Config) error { saved = c; return nil },
+	})
+	m = resize(t, m)
+	m = keypress(t, m, "ctrl+,")
+	// navigate to Base URL field (enter moves to next; stop one before)
+	for i := fieldProvider; i < fieldCustomOpenAIBaseURL-1; i++ {
+		m = keypress(t, m, "enter")
+	}
+	// activate text input and type
+	m = keypress(t, m, "enter")
+	m.settings.textInput.SetValue("https://example.com/v1")
+	m = keypress(t, m, "enter") // confirm, moves to API key
+	// activate text input and type
+	m = keypress(t, m, "enter")
+	m.settings.textInput.SetValue("my-secret-key")
+	m = keypress(t, m, "enter") // confirm, moves to Save
+	// confirm save
+	m = keypress(t, m, "enter")
+
+	if saved.CustomOpenAI.BaseURL != "https://example.com/v1" {
+		t.Fatalf("saved BaseURL = %q, want https://example.com/v1", saved.CustomOpenAI.BaseURL)
+	}
+	if saved.CustomOpenAI.Key != "my-secret-key" {
+		t.Fatalf("saved Key = %q, want my-secret-key", saved.CustomOpenAI.Key)
+	}
+}
+
+func TestModel_SettingsOpenCodeKeyPersists(t *testing.T) {
+	t.Parallel()
+	var saved config.Config
+	cfg := cfgFixture()
+	cfg.Provider = "opencode-go"
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: "ok"}, nil
+		},
+		Models: []string{"deepseek-v4-flash"},
+		Config: cfg,
+		Save:   func(c config.Config) error { saved = c; return nil },
+	})
+	m = resize(t, m)
+	m = keypress(t, m, "ctrl+,")
+	// navigate to OpenCode key field (enter moves to next)
+	for i := fieldProvider; i < fieldOpenCodeKey; i++ {
+		m = keypress(t, m, "enter")
+	}
+	// activate text input and type
+	m = keypress(t, m, "enter")
+	m.settings.textInput.SetValue("opencode-api-key")
+	m = keypress(t, m, "enter") // confirm, moves to Save
+	// confirm save
+	m = keypress(t, m, "enter")
+
+	if saved.OpenCodeGo.Key != "opencode-api-key" {
+		t.Fatalf("saved OpenCodeGo.Key = %q, want opencode-api-key", saved.OpenCodeGo.Key)
+	}
+}
+
 func TestSettingsView_ThinkingSuppressionWarning(t *testing.T) {
 	t.Parallel()
 	cfg := cfgFixture()

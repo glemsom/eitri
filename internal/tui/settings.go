@@ -3,17 +3,19 @@ package tui
 import (
 	"context"
 	"fmt"
-	"github.com/glemsom/eitri/internal/tui/telemetry"
 	"image/color"
 	"os"
 	"strings"
 
 	"charm.land/bubbles/v2/filepicker"
 	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
 	"github.com/glemsom/eitri/internal/config"
+	"github.com/glemsom/eitri/internal/provider"
+	"github.com/glemsom/eitri/internal/tui/telemetry"
 )
 
 // Field indexes for the settings form, in display/cycle order.
@@ -28,6 +30,9 @@ const (
 	fieldCoTCollapsed
 	fieldToolResultsCollapsed
 	fieldPaths
+	fieldOpenCodeKey
+	fieldCustomOpenAIBaseURL
+	fieldCustomOpenAIKey
 	fieldSave
 	fieldCancel
 	fieldCount
@@ -58,6 +63,9 @@ type settingsForm struct {
 	selectedPath        int
 	pickerActive        bool
 	picker              filepicker.Model
+	textInputActive     bool
+	textInput           textinput.Model
+	textInputField      int
 	telemetry           *telemetry.Telemetry
 	discoverState       discoverState
 	discoverErr         string
@@ -88,8 +96,24 @@ func (f settingsForm) Model() string {
 	return f.models[i]
 }
 
+func (f *settingsForm) fieldVisible(field int) bool {
+	switch field {
+	case fieldOpenCodeKey:
+		return f.cfg.Provider == string(provider.ProviderOpenCodeGo)
+	case fieldCustomOpenAIBaseURL, fieldCustomOpenAIKey:
+		return f.cfg.Provider == string(provider.ProviderCustomOpenAI)
+	default:
+		return true
+	}
+}
+
 func (f *settingsForm) step(d int) {
-	f.field = (f.field + d + fieldCount) % fieldCount
+	for {
+		f.field = (f.field + d + fieldCount) % fieldCount
+		if f.fieldVisible(f.field) {
+			break
+		}
+	}
 }
 
 func (f *settingsForm) next() { f.step(1) }
@@ -128,7 +152,8 @@ func (f *settingsForm) adjust(d int) {
 		f.theme = themeFor(f.cfg.Theme)
 	case fieldPaths:
 		f.stepPathSelection(d)
-	case fieldSave, fieldCancel:
+	case fieldOpenCodeKey, fieldCustomOpenAIBaseURL, fieldCustomOpenAIKey, fieldSave, fieldCancel:
+		// no-op: text fields are edited via text input, save/cancel are buttons
 	}
 }
 
@@ -199,6 +224,64 @@ func (f *settingsForm) stepPathSelection(d int) {
 	f.selectedPath = (f.selectedPath + d + len(f.cfg.ExtraWritablePaths)) % len(f.cfg.ExtraWritablePaths)
 }
 
+func (f *settingsForm) isTextField(field int) bool {
+	switch field {
+	case fieldOpenCodeKey, fieldCustomOpenAIBaseURL, fieldCustomOpenAIKey:
+		return true
+	default:
+		return false
+	}
+}
+
+func (f *settingsForm) currentTextValue() string {
+	switch f.textInputField {
+	case fieldOpenCodeKey:
+		return f.cfg.OpenCodeGo.Key
+	case fieldCustomOpenAIBaseURL:
+		return f.cfg.CustomOpenAI.BaseURL
+	case fieldCustomOpenAIKey:
+		return f.cfg.CustomOpenAI.Key
+	default:
+		return ""
+	}
+}
+
+func (f *settingsForm) setTextValue(v string) {
+	switch f.textInputField {
+	case fieldOpenCodeKey:
+		f.cfg.OpenCodeGo.Key = v
+	case fieldCustomOpenAIBaseURL:
+		f.cfg.CustomOpenAI.BaseURL = v
+	case fieldCustomOpenAIKey:
+		f.cfg.CustomOpenAI.Key = v
+	}
+}
+
+func (f *settingsForm) beginTextInput() tea.Cmd {
+	f.textInputActive = true
+	f.textInputField = f.field
+	f.textInput = textinput.New()
+	f.textInput.Focus()
+	f.textInput.SetValue(f.currentTextValue())
+	if f.field == fieldOpenCodeKey || f.field == fieldCustomOpenAIKey {
+		f.textInput.EchoMode = textinput.EchoPassword
+		f.textInput.EchoCharacter = '•'
+	}
+	return nil
+}
+
+func (f *settingsForm) cancelTextInput() {
+	f.textInputActive = false
+	f.textInputField = 0
+}
+
+func (f *settingsForm) confirmTextInput() {
+	f.setTextValue(f.textInput.Value())
+	f.textInputActive = false
+	f.textInputField = 0
+	f.next()
+}
+
 func (f *settingsForm) draft() config.Config { return f.cfg }
 
 // onSave reports whether the focused field is the Save button.
@@ -213,6 +296,9 @@ func (f settingsForm) dirty() bool {
 
 func configsEqual(a, b config.Config) bool {
 	if a.Provider != b.Provider || a.Model != b.Model || a.ReasoningEffort != b.ReasoningEffort || a.ThinkingEnabled != b.ThinkingEnabled || a.CoTCollapsedByDefault != b.CoTCollapsedByDefault || a.ToolResultsCollapsedByDefault != b.ToolResultsCollapsedByDefault || a.MaxTurns != b.MaxTurns || a.ContextOverflowRecovery != b.ContextOverflowRecovery || a.Theme != b.Theme || a.RailWidth != b.RailWidth {
+		return false
+	}
+	if a.OpenCodeGo.Key != b.OpenCodeGo.Key || a.CustomOpenAI.BaseURL != b.CustomOpenAI.BaseURL || a.CustomOpenAI.Key != b.CustomOpenAI.Key {
 		return false
 	}
 	if len(a.ExtraWritablePaths) != len(b.ExtraWritablePaths) {
@@ -259,6 +345,12 @@ func settingsHelp(f settingsForm) string {
 			return "Choose a folder with ↑/↓, Enter opens, Left/Backspace/u goes to parent, Ctrl+O selects, Esc cancels."
 		}
 		return "Press + or a to add a folder. ←/→ selects an existing path. Delete removes the selected path."
+	case fieldOpenCodeKey:
+		return "API key for the OpenCode Go provider. Press Enter to edit."
+	case fieldCustomOpenAIBaseURL:
+		return "Base URL for the custom OpenAI-compatible endpoint. Press Enter to edit."
+	case fieldCustomOpenAIKey:
+		return "API key for the custom OpenAI-compatible endpoint. Press Enter to edit."
 	case fieldSave:
 		return "Save changes to config.json and apply them now."
 	case fieldCancel:
@@ -298,6 +390,16 @@ func stepInt(v, d, step, min, max int) int {
 		v = max
 	}
 	return v
+}
+
+func maskKey(k string) string {
+	if k == "" {
+		return "(not set)"
+	}
+	if len(k) <= 8 {
+		return "••••••••"
+	}
+	return k[:4] + "••••" + k[len(k)-4:]
 }
 
 func pathSummary(f settingsForm) string {
@@ -398,6 +500,9 @@ func (o *SettingsOverlay) Key(k tea.KeyPressMsg) (settingsKeyOutcome, tea.Cmd) {
 		}
 		return outcomeContinue, nil
 	}
+	if s.textInputActive {
+		return o.keyTextInput(k)
+	}
 	if s.pickerActive {
 		return o.keyAddPath(k)
 	}
@@ -419,6 +524,9 @@ func (o *SettingsOverlay) Key(k tea.KeyPressMsg) (settingsKeyOutcome, tea.Cmd) {
 		}
 		if s.onCancel() {
 			return outcomeClosed, nil
+		}
+		if s.isTextField(s.field) {
+			return outcomeContinue, s.beginTextInput()
 		}
 		s.next()
 	case "up", "shift+up":
@@ -447,6 +555,21 @@ func (o *SettingsOverlay) Key(k tea.KeyPressMsg) (settingsKeyOutcome, tea.Cmd) {
 		}
 	}
 	return outcomeContinue, nil
+}
+
+func (o *SettingsOverlay) keyTextInput(k tea.KeyPressMsg) (settingsKeyOutcome, tea.Cmd) {
+	s := &o.settingsForm
+	if k.String() == "esc" || k.String() == "ctrl+c" {
+		s.cancelTextInput()
+		return outcomeContinue, nil
+	}
+	if k.String() == "enter" {
+		s.confirmTextInput()
+		return outcomeContinue, nil
+	}
+	var cmd tea.Cmd
+	s.textInput, cmd = s.textInput.Update(k)
+	return outcomeContinue, cmd
 }
 
 func (o *SettingsOverlay) keyAddPath(k tea.KeyPressMsg) (settingsKeyOutcome, tea.Cmd) {
@@ -622,19 +745,29 @@ func settingsView(f settingsForm) string {
 	b.WriteString("\n")
 
 	rows := []struct {
-		name string
-		val  string
+		field int
+		name  string
+		val   string
 	}{
-		{"Provider", f.cfg.Provider},
-		{"Model", f.Model()},
-		{"Deep thinking", thinkingModeLabel(f.cfg.ThinkingEnabled)},
-		{"Reasoning depth", f.cfg.ReasoningEffort},
-		{"Tool loop limit", fmt.Sprintf("%d", f.cfg.MaxTurns)},
-		{"Context overflow recovery", thinkingModeLabel(f.cfg.ContextOverflowRecovery)},
-		{"Theme", f.cfg.Theme},
-		{"Collapse thinking", thinkingModeLabel(f.cfg.CoTCollapsedByDefault)},
-		{"Collapse tool output", thinkingModeLabel(f.cfg.ToolResultsCollapsedByDefault)},
-		{"Writable paths", pathSummary(f)},
+		{fieldProvider, "Provider", f.cfg.Provider},
+		{fieldModel, "Model", f.Model()},
+		{fieldThinking, "Deep thinking", thinkingModeLabel(f.cfg.ThinkingEnabled)},
+		{fieldEffort, "Reasoning depth", f.cfg.ReasoningEffort},
+		{fieldMaxTurns, "Tool loop limit", fmt.Sprintf("%d", f.cfg.MaxTurns)},
+		{fieldContextOverflowRecovery, "Context overflow recovery", thinkingModeLabel(f.cfg.ContextOverflowRecovery)},
+		{fieldTheme, "Theme", f.cfg.Theme},
+		{fieldCoTCollapsed, "Collapse thinking", thinkingModeLabel(f.cfg.CoTCollapsedByDefault)},
+		{fieldToolResultsCollapsed, "Collapse tool output", thinkingModeLabel(f.cfg.ToolResultsCollapsedByDefault)},
+		{fieldPaths, "Writable paths", pathSummary(f)},
+	}
+	if f.cfg.Provider == string(provider.ProviderOpenCodeGo) {
+		rows = append(rows, struct{ field int; name string; val string }{fieldOpenCodeKey, "OpenCode API key", maskKey(f.cfg.OpenCodeGo.Key)})
+	}
+	if f.cfg.Provider == string(provider.ProviderCustomOpenAI) {
+		rows = append(rows,
+			struct{ field int; name string; val string }{fieldCustomOpenAIBaseURL, "Base URL", f.cfg.CustomOpenAI.BaseURL},
+			struct{ field int; name string; val string }{fieldCustomOpenAIKey, "API key", maskKey(f.cfg.CustomOpenAI.Key)},
+		)
 	}
 	sections := []struct {
 		label string
@@ -656,25 +789,29 @@ func settingsView(f settingsForm) string {
 		}
 		b.WriteString("\n")
 	}
-	for i, r := range rows {
+	for _, r := range rows {
 		for _, sec := range sections {
-			if i == sec.start {
+			if r.field == sec.start {
 				emit(sec.label)
 			}
 		}
 		marker := " "
-		if f.field == i {
+		if f.field == r.field {
 			marker = "▸"
 		}
 		fmt.Fprintf(&b, "%-2s%s %-20s %s\n", "", marker, r.name, r.val)
-		if i == fieldPaths {
+		if r.field == fieldPaths {
 			writePathList(&b, f, th)
 		}
-		if i == fieldTheme {
+		if r.field == fieldTheme {
 			writePalette()
 		}
-		if i == fieldThinking && !f.cfg.ThinkingEnabled && f.thinkingSuppression != nil && !f.thinkingSuppression() {
+		if r.field == fieldThinking && !f.cfg.ThinkingEnabled && f.thinkingSuppression != nil && !f.thinkingSuppression() {
 			b.WriteString(th.statusStyle.Render("   " + g("⚠", "!") + " This provider always uses reasoning"))
+			b.WriteString("\n")
+		}
+		if f.textInputActive && f.textInputField == r.field {
+			b.WriteString("     " + f.textInput.View())
 			b.WriteString("\n")
 		}
 	}

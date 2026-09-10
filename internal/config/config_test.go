@@ -95,6 +95,26 @@ func TestCopilotAndCustomOpenAITokensPersist(t *testing.T) {
 	}
 }
 
+func TestOpenCodeGoKeyPersists(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	cfg := Default()
+	cfg.Provider = "opencode-go"
+	cfg.OpenCodeGo = OpenCodeGoConfig{Key: "my-opencode-key"}
+	if err := Save(cfg, path); err != nil {
+		t.Fatalf("Save() error = %v, want nil", err)
+	}
+
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if got.OpenCodeGo.Key != "my-opencode-key" {
+		t.Fatalf("Load() OpenCodeGo = %+v, want persisted key", got.OpenCodeGo)
+	}
+}
+
 func TestReasoningEffortDefaultAndPersist(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
