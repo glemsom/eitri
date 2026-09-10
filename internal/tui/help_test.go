@@ -46,7 +46,7 @@ func TestHelpView_sections(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()
 
-	for _, want := range []string{"COMMANDS", "KEYBINDINGS", "CONCEPTS"} {
+	for _, want := range []string{"COMMANDS", "KEYBINDINGS", "WORKSPACE MENTIONS", "CONCEPTS"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("helpView() missing section %q", want)
 		}
@@ -57,7 +57,7 @@ func TestHelpView_markdownHeaders(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()
 
-	for _, want := range []string{"# COMMANDS", "# KEYBINDINGS", "# CONCEPTS"} {
+	for _, want := range []string{"# COMMANDS", "# KEYBINDINGS", "# WORKSPACE MENTIONS", "# CONCEPTS"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("helpView() missing Markdown header %q", want)
 		}
@@ -78,7 +78,7 @@ func TestHelpView_codeSpans(t *testing.T) {
 			t.Errorf("helpView() missing code span %q", want)
 		}
 	}
-	for _, name := range []string{"tab", "enter", "shift+enter", "pgup/pgdn", "ctrl+e", "ctrl+x", "ctrl+z", "ctrl+,"} {
+	for _, name := range []string{"tab", "enter", "shift+enter", "pgup/pgdn", "home/end", "mouse wheel", "ctrl+e", "ctrl+x", "ctrl+z", "ctrl+,", "ctrl+c", "@"} {
 		if want := "`" + name + "`"; !strings.Contains(got, want) {
 			t.Errorf("helpView() missing keybinding code span %q", want)
 		}
@@ -130,12 +130,28 @@ func TestHelpView_commands(t *testing.T) {
 	}
 }
 
-func TestHelpView_noSkills(t *testing.T) {
+func TestHelpView_builtInCommandsComplete(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()
 
-	if strings.Contains(got, "skill") {
-		t.Errorf("helpView() must not mention skills, got:\n%s", got)
+	for _, bc := range BuiltinSlashCommands {
+		if !strings.Contains(got, "/"+bc.Name) {
+			t.Errorf("helpView() missing built-in command %q", "/"+bc.Name)
+		}
+	}
+}
+
+// TestHelpView_skillDiscoveryHelp verifies that /help explains how skill
+// commands are discovered and invoked, without enumerating runtime skill names.
+// The old blanket "no skills in help" constraint is intentionally lifted:
+// skills are dynamic, so listing them would drift; explaining the discovery
+// mechanism (type `/` to see them) keeps the reference accurate.
+func TestHelpView_skillDiscoveryHelp(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	got := helpView()
+
+	if !strings.Contains(got, "discovered skills") {
+		t.Errorf("helpView() must explain skill discovery, got:\n%s", got)
 	}
 }
 
@@ -171,13 +187,13 @@ func TestHelpView_alignedColumns(t *testing.T) {
 		{"COMPOSER", []string{
 			"navigate completion candidates; recall a prior/next prompt when the completion list is closed",
 			"accept highlighted completion or cycle block focus when composer is empty",
-			"close completion list",
+			"close completion list, close mention dropdown, or stop a running turn",
 			"submit draft or toggle focused block when empty",
 			"insert newline",
 		}},
-		{"NAVIGATION", []string{"scroll history"}},
+		{"NAVIGATION", []string{"scroll history", "jump to oldest/newest history"}},
 		{"PANES", []string{"toggle expanded/collapsed view", "narrow pane", "widen pane"}},
-		{"ACTIONS", []string{"open settings"}},
+		{"ACTIONS", []string{"open settings", "stop a running turn, or quit when idle"}},
 	}
 	for _, cat := range categories {
 		lines := categoryLines(t, got, cat.name)
@@ -226,13 +242,31 @@ func TestHelpView_keybindingsComplete(t *testing.T) {
 	got := helpView()
 
 	sec := keybindingsSection(t, got)
-	keys := []string{
-		"`ctrl+,`", "`ctrl+e`", "`tab`", "`enter`", "`shift+enter`",
-		"`pgup/pgdn`", "`ctrl+x`", "`ctrl+z`",
+	for _, cat := range helpKeybindingCategories {
+		for _, row := range cat.rows {
+			if n := strings.Count(sec, row.key); n != 1 {
+				t.Errorf("keybinding %q appears %d times in KEYBINDINGS, want exactly once", row.key, n)
+			}
+		}
 	}
-	for _, k := range keys {
-		if n := strings.Count(sec, k); n != 1 {
-			t.Errorf("keybinding %q appears %d times in KEYBINDINGS, want exactly once", k, n)
+}
+
+func TestHelpView_mentionsComplete(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	got := helpView()
+
+	sec := sectionLines(t, got, "WORKSPACE MENTIONS")
+	want := []string{"`@`", "`up/down`", "`tab/enter`", "`esc`"}
+	for _, k := range want {
+		found := false
+		for _, ln := range sec {
+			if strings.Contains(ln, k) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("WORKSPACE MENTIONS missing key %q", k)
 		}
 	}
 }
