@@ -392,18 +392,36 @@ func TestShowSessionReportsTruncatedTranscript(t *testing.T) {
 	}
 }
 
-func TestListSessionsReportsMissingTranscript(t *testing.T) {
+func TestShowSessionReportsEmptyState(t *testing.T) {
+	dataDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dataDir, "sessions", "empty-guid"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := ShowSession(dataDir, "empty-guid", 0, false, &out); err != nil {
+		t.Fatalf("ShowSession() error = %v", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "no records") {
+		t.Errorf("show missing empty-state message: %q", got)
+	}
+}
+
+func TestListSessionsSkipsMissingTranscript(t *testing.T) {
 	dataDir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dataDir, "sessions", "missing-guid"), 0o700); err != nil {
 		t.Fatal(err)
 	}
+	writeMessagesFixture(t, dataDir, "valid-guid")
 	var out bytes.Buffer
-	err := ListSessions(dataDir, &out)
-	if err == nil || !strings.Contains(err.Error(), "missing-guid") {
-		t.Fatalf("error = %v, want affected session", err)
+	if err := ListSessions(dataDir, &out); err != nil {
+		t.Fatalf("ListSessions() error = %v", err)
 	}
-	if out.Len() != 0 {
-		t.Fatalf("list printed partial output: %q", out.String())
+	if !strings.Contains(out.String(), "valid-guid") {
+		t.Errorf("list missing valid session: %q", out.String())
+	}
+	if strings.Contains(out.String(), "missing-guid") {
+		t.Errorf("list included incomplete session: %q", out.String())
 	}
 }
 
