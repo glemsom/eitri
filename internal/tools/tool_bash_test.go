@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/glemsom/eitri/internal/compress"
 )
@@ -95,5 +96,121 @@ func TestYoloBashDescriptionKeepsOutputContract(t *testing.T) {
 	}
 	if !strings.Contains(desc, "+N more") {
 		t.Fatalf("yolo bash description missing %q: %s", "+N more", desc)
+	}
+}
+
+type deadlineBackend struct {
+	deadline    time.Time
+	hasDeadline bool
+	out         *Output
+}
+
+func (d *deadlineBackend) Run(ctx context.Context, _ string) (*Output, error) {
+	d.deadline, d.hasDeadline = ctx.Deadline()
+	return d.out, nil
+}
+func (deadlineBackend) setTempHost(string) {}
+
+func TestBashToolDefaultTimeoutIs120s(t *testing.T) {
+	t.Parallel()
+	be := &deadlineBackend{out: &Output{Stdout: "ok"}}
+	b := &bashTool{backend: be}
+	if _, err := b.Run(context.Background(), map[string]any{"command": "true"}); err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if !be.hasDeadline {
+		t.Fatal("expected bash call to have a deadline")
+	}
+	want := time.Now().Add(120 * time.Second)
+	if be.deadline.Before(want.Add(-5*time.Second)) || be.deadline.After(want.Add(5*time.Second)) {
+		t.Fatalf("deadline = %v, want around %v", be.deadline, want)
+	}
+}
+
+func TestBashToolTimeoutArgument(t *testing.T) {
+	t.Parallel()
+	be := &deadlineBackend{out: &Output{Stdout: "ok"}}
+	b := &bashTool{backend: be}
+	if _, err := b.Run(context.Background(), map[string]any{"command": "true", "timeout": 30}); err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if !be.hasDeadline {
+		t.Fatal("expected bash call to have a deadline")
+	}
+	want := time.Now().Add(30 * time.Second)
+	if be.deadline.Before(want.Add(-5*time.Second)) || be.deadline.After(want.Add(5*time.Second)) {
+		t.Fatalf("deadline = %v, want around %v", be.deadline, want)
+	}
+}
+
+func TestBashToolTimeoutClampedToMax(t *testing.T) {
+	t.Parallel()
+	be := &deadlineBackend{out: &Output{Stdout: "ok"}}
+	b := &bashTool{backend: be}
+	if _, err := b.Run(context.Background(), map[string]any{"command": "true", "timeout": 4000}); err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if !be.hasDeadline {
+		t.Fatal("expected bash call to have a deadline")
+	}
+	want := time.Now().Add(3600 * time.Second)
+	if be.deadline.Before(want.Add(-5*time.Second)) || be.deadline.After(want.Add(5*time.Second)) {
+		t.Fatalf("deadline = %v, want around %v", be.deadline, want)
+	}
+}
+
+type timeoutBackend struct{}
+
+func (timeoutBackend) Run(ctx context.Context, _ string) (*Output, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+func (timeoutBackend) setTempHost(string) {}
+
+func TestBashToolTimeoutReturnsDistinctError(t *testing.T) {
+	t.Parallel()
+	b := &bashTool{backend: timeoutBackend{}}
+	_, err := b.Run(context.Background(), map[string]any{"command": "sleep 3600", "timeout": 1})
+	if err == nil {
+		t.Fatal("Run() error = nil, want timeout error")
+	}
+	if !strings.Contains(err.Error(), "timed out after 1 seconds") {
+		t.Fatalf("Run() error = %v, want 'timed out after 1 seconds'", err)
+	}
+}
+
+type cancelBackend struct{}
+
+func (cancelBackend) Run(ctx context.Context, _ string) (*Output, error) {
+	return nil, ctx.Err()
+}
+func (cancelBackend) setTempHost(string) {}
+
+func TestBashToolCancelNotTimeout(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	b := &bashTool{backend: cancelBackend{}}
+	_, err := b.Run(ctx, map[string]any{"command": "true"})
+	if err == nil {
+		t.Fatal("Run() error = nil, want cancellation error")
+	}
+	if strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("Run() error = %v, must not contain 'timed out' for user-initiated stop", err)
+	}
+}
+
+func TestBashToolDescriptionIncludesTimeout(t *testing.T) {
+	t.Parallel()
+	desc := (&bashTool{}).Description()
+	folded := strings.ToLower(desc)
+	if !strings.Contains(folded, "120") {
+		t.Fatalf("bash description missing default bound 120: %s", desc)
+	}
+	if !strings.Contains(folded, "3600") {
+		t.Fatalf("bash description missing max bound 3600: %s", desc)
+	}
+	if !strings.Contains(folded, "timed-out") && !strings.Contains(folded, "timed out") {
+		t.Fatalf("bash description missing timeout retry guidance: %s", desc)
 	}
 }
