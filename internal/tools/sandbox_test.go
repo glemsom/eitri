@@ -3,11 +3,15 @@ package tools
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/glemsom/eitri/internal/compress"
 )
@@ -282,6 +286,67 @@ func TestNewSandboxRejectsInvalidDependencies(t *testing.T) {
 				t.Fatalf("NewSandbox() error = %v, want containing %q", err, tt.want)
 			}
 		})
+	}
+}
+
+func TestDefaultRunnerReapsDescendantsOnCancel(t *testing.T) {
+	t.Parallel()
+	temp := t.TempDir()
+	pidFile := filepath.Join(temp, "child.pid")
+
+	// Start a background sleep and foreground wait so the shell stays alive
+	// until we cancel. The background sleep inherits stdout/stderr.
+	cmd := fmt.Sprintf("sleep 3600 & echo $! > %s; wait", pidFile)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Wait for the pid file (meaning the shell has forked the background
+	// child and written its PID), then cancel the context.
+	go func() {
+		for {
+			if _, err := os.Stat(pidFile); err == nil {
+				time.Sleep(50 * time.Millisecond)
+				cancel()
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}()
+
+	done := make(chan struct{})
+	var runErr error
+	go func() {
+		_, runErr = (defaultRunner{}).Run(ctx, RunSpec{Name: "/bin/bash", Args: []string{"-c", cmd}})
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// OK
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run() did not return promptly after cancellation")
+	}
+
+	if runErr == nil {
+		t.Fatal("Run() error = nil, want non-nil after cancellation")
+	}
+
+	pidBytes, readErr := os.ReadFile(pidFile)
+	if readErr != nil {
+		t.Fatalf("failed to read pid file: %v", readErr)
+	}
+	pidStr := strings.TrimSpace(string(pidBytes))
+	if pidStr == "" {
+		t.Fatal("pid file is empty")
+	}
+	pid, convErr := strconv.Atoi(pidStr)
+	if convErr != nil {
+		t.Fatalf("invalid pid %q: %v", pidStr, convErr)
+	}
+
+	proc, _ := os.FindProcess(pid)
+	if proc != nil && proc.Signal(syscall.Signal(0)) == nil {
+		t.Fatalf("child process %d survived cancellation", pid)
 	}
 }
 

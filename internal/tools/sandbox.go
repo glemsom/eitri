@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 
 	"github.com/glemsom/eitri/internal/compress"
 )
@@ -50,6 +51,14 @@ func (defaultRunner) Run(ctx context.Context, spec RunSpec) (*Output, error) {
 	}
 	if len(spec.Env) > 0 {
 		cmd.Env = append(os.Environ(), spec.Env...)
+	}
+	// Start the command in a new process group so that cancelling the context
+	// can kill the entire tree, not just the direct child. This is essential
+	// for the unsandboxed backend where backgrounded descendants can survive
+	// a plain Process.Kill and keep output pipes open, blocking Wait().
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	}
 	stdout := newBoundedBuffer(compress.DefaultByteCap)
 	stderr := newBoundedBuffer(compress.DefaultByteCap)
