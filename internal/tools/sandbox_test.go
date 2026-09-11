@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -344,10 +343,39 @@ func TestDefaultRunnerReapsDescendantsOnCancel(t *testing.T) {
 		t.Fatalf("invalid pid %q: %v", pidStr, convErr)
 	}
 
-	proc, _ := os.FindProcess(pid)
-	if proc != nil && proc.Signal(syscall.Signal(0)) == nil {
-		t.Fatalf("child process %d survived cancellation", pid)
+	awaitTerminated(t, pid)
+}
+
+// awaitTerminated waits for the descendant to stop running. SIGKILL delivery
+// and the reaping of orphaned grandchildren happen after Run returns, so the
+// descendant may briefly remain observable as a live or zombie entry.
+func awaitTerminated(t *testing.T, pid int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		switch procState(pid) {
+		case "", "Z":
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("child process %d survived cancellation (state %q)", pid, procState(pid))
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+// procState returns the /proc status letter for pid, or "" once it is gone.
+func procState(pid int) string {
+	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return ""
+	}
+	// comm is parenthesised and may contain spaces, so state follows the last ')'
+	fields := strings.Fields(string(b)[strings.LastIndex(string(b), ")")+1:])
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[0]
 }
 
 func TestDefaultRunnerBoundsLongRunningCommandOutput(t *testing.T) {
