@@ -9,6 +9,8 @@ require (
 	charm.land/bubbletea/v2 v2.0.9
 	charm.land/glamour/v2 v2.0.1
 	charm.land/lipgloss/v2 v2.0.6
+	github.com/charmbracelet/colorprofile v0.4.3
+	github.com/charmbracelet/ultraviolet v0.0.0-20260903151058-ae99b731b8c5
 	github.com/charmbracelet/x/ansi v0.11.8
 	golang.org/x/term v0.45.0
 )
@@ -17,8 +19,6 @@ require (
 	github.com/alecthomas/chroma/v2 v2.27.0 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
-	github.com/charmbracelet/colorprofile v0.4.3 // indirect
-	github.com/charmbracelet/ultraviolet v0.0.0-20260903151058-ae99b731b8c5 // indirect
 	github.com/charmbracelet/x/exp/slice v0.0.0-20260902165432-6f6ad8b37b0a // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
@@ -41,3 +41,13 @@ require (
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
 )
+
+// EITRI PATCH: the upstream ultraviolet scroll optimization corrupts the
+// alternate screen when a live region scrolls while a line's content changes
+// (it leaves the old line painted), which Eitri's streaming chain-of-thought
+// reliably triggers — CoT tokens showed in two screen positions. The local fork
+// disables that optimization in SetScrollOptim; see
+// third_party/ultraviolet/terminal_renderer.go. Drop this replace when upstream
+// fixes scrollOptimize (still broken as of
+// ultraviolet@v0.0.0-20260910203606-6c9e17dc7a16).
+replace github.com/charmbracelet/ultraviolet => ./third_party/ultraviolet
