@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -212,5 +213,45 @@ func TestBashToolDescriptionIncludesTimeout(t *testing.T) {
 	}
 	if !strings.Contains(folded, "timed-out") && !strings.Contains(folded, "timed out") {
 		t.Fatalf("bash description missing timeout retry guidance: %s", desc)
+	}
+}
+
+func TestBashTimeoutResolvesDefaultClampAndErrors(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		args    map[string]any
+		want    time.Duration
+		wantErr bool
+	}{
+		{"absent defaults to 120s", map[string]any{"command": "true"}, BashTimeoutDefault, false},
+		{"explicit value honored", map[string]any{"command": "true", "timeout": 30}, 30 * time.Second, false},
+		{"over max clamps", map[string]any{"command": "true", "timeout": 4000}, BashTimeoutMax, false},
+		{"non-number rejected", map[string]any{"command": "true", "timeout": "soon"}, 0, true},
+		{"negative rejected", map[string]any{"command": "true", "timeout": -1}, 0, true},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := BashTimeout(c.args)
+			if (err != nil) != c.wantErr {
+				t.Fatalf("BashTimeout() error = %v, wantErr %v", err, c.wantErr)
+			}
+			if err == nil && got != c.want {
+				t.Fatalf("BashTimeout() = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+func TestBashToolDescriptionTracksBounds(t *testing.T) {
+	t.Parallel()
+	desc := (&bashTool{}).Description()
+	if !strings.Contains(desc, strconv.Itoa(int(BashTimeoutDefault.Seconds()))) {
+		t.Fatalf("description missing default bound: %s", desc)
+	}
+	if !strings.Contains(desc, strconv.Itoa(int(BashTimeoutMax.Seconds()))) {
+		t.Fatalf("description missing max bound: %s", desc)
 	}
 }

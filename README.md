@@ -69,6 +69,16 @@ By default every `bash` command Eitri runs is confined by a **bubblewrap cage**:
 
 **Do not use `--yolo-unsafe` to contain an untrusted workload or an untrusted prompt.** In this mode Eitri **does not represent itself as contained to the agent**: a command it runs can read, write, or delete anything your user can, reach the network as your user, and otherwise act with your identity. Only run unsandboxed on a machine where that exposure is acceptable.
 
+### Command timeouts
+
+Every `bash` call is time-bounded, so a command that never finishes cannot stall a turn:
+
+- A **default of 120 seconds** applies when the model requests no limit.
+- The model may raise it per call with a `timeout` argument, up to a **maximum of 3600 seconds**; larger requests are clamped.
+- A command that hits the bound is stopped and reported as a timeout, distinct from a user-initiated stop (`ctrl+c`), which still takes precedence.
+
+The tool card shows the **effective bound** dimmed alongside the running timer (e.g. `🔧 bash  make build 3s timeout 1800s`), so the limit is visible while a command runs.
+
 ### Repository instructions (`AGENTS.md`)
 
 If the workspace root (the directory you launch Eitri from) contains an `AGENTS.md`, Eitri reads it and carries its content to the model as a dedicated system-layer directive headed `## Repository instructions (AGENTS.md)` — both in the TUI and in batch (`-b`) mode. The injected instructions are **additive**: the built-in Eitri persona prompt is preserved unchanged, and the message is excluded from persisted session history so it isn't duplicated on the next turn. Without an `AGENTS.md`, no extra message is sent and the request is byte-identical to the pre-feature case. There is no opt-in or escape-hatch flag; the file is loaded whenever it exists.

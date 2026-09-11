@@ -1,6 +1,10 @@
 package tui
 
-import tea "charm.land/bubbletea/v2"
+import (
+	"time"
+
+	tea "charm.land/bubbletea/v2"
+)
 
 // StreamKind identifies which stream a StreamUpdate carries: chain-of-thought reasoning or assistant answer text.
 type StreamKind int
@@ -26,6 +30,11 @@ type ToolUpdate struct {
 type ToolStart struct {
 	Name string
 	Args string
+	// Timeout, when non-zero, is the effective time bound the call runs under
+	// (bash only): the resolved value after the tool applied its default and
+	// clamp. The transcript renders it so the bound is visible while a command
+	// may still be running.
+	Timeout time.Duration
 }
 
 // ToolResult is the trailing half of a tool entry: the tool's delivered result plus the deterministic compression metadata the TUI renders.

@@ -6,6 +6,7 @@ import "time"
 type toolEntry struct {
 	name         string
 	args         string
+	timeout      time.Duration // effective bound for this call (bash only); zero means unbounded
 	result       string
 	bytesDropped int
 	lines        int
@@ -108,6 +109,7 @@ func (l *toolLog) Apply(u ToolUpdate) int {
 		l.entries = append(l.entries, toolEntry{
 			name:      u.Start.Name,
 			args:      u.Start.Args,
+			timeout:   u.Start.Timeout,
 			anchor:    l.curAnchor,
 			startedAt: time.Now(),
 		})

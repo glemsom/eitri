@@ -30,12 +30,24 @@ func (b *bashTool) Name() string {
 	return "bash"
 }
 
+// BashTimeoutDefault is the time bound every bash call gets when the model
+// requests none, and BashTimeoutMax is the ceiling a requested value is clamped
+// to. They are the single source of the timeout policy the tool enforces; the
+// UI reads them (via BashTimeout) so what it displays is what the run obeys.
+const (
+	BashTimeoutDefault = 120 * time.Second
+	BashTimeoutMax     = 3600 * time.Second
+)
+
+// bashTimeoutContract is the model-facing statement of the timeout policy,
+// derived from the bounds above so the description cannot drift from the code.
+var bashTimeoutContract = fmt.Sprintf("Every call is time-bounded: the default limit is %d seconds, and a timed-out call may be retried with a larger `timeout` value (up to %d seconds).",
+	int(BashTimeoutDefault.Seconds()), int(BashTimeoutMax.Seconds()))
+
 // bashOutputContract is the shared, mode-independent description tail describing
 // the bounded, ANSI-stripped, compressed output every bash run returns. It is
 // identical across the sandboxed and unsandboxed tool definitions so the model
 // sees the same recovery contract either way.
-const bashTimeoutContract = "Every call is time-bounded: the default limit is 120 seconds, and a timed-out call may be retried with a larger `timeout` value (up to 3600 seconds)."
-
 const bashOutputContract = "Returns the combined stream (stdout then stderr; ANSI escape sequences stripped, repeated consecutive lines collapsed). Output passes through a deterministic line compressor: heavy listings are truncated with an explicit \"+N more\" marker — never silent — so re-running the command is the recovery path if you need the tail. Same command yields the same compressed form."
 
 func (b *bashTool) Description() string {
@@ -53,7 +65,7 @@ func (b *bashTool) Schema() map[string]any {
 		},
 		"timeout": map[string]any{
 			"type":        "number",
-			"description": "Maximum seconds the command may run before it is stopped. Defaults to 120; may be raised up to 3600.",
+			"description": fmt.Sprintf("Maximum seconds the command may run before it is stopped. Defaults to %d; may be raised up to %d.", int(BashTimeoutDefault.Seconds()), int(BashTimeoutMax.Seconds())),
 		},
 	}, []string{"command"})
 }
@@ -63,7 +75,7 @@ func (b *bashTool) Run(ctx context.Context, args map[string]any) (ToolResult, er
 	if err != nil {
 		return ToolResult{}, err
 	}
-	timeout, err := timeoutFromArgs(args)
+	timeout, err := BashTimeout(args)
 	if err != nil {
 		return ToolResult{}, err
 	}
@@ -83,10 +95,14 @@ func (b *bashTool) Run(ctx context.Context, args map[string]any) (ToolResult, er
 	return ToolResult{Text: text, Compressed: compressed, Dropped: dropped, BytesDropped: o.Dropped}, nil
 }
 
-func timeoutFromArgs(args map[string]any) (time.Duration, error) {
+// BashTimeout resolves the effective time bound for one bash call from its
+// arguments: the requested `timeout` seconds clamped to BashTimeoutMax, or
+// BashTimeoutDefault when the argument is absent. It is exported so the UI can
+// display the same bound the tool enforces instead of re-deriving the policy.
+func BashTimeout(args map[string]any) (time.Duration, error) {
 	v, ok := args["timeout"]
 	if !ok {
-		return 120 * time.Second, nil
+		return BashTimeoutDefault, nil
 	}
 	var secs float64
 	switch val := v.(type) {
@@ -102,10 +118,9 @@ func timeoutFromArgs(args map[string]any) (time.Duration, error) {
 	if secs < 0 {
 		return 0, fmt.Errorf("argument %q must be non-negative", "timeout")
 	}
-	const maxTimeout = 3600 * time.Second
 	d := time.Duration(secs * float64(time.Second))
-	if d > maxTimeout {
-		d = maxTimeout
+	if d > BashTimeoutMax {
+		d = BashTimeoutMax
 	}
 	return d, nil
 }

@@ -507,7 +507,14 @@ func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width
 	if !expanded {
 		args = clampLines(args, collapsedToolCommandMaxLines)
 	}
-	budget := width - lipgloss.Width(label) - 8 // room for the outcome + timer
+	// The effective time bound rides the head line so the user can see how long
+	// a (possibly still-running) call is allowed to take; it is dim like the
+	// elapsed timer, and its width is reserved so the command truncates first.
+	timeoutNote := ""
+	if te.timeout > 0 {
+		timeoutNote = th.statusStyle.Render(fmt.Sprintf("timeout %ds", int(te.timeout.Seconds())))
+	}
+	budget := width - lipgloss.Width(label) - 8 - lipgloss.Width(timeoutNote) // room for the outcome + timer + timeout
 	if budget > 1 && !strings.Contains(args, "\n") && lipgloss.Width(args) > budget {
 		args = truncateWidth(args, budget-1) + g("…", "...")
 	}
@@ -532,6 +539,9 @@ func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width
 		if d >= time.Second {
 			b.WriteString(" " + th.statusStyle.Render(formatElapsed(d)))
 		}
+	}
+	if timeoutNote != "" {
+		b.WriteString(" " + timeoutNote)
 	}
 	b.WriteString("\n")
 

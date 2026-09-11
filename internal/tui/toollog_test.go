@@ -363,3 +363,44 @@ func TestToolLog_ExpandedRendersFullRawResult(t *testing.T) {
 		t.Errorf("expanded view must render the full raw result, got %q", got)
 	}
 }
+
+func TestToolLog_ApplyCarriesTimeoutOntoEntry(t *testing.T) {
+	t.Parallel()
+	var l toolLog
+	l.SetAnchor(0)
+	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"sleep 8"}`, Timeout: 120 * time.Second}})
+	if got := l.Entry(0).timeout; got != 120*time.Second {
+		t.Fatalf("entry timeout = %v, want 120s", got)
+	}
+}
+
+func TestRenderToolEntryShowsTimeoutBound(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name    string
+		timeout time.Duration
+		want    string
+	}{
+		{"default bound shown", 120 * time.Second, "timeout 120s"},
+		{"raised bound shown", 30 * time.Second, "timeout 30s"},
+	} {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			e := toolEntry{name: "bash", args: `{"command":"sleep 8"}`, timeout: tt.timeout}
+			got := renderToolEntry(defaultTheme, e, false, time.Now(), 120, false, false)
+			if !strings.Contains(got, tt.want) {
+				t.Fatalf("render = %q, want it to contain %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRenderToolEntryOmitsTimeoutWhenUnbounded(t *testing.T) {
+	t.Parallel()
+	e := toolEntry{name: "read", args: `{"path":"a.txt"}`}
+	got := renderToolEntry(defaultTheme, e, false, time.Now(), 120, false, false)
+	if strings.Contains(got, "timeout") {
+		t.Fatalf("render = %q, must not show a timeout for an unbounded tool", got)
+	}
+}

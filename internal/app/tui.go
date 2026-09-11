@@ -2,11 +2,13 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/glemsom/eitri/internal/tui/livekey"
 	"github.com/glemsom/eitri/internal/tui/telemetry"
 	"net/http"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -151,7 +153,7 @@ func feedEngineEvents(e *engine.Engine, te *telemetry.Telemetry, events *tui.Eve
 		case engine.CompactedEvent:
 			pushTelemetry(teCh, telemetry.TelemetryUpdate{Kind: telemetry.TelemetryCompacted})
 		case engine.ToolCallEvent:
-			u := tui.ToolUpdate{Start: &tui.ToolStart{Name: ev.Name, Args: ev.Arguments}}
+			u := tui.ToolUpdate{Start: &tui.ToolStart{Name: ev.Name, Args: ev.Arguments, Timeout: toolTimeout(ev.Name, ev.Arguments)}}
 			pushEvent(mCh, tui.Event{RunID: ev.RunID, Tool: &u})
 		case engine.ToolResultEvent:
 			u := tui.ToolUpdate{Result: &tui.ToolResult{
@@ -162,6 +164,26 @@ func feedEngineEvents(e *engine.Engine, te *telemetry.Telemetry, events *tui.Eve
 			pushEvent(mCh, tui.Event{RunID: ev.RunID, Tool: &u})
 		}
 	})
+}
+
+// toolTimeout resolves the effective time bound to surface for one tool call, or
+// zero when the tool enforces none. Only bash is time-bounded; it owns the
+// default/clamp policy (tools.BashTimeout), so the app resolves the bound here —
+// where both packages are visible — and the TUI just renders the value. Invalid
+// args yield zero: the call fails before running, so there is no bound to show.
+func toolTimeout(name, argsJSON string) time.Duration {
+	if name != "bash" {
+		return 0
+	}
+	var args map[string]any
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		return 0
+	}
+	d, err := tools.BashTimeout(args)
+	if err != nil {
+		return 0
+	}
+	return d
 }
 
 // pushTelemetry delivers an update to the strip's channel without blocking the engine's event-goroutine: if the buffered channel is full the update is dropped, because the strip is best-effort telemetry that must never stall a live run.
