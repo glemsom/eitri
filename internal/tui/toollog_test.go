@@ -381,8 +381,8 @@ func TestRenderToolEntryShowsTimeoutBound(t *testing.T) {
 		timeout time.Duration
 		want    string
 	}{
-		{"default bound shown", 120 * time.Second, "timeout 120s"},
-		{"raised bound shown", 30 * time.Second, "timeout 30s"},
+		{"default bound shown", 120 * time.Second, "limit 120s"},
+		{"raised bound shown", 30 * time.Second, "limit 30s"},
 	} {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
@@ -400,7 +400,7 @@ func TestRenderToolEntryOmitsTimeoutWhenUnbounded(t *testing.T) {
 	t.Parallel()
 	e := toolEntry{name: "read", args: `{"path":"a.txt"}`}
 	got := renderToolEntry(defaultTheme, e, false, time.Now(), 120, false, false)
-	if strings.Contains(got, "timeout") {
-		t.Fatalf("render = %q, must not show a timeout for an unbounded tool", got)
+	if strings.Contains(got, "timeout") || strings.Contains(got, "limit") {
+		t.Fatalf("render = %q, must not show a time bound for an unbounded tool", got)
 	}
 }

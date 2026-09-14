@@ -219,7 +219,7 @@ func (m Model) renderBand(b *strings.Builder) {
 
 // composerCursor returns the composer's hardware caret for the current frame, or nil when the composer is not the active editing surface .
 func (m Model) composerCursor(content string) *tea.Cursor {
-	if m.settings != nil || m.prompting || m.tx.busy {
+	if m.settings != nil || m.help != nil || m.prompting || m.tx.busy {
 		return nil
 	}
 	cur := m.composer.Cursor()

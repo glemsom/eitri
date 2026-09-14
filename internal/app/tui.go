@@ -54,7 +54,7 @@ func runEngineTurn(e *engine.Engine, cfg func() config.Config, reg *tools.Regist
 	}
 }
 
-func runTUI(e *engine.Engine, logged *provider.LoggingProvider, cfg config.Config, reg *tools.Registry, sessionKey string, p provider.Provider, cfgPath string, dataDir string, skills *tools.Catalog, workspace string, sessionTemp string, needsSetup bool) error {
+func runTUI(e *engine.Engine, logged *provider.LoggingProvider, cfg config.Config, reg *tools.Registry, sessionKey string, p provider.Provider, cfgPath string, dataDir string, skills *tools.Catalog, workspace string, sessionTemp string, needsSetup bool, yolo bool) error {
 	// The Kitty face upload is lazily written to a scratch PNG on first render;
 	// own it for the program's lifetime so shutdown never leaks it in /tmp.
 	defer tui.CleanupKittyFace()
@@ -80,6 +80,7 @@ func runTUI(e *engine.Engine, logged *provider.LoggingProvider, cfg config.Confi
 	te := telemetry.NewTelemetry(cfg.Model, effort, cfg.ThinkingEnabled, cfg.MaxTurns)
 	live := livekey.NewLiveSessionKey(sessionKey)
 	rail := tui.NewRail(cfg.Provider, cfg.Model, effort, cfg.ThinkingEnabled, sessionKey, sessionTemp)
+	rail.SetUnsafe(yolo)
 	rail.SetLiveKey(live)
 	rail.SetBranch(tui.GitBranch(workspace))
 	events := tui.NewEventFeed()

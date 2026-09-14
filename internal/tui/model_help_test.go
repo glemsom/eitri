@@ -4,9 +4,11 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 )
 
-func TestModel_slashHelpAppendsMessage(t *testing.T) {
+func TestModel_slashHelpOpensOverlay(t *testing.T) {
 	var prompted string
 	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
@@ -22,15 +24,86 @@ func TestModel_slashHelpAppendsMessage(t *testing.T) {
 	if prompted != "" {
 		t.Fatalf("`/help` must not reach the engine, got prompt %q", prompted)
 	}
-	if len(m.tx.messages) == 0 {
-		t.Fatal("`/help` should append a message to the transcript")
+	if m.help == nil {
+		t.Fatal("`/help` should open the help overlay")
 	}
-	last := m.tx.messages[len(m.tx.messages)-1]
-	if last.role != "eitri" {
-		t.Fatalf("last message role = %q, want eitri", last.role)
+	if len(m.tx.messages) != 0 {
+		t.Fatalf("`/help` must not append to the transcript, got %d messages", len(m.tx.messages))
 	}
-	if !strings.Contains(last.content, "COMMANDS") || !strings.Contains(last.content, "KEYBINDINGS") {
-		t.Fatalf("help message missing expected sections, got: %q", last.content)
+	ref := strings.Join(m.help.lines, "\n")
+	if !strings.Contains(ref, "COMMANDS") || !strings.Contains(ref, "KEYBINDINGS") {
+		t.Fatalf("help overlay missing expected sections, got: %q", ref)
+	}
+	if v := view(m); !strings.Contains(v, "COMMANDS") {
+		t.Fatalf("opened help overlay view missing its first section, got: %q", v)
+	}
+
+	m = keypress(t, m, "esc")
+	if m.help != nil {
+		t.Fatal("esc should close the help overlay")
+	}
+	if len(m.tx.messages) != 0 {
+		t.Fatalf("closing help must not append to the transcript, got %d messages", len(m.tx.messages))
+	}
+}
+
+func TestModel_helpOverlaySwallowsTyping(t *testing.T) {
+	m := NewModelCfg(Dependencies{Config: cfgFixture()})
+	m = resize(t, m)
+	m = typeText(t, m, "/help")
+	m = keypress(t, m, "enter")
+	if m.help == nil {
+		t.Fatal("help overlay should be open")
+	}
+	m = typeText(t, m, "zzz")
+	if m.help == nil {
+		t.Fatal("typing must not close the help overlay")
+	}
+	if got := m.composer.Value(); got != "" {
+		t.Fatalf("typing under the help overlay reached the composer: %q", got)
+	}
+}
+
+func TestModel_helpOverlayScrolls(t *testing.T) {
+	m := NewModelCfg(Dependencies{Config: cfgFixture()})
+	m = resize(t, m)
+	m = typeText(t, m, "/help")
+	m = keypress(t, m, "enter")
+	if m.help == nil {
+		t.Fatal("help overlay should be open")
+	}
+	m.help.height = 6 // a short viewport so the reference overflows and can scroll
+	if m.help.maxOffset() == 0 {
+		t.Fatal("test precondition: reference should overflow a 6-row viewport")
+	}
+	if m.help.offset != 0 {
+		t.Fatalf("fresh overlay offset = %d, want 0", m.help.offset)
+	}
+	m = keypress(t, m, "down")
+	if m.help.offset != 1 {
+		t.Fatalf("down should scroll by one line, offset = %d", m.help.offset)
+	}
+	m = keypress(t, m, "up")
+	if m.help.offset != 0 {
+		t.Fatalf("up should scroll back to 0, offset = %d", m.help.offset)
+	}
+	nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyPgDown})
+	m = asModel(t, nm)
+	if m.help.offset != m.help.viewRows() {
+		t.Fatalf("pgdown offset = %d, want one viewport %d", m.help.offset, m.help.viewRows())
+	}
+	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnd})
+	m = asModel(t, nm)
+	if m.help.offset != m.help.maxOffset() {
+		t.Fatalf("end offset = %d, want max %d", m.help.offset, m.help.maxOffset())
+	}
+	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyHome})
+	m = asModel(t, nm)
+	if m.help.offset != 0 {
+		t.Fatalf("home offset = %d, want 0", m.help.offset)
+	}
+	if v := m.help.View(); !strings.Contains(v, "scroll") {
+		t.Fatalf("help footer missing scroll hint, got: %q", v)
 	}
 }
 
@@ -111,19 +184,21 @@ func TestModel_slashHelpPartialCompletion(t *testing.T) {
 	}
 }
 
-func TestModel_helpAppendMarksLayoutDirty(t *testing.T) {
-	mslash := NewModelCfg(Dependencies{
+func TestModel_helpOverlayLeavesTranscriptUntouched(t *testing.T) {
+	m := NewModelCfg(Dependencies{
 		Turn: func(_ context.Context, prompt string, _ string) (TurnResult, error) {
 			return TurnResult{Answer: "ok"}, nil
 		},
 		Config: cfgFixture(),
 	})
-	mslash = resize(t, mslash)
-	mslash = typeText(t, mslash, "/help")
-	mslash.tx.layout.dirty = false // isolate the append: only the seam may re-mark it
-	mslash = keypress(t, mslash, "enter")
-	if !mslash.tx.layout.dirty {
-		t.Error("`/help` must mark the transcript layout dirty so the help block re-wraps")
+	m = resize(t, m)
+	m = typeText(t, m, "/help")
+	m.tx.layout.dirty = false // isolate the open: the overlay must not dirty the transcript
+	m = keypress(t, m, "enter")
+	if m.help == nil {
+		t.Fatal("`/help` should open the overlay")
 	}
-
+	if m.tx.layout.dirty {
+		t.Error("opening `/help` as an overlay must not dirty the transcript layout")
+	}
 }

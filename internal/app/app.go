@@ -258,7 +258,7 @@ func Run(opts Options) error {
 				return fmt.Errorf("configure context overflow recovery: %w", err)
 			}
 		}
-		return runTUI(e, logged, cfg, reg, key, liveProvider, cfgPath, dir, skills, workspace, tempHost, needsSetup)
+		return runTUI(e, logged, cfg, reg, key, liveProvider, cfgPath, dir, skills, workspace, tempHost, needsSetup, opts.Yolo)
 	}
 
 	prompt := opts.Prompt

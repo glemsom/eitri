@@ -181,6 +181,7 @@ type Model struct {
 	liveKey *livekey.LiveSessionKey
 
 	settings *SettingsOverlay
+	help     *HelpOverlay
 	feedback composerFeedback
 
 	continueReq  chan struct{}
@@ -393,12 +394,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			next, cmd := m.updateSettings(msgi)
 			return next, cmd
 		}
+		if m.help != nil {
+			return m.updateHelp(msgi)
+		}
 		return m, m.queueFaceDrawCmd()
 
 	case tea.KeyPressMsg:
 		msgi = normalizeShiftPrintable(msgi)
 		if m.settings != nil {
 			return m.updateSettings(msgi)
+		}
+		if m.help != nil {
+			return m.updateHelp(msgi)
 		}
 		if m.prompting {
 			return m.updatePrompt(msgi)
@@ -602,6 +609,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.settings != nil {
 		return m.updateSettings(msg)
 	}
+	if m.help != nil {
+		return m.updateHelp(msg)
+	}
 
 	nm, cmd := m.composer.Update(msg)
 	m.composer = nm
@@ -688,8 +698,7 @@ func (m Model) submitPrompt() (tea.Model, tea.Cmd) {
 		return m.startLogin()
 	}
 	if prompt == "/help" {
-		m.tx.appendMsg(helpView())
-		return m, nil
+		return m.startHelp()
 	}
 	if prompt == "/new" {
 		// `/new` is a control slash command: never recorded into the history
@@ -912,6 +921,9 @@ func (m Model) viewString() string {
 	if m.settings != nil {
 		return m.settings.View()
 	}
+	if m.help != nil {
+		return m.help.View()
+	}
 	if m.prompting {
 		return promptView(m.tx.theme)
 	}
@@ -990,7 +1002,7 @@ func (m Model) drawFaceCmd() (Model, tea.Cmd) {
 }
 
 func (m Model) canDrawFace() bool {
-	if m.settings != nil || m.prompting || !m.tx.railVisible() || m.tx.width <= 0 || m.tx.height <= 0 {
+	if m.settings != nil || m.help != nil || m.prompting || !m.tx.railVisible() || m.tx.width <= 0 || m.tx.height <= 0 {
 		return false
 	}
 	railWidth := m.tx.railWidthOrDefault()

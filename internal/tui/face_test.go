@@ -84,7 +84,7 @@ func TestFaceUploadsOnceAtBootThenIdles(t *testing.T) {
 	t.Cleanup(CleanupKittyFace) // the scratch PNG leaks nothing on the test host
 	t.Setenv("EITRI_KITTY_IMAGES", "1")
 	m := NewModelCfg(Dependencies{Rail: NewRail("provider", "model", "low", true, "session", "/tmp/session")})
-	m = resizeTo(t, m, 120, 31) // bubbletea delivers one WindowSizeMsg at boot
+	m = resizeTo(t, m, 120, 33) // bubbletea delivers one WindowSizeMsg at boot
 
 	m = faceUpload(t, m) // the boot upload
 	if m.faceDirty {
@@ -107,7 +107,7 @@ func TestResizeReuploadsFace(t *testing.T) {
 	t.Cleanup(CleanupKittyFace) // the scratch PNG leaks nothing on the test host
 	t.Setenv("EITRI_KITTY_IMAGES", "1")
 	m := NewModelCfg(Dependencies{Rail: NewRail("provider", "model", "low", true, "session", "/tmp/session")})
-	m = resizeTo(t, m, 120, 31)
+	m = resizeTo(t, m, 120, 33)
 	m = faceUpload(t, m)
 
 	// A terminal resize moves the face: the next face draw must re-upload.
@@ -157,7 +157,7 @@ func TestThemeChangeReuploadsFace(t *testing.T) {
 		Save:   func(config.Config) error { return nil },
 		Rail:   NewRail("provider", "model", "low", true, "session", "/tmp/session"),
 	})
-	m = resizeTo(t, m, 120, 31)
+	m = resizeTo(t, m, 120, 33)
 	m = faceUpload(t, m)
 
 	// Change the appearance in settings, save, and close the overlay: the
@@ -191,7 +191,7 @@ func TestNonFaceSettingsSaveDoesNotReuploadFace(t *testing.T) {
 		Save:   func(config.Config) error { return nil },
 		Rail:   NewRail("provider", "model", "low", true, "session", "/tmp/session"),
 	})
-	m = resizeTo(t, m, 120, 31)
+	m = resizeTo(t, m, 120, 33)
 	m = faceUpload(t, m)
 
 	// A save that touches no face input (max turns, not theme/rail width) must
@@ -236,7 +236,7 @@ func TestStreamingFollowReanchorsFaceAfterRendererScroll(t *testing.T) {
 		Events: NewEventFeed(),
 		Rail:   NewRail("provider", "model", "low", true, "session", "/tmp/session"),
 	})
-	m = resizeTo(t, m, 120, 31)
+	m = resizeTo(t, m, 120, 33)
 	m = typeText(t, m, "hi")
 	m, _ = submitBusy(t, m)
 

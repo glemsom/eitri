@@ -59,7 +59,7 @@ promise live in [`docs/batch-mode.md`](docs/batch-mode.md).
 
 ### Sandboxing and `--yolo-unsafe`
 
-By default every `bash` command Eitri runs is confined by a **bubblewrap cage**: root is read-only, the workspace and session temp are writable, and the command runs in its own PID, `/dev`, and `/proc` namespace. That is the sandboxed-by-default guarantee.
+By default every `bash` command Eitri runs is confined by a **bubblewrap cage**: root is read-only, the workspace and session temp are writable, and the command runs in its own PID, `/dev`, and `/proc` namespace. That is the sandboxed-by-default guarantee. The TUI surfaces this state in the context rail (`sandbox  bubblewrap`), switching to a red `⚠ unsafe (--yolo)` when the cage is dropped, so the trust boundary is legible without reading this file.
 
 `--yolo-unsafe` is a launch-time opt-out that drops that guarantee — intended for trusted, single-user machines where the cage's isolation and its `bwrap` dependency get in the way:
 
@@ -77,7 +77,7 @@ Every `bash` call is time-bounded, so a command that never finishes cannot stall
 - The model may raise it per call with a `timeout` argument, up to a **maximum of 3600 seconds**; larger requests are clamped.
 - A command that hits the bound is stopped and reported as a timeout, distinct from a user-initiated stop (`ctrl+c`), which still takes precedence.
 
-The tool card shows the **effective bound** dimmed alongside the running timer (e.g. `🔧 bash  make build 3s timeout 1800s`), so the limit is visible while a command runs.
+The tool card shows the **effective bound** dimmed alongside the running timer (e.g. `🔧 bash  make build 3s limit 1800s`), so the limit is visible while a command runs. The tag is worded `limit`, never `timeout`, so a merely-bounded call never reads as one that failed — the `✓`/`✗` outcome tag alone carries success, failure, or stop.
 
 ### Repository instructions (`AGENTS.md`)
 
@@ -143,7 +143,7 @@ Full detail lives in [`docs/sessions.md`](docs/sessions.md).
 - Type a prompt in the **composer** at the bottom and press `enter` to submit.
 - Start slash commands with `/` (e.g. `/settings` to open settings). Type `/` to see all commands, including any discovered skills.
 - Type `@` at a word boundary in the composer to open the file mention dropdown.
-- Enter `/help` for the complete live reference, which always shows the current bindings.
+- Enter `/help` to open the complete live reference in a scrollable overlay (`↑/↓` scroll, `esc` close); it always shows the current bindings and never clutters the conversation.
 
 #### Composer
 

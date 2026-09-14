@@ -508,13 +508,15 @@ func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width
 		args = clampLines(args, collapsedToolCommandMaxLines)
 	}
 	// The effective time bound rides the head line so the user can see how long
-	// a (possibly still-running) call is allowed to take; it is dim like the
-	// elapsed timer, and its width is reserved so the command truncates first.
-	timeoutNote := ""
+	// a (possibly still-running) call is allowed to take. It is worded "limit",
+	// not "timeout", so a merely-bounded call never reads as one that failed:
+	// the ✓/✗ outcome tag alone carries success/failure/stop, and this dim note
+	// (reserved width, so the command truncates first) carries only the bound.
+	limitNote := ""
 	if te.timeout > 0 {
-		timeoutNote = th.statusStyle.Render(fmt.Sprintf("timeout %ds", int(te.timeout.Seconds())))
+		limitNote = th.statusStyle.Render(fmt.Sprintf("limit %ds", int(te.timeout.Seconds())))
 	}
-	budget := width - lipgloss.Width(label) - 8 - lipgloss.Width(timeoutNote) // room for the outcome + timer + timeout
+	budget := width - lipgloss.Width(label) - 8 - lipgloss.Width(limitNote) // room for the outcome + timer + limit
 	if budget > 1 && !strings.Contains(args, "\n") && lipgloss.Width(args) > budget {
 		args = truncateWidth(args, budget-1) + g("…", "...")
 	}
@@ -540,8 +542,8 @@ func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width
 			b.WriteString(" " + th.statusStyle.Render(formatElapsed(d)))
 		}
 	}
-	if timeoutNote != "" {
-		b.WriteString(" " + timeoutNote)
+	if limitNote != "" {
+		b.WriteString(" " + limitNote)
 	}
 	b.WriteString("\n")
 

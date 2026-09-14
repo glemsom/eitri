@@ -23,7 +23,11 @@ type Rail struct {
 	sessionID   string
 	sessionTemp string
 	branch      string
-	sessionKey  *livekey.LiveSessionKey
+	// unsafe reports whether the launch dropped the bubblewrap sandbox
+	// (--yolo-unsafe). The CONTEXT section renders one "sandbox" row from it so
+	// the trust boundary is visible in the UI.
+	unsafe     bool
+	sessionKey *livekey.LiveSessionKey
 }
 
 // NewRail builds the right-context rail seeded with the run's static session state (provider, model, effort, thinking, session id, session temp path).
@@ -194,6 +198,10 @@ func (r *Rail) renderStats(te *telemetry.Telemetry, th Theme, railWidth int) str
 // SetBranch records the workspace's checked-out git branch for the CONTEXT section.
 func (r *Rail) SetBranch(branch string) { r.branch = branch }
 
+// SetUnsafe records whether the session dropped the bubblewrap sandbox
+// (--yolo-unsafe), so the CONTEXT section can surface the trust boundary.
+func (r *Rail) SetUnsafe(unsafe bool) { r.unsafe = unsafe }
+
 // SetLiveKey wires the shared mutable session key into the rail, so the
 // CONTEXT session id stays live across a `/new` re-mint. Nil keeps the static
 // sessionID seeded at construction.
@@ -229,7 +237,23 @@ func (r *Rail) renderContext(th Theme, railWidth int) string {
 	if r.branch != "" {
 		r.lineAligned(&body, "branch", r.branch, kw, railWidth)
 	}
+	// The sandbox row renders last so its error-tinted value (only when unsafe)
+	// can carry its own SGR without a later sibling inheriting the reset.
+	sandboxVal := r.sandboxLabel()
+	if r.unsafe {
+		sandboxVal = lipgloss.NewStyle().Foreground(th.error).Render(sandboxVal)
+	}
+	r.lineAligned(&body, "sandbox", sandboxVal, kw, railWidth)
 	return b.String() + th.railBody(railContext, strings.TrimRight(body.String(), "\n"))
+}
+
+// sandboxLabel renders the CONTEXT "sandbox" value: the bubblewrap cage when
+// sandboxed, or a warning-marked "unsafe (--yolo)" when the launch opted out.
+func (r *Rail) sandboxLabel() string {
+	if r.unsafe {
+		return g("⚠ unsafe (--yolo)", "! unsafe (--yolo)")
+	}
+	return "bubblewrap"
 }
 
 // renderModel renders the MODEL section with provider/model hierarchy and compact mode badges.
