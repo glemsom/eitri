@@ -202,66 +202,65 @@ func TestSettingsView_RendersOpenCodeKey(t *testing.T) {
 	}
 }
 
-func TestSettingsView_ProviderCredentialsSectionBetweenModelAndReasoning(t *testing.T) {
+func TestSettingsView_ProviderCredentialsSectionPosition(t *testing.T) {
 	t.Parallel()
-	f := newSettingsForm(cfgFixture(), []string{})
-	f.cfg.Provider = "custom-openai"
-	f.cfg.CustomOpenAI = config.OpenAIConfig{BaseURL: "https://example.com/v1", Key: "secret"}
-	view := settingsView(f)
-	modelIdx := strings.Index(view, "Model")
-	credsIdx := strings.Index(view, "provider credentials")
-	thinkingIdx := strings.Index(view, "Deep thinking")
-	if modelIdx < 0 || credsIdx < 0 || thinkingIdx < 0 {
-		t.Fatalf("settings view missing expected sections: model@%d creds@%d thinking@%d", modelIdx, credsIdx, thinkingIdx)
+	cases := []struct {
+		name     string
+		provider string
+		wantCreds bool
+	}{
+		{"custom-openai", "custom-openai", true},
+		{"opencode-go", "opencode-go", true},
+		{"github-copilot", "github-copilot", false},
 	}
-	if !(modelIdx < credsIdx && credsIdx < thinkingIdx) {
-		t.Fatalf("provider credentials section at %d, want between model@%d and thinking@%d", credsIdx, modelIdx, thinkingIdx)
-	}
-}
-
-func TestSettingsView_ProviderCredentialsSectionForOpenCodeGo(t *testing.T) {
-	t.Parallel()
-	f := newSettingsForm(cfgFixture(), []string{})
-	f.cfg.Provider = "opencode-go"
-	f.cfg.OpenCodeGo = config.OpenCodeGoConfig{Key: "my-key"}
-	view := settingsView(f)
-	modelIdx := strings.Index(view, "Model")
-	credsIdx := strings.Index(view, "provider credentials")
-	thinkingIdx := strings.Index(view, "Deep thinking")
-	if modelIdx < 0 || credsIdx < 0 || thinkingIdx < 0 {
-		t.Fatalf("settings view missing expected sections: model@%d creds@%d thinking@%d", modelIdx, credsIdx, thinkingIdx)
-	}
-	if !(modelIdx < credsIdx && credsIdx < thinkingIdx) {
-		t.Fatalf("provider credentials section at %d, want between model@%d and thinking@%d", credsIdx, modelIdx, thinkingIdx)
-	}
-}
-
-func TestSettingsView_NoProviderCredentialsSectionForCopilot(t *testing.T) {
-	t.Parallel()
-	f := newSettingsForm(cfgFixture(), []string{})
-	f.cfg.Provider = "github-copilot"
-	view := settingsView(f)
-	if strings.Contains(view, "provider credentials") {
-		t.Fatalf("settings view %q should not contain provider credentials section for github-copilot", view)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newSettingsForm(cfgFixture(), []string{})
+			f.cfg.Provider = tc.provider
+			f.cfg.CustomOpenAI = config.OpenAIConfig{BaseURL: "https://example.com/v1", Key: "secret"}
+			f.cfg.OpenCodeGo = config.OpenCodeGoConfig{Key: "my-key"}
+			view := settingsView(f)
+			if tc.wantCreds {
+				modelIdx := strings.Index(view, "Model")
+				credsIdx := strings.Index(view, "provider credentials")
+				thinkingIdx := strings.Index(view, "Deep thinking")
+				if modelIdx < 0 || credsIdx < 0 || thinkingIdx < 0 {
+					t.Fatalf("settings view missing expected sections: model@%d creds@%d thinking@%d", modelIdx, credsIdx, thinkingIdx)
+				}
+				if !(modelIdx < credsIdx && credsIdx < thinkingIdx) {
+					t.Fatalf("provider credentials section at %d, want between model@%d and thinking@%d", credsIdx, modelIdx, thinkingIdx)
+				}
+			} else {
+				if strings.Contains(view, "provider credentials") {
+					t.Fatalf("settings view %q should not contain provider credentials section for %s", view, tc.provider)
+				}
+			}
+		})
 	}
 }
 
 func TestSettingsForm_FocusOrderTraversesCredentialsBetweenModelAndReasoning(t *testing.T) {
 	t.Parallel()
-	f := newSettingsForm(cfgFixture(), []string{})
-	f.cfg.Provider = "custom-openai"
-	f.field = fieldModel
-	f.step(1)
-	if f.field != fieldCustomOpenAIBaseURL {
-		t.Fatalf("field after step from model = %d, want fieldCustomOpenAIBaseURL", f.field)
+	cases := []struct {
+		name   string
+		provider string
+		want   []int
+	}{
+		{"custom-openai", "custom-openai", []int{fieldCustomOpenAIBaseURL, fieldCustomOpenAIKey, fieldThinking}},
+		{"opencode-go", "opencode-go", []int{fieldOpenCodeKey, fieldThinking}},
 	}
-	f.step(1)
-	if f.field != fieldCustomOpenAIKey {
-		t.Fatalf("field after step from base URL = %d, want fieldCustomOpenAIKey", f.field)
-	}
-	f.step(1)
-	if f.field != fieldThinking {
-		t.Fatalf("field after step from API key = %d, want fieldThinking", f.field)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newSettingsForm(cfgFixture(), []string{})
+			f.cfg.Provider = tc.provider
+			f.field = fieldModel
+			for _, want := range tc.want {
+				f.step(1)
+				if f.field != want {
+					t.Fatalf("field after step = %d, want %d", f.field, want)
+				}
+			}
+		})
 	}
 }
 
