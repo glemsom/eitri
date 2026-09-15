@@ -22,6 +22,9 @@ import (
 const (
 	fieldProvider = iota
 	fieldModel
+	fieldOpenCodeKey
+	fieldCustomOpenAIBaseURL
+	fieldCustomOpenAIKey
 	fieldThinking
 	fieldEffort
 	fieldMaxTurns
@@ -30,9 +33,6 @@ const (
 	fieldCoTCollapsed
 	fieldToolResultsCollapsed
 	fieldPaths
-	fieldOpenCodeKey
-	fieldCustomOpenAIBaseURL
-	fieldCustomOpenAIKey
 	fieldSave
 	fieldCancel
 	fieldCount
@@ -751,14 +751,6 @@ func settingsView(f settingsForm) string {
 	}{
 		{fieldProvider, "Provider", f.cfg.Provider},
 		{fieldModel, "Model", f.Model()},
-		{fieldThinking, "Deep thinking", thinkingModeLabel(f.cfg.ThinkingEnabled)},
-		{fieldEffort, "Reasoning depth", f.cfg.ReasoningEffort},
-		{fieldMaxTurns, "Tool loop limit", fmt.Sprintf("%d", f.cfg.MaxTurns)},
-		{fieldContextOverflowRecovery, "Context overflow recovery", thinkingModeLabel(f.cfg.ContextOverflowRecovery)},
-		{fieldTheme, "Theme", f.cfg.Theme},
-		{fieldCoTCollapsed, "Collapse thinking", thinkingModeLabel(f.cfg.CoTCollapsedByDefault)},
-		{fieldToolResultsCollapsed, "Collapse tool output", thinkingModeLabel(f.cfg.ToolResultsCollapsedByDefault)},
-		{fieldPaths, "Writable paths", pathSummary(f)},
 	}
 	if f.cfg.Provider == string(provider.ProviderOpenCodeGo) {
 		rows = append(rows, struct{ field int; name string; val string }{fieldOpenCodeKey, "OpenCode API key", maskKey(f.cfg.OpenCodeGo.Key)})
@@ -769,15 +761,40 @@ func settingsView(f settingsForm) string {
 			struct{ field int; name string; val string }{fieldCustomOpenAIKey, "API key", maskKey(f.cfg.CustomOpenAI.Key)},
 		)
 	}
+	rows = append(rows, []struct {
+		field int
+		name  string
+		val   string
+	}{
+		{fieldThinking, "Deep thinking", thinkingModeLabel(f.cfg.ThinkingEnabled)},
+		{fieldEffort, "Reasoning depth", f.cfg.ReasoningEffort},
+		{fieldMaxTurns, "Tool loop limit", fmt.Sprintf("%d", f.cfg.MaxTurns)},
+		{fieldContextOverflowRecovery, "Context overflow recovery", thinkingModeLabel(f.cfg.ContextOverflowRecovery)},
+		{fieldTheme, "Theme", f.cfg.Theme},
+		{fieldCoTCollapsed, "Collapse thinking", thinkingModeLabel(f.cfg.CoTCollapsedByDefault)},
+		{fieldToolResultsCollapsed, "Collapse tool output", thinkingModeLabel(f.cfg.ToolResultsCollapsedByDefault)},
+		{fieldPaths, "Writable paths", pathSummary(f)},
+	}...)
+
 	sections := []struct {
 		label string
 		start int
 	}{
 		{g("🤖 model", "model"), fieldProvider},
+	}
+	if f.cfg.Provider == string(provider.ProviderOpenCodeGo) {
+		sections = append(sections, struct{ label string; start int }{g("🔑 provider credentials", "provider credentials"), fieldOpenCodeKey})
+	} else if f.cfg.Provider == string(provider.ProviderCustomOpenAI) {
+		sections = append(sections, struct{ label string; start int }{g("🔑 provider credentials", "provider credentials"), fieldCustomOpenAIBaseURL})
+	}
+	sections = append(sections, []struct {
+		label string
+		start int
+	}{
 		{g("🧠 reasoning & limits", "reasoning & limits"), fieldThinking},
 		{g("🎨 appearance", "appearance"), fieldTheme},
 		{g("🛡 workspace access", "workspace access"), fieldPaths},
-	}
+	}...)
 	emit := func(label string) {
 		b.WriteString(th.statusStyle.Render("   " + hr() + " " + label + " " + hr()))
 		b.WriteString("\n")
