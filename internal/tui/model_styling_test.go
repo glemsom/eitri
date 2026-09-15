@@ -222,11 +222,11 @@ func TestModel_stylingThinkingDistinct(t *testing.T) {
 	if hint == "" {
 		t.Fatalf("expected a thinking hint in view, got: %q", view(m))
 	}
-	if !strings.Contains(hint, "\x1b[3;2;") {
+	if !strings.Contains(hint, "\x1b[3;") {
 		t.Errorf("thinking hint should render italic, got line: %q", hint)
 	}
-	if !strings.Contains(hint, "\x1b[3;2;38;2;122;162;247m") {
-		t.Errorf("thinking hint should carry the accent hue, got line: %q", hint)
+	if !strings.Contains(hint, "\x1b[3;38;2;86;95;137m") {
+		t.Errorf("thinking hint should carry the muted thinking hue (86;95;137), not the accent, got line: %q", hint)
 	}
 	if ans := lineContaining(view(m), "plain"); strings.Contains(ans, "\x1b[3m") || strings.Contains(ans, "\x1b[3;") {
 		t.Errorf("answer body must stay non-italic, got line: %q", ans)
@@ -272,8 +272,8 @@ func TestModel_stylingThinkingPaneDistinctFromAnswer(t *testing.T) {
 	content := view(m)
 
 	thinkRows := reasoningPaneRows(t, content)
-	if !strings.Contains(thinkRows[0], "\x1b[38;2;73;97;148m") {
-		t.Errorf("thinking pane border should carry the dimmed accent (73;97;148), got row: %q", thinkRows[0])
+	if !strings.Contains(thinkRows[0], "\x1b[38;2;86;95;137m") {
+		t.Errorf("thinking pane border should carry the muted thinking hue (86;95;137), got row: %q", thinkRows[0])
 	}
 	if !strings.Contains(strings.Join(thinkRows, "\n"), "\x1b[3m") {
 		t.Errorf("thinking pane body should render italic, got: %q", thinkRows)
@@ -302,14 +302,14 @@ func TestModel_stylingStreamingThinkingPaneVariant(t *testing.T) {
 	if !strings.Contains(ansiStrip(body), "hidden reasoning") {
 		t.Fatalf("live reasoning body should render expanded while streaming, got: %q", content)
 	}
-	if !strings.Contains(thinkRows[0], "\x1b[38;2;54;72;111m") {
-		t.Errorf("streaming thinking pane border should carry the dimmed-accent streaming variant (54;72;111), got row: %q", thinkRows[0])
+	if !strings.Contains(thinkRows[0], "\x1b[38;2;86;95;137m") {
+		t.Errorf("streaming thinking pane border should carry the muted thinking hue (86;95;137), got row: %q", thinkRows[0])
 	}
-	// The streaming thinking pane is a plain body dimmed by the pane itself: the
-	// italic now arrives combined with the faint attribute (`\x1b[3;2;...`), not
-	// as a lone `\x1b[3m`.
-	if !strings.Contains(body, "\x1b[3m") && !strings.Contains(body, "\x1b[3;") {
-		t.Errorf("streaming thinking pane body should render italic, got: %q", body)
+	// The streaming thinking body is plain text de-emphasized by its pane: the
+	// faint+italic arrive together (`\x1b[3;2m`) opening the text run directly,
+	// with no foreground hue of its own — the muted hue lives on the border only.
+	if !strings.Contains(body, "\x1b[3;2mhidden reasoning") {
+		t.Errorf("streaming thinking body should be faint+italic with no hue, got: %q", body)
 	}
 }
 

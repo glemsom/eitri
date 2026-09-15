@@ -329,6 +329,41 @@ func TestTheme_thinkingPanePresentAcrossPalettes(t *testing.T) {
 	}
 }
 
+func TestTheme_thinkingPalette(t *testing.T) {
+	t.Parallel()
+	for name, want := range map[string]color.Color{
+		"default":          lipgloss.Color("#565F89"),
+		"dracula":          lipgloss.Color("#6272A4"),
+		"tokyo-night":      lipgloss.Color("#565F89"),
+		"pink":             lipgloss.Color("#7A6E8A"),
+		"light":            lipgloss.Color("#5F6B7A"),
+		"nord":             lipgloss.Color("#6E7B96"),
+		"gruvbox":          lipgloss.Color("#928374"),
+		"solarized":        lipgloss.Color("#93A1A1"),
+		"dark-daltonized":  lipgloss.Color("#7D8AA0"),
+		"light-daltonized": lipgloss.Color("#5F6B7A"),
+	} {
+		th := themeFor(name)
+		if th.thinking != want {
+			t.Errorf("%s thinking = %v, want %v", name, th.thinking, want)
+		}
+		if _, ok := color.Color(th.thinking).(color.RGBA); !ok {
+			t.Errorf("%s thinking color = %T, want a hex-derived color.RGBA", name, th.thinking)
+		}
+		// The reasoning hue is a muted secondary that must never be mistaken for
+		// the agent accent or a tool category; it lives only on the reasoning
+		// chrome, so a collision would defeat its de-emphasized role.
+		for label, c := range map[string]color.Color{
+			"accent": th.accent, "shell": th.shell, "file": th.file,
+			"web": th.web, "skill": th.skill,
+		} {
+			if th.thinking == c {
+				t.Errorf("%s thinking collides with %s: both %v", name, label, c)
+			}
+		}
+	}
+}
+
 func TestModel_themeSeam(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
@@ -459,7 +494,7 @@ func TestTheme_toolCategoryStyles(t *testing.T) {
 	if got := th.thinkingStyle.GetItalic(); !got {
 		t.Errorf("thinking style should be italic (distinct from answers), got %v", got)
 	}
-	if got := th.thinkingStyle.GetForeground(); got != th.accent {
-		t.Errorf("thinking foreground = %v, want accent %v", got, th.accent)
+	if got := th.thinkingStyle.GetForeground(); got != th.thinking {
+		t.Errorf("thinking foreground = %v, want thinking hue %v", got, th.thinking)
 	}
 }
