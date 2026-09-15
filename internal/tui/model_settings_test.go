@@ -45,9 +45,7 @@ func TestModel_SettingsSavePersistsAndRemainsOpen(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+,")
-	for i := fieldProvider; i < fieldSave; i++ {
-		m = keypress(t, m, "enter")
-	}
+	m = focusField(t, m, fieldSave)
 	m = keypress(t, m, "enter")
 
 	if saved.Provider != "opencode-go" || saved.MaxTurns != 250 || saved.Model != "deepseek-v4-flash" {
@@ -74,12 +72,10 @@ func TestModel_SettingsAdjustedValuePersists(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+,")
-	m = keypress(t, m, "enter") // focus Model
-	m = keypress(t, m, "tab")   // select grok-2
-	for i := fieldModel; i < fieldSave; i++ {
-		m = keypress(t, m, "enter")
-	}
-	keypress(t, m, "enter")
+	m = focusField(t, m, fieldModel)
+	m = keypress(t, m, "tab") // select grok-2
+	m = focusField(t, m, fieldSave)
+	m = keypress(t, m, "enter")
 
 	if saved.Model != "grok-2" {
 		t.Fatalf("saved Model = %q, want grok-2 after down in Settings", saved.Model)
@@ -99,14 +95,10 @@ func TestModel_SettingsEffortSelectingMediumPersists(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+,")
-	for i := fieldProvider; i < fieldEffort; i++ {
-		m = keypress(t, m, "enter")
-	}
+	m = focusField(t, m, fieldEffort)
 	m = keypress(t, m, "left")
-	for i := fieldEffort; i < fieldSave; i++ {
-		m = keypress(t, m, "enter")
-	}
-	keypress(t, m, "enter")
+	m = focusField(t, m, fieldSave)
+	m = keypress(t, m, "enter")
 
 	if saved.ReasoningEffort != "medium" {
 		t.Fatalf("saved ReasoningEffort = %q, want medium", saved.ReasoningEffort)
@@ -125,15 +117,11 @@ func TestModel_SettingsSaveAppliesThinkingStateToLiveSession(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+,")
-	for i := fieldProvider; i < fieldThinking; i++ {
-		m = keypress(t, m, "enter")
-	}
-	m = keypress(t, m, "tab")   // thinking off
-	m = keypress(t, m, "enter") // effort
-	m = keypress(t, m, "left")  // high -> medium
-	for i := fieldEffort; i < fieldSave; i++ {
-		m = keypress(t, m, "enter")
-	}
+	m = focusField(t, m, fieldThinking)
+	m = keypress(t, m, "tab")  // thinking off
+	m = focusField(t, m, fieldEffort)
+	m = keypress(t, m, "left") // high -> medium
+	m = focusField(t, m, fieldSave)
 	m = keypress(t, m, "enter")
 
 	if m.session.ThinkingEnabled() {
@@ -157,11 +145,9 @@ func TestModel_SettingsSaveRefreshesRightRail(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+,")
-	m = keypress(t, m, "enter") // focus Model
-	m = keypress(t, m, "tab")   // deepseek-v4-flash -> grok-2
-	for i := fieldModel; i < fieldSave; i++ {
-		m = keypress(t, m, "enter")
-	}
+	m = focusField(t, m, fieldModel)
+	m = keypress(t, m, "tab") // deepseek-v4-flash -> grok-2
+	m = focusField(t, m, fieldSave)
 	m = keypress(t, m, "enter") // Save
 
 	if m.deps.Rail.provider != "opencode-go" || m.deps.Rail.model != "grok-2" {
@@ -194,9 +180,7 @@ func TestModel_SettingsSaveFailureDoesNotApplyLiveConfig(t *testing.T) {
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+,")
 	m = keypress(t, m, "tab") // provider opencode-go -> github-copilot
-	for i := fieldProvider; i < fieldSave; i++ {
-		m = keypress(t, m, "enter")
-	}
+	m = focusField(t, m, fieldSave)
 	m = keypress(t, m, "enter")
 
 	if applied {
@@ -223,14 +207,10 @@ func TestModel_SettingsThinkingTogglePersists(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+,")
-	for i := fieldProvider; i < fieldThinking; i++ {
-		m = keypress(t, m, "enter")
-	}
+	m = focusField(t, m, fieldThinking)
 	m = keypress(t, m, "tab")
-	for i := fieldThinking; i < fieldSave; i++ {
-		m = keypress(t, m, "enter")
-	}
-	keypress(t, m, "enter")
+	m = focusField(t, m, fieldSave)
+	m = keypress(t, m, "enter")
 
 	if saved.ThinkingEnabled {
 		t.Fatal("saved ThinkingEnabled = true, want false after toggling off in Settings")
@@ -256,15 +236,11 @@ func TestModel_SettingsCollapseTogglesPersistAndFlipDefaults(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+,")
-	for i := fieldProvider; i < fieldCoTCollapsed; i++ {
-		m = keypress(t, m, "enter")
-	}
-	m = keypress(t, m, "tab")   // CoT collapsed -> off
-	m = keypress(t, m, "enter") // focus Tool results collapsed
-	m = keypress(t, m, "tab")   // tool results collapsed -> off
-	for i := fieldToolResultsCollapsed; i < fieldSave; i++ {
-		m = keypress(t, m, "enter")
-	}
+	m = focusField(t, m, fieldCoTCollapsed)
+	m = keypress(t, m, "tab") // CoT collapsed -> off
+	m = focusField(t, m, fieldToolResultsCollapsed)
+	m = keypress(t, m, "tab") // tool results collapsed -> off
+	m = focusField(t, m, fieldSave)
 	m = keypress(t, m, "enter")
 
 	if saved.CoTCollapsedByDefault {
@@ -294,14 +270,10 @@ func TestModel_SettingsThemeSelectingPersists(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+,")
-	for i := fieldProvider; i < fieldTheme; i++ {
-		m = keypress(t, m, "enter")
-	}
+	m = focusField(t, m, fieldTheme)
 	m = keypress(t, m, "tab")
-	for i := fieldTheme; i < fieldSave; i++ {
-		m = keypress(t, m, "enter")
-	}
-	keypress(t, m, "enter")
+	m = focusField(t, m, fieldSave)
+	m = keypress(t, m, "enter")
 
 	if saved.Theme != "light" {
 		t.Fatalf("saved Theme = %q, want light", saved.Theme)
@@ -323,19 +295,15 @@ func TestModel_SettingsCustomOpenAICredentialsPersist(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+,")
-	// navigate to Base URL field (enter moves to next; stop one before)
-	for i := fieldProvider; i < fieldCustomOpenAIBaseURL-1; i++ {
-		m = keypress(t, m, "enter")
-	}
-	// activate text input and type
+	m = focusField(t, m, fieldCustomOpenAIBaseURL)
 	m = keypress(t, m, "enter")
 	m.settings.textInput.SetValue("https://example.com/v1")
 	m = keypress(t, m, "enter") // confirm, moves to API key
-	// activate text input and type
+	m = focusField(t, m, fieldCustomOpenAIKey)
 	m = keypress(t, m, "enter")
 	m.settings.textInput.SetValue("my-secret-key")
 	m = keypress(t, m, "enter") // confirm, moves to Save
-	// confirm save
+	m = focusField(t, m, fieldSave)
 	m = keypress(t, m, "enter")
 
 	if saved.CustomOpenAI.BaseURL != "https://example.com/v1" {
@@ -361,15 +329,11 @@ func TestModel_SettingsOpenCodeKeyPersists(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = keypress(t, m, "ctrl+,")
-	// navigate to OpenCode key field (enter moves to next)
-	for i := fieldProvider; i < fieldOpenCodeKey; i++ {
-		m = keypress(t, m, "enter")
-	}
-	// activate text input and type
+	m = focusField(t, m, fieldOpenCodeKey)
 	m = keypress(t, m, "enter")
 	m.settings.textInput.SetValue("opencode-api-key")
 	m = keypress(t, m, "enter") // confirm, moves to Save
-	// confirm save
+	m = focusField(t, m, fieldSave)
 	m = keypress(t, m, "enter")
 
 	if saved.OpenCodeGo.Key != "opencode-api-key" {
@@ -476,6 +440,27 @@ func keypress(t *testing.T, m Model, key string) Model {
 	t.Helper()
 	nm, _ := m.Update(namedKey(key))
 	return asModel(t, nm)
+}
+
+// focusField steps the settings form forward with Enter until the focused
+// field equals target, asserting arrival. It fails if the walk wraps past
+// Save/Cancel without hitting the target.
+func focusField(t *testing.T, m Model, target int) Model {
+	t.Helper()
+	if m.settings == nil {
+		t.Fatal("no settings overlay open")
+	}
+	for i := 0; i < fieldCount; i++ {
+		if m.settings.field == target {
+			return m
+		}
+		if m.settings.onSave() || m.settings.onCancel() {
+			t.Fatalf("focus wrapped past target field %d without hitting it; current field=%d", target, m.settings.field)
+		}
+		m = keypress(t, m, "enter")
+	}
+	t.Fatalf("failed to focus field %d after %d steps; current field=%d", target, fieldCount, m.settings.field)
+	return m
 }
 
 func namedKey(name string) tea.Msg {
