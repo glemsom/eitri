@@ -8,8 +8,7 @@ import (
 // buildLiveThinkBlob returns a realistic streaming long chain-of-thought body:
 // mixed prose sentences, headings, inline and fenced code, bullet and numbered
 // lists, and punctuation, sized to about wantBytes. The shape mirrors what a
-// real model actually streams during a long CoT turn (the input the current
-// glamour+goldmark live render pays full price to parse every delta).
+// real model actually streams during a long CoT turn.
 func buildLiveThinkBlob(wantBytes int) string {
 	prose := []string{
 		"Let me reconsider the request carefully before I answer, because the phrasing is ambiguous and I want to be sure I solve the real problem and not a strawman of it.",
@@ -38,23 +37,19 @@ func buildLiveThinkBlob(wantBytes int) string {
 	return b.String()
 }
 
-// BenchmarkLiveThinkingRender is the glamour-baseline regression benchmark
-// (scratch issue 01). It measures the per-delta cost of rendering a realistic
-// streaming long chain-of-thought thinking body through the production live
-// markdown path -- the glamour+goldmark body wrap behind
-// liveMarkdownCache.renderPaneBody / renderPaneBodyFresh that currently runs
-// on every streaming delta before the cheap-renderer work (scratch issue 02)
-// replaces the live body with an ANSI word-wrap.
+// BenchmarkLiveThinkingRender measures the per-delta cost of rendering a
+// realistic streaming long chain-of-thought body through the production live
+// path: renderPaneBodyFresh -> renderLiveThoughtBody, the plain ANSI hard-wrap
+// that keeps a streaming reasoning body style-free (the pane supplies the dim).
+// It replaced the full glamour+goldmark live render (scratch issue 02), which
+// parsed the whole window every delta.
 //
 // The fixture is a realistic ~9KiB mixed-prose/code reasoning window (the
 // largest a live thinking block reaches before liveStreamingText caps the tail
 // at liveStreamingMarkdownWindow), built once outside the timed loop so the
 // measured cost is the render alone, not fixture construction. Each iteration
-// renders the production path (renderPaneBodyFresh -> RenderMarkdown) on that
-// fixed window plus one rotating suffix byte, forcing a genuine glamour
-// re-render (cache-key miss) per frame just as a real streaming delta does.
-// This number is today's baseline; issue 02's cheap renderer must beat it by
-// an order of magnitude.
+// renders that fixed window plus one rotating suffix byte, forcing a genuine
+// re-render per frame just as a real streaming delta does.
 //
 // Run: go test ./internal/tui -run xxx -bench BenchmarkLiveThinkingRender -benchtime 100x
 func BenchmarkLiveThinkingRender(b *testing.B) {
@@ -69,8 +64,7 @@ func BenchmarkLiveThinkingRender(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		// A rotating suffix byte changes the windowed text each frame, so the
-		// cache always misses and the glamour+goldmark re-parse is what runs --
-		// the exact per-delta cost issue 02 must remove.
+		// cache always misses and the hard-wrap is what runs.
 		_ = renderPaneBodyFresh(blob+string(rune('a'+i%26)), width-2, theme, mdPaneStreamingThinking, th)
 	}
 }

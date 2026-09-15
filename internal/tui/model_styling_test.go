@@ -305,7 +305,10 @@ func TestModel_stylingStreamingThinkingPaneVariant(t *testing.T) {
 	if !strings.Contains(thinkRows[0], "\x1b[38;2;54;72;111m") {
 		t.Errorf("streaming thinking pane border should carry the dimmed-accent streaming variant (54;72;111), got row: %q", thinkRows[0])
 	}
-	if !strings.Contains(body, "\x1b[3m") {
+	// The streaming thinking pane is a plain body dimmed by the pane itself: the
+	// italic now arrives combined with the faint attribute (`\x1b[3;2;...`), not
+	// as a lone `\x1b[3m`.
+	if !strings.Contains(body, "\x1b[3m") && !strings.Contains(body, "\x1b[3;") {
 		t.Errorf("streaming thinking pane body should render italic, got: %q", body)
 	}
 }

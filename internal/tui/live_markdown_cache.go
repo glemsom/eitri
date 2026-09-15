@@ -162,17 +162,24 @@ func (c *liveMarkdownCache) renderPaneBody(text string, width int, theme string,
 // windowed text changed (cache key miss); an unchanged re-glam cannot happen
 // through the cache front door.
 func renderPaneBodyFresh(text string, width int, theme string, paneID liveMarkdownPaneID, th Theme) string {
-	// Streaming reasoning/answer panes render their body with the cheap ANSI
-	// word-wrap instead of the full glamour+goldmark pipeline: a live block
-	// re-renders its tail every delta, so per-delta cost must drop by an order
-	// of magnitude (scratch issue 02). Committed, error, and stopped panes keep
-	// the full glamour render so committed output does not diverge.
-	if paneID == mdPaneStreamingThinking || paneID == mdPaneStreaming {
-		pane := th.paneStyleFor(paneID)
+	pane := th.paneStyleFor(paneID)
+	switch paneID {
+	case mdPaneStreamingThinking:
+		// Live reasoning is a plain, style-free "background thought": the pane
+		// dims it, so the body must carry no SGR of its own. An embedded emphasis
+		// run's `\x1b[0m` would reset the pane's dim/italic mid-line and leave the
+		// rest of the thought at full brightness — the bug the cheap emphasis path
+		// kept tripping.
+		return pane.Render(renderLiveThoughtBody(text, width))
+	case mdPaneStreaming:
+		// The live answer keeps the cheap ANSI emphasis: it must still read as the
+		// answer while streaming, and only snaps to the full glamour render once
+		// committed (scratch issue 02).
 		return pane.Render(renderCheapLiveBody(text, width))
 	}
+	// Committed, error, and stopped panes keep the full glamour render so committed
+	// output does not diverge.
 	md, _ := RenderMarkdown(text, width, theme)
-	pane := th.paneStyleFor(paneID)
 	return pane.Render(trimBody(md))
 }
 

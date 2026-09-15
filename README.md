@@ -201,6 +201,7 @@ Full detail lives in [`docs/sessions.md`](docs/sessions.md).
 | Term | Meaning |
 | --- | --- |
 | `expanded mode` | `ctrl+e` toggles all tool and chain-of-thought blocks |
+| `live reasoning` | While a turn streams, chain-of-thought shows as plain dimmed text and renders as markdown only once the turn commits |
 | `block focus` | `tab` to focus, `enter` to expand one block |
 | `drag-select` | Click and drag to select text |
 | `right rail` | Stats, context, and model info |

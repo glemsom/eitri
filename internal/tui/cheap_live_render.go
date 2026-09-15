@@ -7,14 +7,21 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// The cheap live renderer (scratch issue 02) replaces the full
-// glamour+goldmark pipeline for the body of a *streaming* reasoning or answer
-// pane. A live block re-renders its tail on every delta and glamour parses the
-// whole markdown each time (~7ms an 8KiB window); the cheap path does a single
-// simplified inline-emphasis pass and one ANSI hard-wrap, so each delta lands
-// in tens of microseconds. Committed, error, and stopped panes are never
-// routed here (see renderPaneBodyFresh), so committed output stays byte-
-// identical to glamour.
+// The cheap live renderers replace the full glamour+goldmark pipeline for the
+// body of a *streaming* pane. A live block re-renders its tail on every delta
+// and glamour parses the whole markdown each time (~7ms an 8KiB window); the
+// cheap paths cost tens of microseconds instead.
+//
+// Two streaming bodies, deliberately different:
+//   - Live reasoning is a dim "background thought": renderLiveThoughtBody emits
+//     the text verbatim with no SGR at all, so the reasoning pane's own dim/italic
+//     survives. (Styling the body here did not work out — an embedded emphasis
+//     run's `\x1b[0m` reset the pane style mid-line.)
+//   - The live answer keeps renderCheapLiveBody, a simplified inline-emphasis
+//     pass plus one ANSI hard-wrap, so the answer still reads as the answer.
+//
+// Committed, error, and stopped panes are never routed here (see
+// renderPaneBodyFresh), so committed output stays byte-identical to glamour.
 
 var (
 	reCheapImage = regexp.MustCompile(`!\[[^\]]*\]\([^)]*\)`)
@@ -26,8 +33,8 @@ var (
 	reCheapItalU = regexp.MustCompile(`_([^_\n]+)_`)
 )
 
-// renderCheapLiveBody renders a streaming reasoning/answer body with the cheap
-// ANSI word-wrap. It preserves only the simplest inline emphasis (bold, italic,
+// renderCheapLiveBody renders a streaming *answer* body with the cheap ANSI
+// word-wrap. It preserves only the simplest inline emphasis (bold, italic,
 // inline code, link labels) and hard-wraps at the pane content width so a long
 // unbroken token (URL, code run) still cannot produce an overlarge line. The
 // output is trimmed of trailing newlines to match the glamour path's pane body.
@@ -35,11 +42,24 @@ func renderCheapLiveBody(text string, width int) string {
 	return strings.TrimRight(ansi.Hardwrap(simplifyMarkdownEmphasis(text), width, false), "\n")
 }
 
+// renderLiveThoughtBody renders a *streaming* reasoning body as plain text: no
+// markdown parsing and no SGR of any kind. Streaming reasoning is dimmed into a
+// "background thought" by the reasoning pane, so the body must stay style-free —
+// any SGR it carried would reset the pane's dim/italic mid-line. The raw text
+// still passes through, including any markdown syntax, which parses properly only
+// once the turn commits and the block re-renders through glamour. A single ANSI
+// hard-wrap keeps a long unbroken token (URL, code run) from producing an
+// overlarge line, and the trailing newlines are trimmed to match the glamour pane
+// body's byte shape.
+func renderLiveThoughtBody(text string, width int) string {
+	return strings.TrimRight(ansi.Hardwrap(text, width, false), "\n")
+}
+
 // simplifyMarkdownEmphasis strips fenced code and link/image syntax, and turns
-// the common inline emphasis markers into real SGR so a streaming body reads
+// the common inline emphasis markers into real SGR so a streaming answer reads
 // naturally without paying for a full markdown parse. Everything else (headings,
 // lists) is passed through literally — it is the *simplified* emphasis the live
-// body shows while streaming.
+// answer shows while streaming.
 func simplifyMarkdownEmphasis(s string) string {
 	var b strings.Builder
 	inFence := false
