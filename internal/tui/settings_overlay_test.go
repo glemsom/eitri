@@ -11,6 +11,22 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
+// focusOverlayField steps the settings overlay forward with Enter until the
+// focused field equals target, asserting arrival.
+func focusOverlayField(t *testing.T, o *SettingsOverlay, target int) {
+	t.Helper()
+	for i := 0; i < fieldCount; i++ {
+		if o.field == target {
+			return
+		}
+		if o.onSave() || o.onCancel() {
+			t.Fatalf("focus wrapped past target field %d without hitting it; current field=%d", target, o.field)
+		}
+		o.Key(tea.KeyPressMsg{Code: tea.KeyEnter})
+	}
+	t.Fatalf("failed to focus field %d after %d steps; current field=%d", target, fieldCount, o.field)
+}
+
 func TestSettingsOverlay_OpenArmsDiscoveryOnlyWhenModelListEmpty(t *testing.T) {
 	t.Parallel()
 	deps := Dependencies{
@@ -80,12 +96,7 @@ func TestSettingsOverlay_SaveReportsStatusAndReturnsDraft(t *testing.T) {
 		SaveBack: func(c config.Config) { mirrored = c },
 	}
 	o, _ := openSettingsOverlay(cfgFixture(), []string{"deepseek-v4-flash"}, defaultTheme, nil, nil, deps)
-	for range fieldSave {
-		outcome, _ := o.Key(tea.KeyPressMsg{Code: tea.KeyEnter})
-		if outcome == outcomeSaved {
-			break
-		}
-	}
+	focusOverlayField(t, o, fieldSave)
 
 	cfg, status, applied := o.Save()
 	if status != "saved" {
@@ -142,9 +153,7 @@ func TestSettingsOverlay_HandleSavesOnEnterAtSaveField(t *testing.T) {
 	var saved config.Config
 	deps := Dependencies{Save: func(c config.Config) error { saved = c; return nil }}
 	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, deps)
-	for range fieldSave {
-		o.Handle(tea.KeyPressMsg{Code: tea.KeyEnter})
-	}
+	focusOverlayField(t, o, fieldSave)
 
 	res := o.Handle(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if res.outcome != outcomeSaved || res.cmd != nil {

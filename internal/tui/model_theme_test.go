@@ -81,14 +81,10 @@ func TestModel_settingsThemeSaveReskinsChrome(t *testing.T) {
 	}
 
 	m = keypress(t, m, "ctrl+,")
-	for i := fieldProvider; i < fieldTheme; i++ {
-		m = keypress(t, m, "enter")
-	}
+	m = focusField(t, m, fieldTheme)
 	m = keypress(t, m, "tab") // dark -> light
 	m = keypress(t, m, "tab") // light -> dracula
-	for i := fieldTheme; i < fieldSave; i++ {
-		m = keypress(t, m, "enter")
-	}
+	m = focusField(t, m, fieldSave)
 	m = keypress(t, m, "enter")
 
 	if m.deps.Config.Theme != "dracula" {
