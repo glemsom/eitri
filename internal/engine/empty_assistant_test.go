@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/glemsom/eitri/internal/provider"
@@ -16,11 +17,13 @@ func lastUserContent(msgs []provider.Message) string {
 	return ""
 }
 
-// A turn that ends with a clean EOF before producing any output must not
-// persist an empty assistant message to history. Such a message carries no
-// content, reasoning, or tool calls, and once indexed into a later request it
-// becomes an invalid `content: null` assistant block that the provider rejects
-// (observed as "messages[N].content must be a string or an array of content blocks").
+// A provider stream that ends with EOF before delivering any terminal signal
+// (done chunk / finish_reason / tool calls) is a truncated response: the turn
+// must surface as a failed run (ErrStreamEOF), never as a silently successful
+// empty answer. And it must not persist an empty assistant message to history —
+// such a message carries no content, reasoning, or tool calls, and once indexed
+// into a later request it becomes an invalid `content: null` assistant block
+// that the provider rejects.
 func TestRunAgentEOFSilentDoesNotPersistEmptyAssistant(t *testing.T) {
 	t.Parallel()
 
@@ -42,8 +45,8 @@ func TestRunAgentEOFSilentDoesNotPersistEmptyAssistant(t *testing.T) {
 	}), &mockTranscript{})
 
 	const key = "sess-eof-silent"
-	if _, err := e.RunAgent(context.Background(), RunRequest{Model: "m", Prompt: "hi", SessionKey: key}, AgentOptions{}); err != nil {
-		t.Fatalf("first RunAgent error = %v", err)
+	if _, err := e.RunAgent(context.Background(), RunRequest{Model: "m", Prompt: "hi", SessionKey: key}, AgentOptions{}); !errors.Is(err, ErrStreamEOF) {
+		t.Fatalf("first RunAgent error = %v, want truncated-stream error (ErrStreamEOF)", err)
 	}
 
 	history := e.sessionHistory(key)
