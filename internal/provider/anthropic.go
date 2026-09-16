@@ -140,7 +140,13 @@ func anthropicMessages(messages []Message) (system []anthropicContent, conv []an
 				Content: []anthropicContent{{Type: "text", Text: m.Content, CacheControl: m.CacheControl}},
 			})
 		case RoleAssistant:
-			conv = append(conv, anthropicMessage{Role: "assistant", Content: anthropicAssistantContent(m)})
+			// Skip an assistant turn that produced no reasoning, text, or tool_use blocks.
+			// Emitting it as a bare assistant with `content: null` makes the provider reject
+			// the whole request with "messages[N].content must be a string or an array of
+			// content blocks" (seen when a stream ends before producing any output).
+			if content := anthropicAssistantContent(m); len(content) > 0 {
+				conv = append(conv, anthropicMessage{Role: "assistant", Content: content})
+			}
 		}
 	}
 	return system, conv

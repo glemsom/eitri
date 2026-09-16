@@ -364,9 +364,15 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		}
 
 		if len(done.ToolCalls) == 0 {
-			messages = append(messages, assistant)
 			final.Answer = content.String()
 			final.Reasoning = reasoning.String()
+			// Persist the assistant turn only when it actually said or reasoned something.
+			// An empty assistant message (e.g. a stream that ended mid-flight) carries no
+			// information and, once sent back to the provider, becomes an invalid
+			// `content: null` assistant block that fails the next request.
+			if content.Len() > 0 || reasoning.Len() > 0 {
+				messages = append(messages, assistant)
+			}
 			e.storeSessionHistory(req.SessionKey, messages)
 			if e.transcript != nil {
 				_ = e.transcript.WriteTranscript(fmt.Appendf(nil, "=== %s ===\n%s\n", req.Prompt, content.String()))
