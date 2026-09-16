@@ -18,8 +18,7 @@ For Web / API access, see the `web-access` skill.
 ### File Inspection & Edits
 - **Find:** Use `rg -l <pattern>` to locate files, or `rg -n --heading --color=never` to view matching lines.
 - **Read:** Use `nl -ba <file> | sed -n 'X,Yp'` when line anchors are needed, or `sed -n 'X,Yp'` otherwise.
-- **Single Edit:** Write inline Python scripts using `Path.read_text()` / `Path.write_text()`.
-  - **Constraint:** Always assert `old_text` appears exactly once (`assert count == 1`).
+- **Single Edit:** Write inline Python scripts using `Path.read_text()` / `Path.write_text()`. Always assert `old_text` appears exactly once (`assert count == 1`).
   - **Failure Handling:** If `AssertionError` occurs, re-read the fresh file content to check for partial application or stale anchors before retrying.
 - **New Files / Rewrites:** Use `cat <<'EOF' > file` heredocs.
 - **Multi-Edits:** One script per edit, run sequentially.
