@@ -69,8 +69,8 @@ The engine holds per-session history keyed by the session GUID (`SessionKey`), c
 Everything that touches a model endpoint lives behind this package's interfaces; no upper layer speaks HTTP to a vendor.
 
 - `provider.go` — canonical types (`Message`, `ToolCall`, `Request`, `Stream`, `Chunk`, `Usage`) and the sentinels (`ErrContextOverflow`, `ErrNoDiscovery`) plus overflow-body detection.
-- `dialect.go` / `chatdialect.go` / `responses.go` — the **Dialect** seam: one interface owning request shaping, canonical→wire tool mapping, and SSE→chunk parsing. `chatdialect.go` implements Chat Completions (the default path); `responses.go` implements the OpenAI Responses shape (Copilot models that lack chat/completions).
-- `openai.go` — `OpenAICompatible`, the Chat-Completions HTTP client (primary: OpenCode Go, including its required user-agent).
+- `dialect.go` / `chatdialect.go` / `anthropic.go` / `responses.go` — the **Dialect** seam: one interface owning request shaping, canonical→wire tool mapping, and SSE→chunk parsing. `chatdialect.go` implements Chat Completions (the default path); `anthropic.go` implements the Anthropic Messages wire (`x-api-key`, `max_tokens`); `responses.go` implements the OpenAI Responses shape (Copilot models that lack chat/completions).
+- `openai.go` — `OpenAICompatible`, the provider HTTP client for Chat Completions and, when routed, the Anthropic wire. It identifies OpenCode Go traffic (user-agent + session header) and routes Anthropic-wire models (union/minimax/qwen) to the sibling `/v1/messages` endpoint; an anthropic-only endpoint (custom-openai base URL ending in `/messages`) is detected on construction.
 - `copilot.go` / `deviceflow.go` — Copilot adapter and device-flow auth, with a refresh seam and `ErrReauthRequired`.
 - `factory.go` — maps `config.Provider` to a concrete adapter from `ProviderEnv` (credentials + injectable HTTP client), so routing is testable without network.
 - `generation_control.go` — capability negotiation (schema enforcement etc.).

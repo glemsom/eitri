@@ -582,3 +582,158 @@ func TestOpenAICompatibleSendsEitriUserAgent(t *testing.T) {
 		t.Errorf("stream User-Agent = %q, want %q", chatUA, eitriUserAgent)
 	}
 }
+
+// anthropicHelloSSE is a minimal Anthropic Messages stream: message_start, one
+// text delta, and a terminal message_stop.
+const anthropicHelloSSE = `event: message_start
+data: {"type":"message_start","message":{"id":"m","type":"message","role":"assistant","model":"qwen3.8-flash","content":[],"usage":{"input_tokens":7,"output_tokens":0}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hello"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":3}}
+
+event: message_stop
+data: {"type":"message_stop"}
+`
+
+func TestOpenCodeGoRoutesAnthropicModelToMessagesEndpoint(t *testing.T) {
+	t.Parallel()
+	var path, apiKey, version, session string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		apiKey = r.Header.Get("x-api-key")
+		version = r.Header.Get("anthropic-version")
+		session = r.Header.Get("X-Opencode-Session")
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(anthropicHelloSSE))
+	}))
+	defer srv.Close()
+
+	cl := NewOpenCodeGo("test-key", srv.URL+"/v1/chat/completions")
+	s, err := cl.Stream(context.Background(), Request{
+		Model:      "qwen3.8-flash",
+		Messages:   []Message{{Role: RoleUser, Content: "hi"}},
+		SessionKey: "sess-1",
+	})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	answer, _, err := consume(s)
+	if err != nil {
+		t.Fatalf("consume error = %v", err)
+	}
+	if answer != "hello" {
+		t.Errorf("answer = %q, want hello", answer)
+	}
+	if path != "/v1/messages" {
+		t.Errorf("path = %q, want /v1/messages", path)
+	}
+	if apiKey != "test-key" {
+		t.Errorf("x-api-key = %q, want test-key", apiKey)
+	}
+	if version != anthropicAPIVersion {
+		t.Errorf("anthropic-version = %q, want %q", version, anthropicAPIVersion)
+	}
+	if session != "sess-1" {
+		t.Errorf("X-Opencode-Session = %q, want sess-1", session)
+	}
+}
+
+func TestOpenCodeGoRoutesChatModelToChatEndpoint(t *testing.T) {
+	t.Parallel()
+	var path string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"))
+	}))
+	defer srv.Close()
+
+	cl := NewOpenCodeGo("test-key", srv.URL+"/v1/chat/completions")
+	s, err := cl.Stream(context.Background(), Request{
+		Model:    "deepseek-v4-flash",
+		Messages: []Message{{Role: RoleUser, Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	answer, _, err := consume(s)
+	if err != nil {
+		t.Fatalf("consume error = %v", err)
+	}
+	if answer != "hi" {
+		t.Errorf("answer = %q, want hi", answer)
+	}
+	if path != "/v1/chat/completions" {
+		t.Errorf("path = %q, want /v1/chat/completions", path)
+	}
+}
+
+func TestCustomOpenAIAnthropicURLRoutesToMessages(t *testing.T) {
+	t.Parallel()
+	var path, apiKey, auth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		apiKey = r.Header.Get("x-api-key")
+		auth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(anthropicHelloSSE))
+	}))
+	defer srv.Close()
+
+	cl := NewOpenAICompatible("custom-key", srv.URL+"/v1/messages")
+	s, err := cl.Stream(context.Background(), Request{
+		Model:    "any-model",
+		Messages: []Message{{Role: RoleUser, Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	if _, _, err := consume(s); err != nil {
+		t.Fatalf("consume error = %v", err)
+	}
+	if path != "/v1/messages" {
+		t.Errorf("path = %q, want /v1/messages", path)
+	}
+	if apiKey != "custom-key" {
+		t.Errorf("x-api-key = %q, want custom-key", apiKey)
+	}
+	if auth != "" {
+		t.Errorf("Authorization = %q, want empty on the anthropic wire", auth)
+	}
+}
+
+func TestOpenAICompatibleClassifiesEndpointURL(t *testing.T) {
+	t.Parallel()
+	chat := NewOpenAICompatible("k", "https://example.com/v1/chat/completions")
+	if chat.url != "https://example.com/v1/chat/completions" || chat.anthropicURL != "" {
+		t.Errorf("chat client urls = %q / %q", chat.url, chat.anthropicURL)
+	}
+	bare := NewOpenAICompatible("k", "https://example.com/v1")
+	if bare.url != "https://example.com/v1/chat/completions" {
+		t.Errorf("bare chat client url = %q", bare.url)
+	}
+	anthropic := NewOpenAICompatible("k", "https://example.com/v1/messages")
+	if anthropic.anthropicURL != "https://example.com/v1/messages" || anthropic.url != "" {
+		t.Errorf("anthropic client urls = %q / %q", anthropic.url, anthropic.anthropicURL)
+	}
+	if !isAnthropicMessagesURL("https://example.com/v1/messages") {
+		t.Errorf("isAnthropicMessagesURL(/v1/messages) = false, want true")
+	}
+}
+
+func TestAnthropicOnlyClientReportsNoDiscovery(t *testing.T) {
+	t.Parallel()
+	cl := NewOpenAICompatible("k", "https://example.com/v1/messages")
+	if _, err := cl.Models(context.Background()); !errors.Is(err, ErrNoDiscovery) {
+		t.Errorf("Models() error = %v, want ErrNoDiscovery", err)
+	}
+}
