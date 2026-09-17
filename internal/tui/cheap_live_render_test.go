@@ -164,37 +164,24 @@ func TestStreamingCommittedNoLeadingBlankLine(t *testing.T) {
 	th := themeFor(config.DefaultTheme)
 	width := 40
 
-	// Glamour can emit a leading newline; trimBody must strip it so the pane
-	// does not render an empty bordered line before the text.
-	committedReason := renderPaneBodyFresh("reasoning text here", width, config.DefaultTheme, mdPaneThinking, th)
-	for _, line := range strings.Split(committedReason, "\n") {
-		stripped := ansiStrip(line)
-		if stripped == "|" || stripped == "│" {
-			t.Errorf("committed reasoning has an empty bordered line: %q", committedReason)
-		}
+	cases := []struct {
+		name   string
+		paneID liveMarkdownPaneID
+		text   string
+	}{
+		{"committed reasoning", mdPaneThinking, "reasoning text here"},
+		{"live reasoning", mdPaneStreamingThinking, "reasoning text here"},
+		{"committed answer", mdPaneAgent, "answer text here"},
+		{"live answer", mdPaneStreaming, "answer text here"},
 	}
 
-	liveReason := renderPaneBodyFresh("reasoning text here", width, config.DefaultTheme, mdPaneStreamingThinking, th)
-	for _, line := range strings.Split(liveReason, "\n") {
-		stripped := ansiStrip(line)
-		if stripped == "|" || stripped == "│" {
-			t.Errorf("live reasoning has an empty bordered line: %q", liveReason)
-		}
-	}
-
-	committedAnswer := renderPaneBodyFresh("answer text here", width, config.DefaultTheme, mdPaneAgent, th)
-	for _, line := range strings.Split(committedAnswer, "\n") {
-		stripped := ansiStrip(line)
-		if stripped == "|" || stripped == "│" {
-			t.Errorf("committed answer has an empty bordered line: %q", committedAnswer)
-		}
-	}
-
-	liveAnswer := renderPaneBodyFresh("answer text here", width, config.DefaultTheme, mdPaneStreaming, th)
-	for _, line := range strings.Split(liveAnswer, "\n") {
-		stripped := ansiStrip(line)
-		if stripped == "|" || stripped == "│" {
-			t.Errorf("live answer has an empty bordered line: %q", liveAnswer)
+	for _, c := range cases {
+		body := renderPaneBodyFresh(c.text, width, config.DefaultTheme, c.paneID, th)
+		for _, line := range strings.Split(body, "\n") {
+			stripped := ansiStrip(line)
+			if stripped == "|" || stripped == "│" {
+				t.Errorf("%s has an empty bordered line: %q", c.name, body)
+			}
 		}
 	}
 }
