@@ -274,9 +274,9 @@ func (m Model) renderBandStatusRow() string {
 func (m Model) renderFeedback() string {
 	switch m.feedback.kind {
 	case feedbackSuccess:
-		return m.tx.theme.outcomeOKStyle.Render(fitBandLine(g("✓ ", "OK ")+m.feedback.text, m.tx.bandWidth()))
+		return m.tx.theme.outcomeOKStyle.Render(fitBandLine(lookup("ok")+" "+m.feedback.text, m.tx.bandWidth()))
 	case feedbackFailure:
-		return m.tx.theme.outcomeErrStyle.Render(fitBandLine(g("✗ ", "ERR ")+m.feedback.text, m.tx.bandWidth()))
+		return m.tx.theme.outcomeErrStyle.Render(fitBandLine(lookup("fail")+" "+m.feedback.text, m.tx.bandWidth()))
 	default:
 		return m.tx.theme.statusStyle.Render(fitBandLine(m.feedback.text, m.tx.bandWidth()))
 	}

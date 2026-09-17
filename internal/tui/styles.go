@@ -16,7 +16,7 @@ type Theme struct {
 	file        color.Color // secondary hue (markdown links, ⊕ fallback)
 	web         color.Color // semantic color for web tool entries (open_in_browser, ⊕)
 	skill       color.Color // secondary hue (markdown images, ⊕ fallback)
-	thinking    color.Color // de-emphasized chain-of-thought hue (reasoning pane border, 🤔 marker)
+	thinking    color.Color // de-emphasized chain-of-thought hue (reasoning pane border, ≡ marker)
 	text        color.Color // body text hue for markdown content (mapped from glamour's base 256-color indices)
 	bubble      color.Color
 	selectionBg color.Color // the fill marking a drag selection (indicated by background color change)
@@ -33,7 +33,7 @@ type Theme struct {
 	streamingPaneStyle         lipgloss.Style // left-bordered pane for messages still being streamed (dimmed accent)
 	streamingErrorPaneStyle    lipgloss.Style // left-bordered pane for streaming error-prefix messages (dimmed error)
 	userBubbleStyle            lipgloss.Style // the carded background fill for user prompts
-	thinkingStyle              lipgloss.Style // the 🤔 collapsed reasoning hint
+	thinkingStyle              lipgloss.Style // the ≡ collapsed reasoning hint
 	toolStyle                  lipgloss.Style // the ⊕ tool-entry line (uncategorized fallback)
 	toolShellStyle             lipgloss.Style // the ⊕ tool-entry line, shell category
 	toolWebStyle               lipgloss.Style // the ⊕ tool-entry line, web category

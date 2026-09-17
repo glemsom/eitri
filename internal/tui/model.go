@@ -235,7 +235,7 @@ func NewModelCfg(d Dependencies) Model {
 	if !localeSupportsUTF8() {
 		comp.Prompt = "| " // ASCII composer rail
 	} else {
-		comp.Prompt = g("┃ ", "| ")
+		comp.Prompt = lookup("cursor") + " "
 	}
 	comp.Focus()
 	comp.CharLimit = 0

@@ -251,7 +251,7 @@ func (r *Rail) renderContext(th Theme, railWidth int) string {
 // sandboxed, or a warning-marked "unsafe (--yolo)" when the launch opted out.
 func (r *Rail) sandboxLabel() string {
 	if r.unsafe {
-		return g("⚠ unsafe (--yolo)", "! unsafe (--yolo)")
+		return lookup("warning") + " unsafe (--yolo)"
 	}
 	return "bubblewrap"
 }

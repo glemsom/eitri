@@ -93,7 +93,7 @@ func (m *completionMenu) RenderCompletionBody(th Theme) string {
 			b.WriteByte('\n')
 		}
 		if m.offset+i == m.idx {
-			b.WriteString(th.slashSelectStyle.Render(g("▸ ", "> ") + candidate))
+			b.WriteString(th.slashSelectStyle.Render(lookup("focus")+" "+candidate))
 		} else {
 			b.WriteString(th.statusStyle.Render("  " + candidate))
 		}

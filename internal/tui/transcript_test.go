@@ -94,7 +94,7 @@ func TestTranscript_thinkingGateScopesReasoningBlock(t *testing.T) {
 		return hist.String()
 	}
 
-	if off := render(false); strings.Contains(off, "🤔") || strings.Contains(ansiStrip(off), "sneaked chain-of-thought") {
+	if off := render(false); strings.Contains(off, "≡") || strings.Contains(ansiStrip(off), "sneaked chain-of-thought") {
 		t.Errorf("thinking-off turn rendered a reasoning block, got: %q", off)
 	}
 	on := render(true)
@@ -389,7 +389,7 @@ func TestTranscript_toggleExpandAllEmptyLogIsNoOp(t *testing.T) {
 	}
 	var b strings.Builder
 	tx.renderHistory(&b, nil, nil)
-	if strings.Contains(b.String(), "🔧 bash") {
+	if strings.Contains(b.String(), "❯ bash") {
 		t.Errorf("empty log must render no tool entries, got: %q", b.String())
 	}
 	if tx.expandAll != true {
@@ -681,7 +681,7 @@ func TestTranscript_liveReasoningBlockTogglesViaTab(t *testing.T) {
 		t.Errorf("a completed turn's reasoning block must collapse to the hint, got: %q", donePlain)
 	}
 	if !strings.Contains(donePlain, "tok") {
-		t.Errorf("a completed turn's collapsed reasoning must keep the 🤔 N tok hint, got: %q", donePlain)
+		t.Errorf("a completed turn's collapsed reasoning must keep the ≡ N tok hint, got: %q", donePlain)
 	}
 }
 

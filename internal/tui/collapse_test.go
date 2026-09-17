@@ -47,7 +47,7 @@ func largeCotFlowTranscript() *Transcript {
 
 // TestTranscript_largeCoTCollapsesToHintWhileToolsStayVisible locks the
 // original complaint (a big CoT pushed tools out of view): the collapsed
-// reasoning body must reduce to the 🤔 N tok hint and the tool call must still
+// reasoning body must reduce to the ≡ N tok hint and the tool call must still
 // render inside the same flow, in arrival order.
 func TestTranscript_largeCoTCollapsesToHintWhileToolsStayVisible(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
@@ -61,7 +61,7 @@ func TestTranscript_largeCoTCollapsesToHintWhileToolsStayVisible(t *testing.T) {
 		t.Errorf("large CoT body must collapse to the hint by default, got:\n%s", plain)
 	}
 	if !strings.Contains(plain, "tok") {
-		t.Errorf("collapsed CoT must keep the 🤔 N tok hint, got:\n%s", plain)
+		t.Errorf("collapsed CoT must keep the ≡ N tok hint, got:\n%s", plain)
 	}
 	if !strings.Contains(plain, "$ bash") {
 		t.Errorf("tool call must stay visible under a collapsed CoT, got:\n%s", plain)

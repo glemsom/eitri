@@ -13,53 +13,102 @@ func g(utf8, ascii string) string {
 	return utf8
 }
 
+// glyph is one production marker in the surface charter.
+type glyph struct {
+	utf8  string
+	ascii string
+	width int
+}
+
+// glyphInventory is the single source of truth for every production marker.
+// Every entry has an ASCII fallback and a declared, stable cell width on the
+// default UTF-8 path. Color comes from theme roles, never from the glyph's
+// own presentation.
+var glyphInventory = map[string]glyph{
+	"toolBash":            {"❯", "$", 1},
+	"toolWeb":             {"◎", "W", 1},
+	"toolGeneric":         {"⊕", "+", 1},
+	"reasoning":           {"≡", "?", 1},
+	"brand":               {"⚒", "+", 1},
+	"focus":               {"▸", ">", 1},
+	"ok":                  {"✓", "ok", 1},
+	"fail":                {"✗", "X", 1},
+	"stopped":             {"⏹", "!", 1},
+	"warning":             {"⚠", "!", 1},
+	"hr":                  {"─", "-", 1},
+	"keyHint":             {"⌨", "k", 1},
+	"categoryComposer":    {"✎", "c", 1},
+	"categoryNav":         {"→", "n", 1},
+	"categoryPanes":       {"▦", "p", 1},
+	"categoryActions":     {"★", "a", 1},
+	"settingsModel":       {"⚙", "*", 1},
+	"settingsCredentials": {"✱", "*", 1},
+	"settingsReasoning":   {"≡", "*", 1},
+	"settingsAppearance":  {"◈", "*", 1},
+	"settingsWorkspace":   {"◉", "*", 1},
+	"unsaved":             {"●", "*", 1},
+	"on":                  {"✓", "*", 1},
+	"off":                 {"○", "*", 1},
+	"palette":             {"██", "##", 2},
+	"cursor":              {"┃", "|", 1},
+}
+
+// lookup returns the glyph for the current locale. Panics if name is not in the inventory so a typo is caught immediately during development/testing.
+func lookup(name string) string {
+	ent, ok := glyphInventory[name]
+	if !ok {
+		panic("unknown glyph: " + name)
+	}
+	return g(ent.utf8, ent.ascii)
+}
+
 // failurePrefix is the error-shaped assistant content prefix ("⚠ "), with its ASCII "! " fallback.
-func failurePrefix() string { return g("⚠ ", "! ") }
+func failurePrefix() string { return lookup("warning") + " " }
 
 // stoppedMarker returns the suffix marking a user-stopped turn's partial output ("⏹ stopped"), with its ASCII "! stopped" fallback. renderHistory appends it under the stopped message's pane so the aborted turn reads as deliberately stopped, never as an error.
-func stoppedMarker() string { return g("⏹ stopped", "! stopped") }
+func stoppedMarker() string { return lookup("stopped") + " stopped" }
 
-// toolGlyph maps a tool name to its per-tool emoji glyph, with an ASCII fallback.
+// toolGlyph maps a tool name to its per-tool glyph, with an ASCII fallback.
 func toolGlyph(name string) string {
 	switch name {
 	case "bash":
-		return g("🔧", "$")
+		return lookup("toolBash")
 	case "open_in_browser":
-		return g("🌍", "W")
+		return lookup("toolWeb")
 	}
-	return g("⊕", "+")
+	return lookup("toolGeneric")
 }
 
 // brandMark returns the ⚒ brand glyph with its "+" ASCII fallback.
-func brandMark() string { return g("⚒", "+") }
+func brandMark() string { return lookup("brand") }
 
 // focusMarker returns the ▸ cursor glyph prefixing a focused collapsible block's hint/head line, with its ASCII fallback.
-func focusMarker() string { return g("▸", ">") }
+func focusMarker() string { return lookup("focus") }
 
 // hr returns a horizontal-rule separator (──) with its "--" ASCII fallback.
-func hr() string { return g("──", "--") }
+func hr() string { return lookup("hr") + lookup("hr") }
 
 // hrWidth returns a horizontal-rule separator repeated to the given width.
 func hrWidth(w int) string {
 	if w < 1 {
 		return ""
 	}
-	return strings.Repeat(g("─", "-"), w)
+	return strings.Repeat(lookup("hr"), w)
 }
 
 // keyHint returns the ⌨ glyph for the keybinding hint line.
-func keyHint() string { return g("⌨", "k") }
+func keyHint() string { return lookup("keyHint") }
 
 func categoryEmoji(name string) string {
 	switch name {
 	case "COMPOSER":
-		return g("✍️", "c")
+		return lookup("categoryComposer")
 	case "NAVIGATION":
-		return g("🧭", "n")
+		return lookup("categoryNav")
 	case "PANES":
-		return g("▦", "p")
+		return lookup("categoryPanes")
 	case "ACTIONS":
-		return g("⚡", "a")
+		return lookup("categoryActions")
 	}
 	return ""
 }

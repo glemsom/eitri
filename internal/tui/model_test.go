@@ -77,7 +77,7 @@ func TestModel_thinkingCollapsible(t *testing.T) {
 	m = submitAndWait(t, m)
 
 	content := view(m)
-	if !strings.Contains(content, "🤔") {
+	if !strings.Contains(content, "≡") {
 		t.Errorf("expected a thinking hint in content, got: %q", content)
 	}
 	if strings.Contains(ansiStrip(content), "I reason about it first") {
@@ -182,7 +182,7 @@ func TestModel_thinkingHintReportsTokensAndEffort(t *testing.T) {
 	m = submitAndWait(t, m)
 
 	content := view(m)
-	if !strings.Contains(content, "🤔") {
+	if !strings.Contains(content, "≡") {
 		t.Errorf("collapsed state should show the thinking hint, got: %q", content)
 	}
 	if !strings.Contains(content, "· medium") {

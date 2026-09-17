@@ -315,9 +315,9 @@ func configsEqual(a, b config.Config) bool {
 // thinkingModeLabel renders the reasoning mode value (on/off) for the Settings panel, reflecting the thinking_enabled config.
 func thinkingModeLabel(on bool) string {
 	if on {
-		return g("✓ on", "on")
+		return lookup("on") + " on"
 	}
-	return g("○ off", "off")
+	return lookup("off") + " off"
 }
 
 func settingsHelp(f settingsForm) string {
@@ -780,20 +780,20 @@ func settingsView(f settingsForm) string {
 		label string
 		start int
 	}{
-		{g("🤖 model", "model"), fieldProvider},
+		{lookup("settingsModel") + " model", fieldProvider},
 	}
 	if f.cfg.Provider == string(provider.ProviderOpenCodeGo) {
-		sections = append(sections, struct{ label string; start int }{g("🔑 provider credentials", "provider credentials"), fieldOpenCodeKey})
+		sections = append(sections, struct{ label string; start int }{lookup("settingsCredentials") + " provider credentials", fieldOpenCodeKey})
 	} else if f.cfg.Provider == string(provider.ProviderCustomOpenAI) {
-		sections = append(sections, struct{ label string; start int }{g("🔑 provider credentials", "provider credentials"), fieldCustomOpenAIBaseURL})
+		sections = append(sections, struct{ label string; start int }{lookup("settingsCredentials") + " provider credentials", fieldCustomOpenAIBaseURL})
 	}
 	sections = append(sections, []struct {
 		label string
 		start int
 	}{
-		{g("🧠 reasoning & limits", "reasoning & limits"), fieldThinking},
-		{g("🎨 appearance", "appearance"), fieldTheme},
-		{g("🛡 workspace access", "workspace access"), fieldPaths},
+		{lookup("settingsReasoning") + " reasoning & limits", fieldThinking},
+		{lookup("settingsAppearance") + " appearance", fieldTheme},
+		{lookup("settingsWorkspace") + " workspace access", fieldPaths},
 	}...)
 	emit := func(label string) {
 		b.WriteString(th.statusStyle.Render("   " + hr() + " " + label + " " + hr()))
@@ -802,7 +802,7 @@ func settingsView(f settingsForm) string {
 	writePalette := func() {
 		b.WriteString("       Palette ")
 		for _, c := range []color.Color{th.accent, th.ok, th.error, th.shell, th.file, th.web, th.skill} {
-			b.WriteString(" " + lipgloss.NewStyle().Foreground(c).Render(g("██", "##")))
+			b.WriteString(" " + lipgloss.NewStyle().Foreground(c).Render(lookup("palette")))
 		}
 		b.WriteString("\n")
 	}
@@ -824,7 +824,7 @@ func settingsView(f settingsForm) string {
 			writePalette()
 		}
 		if r.field == fieldThinking && !f.cfg.ThinkingEnabled && f.thinkingSuppression != nil && !f.thinkingSuppression() {
-			b.WriteString(th.statusStyle.Render("   " + g("⚠", "!") + " This provider always uses reasoning"))
+			b.WriteString(th.statusStyle.Render("   " + lookup("warning") + " This provider always uses reasoning"))
 			b.WriteString("\n")
 		}
 		if f.textInputActive && f.textInputField == r.field {
@@ -854,10 +854,10 @@ func settingsView(f settingsForm) string {
 	b.WriteString("\n")
 
 	dirty := f.dirty()
-	state := g("✓", "OK") + " Settings are up to date"
+	state := lookup("ok") + " Settings are up to date"
 	save := "[ Save changes ]"
 	if dirty {
-		state = g("●", "*") + " Unsaved changes"
+		state = lookup("unsaved") + " Unsaved changes"
 	}
 	cancel := "[ Cancel ]"
 	focusButton := func(label string) string {

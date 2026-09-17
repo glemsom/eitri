@@ -129,7 +129,7 @@ func TestModel_thinkingStreamsLive(t *testing.T) {
 		t.Errorf("reasoning must not write into the answer buffer, got %q", m.tx.messages[n].content)
 	}
 	content := view(m)
-	if !strings.Contains(content, "🤔") {
+	if !strings.Contains(content, "≡") {
 		t.Errorf("live reasoning should render a thinking hint, got: %q", content)
 	}
 	plain := ansiStrip(content)

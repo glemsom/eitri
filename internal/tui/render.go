@@ -136,7 +136,7 @@ func promptView(th Theme) string {
 
 // thinkingHeader renders a turn's collapsible reasoning block header.
 func thinkingHeader(th Theme, reasoning, effort string) string {
-	hint := fmt.Sprintf("%s %s tok", g("🤔", "?"), formatTokens(tokenEstimate(reasoning)))
+	hint := fmt.Sprintf("%s %s tok", lookup("reasoning"), formatTokens(tokenEstimate(reasoning)))
 	if effort != "" {
 		hint += g(" · ", " . ") + effort
 	}
