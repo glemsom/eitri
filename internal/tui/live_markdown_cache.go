@@ -166,8 +166,8 @@ func renderPaneBodyFresh(text string, width int, theme string, paneID liveMarkdo
 	switch paneID {
 	case mdPaneStreamingThinking:
 		// Live reasoning is a plain, style-free "background thought": the pane
-		// dims it, so the body must carry no SGR of its own. An embedded emphasis
-		// run's `\x1b[0m` would reset the pane's dim/italic mid-line and leave the
+		// styles it, so the body must carry no SGR of its own. An embedded emphasis
+		// run's `\x1b[0m` would reset the pane's italic mid-line and leave the
 		// rest of the thought at full brightness — the bug the cheap emphasis path
 		// kept tripping.
 		return pane.Render(renderLiveThoughtBody(text, width))
@@ -183,8 +183,8 @@ func renderPaneBodyFresh(text string, width int, theme string, paneID liveMarkdo
 	return pane.Render(trimBody(md))
 }
 
-// trimBody trims trailing newlines the way the pane callers did, so the cached
-// pane body matches a fresh render byte-for-byte.
+// trimBody trims leading and trailing newlines the way the pane callers did, so
+// the cached pane body matches a fresh render byte-for-byte.
 func trimBody(md string) string {
-	return strings.TrimRight(md, "\n")
+	return strings.Trim(md, "\n")
 }

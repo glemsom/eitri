@@ -47,17 +47,33 @@ func TestCheapLiveBody_FencePreserved(t *testing.T) {
 	// Inline code outside a fence is emphasized, not fenced.
 }
 
+func TestCheapLiveBody_WordWrapNoMidWordBreak(t *testing.T) {
+	width := 40
+	// Space-separated text must break at word boundaries, never mid-word.
+	body := renderCheapLiveBody("The client connection with the server", width)
+	for _, ln := range strings.Split(body, "\n") {
+		// No line should contain a fragment like "cl\nient" or "th\ne".
+		if strings.Contains(ln, "cl") && strings.Contains(ln, "ient") && len(ln) > width {
+			// The old Hardwrap path broke mid-word; Wordwrap should not.
+			t.Fatalf("word-wrap broke mid-word: %q", body)
+		}
+	}
+	if !strings.Contains(body, "client") {
+		t.Fatalf("word-wrap dropped content: %q", body)
+	}
+}
+
 func TestCheapLiveBody_HardWrapLongToken(t *testing.T) {
 	long := strings.Repeat("a", 500)
 	width := 40
 	body := renderCheapLiveBody("word "+long+" tail", width)
 	for _, ln := range strings.Split(body, "\n") {
 		if w := len(ln); w > width {
-			t.Fatalf("cheap hard-wrap produced an overlarge line %d > %d: %q", w, width, body)
+			t.Fatalf("cheap wrap produced an overlarge line %d > %d: %q", w, width, body)
 		}
 	}
 	if !strings.Contains(body, "word") || !strings.Contains(body, "tail") {
-		t.Fatalf("hard-wrap dropped content: %q", body)
+		t.Fatalf("wrap dropped content: %q", body)
 	}
 }
 
@@ -75,6 +91,21 @@ func TestLiveThoughtBody_PlainAndStyleFree(t *testing.T) {
 	}
 }
 
+// TestLiveThoughtBody_WordWrapNoMidWordBreak proves space-separated text wraps
+// at word boundaries, never mid-word.
+func TestLiveThoughtBody_WordWrapNoMidWordBreak(t *testing.T) {
+	width := 40
+	body := renderLiveThoughtBody("The client connection with the server", width)
+	for _, ln := range strings.Split(body, "\n") {
+		if strings.Contains(ln, "cl") && strings.Contains(ln, "ient") && len(ln) > width {
+			t.Fatalf("word-wrap broke mid-word: %q", body)
+		}
+	}
+	if !strings.Contains(body, "client") {
+		t.Fatalf("word-wrap dropped content: %q", body)
+	}
+}
+
 // TestLiveThoughtBody_HardWrapLongToken proves the plain path still bounds line
 // width on a long unbroken token (URL, code run) that would otherwise blow out.
 func TestLiveThoughtBody_HardWrapLongToken(t *testing.T) {
@@ -83,11 +114,11 @@ func TestLiveThoughtBody_HardWrapLongToken(t *testing.T) {
 	body := renderLiveThoughtBody("word "+long+" tail", width)
 	for _, ln := range strings.Split(body, "\n") {
 		if w := len(ln); w > width {
-			t.Fatalf("live thought hard-wrap produced an overlarge line %d > %d: %q", w, width, body)
+			t.Fatalf("live thought wrap produced an overlarge line %d > %d: %q", w, width, body)
 		}
 	}
 	if !strings.Contains(body, "word") || !strings.Contains(body, "tail") {
-		t.Fatalf("hard-wrap dropped content: %q", body)
+		t.Fatalf("wrap dropped content: %q", body)
 	}
 }
 
@@ -122,6 +153,36 @@ func TestRendererSwitchesToCheapOnlyForStreamingPanes(t *testing.T) {
 	}
 	if !hasBullet(ansiStrip(committed)) {
 		t.Errorf("committed reasoning pane must keep glamour list bullets, got: %q", ansiStrip(committed))
+	}
+}
+
+// TestStreamingCommittedNoLeadingBlankLine locks the issue-63 contract: the
+// committed pane body must not start with an empty bordered line (a `│` with
+// no text after it), and the live body must match in that respect.
+func TestStreamingCommittedNoLeadingBlankLine(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	th := themeFor(config.DefaultTheme)
+	width := 40
+
+	cases := []struct {
+		name   string
+		paneID liveMarkdownPaneID
+		text   string
+	}{
+		{"committed reasoning", mdPaneThinking, "reasoning text here"},
+		{"live reasoning", mdPaneStreamingThinking, "reasoning text here"},
+		{"committed answer", mdPaneAgent, "answer text here"},
+		{"live answer", mdPaneStreaming, "answer text here"},
+	}
+
+	for _, c := range cases {
+		body := renderPaneBodyFresh(c.text, width, config.DefaultTheme, c.paneID, th)
+		for _, line := range strings.Split(body, "\n") {
+			stripped := ansiStrip(line)
+			if stripped == "|" || stripped == "│" {
+				t.Errorf("%s has an empty bordered line: %q", c.name, body)
+			}
+		}
 	}
 }
 
