@@ -120,10 +120,10 @@ func tokenEstimate(s string) int {
 }
 
 // idleWelcome is the empty-transcript welcome block: brand mark + keybinding hints.
-func idleWelcome(th Theme) string {
-	return th.headerStyle.Render(hr()) + "\n" +
+func idleWelcome(th Theme, width int) string {
+	return th.headerStyle.Render(hrWidth(width)) + "\n" +
 		th.headerStyle.Render(brandMark()+"  Eitri") + th.statusStyle.Render(g(" — ", " - ")+"your terminal coding agent") + "\n" +
-		th.headerStyle.Render(hr()) + "\n" +
+		th.headerStyle.Render(hrWidth(width)) + "\n" +
 		th.statusStyle.Render("  "+keyHint()+" ctrl+, settings · /help for commands & keybindings") + "\n"
 }
 

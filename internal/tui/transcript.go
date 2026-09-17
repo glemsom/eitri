@@ -705,7 +705,7 @@ func (t *Transcript) renderMessageRange(b *strings.Builder, toolRows *[]toolRowR
 	}
 	if withHeader {
 		if len(t.messages) == 0 && !t.busy {
-			emit(idleWelcome(t.theme))
+			emit(idleWelcome(t.theme, t.transcriptWidth()))
 		}
 	}
 	now := time.Time{}
@@ -1055,7 +1055,7 @@ func (t *Transcript) recordLayout() {
 		t.ensureCommittedUnits(len(t.messages))
 		var hist strings.Builder
 		if len(t.messages) == 0 {
-			hist.WriteString(idleWelcome(t.theme))
+			hist.WriteString(idleWelcome(t.theme, t.transcriptWidth()))
 		}
 		row := 0
 		for i, u := range t.units {

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"os"
+	"strings"
 )
 
 // The TUI's decorative glyph charter (benchmark §3.6/§4.3): every non-ASCII glyph the surface renders has an ASCII fallback, selected when the terminal locale cannot render non-ASCII characters (or EITRI_ASCII_GLYPHS=1 forces the fallback, for testing).
@@ -37,6 +38,14 @@ func focusMarker() string { return g("▸", ">") }
 
 // hr returns a horizontal-rule separator (──) with its "--" ASCII fallback.
 func hr() string { return g("──", "--") }
+
+// hrWidth returns a horizontal-rule separator repeated to the given width.
+func hrWidth(w int) string {
+	if w < 1 {
+		return ""
+	}
+	return strings.Repeat(g("─", "-"), w)
+}
 
 // keyHint returns the ⌨ glyph for the keybinding hint line.
 func keyHint() string { return g("⌨", "k") }
