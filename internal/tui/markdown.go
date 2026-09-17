@@ -86,6 +86,12 @@ func glamourStyleFor(theme string) string {
 }
 
 // markdownRemapFor builds the per-theme remap from glamour's fixed 256-color semantic indices (per styles/{dark,light}.json) onto the active chrome palette's truecolor hues: glamour renders with its own ANSI-256 indices (heading blue 38;5;39 = #00afff), which clash with the chrome palette's truecolor tokens — two blue families on one surface.
+//
+// Base body text (glamour's document color) and related structural indices are
+// mapped to the theme's text token so no rendered markdown color sits outside
+// the active palette. The alternative of mapping to 39 (terminal default) was
+// rejected because it gives up theme control and breaks palette consistency
+// across light/dark and specialty themes.
 func markdownRemapFor(th Theme) map[string]string {
 	rgb := func(c color.Color) string {
 		r, g, b, _ := c.RGBA() // 16-bit channels per image/color
@@ -104,6 +110,14 @@ func markdownRemapFor(th Theme) map[string]string {
 		"38;5;29":  "38;2;" + rgb(th.ok),     // light link_text -> ok
 		"38;5;36":  "38;2;" + rgb(th.file),   // light link -> file
 		"38;5;205": "38;2;" + rgb(th.skill),  // light image -> skill
+		"38;5;234": "38;2;" + rgb(th.text),   // light base body text
+		"38;5;235": "38;2;" + rgb(th.text),   // light code_block base text
+		"38;5;240": "38;2;" + rgb(th.text),   // dark hr / dim structural
+		"38;5;242": "38;2;" + rgb(th.text),   // light code_block base text
+		"38;5;243": "38;2;" + rgb(th.text),   // image_text (both themes)
+		"38;5;244": "38;2;" + rgb(th.text),   // dark code_block base text
+		"38;5;249": "38;2;" + rgb(th.text),   // light hr / dim structural
+		"38;5;252": "38;2;" + rgb(th.text),   // dark base body text
 	}
 }
 

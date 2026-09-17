@@ -17,6 +17,7 @@ type Theme struct {
 	web         color.Color // semantic color for web tool entries (open_in_browser, ⊕)
 	skill       color.Color // secondary hue (markdown images, ⊕ fallback)
 	thinking    color.Color // de-emphasized chain-of-thought hue (reasoning pane border, 🤔 marker)
+	text        color.Color // body text hue for markdown content (mapped from glamour's base 256-color indices)
 	bubble      color.Color
 	selectionBg color.Color // the fill marking a drag selection (indicated by background color change)
 
@@ -61,6 +62,7 @@ func newDefaultTheme() Theme {
 		lipgloss.Color("#BB9AF7"),
 		lipgloss.Color("#FF87D7"),
 		lipgloss.Color("#565F89"), // thinking (muted chain-of-thought hue)
+		lipgloss.Color("#C0CAF5"), // text (light blue-gray, readable on dark bg)
 		lipgloss.Color("#2A2F3A"), // bubble tint (near-background gray-blue)
 		lipgloss.Color("#3B4261"), // selectionBackground (dim blue-gray)
 		[3]color.Color{
@@ -82,6 +84,7 @@ func newDraculaTheme() Theme {
 		lipgloss.Color("#FF79C6"),
 		lipgloss.Color("#F1FA8C"),
 		lipgloss.Color("#6272A4"), // thinking (muted chain-of-thought hue)
+		lipgloss.Color("#F8F8F2"), // text (dracula foreground, readable on dark bg)
 		lipgloss.Color("#3D3F51"), // bubble tint (dracula comment family)
 		lipgloss.Color("#44475A"), // selectionBackground (dracula current-line)
 		[3]color.Color{
@@ -103,6 +106,7 @@ func newTokyoNightTheme() Theme {
 		lipgloss.Color("#2AC3DE"),
 		lipgloss.Color("#73DACA"),
 		lipgloss.Color("#565F89"), // thinking (muted chain-of-thought hue)
+		lipgloss.Color("#A9B1D6"), // text (tokyo-night foreground, readable on dark bg)
 		lipgloss.Color("#292E42"), // bubble tint (tokyo-night bg-adjacent)
 		lipgloss.Color("#33467C"), // selectionBackground (tokyo-night selection)
 		[3]color.Color{
@@ -124,6 +128,7 @@ func newPinkTheme() Theme {
 		lipgloss.Color("#A78BFA"),
 		lipgloss.Color("#60A5FA"),
 		lipgloss.Color("#7A6E8A"), // thinking (muted chain-of-thought hue)
+		lipgloss.Color("#F5E0DC"), // text (light pink-white, readable on dark bg)
 		lipgloss.Color("#33202E"), // bubble tint (pink-family dark)
 		lipgloss.Color("#4A2F3F"), // selectionBackground (pink-family taupe)
 		[3]color.Color{
@@ -145,6 +150,7 @@ func newLightTheme() Theme {
 		lipgloss.Color("#6D28D9"),
 		lipgloss.Color("#A21CAF"),
 		lipgloss.Color("#5F6B7A"), // thinking (muted chain-of-thought hue)
+		lipgloss.Color("#1C1C1C"), // text (dark gray, readable on white)
 		lipgloss.Color("#EAEAEF"), // bubble tint (near-white gray)
 		lipgloss.Color("#C7D8F7"), // selectionBackground (light blue highlight)
 		[3]color.Color{
@@ -166,6 +172,7 @@ func newNordTheme() Theme {
 		lipgloss.Color("#B48EAD"), // web (aurora purple)
 		lipgloss.Color("#D08770"), // skill (aurora orange)
 		lipgloss.Color("#6E7B96"), // thinking (muted chain-of-thought hue)
+		lipgloss.Color("#D8DEE9"), // text (nord snow storm, readable on dark bg)
 		lipgloss.Color("#2E3440"), // bubble tint (polar-night bg)
 		lipgloss.Color("#434C5E"), // selectionBackground (nord dark4)
 		[3]color.Color{
@@ -187,6 +194,7 @@ func newGruvboxTheme() Theme {
 		lipgloss.Color("#D3869B"), // web (purple)
 		lipgloss.Color("#FE8019"), // skill (orange)
 		lipgloss.Color("#928374"), // thinking (muted chain-of-thought hue)
+		lipgloss.Color("#EBDBB2"), // text (gruvbox fg, readable on dark bg)
 		lipgloss.Color("#3C3836"), // bubble tint (bg1)
 		lipgloss.Color("#504945"), // selectionBackground (gruvbox selection gray)
 		[3]color.Color{
@@ -208,6 +216,7 @@ func newSolarizedTheme() Theme {
 		lipgloss.Color("#6C71C4"), // web (violet)
 		lipgloss.Color("#D33682"), // skill (magenta)
 		lipgloss.Color("#93A1A1"), // thinking (muted chain-of-thought hue)
+		lipgloss.Color("#93A1A1"), // text (solarized base1, readable on dark bg)
 		lipgloss.Color("#073642"), // bubble tint (bg)
 		lipgloss.Color("#465B70"), // selectionBackground (solarized selection)
 		[3]color.Color{
@@ -229,6 +238,7 @@ func newDarkDaltonizedTheme() Theme {
 		lipgloss.Color("#CC79A7"), // web (reddish purple)
 		lipgloss.Color("#E69F00"), // skill (golden orange)
 		lipgloss.Color("#7D8AA0"), // thinking (muted chain-of-thought hue)
+		lipgloss.Color("#E0E0E0"), // text (light neutral, readable on dark bg)
 		lipgloss.Color("#232A36"), // bubble tint (neutral blue-gray)
 		lipgloss.Color("#2F3A4C"), // selectionBackground (neutral blue-gray)
 		[3]color.Color{
@@ -250,6 +260,7 @@ func newLightDaltonizedTheme() Theme {
 		lipgloss.Color("#6D28D9"), // web (violet)
 		lipgloss.Color("#A21CAF"), // skill (magenta)
 		lipgloss.Color("#5F6B7A"), // thinking (muted chain-of-thought hue)
+		lipgloss.Color("#1C1C1C"), // text (dark gray, readable on white)
 		lipgloss.Color("#E9E9EF"), // bubble tint (near-white)
 		lipgloss.Color("#C9D4E8"), // selectionBackground (light blue highlight)
 		[3]color.Color{
@@ -294,7 +305,7 @@ func themeFor(name string) Theme {
 }
 
 // newTheme builds a Theme from its palette entries and rail hues; the derived styles draw from them.
-func newTheme(accent, err, ok, shell, file, web, skill, thinking, bubble, selectionBg color.Color, rail [3]color.Color) Theme {
+func newTheme(accent, err, ok, shell, file, web, skill, thinking, text, bubble, selectionBg color.Color, rail [3]color.Color) Theme {
 	th := Theme{
 		accent:      accent,
 		error:       err,
@@ -304,6 +315,7 @@ func newTheme(accent, err, ok, shell, file, web, skill, thinking, bubble, select
 		web:         web,
 		skill:       skill,
 		thinking:    thinking,
+		text:        text,
 		bubble:      bubble,
 		selectionBg: selectionBg,
 		railHues:    rail,
