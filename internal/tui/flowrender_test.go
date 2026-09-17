@@ -2,6 +2,7 @@ package tui
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -426,5 +427,138 @@ func TestRenderFlow_interimNarrationDoesNotCorruptCommittedTail(t *testing.T) {
 	plain := ansiStrip(out)
 	if !strings.Contains(plain, "The full answer begins here") {
 		t.Fatalf("committed answer opening lost behind interim narration:\n%s", plain)
+	}
+}
+
+// TestRenderToolEntry_expandedLongLineWrapsAtWidth is the regression guard for
+// issue #64: an expanded tool-result card must wrap (or explicitly mark) its
+// content so no line silently exceeds the transcript width, and no bytes are
+// dropped.
+func TestRenderToolEntry_expandedLongLineWrapsAtWidth(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	for _, width := range []int{80, 40} {
+		t.Run(strconv.Itoa(width), func(t *testing.T) {
+			longLine := strings.Repeat("a", 200)
+			e := toolEntry{
+				name:     "bash",
+				args:     `{"command":"ls"}`,
+				result:   longLine,
+				complete: true,
+				lines:    1,
+			}
+			out := renderToolEntry(defaultTheme, e, true, time.Now(), width, false, false)
+			plain := ansiStrip(out)
+
+			contentWidth := width - 2 // left border + left padding
+			if contentWidth < 1 {
+				contentWidth = 1
+			}
+
+			lines := strings.Split(plain, "\n")
+			var joined strings.Builder
+			frameStarted := false
+			foundContent := false
+			for _, ln := range lines {
+				if !frameStarted {
+					if strings.HasPrefix(ln, "| ") {
+						frameStarted = true
+					} else {
+						continue
+					}
+				}
+				if !strings.HasPrefix(ln, "| ") {
+					continue
+				}
+				content := strings.TrimPrefix(ln, "| ")
+				if content != "" {
+					foundContent = true
+				}
+				if len(content) > contentWidth {
+					t.Errorf("frame content exceeds content width %d: %q (len=%d)", contentWidth, content, len(content))
+				}
+				joined.WriteString(strings.TrimRight(content, " "))
+			}
+			if !foundContent {
+				t.Errorf("no framed content found in output:\n%s", plain)
+			}
+			if joined.String() != longLine {
+				t.Errorf("wrapped content dropped or altered bytes: got len %d, want len %d", joined.Len(), len(longLine))
+			}
+		})
+	}
+}
+
+// TestRenderToolEntry_expandedMultilineWrapsPreservingNewlines locks that
+// embedded newlines are preserved and each logical line is wrapped independently.
+func TestRenderToolEntry_expandedMultilineWrapsPreservingNewlines(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	width := 40
+	line1 := strings.Repeat("b", 100)
+	line2 := strings.Repeat("c", 100)
+	result := line1 + "\n" + line2
+	e := toolEntry{
+		name:     "bash",
+		args:     `{"command":"ls"}`,
+		result:   result,
+		complete: true,
+		lines:    2,
+	}
+	out := renderToolEntry(defaultTheme, e, true, time.Now(), width, false, false)
+	plain := ansiStrip(out)
+
+	contentWidth := width - 2
+	if contentWidth < 1 {
+		contentWidth = 1
+	}
+
+	lines := strings.Split(plain, "\n")
+	var joined strings.Builder
+	frameStarted := false
+	for _, ln := range lines {
+		if !frameStarted {
+			if strings.HasPrefix(ln, "| ") {
+				frameStarted = true
+			} else {
+				continue
+			}
+		}
+		if !strings.HasPrefix(ln, "| ") {
+			continue
+		}
+		content := strings.TrimPrefix(ln, "| ")
+		if len(content) > contentWidth {
+			t.Errorf("frame content exceeds content width %d: %q (len=%d)", contentWidth, content, len(content))
+		}
+		joined.WriteString(strings.TrimRight(content, " "))
+		joined.WriteString("\n")
+	}
+	// The wrapped output has more physical lines than the input, but all original
+	// bytes must survive. Counting character classes verifies no drops.
+	got := strings.TrimSuffix(joined.String(), "\n")
+	if strings.Count(got, "b") != 100 || strings.Count(got, "c") != 100 {
+		t.Errorf("wrapped content dropped bytes: got %d b's and %d c's, want 100 each", strings.Count(got, "b"), strings.Count(got, "c"))
+	}
+	// Verify the two logical blocks are still separated by at least one newline
+	// in the rendered output (original newline preserved by ansi.Wrap).
+	if !strings.Contains(got, "b\nc") {
+		t.Errorf("original newline between logical blocks was lost: got %q", got)
+	}
+}
+
+// TestCardFrame_failureUsesErrorHue locks that a failed tool result paints the
+// card frame border in the theme's error color, not the category hue.
+func TestCardFrame_failureUsesErrorHue(t *testing.T) {
+	th := defaultTheme
+	failEntry := toolEntry{name: "bash", result: "error executing tool: oops", complete: true}
+	okEntry := toolEntry{name: "bash", result: "ok", complete: true}
+
+	failStyle := cardFrame(th, failEntry)
+	okStyle := cardFrame(th, okEntry)
+
+	if got := failStyle.GetBorderLeftForeground(); got != th.error {
+		t.Errorf("failed tool frame should use error color, got %v", got)
+	}
+	if got := okStyle.GetBorderLeftForeground(); got == th.error {
+		t.Errorf("successful tool frame should not use error color, got %v", got)
 	}
 }

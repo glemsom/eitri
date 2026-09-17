@@ -187,8 +187,8 @@ func TestToolLog_RenderRowAccountExpanded(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("expected one row range, got %d", len(rows))
 	}
-	if rows[0].start != 0 || rows[0].end != 3 {
-		t.Errorf("expanded row range = %d..%d, want 0..3", rows[0].start, rows[0].end)
+	if rows[0].start != 0 || rows[0].end != 1 {
+		t.Errorf("expanded row range = %d..%d, want 0..1", rows[0].start, rows[0].end)
 	}
 }
 

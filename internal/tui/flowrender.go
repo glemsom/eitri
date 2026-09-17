@@ -3,10 +3,12 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"image/color"
 	"strings"
 	"time"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 const collapsedToolCommandMaxLines = 5
@@ -568,7 +570,13 @@ func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width
 
 	if te.result != "" {
 		frame := cardFrame(th, te)
-		b.WriteString(frame.Render(strings.TrimSuffix(te.result, "\n")))
+		contentWidth := width - 2 // left border + left padding
+		if contentWidth < 1 {
+			contentWidth = 1
+		}
+		body := strings.TrimSuffix(te.result, "\n")
+		body = wrapToolResult(body, contentWidth)
+		b.WriteString(frame.Render(body))
 		b.WriteString("\n")
 	}
 	return b.String()
@@ -588,13 +596,34 @@ func clampLines(s string, max int) string {
 	return strings.Join(lines[:max], "\n") + g("…", "...")
 }
 
-// cardFrame is the expanded tool card's frame: a left border in the entry's category hue, shared by the result-dump content.
+// cardFrame is the expanded tool card's frame: a left border in the entry's
+// category hue for successes, or the error hue for failures, shared by the
+// result-dump content.
 func cardFrame(th Theme, te toolEntry) lipgloss.Style {
+	var c color.Color
+	if isToolFailure(te.result) {
+		c = th.error
+	} else {
+		c = th.toolCategoryStyle(toolCategoryOf(te.name)).GetForeground()
+	}
 	return lipgloss.NewStyle().
-		Border(lipgloss.Border{Left: g("│", "|")}).
-		BorderLeft(true).
+		Border(lipgloss.Border{Left: g("│", "|")}, false, false, false, true).
 		PaddingLeft(1).
-		BorderForeground(th.toolCategoryStyle(toolCategoryOf(te.name)).GetForeground())
+		BorderForeground(c)
+}
+
+// wrapToolResult wraps each line of a tool result to fit within width,
+// preserving embedded newlines. It uses word-aware wrapping with a hard-wrap
+// fallback for unbreakable tokens.
+func wrapToolResult(result string, width int) string {
+	if width < 1 {
+		return result
+	}
+	lines := strings.Split(result, "\n")
+	for i, line := range lines {
+		lines[i] = ansi.Wrap(line, width, "")
+	}
+	return strings.Join(lines, "\n")
 }
 
 // isToolFailure reports whether a delivered tool result is error-shaped: the engine surfaces tool failures as plain-text result strings with these prefixes (internal/engine/engine.go), so the TUI can tag them ✗ without coupling to the engine package's error types.
