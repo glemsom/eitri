@@ -53,9 +53,12 @@ var glyphInventory = map[string]glyph{
 	"cursor":              {"┃", "|", 1},
 }
 
-// lookup returns the glyph for the current locale.
+// lookup returns the glyph for the current locale. Panics if name is not in the inventory so a typo is caught immediately during development/testing.
 func lookup(name string) string {
-	ent := glyphInventory[name]
+	ent, ok := glyphInventory[name]
+	if !ok {
+		panic("unknown glyph: " + name)
+	}
 	return g(ent.utf8, ent.ascii)
 }
 
@@ -83,7 +86,7 @@ func brandMark() string { return lookup("brand") }
 func focusMarker() string { return lookup("focus") }
 
 // hr returns a horizontal-rule separator (──) with its "--" ASCII fallback.
-func hr() string { return g("──", "--") }
+func hr() string { return lookup("hr") + lookup("hr") }
 
 // hrWidth returns a horizontal-rule separator repeated to the given width.
 func hrWidth(w int) string {
