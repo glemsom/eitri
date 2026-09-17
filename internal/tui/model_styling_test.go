@@ -302,14 +302,20 @@ func TestModel_stylingStreamingThinkingPaneVariant(t *testing.T) {
 	if !strings.Contains(ansiStrip(body), "hidden reasoning") {
 		t.Fatalf("live reasoning body should render expanded while streaming, got: %q", content)
 	}
-	if !strings.Contains(thinkRows[0], "\x1b[38;2;86;95;137m") {
-		t.Errorf("streaming thinking pane border should carry the muted thinking hue (86;95;137), got row: %q", thinkRows[0])
+	// The streaming thinking pane border is dimmed (mirroring the streaming
+	// answer pane) so the streaming-vs-settled cue lives on the border, not the
+	// body text.
+	if !strings.Contains(thinkRows[0], "\x1b[38;2;38;42;61m") {
+		t.Errorf("streaming thinking pane border should carry the dimmed thinking hue (38;42;61), got row: %q", thinkRows[0])
 	}
-	// The streaming thinking body is plain text de-emphasized by its pane: the
-	// faint+italic arrive together (`\x1b[3;2m`) opening the text run directly,
-	// with no foreground hue of its own — the muted hue lives on the border only.
-	if !strings.Contains(body, "\x1b[3;2mhidden reasoning") {
-		t.Errorf("streaming thinking body should be faint+italic with no hue, got: %q", body)
+	// The streaming thinking body is plain text de-emphasized by the dimmed
+	// pane border only: italic (`\x1b[3m`) opens the text run, with no faint
+	// (`\x1b[2m`) and no foreground hue of its own.
+	if !strings.Contains(body, "\x1b[3mhidden reasoning") {
+		t.Errorf("streaming thinking body should be italic with no hue, got: %q", body)
+	}
+	if strings.Contains(body, "\x1b[2m") {
+		t.Errorf("streaming thinking body must not be faint, got: %q", body)
 	}
 }
 

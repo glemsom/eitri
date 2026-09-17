@@ -27,7 +27,7 @@ type Theme struct {
 	statusStyle                lipgloss.Style // faint secondary text (strips, hints, tool lines)
 	agentPaneStyle             lipgloss.Style // left-bordered pane framing assistant answers
 	thinkingPaneStyle          lipgloss.Style // left-bordered pane framing reasoning (muted reasoning hue, italic)
-	streamingThinkingPaneStyle lipgloss.Style // faint italic variant; the style-free live reasoning body is de-emphasized by faint+italic, never a hue
+	streamingThinkingPaneStyle lipgloss.Style // dimmed-border italic variant; the style-free live reasoning body is de-emphasized by the pane border, never body SGR
 	errorPaneStyle             lipgloss.Style // the same pane with the error-colored border
 	stoppedPaneStyle           lipgloss.Style // the same pane with the stopped (accent-dimmed) border
 	streamingPaneStyle         lipgloss.Style // left-bordered pane for messages still being streamed (dimmed accent)
@@ -327,7 +327,7 @@ func newTheme(accent, err, ok, shell, file, web, skill, thinking, text, bubble, 
 			PaddingLeft(2).PaddingRight(2).PaddingTop(1).PaddingBottom(1),
 		agentPaneStyle:             answerPane(accent),
 		thinkingPaneStyle:          borderedPane(thinking).Italic(true),
-		streamingThinkingPaneStyle: borderedPane(thinking).Faint(true).Italic(true),
+		streamingThinkingPaneStyle: borderedPane(dimmed(thinking, 0.45)).Italic(true),
 		errorPaneStyle:             answerPane(err),
 		stoppedPaneStyle:           answerPane(dimmed(accent, 0.6)),
 		streamingPaneStyle:         answerPane(dimmed(accent, 0.45)),
