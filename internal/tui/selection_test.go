@@ -671,7 +671,7 @@ func TestDragSelect_plainClickExpandsCollapsedToolEntry(t *testing.T) {
 	}
 	headRow := -1
 	for i, r := range rows {
-		if strings.Contains(r, "🔧 bash") {
+		if strings.Contains(r, "❯ bash") {
 			headRow = i
 			break
 		}
@@ -708,7 +708,7 @@ func TestDragSelect_plainClickCollapsesExpandedToolEntry(t *testing.T) {
 	}
 	headRow := -1
 	for i, r := range rows {
-		if strings.Contains(r, "🔧 bash") {
+		if strings.Contains(r, "❯ bash") {
 			headRow = i
 			break
 		}
@@ -751,7 +751,7 @@ func TestDragSelect_dragOnToolCardStillCopies(t *testing.T) {
 	}
 	headRow := -1
 	for i, r := range rows {
-		if strings.Contains(r, "🔧 bash") {
+		if strings.Contains(r, "❯ bash") {
 			headRow = i
 			break
 		}

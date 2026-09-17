@@ -497,9 +497,9 @@ func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width
 	outcome := ""
 	if te.complete {
 		if isToolFailure(te.result) {
-			outcome = " " + th.outcomeErrStyle.Render(g("✗", "X"))
+			outcome = " " + th.outcomeErrStyle.Render(lookup("fail"))
 		} else {
-			outcome = " " + th.outcomeOKStyle.Render(g("✓", "ok"))
+			outcome = " " + th.outcomeOKStyle.Render(lookup("ok"))
 		}
 	}
 	label := toolEntryLabel(te)

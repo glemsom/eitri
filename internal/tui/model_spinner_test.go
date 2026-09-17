@@ -204,7 +204,7 @@ func TestToolPulse_runningEntryRendersAccent(t *testing.T) {
 		t.Fatal("pulse must be armed on tool start")
 	}
 
-	line := lineContaining(view(m), "🔧 bash")
+	line := lineContaining(view(m), "❯ bash")
 	if line == "" {
 		t.Fatalf("expected a running bash entry, got: %q", view(m))
 	}
@@ -222,7 +222,7 @@ func TestToolPulse_runningEntryRendersAccent(t *testing.T) {
 	if m.tx.busyPulse != 0 {
 		t.Fatalf("pulse must expire after 3 ticks, got %d", m.tx.busyPulse)
 	}
-	line = lineContaining(view(m), "🔧 bash")
+	line = lineContaining(view(m), "❯ bash")
 	if line == "" {
 		t.Fatalf("running bash entry still expected, got: %q", view(m))
 	}

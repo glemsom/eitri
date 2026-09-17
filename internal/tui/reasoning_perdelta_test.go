@@ -8,7 +8,7 @@ import (
 // TestTranscript_liveTokenDeltasCoalesceToOneCard is the regression lock for the
 // per-token-card bug: a real reasoning provider streams reasoning_content as
 // many tiny SSE deltas (often one token per event), so each delta used to paint
-// its own "🤔 N tok" header — the user saw a fresh card per token. Contiguous
+// its own "≡ N tok" header — the user saw a fresh card per token. Contiguous
 // deltas must instead coalesce into ONE card.
 func TestTranscript_liveTokenDeltasCoalesceToOneCard(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
@@ -28,6 +28,6 @@ func TestTranscript_liveTokenDeltasCoalesceToOneCard(t *testing.T) {
 		}
 	}
 	if n := strings.Count(plain, "tok"); n != 1 {
-		t.Errorf("live token-streamed reasoning must render ONE '🤔 N tok' header, got %d headers:\n%s", n, plain)
+		t.Errorf("live token-streamed reasoning must render ONE '≡ N tok' header, got %d headers:\n%s", n, plain)
 	}
 }

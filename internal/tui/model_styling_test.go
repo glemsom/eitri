@@ -31,7 +31,7 @@ func reasoningPaneRows(t *testing.T, content string) []string {
 	lines := strings.Split(content, "\n")
 	start := -1
 	for i, ln := range lines {
-		if strings.Contains(ln, "🤔") {
+		if strings.Contains(ln, "≡") {
 			start = i + 1
 			break
 		}
@@ -112,8 +112,8 @@ func TestModel_stylingToolOutcomeMarkers(t *testing.T) {
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"true"}`}})
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Result: &ToolResult{Name: "bash", Result: "done\n"}})
 	content := view(m)
-	if !strings.Contains(content, "🔧 bash") {
-		t.Errorf("tool glyph 🔧 must remain, got: %q", content)
+	if !strings.Contains(content, "❯ bash") {
+		t.Errorf("tool glyph ❯ must remain, got: %q", content)
 	}
 	if !strings.Contains(content, "✓") {
 		t.Errorf("completed tool should carry a ✓ outcome tag, got: %q", content)
@@ -174,8 +174,8 @@ func TestModel_stylingToolCategoryColors(t *testing.T) {
 		{"open_in_browser", "\x1b[38;2;187;154;247m"},
 	}
 	toolGlyphs := map[string]string{
-		"bash":            "🔧",
-		"open_in_browser": "🌍",
+		"bash":            "❯",
+		"open_in_browser": "◎",
 	}
 	for _, tc := range cases {
 		m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: tc.tool, Args: "{}"}})
@@ -218,7 +218,7 @@ func TestModel_stylingThinkingDistinct(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m = submitAndWait(t, m)
 
-	hint := lineContaining(view(m), "🤔")
+	hint := lineContaining(view(m), "≡")
 	if hint == "" {
 		t.Fatalf("expected a thinking hint in view, got: %q", view(m))
 	}
@@ -245,7 +245,7 @@ func TestModel_stylingThinkingMarker(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m = submitAndWait(t, m)
 
-	hint := lineContaining(view(m), "🤔")
+	hint := lineContaining(view(m), "≡")
 	if hint == "" {
 		t.Fatalf("expected a thinking hint in view, got: %q", view(m))
 	}

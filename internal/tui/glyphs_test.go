@@ -4,23 +4,35 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
-func TestGlyph_charter(t *testing.T) {
-	cases := []struct{ utf8, ascii string }{
-		{"⊕", "+"}, {"✓", "ok"}, {"✗", "X"}, {"🤔", "?"}, {"▸", ">"},
-		{"▶", ">"}, {"─", "-"}, {"·", "."}, {"…", "..."}, {"│", "|"}, {"−", "-"},
-		{"⚒", "+"}, {"──", "--"}, {"💬", ">"}, {"⌨", "k"}, {"⚙", "*"}, {"📋", "#"}, {"🔑", "+"}, {"❓", "?"},
-	}
-	for _, c := range cases {
-		if got := g(c.utf8, c.ascii); got != c.utf8 {
-			t.Errorf("g(%q,%q) without override = %q, want %q", c.utf8, c.ascii, got, c.utf8)
+func TestGlyphInventory_charter(t *testing.T) {
+	for name, ent := range glyphInventory {
+		if ent.ascii == "" {
+			t.Errorf("glyphInventory[%q] has empty ASCII fallback", name)
+		}
+		if got := g(ent.utf8, ent.ascii); got != ent.utf8 {
+			t.Errorf("g(%q,%q) without override = %q, want %q", ent.utf8, ent.ascii, got, ent.utf8)
 		}
 	}
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
-	for _, c := range cases {
-		if got := g(c.utf8, c.ascii); got != c.ascii {
-			t.Errorf("g(%q,%q) with override = %q, want %q", c.utf8, c.ascii, got, c.ascii)
+	for name, ent := range glyphInventory {
+		if got := g(ent.utf8, ent.ascii); got != ent.ascii {
+			t.Errorf("g(%q,%q) with override = %q, want %q", ent.utf8, ent.ascii, got, ent.ascii)
+		}
+		if got := lookup(name); got != ent.ascii {
+			t.Errorf("lookup(%q) with override = %q, want %q", name, got, ent.ascii)
+		}
+	}
+}
+
+func TestGlyphInventory_widthStability(t *testing.T) {
+	for name, ent := range glyphInventory {
+		got := ansi.StringWidth(ent.utf8)
+		if got != ent.width {
+			t.Errorf("glyphInventory[%q] utf8=%q ansi.StringWidth=%d, declared width=%d", name, ent.utf8, got, ent.width)
 		}
 	}
 }
@@ -31,8 +43,8 @@ func TestToolGlyph_charter(t *testing.T) {
 		utf8  string
 		ascii string
 	}{
-		{"bash", "🔧", "$"},
-		{"open_in_browser", "🌍", "W"},
+		{"bash", "❯", "$"},
+		{"open_in_browser", "◎", "W"},
 		{"unknown", "⊕", "+"},
 	}
 	for _, c := range cases {

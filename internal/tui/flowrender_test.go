@@ -176,7 +176,7 @@ func TestRenderFlow_liveReasoningCoalescesContiguousDeltas(t *testing.T) {
 
 	// Contiguous reasoning deltas coalesce into one live fragment so token-size
 	// SSE deltas never paint a card per token: the whole stretch survives under
-	// a single "🤔 N tok" header.
+	// a single "≡ N tok" header.
 	for _, frag := range []string{"think", "one", "two"} {
 		if !strings.Contains(plain, frag) {
 			t.Errorf("live reasoning body missing %q from flow:\n%s", frag, plain)
@@ -211,7 +211,7 @@ func TestRenderFlow_committedCollapsesReasoningToHint(t *testing.T) {
 		t.Errorf("collapsed reasoning must hide the body, got:\n%s", plain)
 	}
 	if !strings.Contains(plain, "tok") {
-		t.Errorf("collapsed reasoning must keep the 🤔 N tok hint, got:\n%s", plain)
+		t.Errorf("collapsed reasoning must keep the ≡ N tok hint, got:\n%s", plain)
 	}
 	if !strings.Contains(plain, "Done.") {
 		t.Errorf("collapsed turn must still render the answer, got:\n%s", plain)

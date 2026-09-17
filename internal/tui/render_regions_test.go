@@ -38,7 +38,7 @@ func TestRenderRegions_HistoryVsBandSeparation(t *testing.T) {
 	m.renderBand(&band)
 	hs, bs := hist.String(), band.String()
 
-	for _, want := range []string{"🔧 bash", "ls -la"} {
+	for _, want := range []string{"❯ bash", "ls -la"} {
 		if !strings.Contains(hs, want) {
 			t.Errorf("scroll region missing %q, got:\n%s", want, hs)
 		}
