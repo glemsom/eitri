@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -22,20 +23,30 @@ func TestRender_idleWelcome(t *testing.T) {
 	th := renderSurfaceTestTheme()
 
 	cases := []struct {
-		name string
-		want string
+		name   string
+		width  int
+		want   string
 	}{
 		{
-			name: "brand-and-hints",
+			name:  "brand-and-hints-default",
+			width: 2,
 			want: "--\n" +
 				"+  Eitri - your terminal coding agent\n" +
 				"--\n" +
 				"  k ctrl+, settings · /help for commands & keybindings\n",
 		},
+		{
+			name:  "width-40",
+			width: 40,
+			want: strings.Repeat("-", 40) + "\n" +
+				"+  Eitri - your terminal coding agent\n" +
+				strings.Repeat("-", 40) + "\n" +
+				"  k ctrl+, settings · /help for commands & keybindings\n",
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := idleWelcome(th); got != c.want {
+			if got := idleWelcome(th, c.width); got != c.want {
 				t.Errorf("idleWelcome() =\n%q\nwant\n%q", got, c.want)
 			}
 		})
@@ -122,12 +133,52 @@ func TestRender_bandHints(t *testing.T) {
 func TestRender_idleWelcome_brandMark(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := renderSurfaceTestTheme()
-	got := idleWelcome(th)
+	got := idleWelcome(th, 2)
 
 	for _, want := range []string{"+  Eitri", "--", "k ctrl+,"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("idleWelcome() missing %q, got:\n%s", want, got)
 		}
+	}
+}
+
+func TestRender_idleWelcome_ruleWidth(t *testing.T) {
+	t.Parallel()
+	th := renderSurfaceTestTheme()
+
+	cases := []int{80, 120, 40}
+	for _, w := range cases {
+		w := w
+		t.Run(fmt.Sprintf("width/%d", w), func(t *testing.T) {
+			got := idleWelcome(th, w)
+			lines := strings.Split(got, "\n")
+			if len(lines) < 3 {
+				t.Fatalf("expected at least 3 lines, got %d", len(lines))
+			}
+			topRule := lines[0]
+			botRule := lines[2]
+			if lipgloss.Width(topRule) != w {
+				t.Errorf("top rule width = %d, want %d", lipgloss.Width(topRule), w)
+			}
+			if lipgloss.Width(botRule) != w {
+				t.Errorf("bottom rule width = %d, want %d", lipgloss.Width(botRule), w)
+			}
+		})
+	}
+}
+
+func TestRender_idleWelcome_ruleWidthASCII(t *testing.T) {
+	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+	th := renderSurfaceTestTheme()
+	got := idleWelcome(th, 40)
+	lines := strings.Split(got, "\n")
+	if len(lines) < 3 {
+		t.Fatalf("expected at least 3 lines, got %d", len(lines))
+	}
+	topRule := lines[0]
+	want := strings.Repeat("-", 40)
+	if topRule != want {
+		t.Errorf("top rule = %q, want %q", topRule, want)
 	}
 }
 

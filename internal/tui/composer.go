@@ -256,8 +256,19 @@ func (m Model) renderBandStatusRow() string {
 		}
 		right = ws
 	}
-	left := fitBandLine(m.composerHint(), w-ansi.StringWidth(right))
-	return m.tx.theme.statusStyle.Render(left + right)
+	sep := 0
+	if right != "" {
+		sep = 1
+	}
+	avail := w - ansi.StringWidth(right) - sep
+	if avail < 1 {
+		avail = 1
+	}
+	left := fitBandLine(m.composerHint(), avail)
+	if right != "" {
+		return m.tx.theme.statusStyle.Render(left + " " + right)
+	}
+	return m.tx.theme.statusStyle.Render(left)
 }
 
 func (m Model) renderFeedback() string {
