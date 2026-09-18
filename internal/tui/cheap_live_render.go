@@ -1,9 +1,11 @@
 package tui
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -40,6 +42,19 @@ var (
 // unbroken token (URL, code run) still cannot produce an overlarge line. The
 // output is trimmed of leading and trailing newlines to match the glamour path's
 // pane body.
+
+// restorePaneForeground keeps inline emphasis from clearing the color inherited
+// from the streaming pane. A full SGR reset also resets foreground color.
+func restorePaneForeground(body string, pane lipgloss.Style) string {
+	fg := pane.GetForeground()
+	if fg == nil {
+		return body
+	}
+	r, g, b, _ := fg.RGBA()
+	restore := fmt.Sprintf("\x1b[38;2;%d;%d;%dm", r>>8, g>>8, b>>8)
+	return strings.ReplaceAll(body, "\x1b[0m", "\x1b[0m"+restore)
+}
+
 func renderCheapLiveBody(text string, width int) string {
 	return strings.Trim(ansi.Wrap(simplifyMarkdownEmphasis(text), width, ""), "\n")
 }

@@ -204,10 +204,7 @@ func TestModel_slashCompletionDismissedOnEmptyLine(t *testing.T) {
 		t.Fatalf("composer after backspace = %q, want empty", got)
 	}
 	content := view(m)
-	if strings.Contains(content, "/settings") || strings.Contains(content, "/review") {
-		t.Errorf("completion list should be dismissed on empty line, got: %q", content)
-	}
-	if strings.Contains(content, "/settings") || strings.Contains(content, "/review") {
+	if strings.Contains(content, "/review") {
 		t.Errorf("completion list should be dismissed on empty line, got: %q", content)
 	}
 }

@@ -21,7 +21,7 @@ func TestModel_OpenSettingsRendersSurface(t *testing.T) {
 		Config: cfgFixture(),
 	})
 	m = resize(t, m)
-	m = keypress(t, m, "ctrl+,")
+	m = openSettingsForTest(t, m)
 
 	content := view(m)
 	if !strings.Contains(content, "Eitri Settings") {
@@ -44,7 +44,7 @@ func TestModel_SettingsSavePersistsAndRemainsOpen(t *testing.T) {
 		Save:   func(c config.Config) error { saved = c; return nil },
 	})
 	m = resize(t, m)
-	m = keypress(t, m, "ctrl+,")
+	m = openSettingsForTest(t, m)
 	m = focusField(t, m, fieldSave)
 	m = keypress(t, m, "enter")
 
@@ -71,7 +71,7 @@ func TestModel_SettingsAdjustedValuePersists(t *testing.T) {
 		Save:   func(c config.Config) error { saved = c; return nil },
 	})
 	m = resize(t, m)
-	m = keypress(t, m, "ctrl+,")
+	m = openSettingsForTest(t, m)
 	m = focusField(t, m, fieldModel)
 	m = keypress(t, m, "tab") // select grok-2
 	m = focusField(t, m, fieldSave)
@@ -94,7 +94,7 @@ func TestModel_SettingsEffortSelectingMediumPersists(t *testing.T) {
 		Save:   func(c config.Config) error { saved = c; return nil },
 	})
 	m = resize(t, m)
-	m = keypress(t, m, "ctrl+,")
+	m = openSettingsForTest(t, m)
 	m = focusField(t, m, fieldEffort)
 	m = keypress(t, m, "left")
 	m = focusField(t, m, fieldSave)
@@ -116,9 +116,9 @@ func TestModel_SettingsSaveAppliesThinkingStateToLiveSession(t *testing.T) {
 		Save:   func(c config.Config) error { return nil },
 	})
 	m = resize(t, m)
-	m = keypress(t, m, "ctrl+,")
+	m = openSettingsForTest(t, m)
 	m = focusField(t, m, fieldThinking)
-	m = keypress(t, m, "tab")  // thinking off
+	m = keypress(t, m, "tab") // thinking off
 	m = focusField(t, m, fieldEffort)
 	m = keypress(t, m, "left") // high -> medium
 	m = focusField(t, m, fieldSave)
@@ -144,7 +144,7 @@ func TestModel_SettingsSaveRefreshesRightRail(t *testing.T) {
 		Rail:   NewRail("opencode-go", "deepseek-v4-flash", "high", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a"),
 	})
 	m = resize(t, m)
-	m = keypress(t, m, "ctrl+,")
+	m = openSettingsForTest(t, m)
 	m = focusField(t, m, fieldModel)
 	m = keypress(t, m, "tab") // deepseek-v4-flash -> grok-2
 	m = focusField(t, m, fieldSave)
@@ -178,7 +178,7 @@ func TestModel_SettingsSaveFailureDoesNotApplyLiveConfig(t *testing.T) {
 		},
 	})
 	m = resize(t, m)
-	m = keypress(t, m, "ctrl+,")
+	m = openSettingsForTest(t, m)
 	m = keypress(t, m, "tab") // provider opencode-go -> github-copilot
 	m = focusField(t, m, fieldSave)
 	m = keypress(t, m, "enter")
@@ -206,7 +206,7 @@ func TestModel_SettingsThinkingTogglePersists(t *testing.T) {
 		Save:   func(c config.Config) error { saved = c; return nil },
 	})
 	m = resize(t, m)
-	m = keypress(t, m, "ctrl+,")
+	m = openSettingsForTest(t, m)
 	m = focusField(t, m, fieldThinking)
 	m = keypress(t, m, "tab")
 	m = focusField(t, m, fieldSave)
@@ -235,7 +235,7 @@ func TestModel_SettingsCollapseTogglesPersistAndFlipDefaults(t *testing.T) {
 		Save:   func(c config.Config) error { saved = c; return nil },
 	})
 	m = resize(t, m)
-	m = keypress(t, m, "ctrl+,")
+	m = openSettingsForTest(t, m)
 	m = focusField(t, m, fieldCoTCollapsed)
 	m = keypress(t, m, "tab") // CoT collapsed -> off
 	m = focusField(t, m, fieldToolResultsCollapsed)
@@ -269,7 +269,7 @@ func TestModel_SettingsThemeSelectingPersists(t *testing.T) {
 		Save:   func(c config.Config) error { saved = c; return nil },
 	})
 	m = resize(t, m)
-	m = keypress(t, m, "ctrl+,")
+	m = openSettingsForTest(t, m)
 	m = focusField(t, m, fieldTheme)
 	m = keypress(t, m, "tab")
 	m = focusField(t, m, fieldSave)
@@ -294,7 +294,7 @@ func TestModel_SettingsCustomOpenAICredentialsPersist(t *testing.T) {
 		Save:   func(c config.Config) error { saved = c; return nil },
 	})
 	m = resize(t, m)
-	m = keypress(t, m, "ctrl+,")
+	m = openSettingsForTest(t, m)
 	m = focusField(t, m, fieldCustomOpenAIBaseURL)
 	m = keypress(t, m, "enter")
 	m.settings.textInput.SetValue("https://example.com/v1")
@@ -328,7 +328,7 @@ func TestModel_SettingsOpenCodeKeyPersists(t *testing.T) {
 		Save:   func(c config.Config) error { saved = c; return nil },
 	})
 	m = resize(t, m)
-	m = keypress(t, m, "ctrl+,")
+	m = openSettingsForTest(t, m)
 	m = focusField(t, m, fieldOpenCodeKey)
 	m = keypress(t, m, "enter")
 	m.settings.textInput.SetValue("opencode-api-key")
@@ -387,7 +387,7 @@ func TestModel_SettingsWiringSurfacesThinkingSuppression(t *testing.T) {
 		ThinkingSuppression: func() bool { return false },
 	})
 	m = resize(t, m)
-	m = keypress(t, m, "ctrl+,")
+	m = openSettingsForTest(t, m)
 
 	if m.settings == nil || m.settings.thinkingSuppression == nil {
 		t.Fatal("settings form not seeded with the thinking-suppression seam")
@@ -434,6 +434,12 @@ func TestModel_ContinuationPromptAnswersNo(t *testing.T) {
 	default:
 		t.Fatal("engine hook never received a decision")
 	}
+}
+
+func openSettingsForTest(t *testing.T, m Model) Model {
+	t.Helper()
+	m = typeText(t, m, "/settings")
+	return keypress(t, m, "enter")
 }
 
 func keypress(t *testing.T, m Model, key string) Model {
@@ -497,7 +503,7 @@ func namedKey(name string) tea.Msg {
 func TestModel_SettingsActionsRemainVisibleAtConstrainedHeight(t *testing.T) {
 	m := NewModelCfg(Dependencies{Config: cfgFixture(), Models: []string{"deepseek-v4-flash"}})
 	m = resizeTo(t, m, 80, 12)
-	m = keypress(t, m, "ctrl+,")
+	m = openSettingsForTest(t, m)
 
 	lines := strings.Split(ansiStrip(view(m)), "\n")
 	if len(lines) > 12 {

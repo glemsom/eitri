@@ -80,7 +80,7 @@ func TestModel_settingsThemeSaveReskinsChrome(t *testing.T) {
 		t.Fatalf("default chrome expected before save, got: %q", pane)
 	}
 
-	m = keypress(t, m, "ctrl+,")
+	m = openSettingsForTest(t, m)
 	m = focusField(t, m, fieldTheme)
 	m = keypress(t, m, "tab") // dark -> light
 	m = keypress(t, m, "tab") // light -> dracula

@@ -162,7 +162,7 @@ func TestThemeChangeReuploadsFace(t *testing.T) {
 
 	// Change the appearance in settings, save, and close the overlay: the
 	// theme swap is face damage and the next face draw must re-upload.
-	m = keypress(t, m, "ctrl+,")
+	m = openSettingsForTest(t, m)
 	m = focusField(t, m, fieldTheme)
 	m = keypress(t, m, "right") // cycle the theme
 	m = focusField(t, m, fieldSave)
@@ -192,11 +192,11 @@ func TestNonFaceSettingsSaveDoesNotReuploadFace(t *testing.T) {
 
 	// A save that touches no face input (max turns, not theme/rail width) must
 	// not re-upload: the face stays clean, so closing the overlay arms nothing.
-	m = keypress(t, m, "ctrl+,")
+	m = openSettingsForTest(t, m)
 	m = focusField(t, m, fieldMaxTurns)
 	m = keypress(t, m, "right") // bump MaxTurns by one step
 	m = focusField(t, m, fieldSave)
-	m = keypress(t, m, "enter") // save the draft
+	m = keypress(t, m, "enter")          // save the draft
 	nm, cmd := m.Update(namedKey("esc")) // close the overlay
 	m = asModel(t, nm)
 	if cmd != nil {
