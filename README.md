@@ -1,262 +1,84 @@
 # Eitri
 
-<p align="center">
-  <img src="internal/tui/face-removebg-preview.png" alt="The Eitri face" width="160">
-</p>
+Eitri is a self-hosted AI coding agent for Linux. It runs as a single Go binary, uses natural-language prompts to read, edit, and run code in a workspace, and connects to local or hosted model providers.
 
-Named after the Norse blacksmith who forged Mjölnir. Eitri is an AI assistant that runs on your own machine — it reads, writes, and runs code in your workspace, guided by natural language conversations.
+Eitri keeps its system prompt small, uses Unix tools through `bash`, and stores configuration and sessions locally under `~/.eitri`.
 
-## Philosophy
+## Install and run
 
-- **A lean system prompt, no fat.** The agent prompt stays small and sharp: it tells the model how to behave, not what the tools already tell it. Knowledge the agent needs per workspace lives in files (`AGENTS.md`, skills, `CONTEXT.md`) loaded on demand, not baked into the prompt. Every prompt line must earn its tokens.
-- **Smith it.** Minimal, precise strikes. Full substance, no filler. Prefer the simplest correct solution, focused edits over full rewrites, and preserving existing code style.
-- **Unix primitives first.** Compose command-line tools into simple pipelines. Scripts are for state and control flow; everything else is `bash`.
-- **Self-host or don't.** Eitri is a single static Go binary you drop anywhere. Sessions, transcripts, and configuration live under `~/.eitri`. You own them.
-- **Your provider, your terms.** Point Eitri at any model or OpenAI-compatible endpoint — local or cloud. No vendor lock-in.
-- **Sandboxed by default.** Every bash execution is confined by bubblewrap unless you opt out with `--yolo-unsafe`, which runs commands directly as your user with full host permissions — see [Sandboxing and `--yolo-unsafe`](#sandboxing-and---yolo-unsafe).
-- **One prompt, exactly what it promises.** The agent prompt is fixed and written to match a declared dependency set. Eitri verifies every declared dependency at launch and refuses to start if anything is missing, so the agent never hallucinates a tool that isn't there.
-
-> Eitri's internal, agent-facing documentation lives in [`CONTEXT.md`](CONTEXT.md). This README is for humans.
-
-## Quickstart
+Requirements: Linux, Go for building, and the runtime tools listed below.
 
 ```sh
-make build          # 1. build ./bin/eitri
-./bin/eitri         # 2. launch the interactive TUI
-# 3. on first launch, Settings opens so you can choose a provider and enter your credentials
+make build
+./bin/eitri
 ```
 
-> Eitri refuses to start unless its declared toolset is installed — see [Requirements](#requirements).
+The first launch opens settings for provider and credential configuration. Install the binary with `make install` (to `~/.local/bin/eitri`).
 
 ## Usage
 
-### Launch modes
-
-| Command | What it does |
-| --- | --- |
-| `eitri` | Launch the interactive TUI |
-| `eitri -b "<prompt>"` | Run once in batch mode and exit; piped (non-TTY) stdin is appended after the prompt as fenced context |
-| `eitri -b "<prompt>" --format json` | Batch mode, printing one machine-parseable JSON envelope `{answer, session, turns, stopped}` to stdout |
-| `eitri -b "<prompt>" -v` | Batch mode, plus print the model's thinking/reasoning to stderr (stdout stays parseable) |
-| `eitri -d` | Debug mode: write full HTTP traces to/from the provider |
-| `eitri --yolo-unsafe` | Run unsandboxed: `bash` executes directly as your user with full host permissions, no bubblewrap cage |
-| `eitri --version` | Print the version and exit |
-
-### Unix filter
-
-`eitri -b` composes with pipes: feed context in on stdin, read the answer on
-stdout, and branch on the exit code.
-
 ```sh
+eitri                         # interactive TUI
+eitri -b "Review this diff"   # one batch run
 git diff | eitri -b "Review this diff"
-# machine-parseable answer + metadata:
-git diff | eitri -b "Review this diff" --format json | jq -r .answer
+eitri session list             # list saved sessions
+eitri session show <guid>
+eitri session talk <guid>
+eitri session grep <pattern> [guid|all]
+eitri --version
 ```
 
-Exit codes stay minimal: `0` when the run answers, `1` when it refuses or
-fails. The full piped-stdin rules, the JSON envelope schema, and the exit-code
-promise live in [`docs/batch-mode.md`](docs/batch-mode.md).
+Batch mode reads only piped, non-TTY stdin and appends it as fenced context. Input is limited to 1 MiB. `--format json` emits one JSON object containing `answer`, `session`, `turns`, and `stopped`; `-v` sends reasoning to stderr. See [docs/batch-mode.md](docs/batch-mode.md) for the input, output, and exit-code contract.
 
-### Sandboxing and `--yolo-unsafe`
+Useful flags:
 
-By default every `bash` command Eitri runs is confined by a **bubblewrap cage**: root is read-only, the workspace and session temp are writable, and the command runs in its own PID, `/dev`, and `/proc` namespace. That is the sandboxed-by-default guarantee. The TUI surfaces this state in the context rail (`sandbox  bubblewrap`), switching to a red `⚠ unsafe (--yolo)` when the cage is dropped, so the trust boundary is legible without reading this file.
+| Flag | Purpose |
+| --- | --- |
+| `-d` | Write full provider HTTP traces to the session. |
+| `--yolo-unsafe` | Disable bubblewrap; `bash` runs with the user's full permissions. |
+| `--pprof <addr>` | Enable localhost pprof diagnostics. `--pprof-mutex` and `--pprof-block` add profiles. |
+| `--format text\|json` | Select batch output format. |
 
-`--yolo-unsafe` is a launch-time opt-out that drops that guarantee — intended for trusted, single-user machines where the cage's isolation and its `bwrap` dependency get in the way:
+The TUI's `/help` is the authoritative reference for keybindings and slash commands. `/settings`, `/login`, and `/new` are available there.
 
-- `bash` executes **directly as your user** with your **full host permissions** — there is **no bubblewrap cage**.
-- `bwrap` is no longer required at boot; Eitri skips it in this mode and does not suggest installing it.
-- The agent's system prompt and `bash` tool definition are the honest unsandboxed variants: they never claim a terminating sandbox, because no cage runs.
+## Safety
 
-**Do not use `--yolo-unsafe` to contain an untrusted workload or an untrusted prompt.** In this mode Eitri **does not represent itself as contained to the agent**: a command it runs can read, write, or delete anything your user can, reach the network as your user, and otherwise act with your identity. Only run unsandboxed on a machine where that exposure is acceptable.
+By default, every `bash` command runs in a bubblewrap cage with a read-only root, writable workspace and session temporary directory, and isolated PID, `/proc`, and `/dev` namespaces. `--yolo-unsafe` removes this cage and must only be used with trusted prompts and workloads.
 
-### Command timeouts
+Commands are time-limited: 120 seconds by default, configurable per call up to 3600 seconds.
 
-Every `bash` call is time-bounded, so a command that never finishes cannot stall a turn:
+## Configuration and data
 
-- A **default of 120 seconds** applies when the model requests no limit.
-- The model may raise it per call with a `timeout` argument, up to a **maximum of 3600 seconds**; larger requests are clamped.
-- A command that hits the bound is stopped and reported as a timeout, distinct from a user-initiated stop (`ctrl+c`), which still takes precedence.
+`EITRI_DIR` changes the data directory (default `~/.eitri`). `EITRI_CONFIG` changes the config path (default `<data directory>/config.json`). The data directory contains configuration, sessions, transcripts, and materialized builtin skills.
 
-The tool card shows the **effective bound** dimmed alongside the running timer (e.g. `🔧 bash  make build 3s limit 1800s`), so the limit is visible while a command runs. The tag is worded `limit`, never `timeout`, so a merely-bounded call never reads as one that failed — the `✓`/`✗` outcome tag alone carries success, failure, or stop.
+Supported providers are `opencode-go`, `github-copilot`, and `custom-openai`. Settings can be changed in the TUI; credentials are stored in the local config.
 
-### Repository instructions (`AGENTS.md`)
+Important config keys include `provider`, `model`, `reasoning_effort`, `thinking_enabled`, `max_turns` (default `250`), `context_overflow_recovery`, `extra_writable_paths`, `theme`, and `rail_width`. Eitri manages provider credential objects in the config. Do not commit this file.
 
-If the workspace root (the directory you launch Eitri from) contains an `AGENTS.md`, Eitri reads it and carries its content to the model as a dedicated system-layer directive headed `## Repository instructions (AGENTS.md)` — both in the TUI and in batch (`-b`) mode. The injected instructions are **additive**: the built-in Eitri persona prompt is preserved unchanged, and the message is excluded from persisted session history so it isn't duplicated on the next turn. Without an `AGENTS.md`, no extra message is sent and the request is byte-identical to the pre-feature case. There is no opt-in or escape-hatch flag; the file is loaded whenever it exists.
+Sessions are append-only and can be inspected with the `session` commands. See [docs/sessions.md](docs/sessions.md).
 
-### Skills
+## Skills and workspace instructions
 
-Skill packs (agent instructions plus bundled resources) are discovered from three scopes, in shadowing order **project > user > builtin**:
+Eitri discovers skills in this order: project `.agents/skills`, user `~/.agents/skills`, then builtin skills. A higher-priority skill with the same name shadows a lower-priority one. Builtins currently include `subagents` and `web-access`.
 
-- **Builtin** — ships inside the binary (currently the `subagents` recipe) and is materialized to `$EITRI_DIR/skills-builtin` on launch. Binary-owned: refreshed on content mismatch, manual edits reverted by design.
-- **User** — `~/.agents/skills`, applies in every workspace.
-- **Project** — `.agents/skills` in the workspace, applies there only.
+An `AGENTS.md` in the workspace root is loaded as repository instructions. `CONTEXT.md` documents Eitri's internal terminology; `ARCHITECTURE.md` maps the implementation for maintainers and agents.
 
-Shadowing means a same-named pack in a higher scope overrides a lower one, so you can replace any builtin skill with your own.
-
-### Diagnostics with pprof
-
-Use `pprof` for performance symptoms: slow rendering, stalls while streaming, high CPU, or unexpected allocation pressure. It is disabled by default; enable it only for a diagnostic run and bind it to localhost:
+## Build and test
 
 ```sh
-eitri --pprof 127.0.0.1:6060
+make build
+make test
+git diff | eitri -b "Review this diff"
 ```
 
-From another shell, collect profiles while reproducing the problem:
+## Runtime requirements
+
+Eitri verifies these commands before starting (unless `--yolo-unsafe` removes the `bwrap` requirement): `bwrap`, `bash`, `rg`, `curl`, `lynx`, `patch`, `python3`, `git`, `jq`, and `xdg-open`.
+
+Debian/Ubuntu:
 
 ```sh
-go tool pprof -seconds 30 http://127.0.0.1:6060/debug/pprof/profile
-curl --fail --max-time 30 -o heap.pprof http://127.0.0.1:6060/debug/pprof/heap
-curl --fail --max-time 30 -o goroutine.txt 'http://127.0.0.1:6060/debug/pprof/goroutine?debug=2'
+sudo apt install bubblewrap bash ripgrep curl lynx patch python3 git jq xdg-utils
 ```
 
-Mutex and block profiling are available when needed, but are off unless requested because they add overhead:
-
-```sh
-eitri --pprof 127.0.0.1:6060 --pprof-mutex --pprof-block
-go tool pprof -seconds 30 http://127.0.0.1:6060/debug/pprof/mutex
-go tool pprof -seconds 30 http://127.0.0.1:6060/debug/pprof/block
-```
-
-Use pprof to find where time or allocation pressure is spent. To prove a performance fix, measure before and after one focused change with benchmarks; see [`docs/render-diagnostics.md`](docs/render-diagnostics.md) for the full diagnostics workflow.
-
-### Sessions
-
-Eitri records every session so you can review, replay, and search past work:
-
-```sh
-eitri session list
-                           # list recorded sessions (GUID, time, cycles, model)
-eitri session show <guid> [--turn N] [--no-reasoning]
-                           # compact per-cycle summary; --turn N dumps that cycle's full JSON records
-eitri session talk <guid> [--turn N|N-M] [--from N] [--role user|assistant|tool|system] [--reasoning]
-                           # full conversation as plain text; shared request history is deduped
-                           # reasoning is stripped unless --reasoning
-eitri session grep <pattern> [guid|all] [-full]
-                           # find cycles whose messages match pattern, with snippets;
-                           # -full prints the complete matching field text
-```
-
-Full detail lives in [`docs/sessions.md`](docs/sessions.md).
-
-### In the TUI
-
-- Type a prompt in the **composer** at the bottom and press `enter` to submit.
-- Start slash commands with `/` (e.g. `/settings` to open settings). Type `/` to see all commands, including any discovered skills.
-- Type `@` at a word boundary in the composer to open the file mention dropdown.
-- Enter `/help` to open the complete live reference in a scrollable overlay (`↑/↓` scroll, `esc` close); it always shows the current bindings and never clutters the conversation.
-
-#### Composer
-
-| Key | Action |
-| --- | --- |
-| `up` / `down` | Navigate completion candidates; recall a prior/next prompt when the completion list is closed |
-| `tab` | Accept highlighted completion or cycle block focus when composer is empty |
-| `esc` | Close completion list, close mention dropdown, or stop a running turn |
-| `enter` | Submit draft or toggle focused block when empty |
-| `shift+enter` | Insert a newline |
-
-#### Navigation
-
-| Key | Action |
-| --- | --- |
-| `pgup` / `pgdn` | Scroll history |
-| `home` / `end` | Jump to oldest/newest history |
-| `mouse wheel` | Scroll history |
-
-#### Panes
-
-| Key | Action |
-| --- | --- |
-| `ctrl+e` | Toggle expanded/collapsed view |
-| `ctrl+x` | Narrow the right pane |
-| `ctrl+z` | Widen the right pane |
-
-#### Actions
-
-| Key | Action |
-| --- | --- |
-| `ctrl+c` | Stop a running turn, or quit when idle |
-
-#### Slash commands
-
-| Command | Action |
-| --- | --- |
-| `/settings` | Open the settings panel |
-| `/new` | Start a fresh session (clears this conversation) |
-| `/login` | Interactive provider login |
-| `/help` | Show this help message |
-
-#### Workspace mentions
-
-| Key | Action |
-| --- | --- |
-| `@` | Type `@` at a word boundary to open the file mention dropdown |
-| `up` / `down` | Navigate mention candidates |
-| `tab` / `enter` | Accept the highlighted mention |
-| `esc` | Close the mention dropdown |
-
-#### Concepts
-
-| Term | Meaning |
-| --- | --- |
-| `expanded mode` | `ctrl+e` toggles all tool and chain-of-thought blocks |
-| `live reasoning` | While a turn streams, chain-of-thought shows as plain faint italic text with no hue of its own (the muted reasoning hue lives on the pane border and 🤔 marker) and renders as markdown only once the turn commits |
-| `block focus` | `tab` to focus, `enter` to expand one block |
-| `drag-select` | Click and drag to select text |
-| `right rail` | Stats, context, and model info |
-
-> The in-TUI `/help` is always available as the live reference and is the authoritative source for keybindings.
-
-## Configuration
-
-### Data directory and paths
-
-| Variable | Purpose | Default |
-| --- | --- | --- |
-| `EITRI_DIR` | Data directory (sessions, config, transcripts) | `~/.eitri` |
-| `EITRI_CONFIG` | Config file path override | `<dataDir>/config.json` |
-
-### `config.json` keys
-
-| Key | Type | Default | Meaning |
-| --- | --- | --- | --- |
-| `provider` | string | `opencode-go` | Provider backend: `opencode-go`, `github-copilot`, `custom-openai` |
-| `model` | string | `deepseek-v4-flash` | Model to use |
-| `reasoning_effort` | string | `low` | Reasoning effort level |
-| `thinking_enabled` | bool | `true` | Whether the model reasons/uses thinking |
-| `cot_collapsed_by_default` | bool | `true` | Render chain-of-thought collapsed until expanded |
-| `tool_results_collapsed_by_default` | bool | `true` | Render tool results collapsed until expanded |
-| `max_turns` | int | `250` | Maximum turns per run |
-| `context_overflow_recovery` | bool | `true` | Summarize older history and retry once if the provider rejects an oversized request |
-| `extra_writable_paths` | array of strings | *(empty)* | Additional paths the agent may write to |
-| `theme` | string | `dark` | UI theme |
-| `rail_width` | int | `30` | Width of the right rail/pane |
-| `copilot` | object | *(none)* | GitHub Copilot device-flow credential state |
-| `custom_openai` | object | *(none)* | Custom OpenAI-compatible base URL + key |
-
-The `copilot` and `custom_openai` objects are managed by Eitri (via device-flow login and the settings panel respectively); you rarely need to edit them by hand.
-
-## Requirements
-
-- **Linux** (Eitri is a Linux agent).
-- **Declared toolset** (required; fatal at boot) — Eitri verifies every declared dependency at launch and refuses to start without it, because its agent prompt promises these tools unconditionally:
-  - Hard substrate: `bwrap` (bubblewrap — the sandbox every `bash` runs in by default) and `bash`.
-  - Declared tools: `rg` (ripgrep), `curl`, `lynx`, `patch`, `python3`, `git`, `jq`, `xdg-open` (`xdg-utils`, backing `open_in_browser`).
-  - Install hints (a missing tool aborts the launch naming every miss with its package):
-    - Debian/Ubuntu: `sudo apt install bubblewrap bash ripgrep curl lynx patch python3 git jq xdg-utils`
-    - Fedora: `sudo dnf install bubblewrap bash ripgrep curl lynx patch python3 git jq xdg-utils`
-    - Arch: `sudo pacman -S bubblewrap bash ripgrep curl lynx patch python3 git jq xdg-utils`
-- **Base toolset** (assumed present) — the coreutils `bash` builds on: `grep`, `sed`, `awk`, `cat`, `nl`, `diff`; no boot check.
-
-## Building
-
-```sh
-make build    # build ./bin/eitri
-make test     # run the test suite (go test ./...)
-make clean    # remove build artifacts
-```
-
-## Contributing
-
-See [`CONTEXT.md`](CONTEXT.md) and [`docs/`](docs/) for the internal codebase documentation and agent guidance.
-```
+Fedora and Arch package managers provide the same package names. Core utilities such as `sed`, `awk`, and `diff` are assumed.
