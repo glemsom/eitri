@@ -23,9 +23,9 @@ func TestRender_idleWelcome(t *testing.T) {
 	th := renderSurfaceTestTheme()
 
 	cases := []struct {
-		name   string
-		width  int
-		want   string
+		name  string
+		width int
+		want  string
 	}{
 		{
 			name:  "brand-and-hints-default",

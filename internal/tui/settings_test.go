@@ -205,8 +205,8 @@ func TestSettingsView_RendersOpenCodeKey(t *testing.T) {
 func TestSettingsView_ProviderCredentialsSectionPosition(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name     string
-		provider string
+		name      string
+		provider  string
 		wantCreds bool
 	}{
 		{"custom-openai", "custom-openai", true},
@@ -242,9 +242,9 @@ func TestSettingsView_ProviderCredentialsSectionPosition(t *testing.T) {
 func TestSettingsForm_FocusOrderTraversesCredentialsBetweenModelAndReasoning(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name   string
+		name     string
 		provider string
-		want   []int
+		want     []int
 	}{
 		{"custom-openai", "custom-openai", []int{fieldCustomOpenAIBaseURL, fieldCustomOpenAIKey, fieldThinking}},
 		{"opencode-go", "opencode-go", []int{fieldOpenCodeKey, fieldThinking}},
