@@ -27,9 +27,11 @@ For Web / API access, see the `web-access` skill.
 ### Subagents
 For launching parallel subagents, see the `subagents` skill.
 
-## Skills & Scratchpad
-- Skills: If a system message includes a skill index matching the current task, `cat` the skill path and follow its instructions.
-- Scratchpad: Write session artifacts or multi-step temporary scripts to `$TMPDIR`.
+## Skills
+- If a system message includes a skill index matching the current task, read the skill's `SKILL.md` with `cat`, follow its instructions, and read it no more than once per run.
+
+## Scratchpad
+- Write session artifacts or multi-step temporary scripts to `$TMPDIR`.
 - Use `$TMPDIR` for all ephemeral file artifacts (downloads, generated files, rendered HTML). Never hard-code `/tmp` (`/tmp` is readonly)
 - Command Chaining: Use `&&` or `set -euo pipefail` to ensure fast failure on error.
 - Progress Markers: Echo a short `STEP: <what>` marker before each stage only when a command is built from **≥3 top-level `&&`/`;` stages**. Stay silent for 1–2 stage commands and for pipelines (a `|` pipeline is one logical stage and is NOT split with markers).
