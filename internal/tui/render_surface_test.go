@@ -33,7 +33,7 @@ func TestRender_idleWelcome(t *testing.T) {
 			want: "--\n" +
 				"+  Eitri - your terminal coding agent\n" +
 				"--\n" +
-				"  k ctrl+, settings · /help for commands & keybindings\n",
+				"  k /settings · /help for commands & keybindings\n",
 		},
 		{
 			name:  "width-40",
@@ -41,7 +41,7 @@ func TestRender_idleWelcome(t *testing.T) {
 			want: strings.Repeat("-", 40) + "\n" +
 				"+  Eitri - your terminal coding agent\n" +
 				strings.Repeat("-", 40) + "\n" +
-				"  k ctrl+, settings · /help for commands & keybindings\n",
+				"  k /settings · /help for commands & keybindings\n",
 		},
 	}
 	for _, c := range cases {
@@ -124,7 +124,7 @@ func TestRender_bandHints(t *testing.T) {
 	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 
 	got := bandHints()
-	want := "ctrl+, settings . ctrl+e expand/collapse . shift+enter newline"
+	want := "/settings . ctrl+e expand/collapse . shift+enter newline"
 	if got != want {
 		t.Errorf("bandHints() = %q, want %q", got, want)
 	}
@@ -135,7 +135,7 @@ func TestRender_idleWelcome_brandMark(t *testing.T) {
 	th := renderSurfaceTestTheme()
 	got := idleWelcome(th, 2)
 
-	for _, want := range []string{"+  Eitri", "--", "k ctrl+,"} {
+	for _, want := range []string{"+  Eitri", "--", "k /settings"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("idleWelcome() missing %q, got:\n%s", want, got)
 		}

@@ -23,7 +23,6 @@
   `ctrl+x`  narrow pane
   `ctrl+z`  widen pane
   a ACTIONS
-  `ctrl+,`  open settings
   `ctrl+c`  stop a running turn, or quit when idle
 
 # WORKSPACE MENTIONS

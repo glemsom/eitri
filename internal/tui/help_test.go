@@ -78,7 +78,7 @@ func TestHelpView_codeSpans(t *testing.T) {
 			t.Errorf("helpView() missing code span %q", want)
 		}
 	}
-	for _, name := range []string{"tab", "enter", "shift+enter", "pgup/pgdn", "home/end", "mouse wheel", "ctrl+e", "ctrl+x", "ctrl+z", "ctrl+,", "ctrl+c", "@"} {
+	for _, name := range []string{"tab", "enter", "shift+enter", "pgup/pgdn", "home/end", "mouse wheel", "ctrl+e", "ctrl+x", "ctrl+z", "ctrl+c", "@"} {
 		if want := "`" + name + "`"; !strings.Contains(got, want) {
 			t.Errorf("helpView() missing keybinding code span %q", want)
 		}
@@ -193,7 +193,7 @@ func TestHelpView_alignedColumns(t *testing.T) {
 		}},
 		{"NAVIGATION", []string{"scroll history", "jump to oldest/newest history"}},
 		{"PANES", []string{"toggle expanded/collapsed view", "narrow pane", "widen pane"}},
-		{"ACTIONS", []string{"open settings", "stop a running turn, or quit when idle"}},
+		{"ACTIONS", []string{"stop a running turn, or quit when idle"}},
 	}
 	for _, cat := range categories {
 		lines := categoryLines(t, got, cat.name)

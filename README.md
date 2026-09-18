@@ -175,7 +175,6 @@ Full detail lives in [`docs/sessions.md`](docs/sessions.md).
 
 | Key | Action |
 | --- | --- |
-| `ctrl+,` | Open settings |
 | `ctrl+c` | Stop a running turn, or quit when idle |
 
 #### Slash commands

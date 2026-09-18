@@ -39,7 +39,6 @@ var helpKeybindingCategories = []helpKeybindingCategory{
 		{"`ctrl+z`", "widen pane"},
 	}},
 	{"ACTIONS", []helpRow{
-		{"`ctrl+,`", "open settings"},
 		{"`ctrl+c`", "stop a running turn, or quit when idle"},
 	}},
 }

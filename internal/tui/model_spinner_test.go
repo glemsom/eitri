@@ -337,7 +337,7 @@ func TestIdleWelcome_showsOnEmptyHidesAfterTurn(t *testing.T) {
 	if !strings.Contains(content, "your terminal coding agent") {
 		t.Fatalf("empty transcript must show the welcome, got: %q", content)
 	}
-	if !strings.Contains(content, "ctrl+, settings") {
+	if !strings.Contains(content, "/settings") {
 		t.Errorf("welcome must carry the keybinding hints, got: %q", content)
 	}
 
