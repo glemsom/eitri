@@ -27,11 +27,11 @@ type Theme struct {
 	statusStyle                lipgloss.Style // faint secondary text (strips, hints, tool lines)
 	agentPaneStyle             lipgloss.Style // left-bordered pane framing assistant answers
 	thinkingPaneStyle          lipgloss.Style // left-bordered pane framing reasoning (muted reasoning hue, italic)
-	streamingThinkingPaneStyle lipgloss.Style // dimmed-border italic variant; the style-free live reasoning body is de-emphasized by the pane border, never body SGR
+	streamingThinkingPaneStyle lipgloss.Style // muted-border italic variant; the style-free live reasoning body is de-emphasized by the pane border, never body SGR
 	errorPaneStyle             lipgloss.Style // the same pane with the error-colored border
 	stoppedPaneStyle           lipgloss.Style // the same pane with the stopped (accent-dimmed) border
-	streamingPaneStyle         lipgloss.Style // left-bordered pane for messages still being streamed (dimmed accent)
-	streamingErrorPaneStyle    lipgloss.Style // left-bordered pane for streaming error-prefix messages (dimmed error)
+	streamingPaneStyle         lipgloss.Style // left-bordered pane for messages still being streamed (neutral muted color)
+	streamingErrorPaneStyle    lipgloss.Style // left-bordered pane for streaming error-prefix messages (neutral muted color)
 	userBubbleStyle            lipgloss.Style // the carded background fill for user prompts
 	thinkingStyle              lipgloss.Style // the ≡ collapsed reasoning hint
 	toolStyle                  lipgloss.Style // the ⊕ tool-entry line (uncategorized fallback)
@@ -306,6 +306,9 @@ func themeFor(name string) Theme {
 
 // newTheme builds a Theme from its palette entries and rail hues; the derived styles draw from them.
 func newTheme(accent, err, ok, shell, file, web, skill, thinking, text, bubble, selectionBg color.Color, rail [3]color.Color) Theme {
+	// Live panes use a neutral muted color so their contrast is consistent
+	// across accent palettes and remains readable against dark backgrounds.
+	streaming := lipgloss.Color("#667085")
 	th := Theme{
 		accent:      accent,
 		error:       err,
@@ -327,11 +330,11 @@ func newTheme(accent, err, ok, shell, file, web, skill, thinking, text, bubble, 
 			PaddingLeft(2).PaddingRight(2).PaddingTop(1).PaddingBottom(1),
 		agentPaneStyle:             answerPane(accent),
 		thinkingPaneStyle:          borderedPane(thinking).Italic(true),
-		streamingThinkingPaneStyle: borderedPane(dimmed(thinking, 0.45)).Italic(true),
+		streamingThinkingPaneStyle: borderedPane(streaming).Italic(true),
 		errorPaneStyle:             answerPane(err),
 		stoppedPaneStyle:           answerPane(dimmed(accent, 0.6)),
-		streamingPaneStyle:         answerPane(dimmed(accent, 0.45)),
-		streamingErrorPaneStyle:    answerPane(dimmed(err, 0.45)),
+		streamingPaneStyle:         answerPane(streaming),
+		streamingErrorPaneStyle:    answerPane(streaming),
 		thinkingStyle:              lipgloss.NewStyle().Italic(true).Foreground(thinking),
 		toolStyle:                  lipgloss.NewStyle().Faint(true),
 		toolShellStyle:             lipgloss.NewStyle().Foreground(shell),

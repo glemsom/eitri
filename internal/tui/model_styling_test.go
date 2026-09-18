@@ -305,8 +305,8 @@ func TestModel_stylingStreamingThinkingPaneVariant(t *testing.T) {
 	// The streaming thinking pane border is dimmed (mirroring the streaming
 	// answer pane) so the streaming-vs-settled cue lives on the border, not the
 	// body text.
-	if !strings.Contains(thinkRows[0], "\x1b[38;2;38;42;61m") {
-		t.Errorf("streaming thinking pane border should carry the dimmed thinking hue (38;42;61), got row: %q", thinkRows[0])
+	if !strings.Contains(thinkRows[0], "\x1b[38;2;102;112;133m") {
+		t.Errorf("streaming thinking pane border should carry the muted live-render hue (102;112;133), got row: %q", thinkRows[0])
 	}
 	// The streaming thinking body is plain text de-emphasized by the dimmed
 	// pane border only: italic (`\x1b[3m`) opens the text run, with no faint

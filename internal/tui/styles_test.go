@@ -253,24 +253,17 @@ func TestTheme_streamingErrorPaneStyle(t *testing.T) {
 	}
 }
 
-func TestTheme_streamingPaneDistinctAcrossThemes(t *testing.T) {
+func TestTheme_streamingPaneUsesSharedMutedColor(t *testing.T) {
 	t.Parallel()
-	themes := map[string]Theme{
-		"default":     defaultTheme,
-		"dracula":     newDraculaTheme(),
-		"tokyo-night": newTokyoNightTheme(),
-	}
-	seen := map[color.Color]string{}
-	for name, th := range themes {
+	themes := []Theme{defaultTheme, newDraculaTheme(), newTokyoNightTheme()}
+	for _, th := range themes {
 		got := th.streamingPaneStyle.GetBorderLeftForeground()
 		if got == nil {
-			t.Errorf("%s: streaming pane border foreground is nil", name)
-			continue
+			t.Fatal("streaming pane border foreground is nil")
 		}
-		if prev, dup := seen[got]; dup {
-			t.Errorf("%s streaming pane color %v collides with %s", name, got, prev)
+		if got != lipgloss.Color("#667085") {
+			t.Errorf("streaming pane color = %v, want #667085", got)
 		}
-		seen[got] = name
 	}
 }
 
