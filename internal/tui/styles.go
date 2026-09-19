@@ -33,7 +33,7 @@ type Theme struct {
 	streamingPaneStyle         lipgloss.Style // left-bordered pane for messages still being streamed (neutral muted color)
 	streamingErrorPaneStyle    lipgloss.Style // left-bordered pane for streaming error-prefix messages (neutral muted color)
 	userBubbleStyle            lipgloss.Style // the carded background fill for user prompts
-	thinkingStyle              lipgloss.Style // the ≡ collapsed reasoning hint
+	thinkingStyle              lipgloss.Style // the reasoning header marker (≡ collapsed, 🧠 expanded)
 	toolStyle                  lipgloss.Style // the 🧰 tool-entry line (uncategorized fallback)
 	toolShellStyle             lipgloss.Style // the 🐚 tool-entry line, shell category
 	toolWebStyle               lipgloss.Style // the 🌐 tool-entry line, web category

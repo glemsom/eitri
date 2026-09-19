@@ -64,8 +64,8 @@ func failurePrefix() string { return lookup("warning") + " " }
 // stoppedMarker returns the suffix marking a user-stopped turn's partial output ("⏹ stopped"). renderHistory appends it under the stopped message's pane so the aborted turn reads as deliberately stopped, never as an error.
 func stoppedMarker() string { return lookup("stopped") + " stopped" }
 
-// toolGlyph maps a tool name to its per-tool icon.
-func toolGlyph(name string) string {
+// toolIcon maps a tool name to its per-tool icon.
+func toolIcon(name string) string {
 	switch name {
 	case "bash":
 		return lookup("toolBash")

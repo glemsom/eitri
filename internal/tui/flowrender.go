@@ -478,8 +478,8 @@ func renderAnswerBlockCached(cache *liveMarkdownCache, theme Theme, config strin
 
 // toolEntryLabel renders the category-colored icon+tool label part of the entry head.
 func toolEntryLabel(te toolEntry) string {
-	glyph := toolGlyph(te.name)
-	return glyph + " " + te.name
+	icon := toolIcon(te.name)
+	return icon + " " + te.name
 }
 
 // toolEntryArgs renders the dimmed detail part of the entry head: the display args hint.

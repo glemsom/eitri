@@ -174,7 +174,7 @@ func TestModel_stylingToolCategoryColors(t *testing.T) {
 		{"open_in_browser", "\x1b[38;2;187;154;247m"},
 		{"skill", "\x1b[38;2;255;135;215m"},
 	}
-	toolGlyphs := map[string]string{
+	toolIcons := map[string]string{
 		"bash":            "🐚\ufe0f",
 		"open_in_browser": "🌐\ufe0f",
 		"skill":           "✨\ufe0f",
@@ -182,16 +182,16 @@ func TestModel_stylingToolCategoryColors(t *testing.T) {
 	for _, tc := range cases {
 		m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: tc.tool, Args: "{}"}})
 		m = feedToolUpdate(t, &m, feed, ToolUpdate{Result: &ToolResult{Name: tc.tool, Result: "done"}})
-		glyph := toolGlyphs[tc.tool]
-		line := lineContaining(view(m), glyph+" "+tc.tool)
+		icon := toolIcons[tc.tool]
+		line := lineContaining(view(m), icon+" "+tc.tool)
 		if line == "" {
-			t.Fatalf("expected %s %s entry, got: %q", glyph, tc.tool, view(m))
+			t.Fatalf("expected %s %s entry, got: %q", icon, tc.tool, view(m))
 		}
 		if !strings.Contains(line, tc.hue) {
-			t.Errorf("%s %s entry = %q, want category hue %q", glyph, tc.tool, line, tc.hue)
+			t.Errorf("%s %s entry = %q, want category hue %q", icon, tc.tool, line, tc.hue)
 		}
-		if !strings.Contains(line, glyph) {
-			t.Errorf("%s %s entry lost its glyph, got: %q", glyph, tc.tool, line)
+		if !strings.Contains(line, icon) {
+			t.Errorf("%s %s entry lost its icon, got: %q", icon, tc.tool, line)
 		}
 	}
 

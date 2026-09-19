@@ -62,7 +62,7 @@ func TestRoleMark_charter(t *testing.T) {
 	}
 }
 
-func TestToolGlyph_charter(t *testing.T) {
+func TestToolIcon_charter(t *testing.T) {
 	cases := []struct {
 		name string
 		want string
@@ -73,8 +73,8 @@ func TestToolGlyph_charter(t *testing.T) {
 		{"unknown", "🧰\ufe0f"},
 	}
 	for _, c := range cases {
-		if got := toolGlyph(c.name); got != c.want {
-			t.Errorf("toolGlyph(%q) = %q, want %q", c.name, got, c.want)
+		if got := toolIcon(c.name); got != c.want {
+			t.Errorf("toolIcon(%q) = %q, want %q", c.name, got, c.want)
 		}
 	}
 }
