@@ -49,6 +49,38 @@ func TestGradientRule_blendsAccentToSkillToWeb(t *testing.T) {
 	}
 }
 
+// bundledThemeNames is every explicit palette a user can select. "auto"
+// resolves through the terminal environment and is covered by the theme
+// resolution tests, so the gradient's per-palette contract runs over these.
+var bundledThemeNames = []string{
+	"dark", "dracula", "tokyo-night", "pink", "light", "nord",
+	"gruvbox", "solarized", "dark-daltonized", "light-daltonized",
+}
+
+func TestGradientRule_everyBundledThemeBlendsThreeHues(t *testing.T) {
+	t.Parallel()
+	const width = 40
+	for _, name := range bundledThemeNames {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			th := themeFor(name)
+			rule := th.gradientRule(width)
+			if plain := ansiStrip(rule); plain != strings.Repeat("─", width) {
+				t.Fatalf("plain = %q, want %d rule cells", plain, width)
+			}
+			if w := lipgloss.Width(rule); w != width {
+				t.Fatalf("display width = %d, want %d", w, width)
+			}
+			for _, hue := range []color.Color{th.accent, th.skill, th.web} {
+				if !strings.Contains(rule, colorSGR(hue)) {
+					t.Errorf("gradient for %s missing hue %s", name, colorSGR(hue))
+				}
+			}
+		})
+	}
+}
+
 func TestGradientRule_nilPaletteFallsBackToPlainRule(t *testing.T) {
 	t.Parallel()
 	th := renderSurfaceTestTheme()
