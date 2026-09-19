@@ -18,10 +18,11 @@ func busyLine(idx int, p Phase) string {
 
 // forgeBusyLine is the branded busy-panel copy: same spinner cadence as busyLine, with phase-specific smithing verbs.
 func forgeBusyLine(idx int, p Phase) string {
+	icon := phaseIcon(p)
 	if !motionEnabled() || len(busySpinnerFrames) == 0 {
-		return "… forging"
+		return icon + "  … forging"
 	}
-	return string(busySpinnerFrames[idx%len(busySpinnerFrames)]) + "  " + forgeVerb(p)
+	return icon + "  " + string(busySpinnerFrames[idx%len(busySpinnerFrames)]) + "  " + forgeVerb(p)
 }
 
 func forgeVerb(p Phase) string {

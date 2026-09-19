@@ -15,6 +15,9 @@ var glyphInventory = map[string]glyph{
 	"toolWeb":             {"◎", "glyph"},
 	"toolGeneric":         {"⊕", "glyph"},
 	"reasoning":           {"≡", "glyph"},
+	"phaseReasoning":      {"🧠\uFE0F", "icon"},
+	"phaseWorking":        {"⚒️", "icon"},
+	"phaseAnswering":      {"✍️", "icon"},
 	"userRole":            {"🧑\ufe0f", "icon"},
 	"assistantRole":       {"⚒️", "icon"},
 	"brand":               {"⚒️", "icon"},
@@ -78,6 +81,18 @@ func assistantRoleMark() string { return lookup("assistantRole") }
 
 // brandMark returns the ⚒️ brand icon.
 func brandMark() string { return lookup("brand") }
+
+// phaseIcon returns the static phase badge for the forge busy panel.
+func phaseIcon(p Phase) string {
+	switch p {
+	case PhaseReasoning:
+		return lookup("phaseReasoning")
+	case PhaseAnswering:
+		return lookup("phaseAnswering")
+	default:
+		return lookup("phaseWorking")
+	}
+}
 
 // focusMarker returns the ▸ cursor glyph prefixing a focused collapsible block's hint/head line.
 func focusMarker() string { return lookup("focus") }
