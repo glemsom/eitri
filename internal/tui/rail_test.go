@@ -527,7 +527,7 @@ func TestRailRenderModelWide(t *testing.T) {
 	r := NewRail("opencode-go", "deepseek-v4-flash", "high", false, "sess-1", "/tmp/sess-1")
 	view := r.render(telemetry.NewTelemetry("deepseek-v4-flash", "high", false, 250), defaultTheme, 50)
 
-	if !strings.Contains(view, "provider     opencode-go") || !strings.Contains(view, "model        deepseek-v4-flash") {
+	if !strings.Contains(view, "provider    opencode-go") || !strings.Contains(view, "model       deepseek-v4-flash") {
 		t.Errorf("rail MODEL should show separated provider/model at wide width 50, got: %q", view)
 	}
 	if strings.Contains(view, "deepseek-v4-f…") {
@@ -630,7 +630,7 @@ func TestRailWideValuesFuller(t *testing.T) {
 	if !strings.Contains(defView, "provider opencode-go") || !strings.Contains(defView, "model deepseek-v4-flash") {
 		t.Errorf("default width should show separated provider/model, got: %q", defView)
 	}
-	if !strings.Contains(wideView, "provider       opencode-go") || !strings.Contains(wideView, "model          deepseek-v4-flash") {
+	if !strings.Contains(wideView, "provider      opencode-go") || !strings.Contains(wideView, "model         deepseek-v4-flash") {
 		t.Errorf("wide width should show separated provider/model, got: %q", wideView)
 	}
 	defTokens := lineContaining(defView, "tokens")
@@ -647,7 +647,7 @@ func TestRailWideValuesFuller(t *testing.T) {
 
 func TestRail_truncateCellWidthWideRunes(t *testing.T) {
 	r := &Rail{}
-	contentWidth := func(rail int) int { return rail - 2 }
+	contentWidth := func(rail int) int { return rail }
 	cases := []struct {
 		key, val string
 		rail     int
@@ -673,13 +673,13 @@ func TestRailStatsContextMeterStates(t *testing.T) {
 
 	empty := r.renderStats(te, defaultTheme, 36)
 	emptyCtx := lineContaining(empty, "ctx")
-	if !strings.Contains(ansiStrip(emptyCtx), "ctx        0") || strings.Contains(ansiStrip(emptyCtx), "[") {
+	if !strings.Contains(ansiStrip(emptyCtx), "ctx       0") || strings.Contains(ansiStrip(emptyCtx), "[") {
 		t.Fatalf("empty ctx should render numeric without meter, got: %q", empty)
 	}
 
 	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Ctx: 75_000})
 	normal := r.renderStats(te, defaultTheme, 36)
-	if !strings.Contains(ansiStrip(normal), "ctx        75.0k [===---]") {
+	if !strings.Contains(ansiStrip(normal), "ctx       75.0k [===---]") {
 		t.Fatalf("normal ctx meter missing, got: %q", normal)
 	}
 	if strings.Contains(lineContaining(normal, "ctx 75.0k"), "38;2;247;118;142") {
@@ -688,7 +688,7 @@ func TestRailStatsContextMeterStates(t *testing.T) {
 
 	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Ctx: 150_000})
 	warn := r.renderStats(te, defaultTheme, 36)
-	if !strings.Contains(ansiStrip(warn), "ctx        150.0k [======]") {
+	if !strings.Contains(ansiStrip(warn), "ctx       150.0k [======]") {
 		t.Fatalf("warning ctx meter missing, got: %q", warn)
 	}
 	warnLine := lineContaining(warn, "150.0k")

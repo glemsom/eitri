@@ -47,15 +47,20 @@ const presizeTerminalWidth = constants.PresizeTerminalWidth
 
 // line appends one indented rail entry, truncating an over-long row with a trailing ellipsis so the rail stays single-line.
 func (r *Rail) line(b *strings.Builder, key, val string, railWidth int) {
-	s := "  " + key
+	s := railIndent + key
 	if val != "" {
 		s += " " + val
 	}
-	contentWidth := railWidth - 2
-	if lipgloss.Width(s) > contentWidth {
-		s = r.truncateCellWidth(s, contentWidth-1) + "…"
+	b.WriteString(r.truncateRow(s, railWidth) + "\n")
+}
+
+// truncateRow caps a rail row at railWidth display cells, replacing any overflow
+// with a trailing ellipsis so the row stays single-line.
+func (r *Rail) truncateRow(s string, railWidth int) string {
+	if lipgloss.Width(s) > railWidth {
+		return r.truncateCellWidth(s, railWidth-1) + "…"
 	}
-	b.WriteString(s + "\n")
+	return s
 }
 
 // truncateCellWidth keeps the longest rune prefix of s whose display-cell width
@@ -90,14 +95,17 @@ func railKeyWidth(railWidth int) int {
 // minWidthRail is the rail width at which aligned key-value rendering kicks in.
 const minWidthRail = 36
 
+// railIndent indents rail body rows so their first column lines up under the
+// header label, which begins after the two-cell section icon and its space.
+const railIndent = "   "
+
 // lineAligned appends one indented rail entry with the key padded to keyWidth columns, aligning values at a consistent column for readability at wider widths.
 func (r *Rail) lineAligned(b *strings.Builder, key, val string, keyWidth, railWidth int) {
 	if keyWidth == 0 {
 		r.line(b, key, val, railWidth)
 		return
 	}
-	indent := "  "
-	keyCol := indent + key
+	keyCol := railIndent + key
 	target := keyColWidth(keyWidth)
 	if pw := lipgloss.Width(keyCol); pw < target {
 		keyCol += strings.Repeat(" ", target-pw)
@@ -106,11 +114,7 @@ func (r *Rail) lineAligned(b *strings.Builder, key, val string, keyWidth, railWi
 	if val != "" {
 		s += " " + val
 	}
-	contentWidth := railWidth - 2
-	if lipgloss.Width(s) > contentWidth {
-		s = r.truncateCellWidth(s, contentWidth-1) + "…"
-	}
-	b.WriteString(s + "\n")
+	b.WriteString(r.truncateRow(s, railWidth) + "\n")
 }
 
 // keyColWidth returns the actual column width for a padded key column.
