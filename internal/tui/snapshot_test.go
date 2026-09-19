@@ -166,6 +166,19 @@ func TestSnapshot_frames(t *testing.T) {
 			Theme: theme, Provider: "deepseek", Model: "deepseek-v4-flash", ReasoningEffort: "high",
 		}, 130, 40)
 		writeFrame(t, out, "10_"+theme, tm)
+
+		// The idle welcome is only drawn on an empty transcript, so render the
+		// mid-ember idle frame from a fresh model for the same palette.
+		emDeps, _ := snapshotDeps(config.Config{
+			Theme: theme, Provider: "deepseek", Model: "deepseek-v4-flash", ReasoningEffort: "high",
+		})
+		em := NewModelCfg(emDeps)
+		em = resizeTo(t, em, 130, 40)
+		em.tx.armIdleEmber()
+		for range 6 {
+			em = upd(t, em, idleEmberTickMsg{})
+		}
+		writeFrame(t, out, "10b_"+theme+"_ember", em)
 	}
 
 	sm := scriptedChat(t, config.Config{
