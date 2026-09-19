@@ -364,7 +364,16 @@ const (
 
 // railHeader renders a rail section header in its section's hue.
 func (th Theme) railHeader(s railSection, text string) string {
-	return th.railHeaderStyles[s].Render(text)
+	icon := ""
+	switch s {
+	case railStats:
+		icon = lookup("railStats") + " "
+	case railContext:
+		icon = lookup("railContext") + " "
+	case railModel:
+		icon = lookup("railModel") + " "
+	}
+	return th.railHeaderStyles[s].Render(icon + text)
 }
 
 // railBody renders a rail section's body lines in its section's hue.

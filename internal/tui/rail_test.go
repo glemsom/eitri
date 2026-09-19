@@ -141,6 +141,32 @@ func TestRailRenderSectionHues(t *testing.T) {
 	}
 }
 
+func TestRailRenderSectionIcons(t *testing.T) {
+	t.Parallel()
+	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
+	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c", "/tmp/eitri-9f2c")
+	view := r.render(te, defaultTheme, defaultRailWidth)
+
+	cases := []struct {
+		section string
+		icon    string
+	}{
+		{"STATS", lookup("railStats")},
+		{"CONTEXT", lookup("railContext")},
+		{"MODEL", lookup("railModel")},
+	}
+	for _, tc := range cases {
+		hdr := lineContaining(view, tc.section)
+		if hdr == "" {
+			t.Fatalf("rail missing %s section, got: %q", tc.section, view)
+		}
+		if !strings.Contains(hdr, tc.icon) {
+			t.Errorf("%s header = %q, missing icon %q", tc.section, hdr, tc.icon)
+		}
+	}
+}
+
 func TestRailRenderStatsNoGraph(t *testing.T) {
 	t.Parallel()
 	te := telemetry.NewTelemetry("deepseek-v4-flash", "low", true, 250)
