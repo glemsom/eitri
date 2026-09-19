@@ -82,36 +82,49 @@ func TestGradientRule_everyBundledThemeBlendsThreeHues(t *testing.T) {
 }
 
 // TestRenderTitledPanel_gradientContractEveryTheme guards the chrome panel's
-// top border: every band panel built on the titled-panel primitive must carry
-// the same accent -> web gradient as the idle banner for every bundled palette
-// and at narrow and wide widths, with the plain text and display width intact.
+// top border: every band panel built on the titled-panel primitive draws the
+// same accent -> web sweep as the idle banner, on every bundled palette and at
+// narrow and wide widths.
 func TestRenderTitledPanel_gradientContractEveryTheme(t *testing.T) {
 	t.Parallel()
 	const title = "Commands"
+	// wantSkill is only asserted where the rule carries every quantised band and
+	// the title does not cover the middle one; a claim of all three hues at every
+	// width would pass by hiding the skill band behind the title.
+	widths := []struct {
+		width     int
+		wantTitle bool
+		wantSkill bool
+	}{
+		{width: 8, wantTitle: false, wantSkill: false},
+		{width: 20, wantTitle: true, wantSkill: false},
+		{width: 100, wantTitle: true, wantSkill: true},
+	}
 	for _, name := range bundledThemeNames {
-		name := name
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			th := themeFor(name)
-			for _, width := range []int{8, 20, 100} {
-				width := width
-				t.Run(fmt.Sprintf("width/%d", width), func(t *testing.T) {
+			for _, tc := range widths {
+				t.Run(fmt.Sprintf("width/%d", tc.width), func(t *testing.T) {
 					t.Parallel()
-					border := strings.Split(renderTitledPanel(th, title, width, th.bandSeparatorStyle, "body"), "\n")[0]
-					if got := lipgloss.Width(border); got != width {
-						t.Fatalf("top border width = %d, want %d: %q", got, width, border)
+					border := strings.Split(renderTitledPanel(th, title, tc.width, th.bandSeparatorStyle, "body"), "\n")[0]
+					if got := lipgloss.Width(border); got != tc.width {
+						t.Fatalf("top border width = %d, want %d: %q", got, tc.width, border)
 					}
 					plain := ansiStrip(border)
 					if !strings.HasPrefix(plain, "╭") || !strings.HasSuffix(plain, "╮") {
 						t.Fatalf("top border plain = %q, want ╭...╮", plain)
 					}
-					fits := lipgloss.Width(title)+3 <= width-2
-					if fits != strings.Contains(plain, title) {
-						t.Errorf("top border plain = %q, title shown = %v, want %v at width %d", plain, strings.Contains(plain, title), fits, width)
+					if got := strings.Contains(plain, title); got != tc.wantTitle {
+						t.Errorf("top border plain = %q, title shown = %v, want %v", plain, got, tc.wantTitle)
 					}
-					for _, hue := range []color.Color{th.accent, th.web} {
+					hues := []color.Color{th.accent, th.web}
+					if tc.wantSkill {
+						hues = append(hues, th.skill)
+					}
+					for _, hue := range hues {
 						if !strings.Contains(border, colorSGR(hue)) {
-							t.Errorf("gradient for %s at width %d missing hue %s: %q", name, width, colorSGR(hue), border)
+							t.Errorf("gradient for %s at width %d missing hue %s: %q", name, tc.width, colorSGR(hue), border)
 						}
 					}
 				})
