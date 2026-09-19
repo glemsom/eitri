@@ -54,11 +54,18 @@ func (r *Rail) line(b *strings.Builder, key, val string, railWidth int) {
 	b.WriteString(r.truncateRow(s, railWidth) + "\n")
 }
 
-// truncateRow caps a rail row at railWidth display cells, replacing any overflow
+// railRowOverhead is the cells styledRail's one-cell left border and one-cell
+// left padding consume beyond a row's text, so a row must stay within
+// railWidth minus this much or lipgloss word-wraps its tail onto the next line.
+const railRowOverhead = 2
+
+// truncateRow caps a rail row at the width styledRail can render without
+// wrapping (railWidth minus its border and padding), replacing any overflow
 // with a trailing ellipsis so the row stays single-line.
 func (r *Rail) truncateRow(s string, railWidth int) string {
-	if lipgloss.Width(s) > railWidth {
-		return r.truncateCellWidth(s, railWidth-1) + "…"
+	budget := railWidth - railRowOverhead
+	if lipgloss.Width(s) > budget {
+		return r.truncateCellWidth(s, budget-1) + "…"
 	}
 	return s
 }

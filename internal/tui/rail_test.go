@@ -49,7 +49,9 @@ func TestRailRenderStats(t *testing.T) {
 	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
 
 	r := NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-9f2c1a", "/tmp/eitri-9f2c1a")
-	view := r.render(te, defaultTheme, defaultRailWidth)
+	// Width 35 keeps the unpadded single-space layout yet leaves enough room
+	// for the full token in/out readout, which the default width truncates.
+	view := r.render(te, defaultTheme, 35)
 
 	if !strings.Contains(view, "STATS") {
 		t.Errorf("rail missing STATS section, got: %q", view)
@@ -74,7 +76,9 @@ func TestRailRenderStats(t *testing.T) {
 func TestRailRenderModel(t *testing.T) {
 	t.Parallel()
 	r := NewRail("opencode-go", "deepseek-v4-flash", "high", false, "sess-1", "/tmp/sess-1")
-	view := r.render(telemetry.NewTelemetry("deepseek-v4-flash", "high", false, 250), defaultTheme, defaultRailWidth)
+	// Width 35 keeps the unpadded single-space layout yet fits the full mode
+	// line, which the default width truncates.
+	view := r.render(telemetry.NewTelemetry("deepseek-v4-flash", "high", false, 250), defaultTheme, 35)
 
 	if !strings.Contains(view, "MODEL") {
 		t.Errorf("rail missing MODEL section, got: %q", view)
@@ -647,7 +651,7 @@ func TestRailWideValuesFuller(t *testing.T) {
 
 func TestRail_truncateCellWidthWideRunes(t *testing.T) {
 	r := &Rail{}
-	contentWidth := func(rail int) int { return rail }
+	contentWidth := func(rail int) int { return rail - railRowOverhead }
 	cases := []struct {
 		key, val string
 		rail     int
