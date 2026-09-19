@@ -21,12 +21,9 @@ func TestGlyphInventory_charter(t *testing.T) {
 
 func TestGlyphInventory_widthStability(t *testing.T) {
 	for name, ent := range glyphInventory {
-		got := ansi.StringWidth(ent.utf8)
-		if got < 1 {
+		if got := ansi.StringWidth(ent.utf8); got < 1 {
 			t.Errorf("glyphInventory[%q] utf8=%q has zero or negative width", name, ent.utf8)
 		}
-		_ = name
-		_ = got
 	}
 }
 
