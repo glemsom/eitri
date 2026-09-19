@@ -386,22 +386,24 @@ func (m Model) forgeTitle() string {
 		highlights[glyphs[start+i]] = levels[i]
 	}
 
+	glintStyle := func(level float64) lipgloss.Style {
+		s := lipgloss.NewStyle().Foreground(dimmed(accent, level))
+		if level == 1 {
+			s = s.Bold(true)
+		}
+		return s
+	}
+
 	var b strings.Builder
 	for i, r := range title {
 		style := muted
 		if level, ok := highlights[i]; ok {
-			style = lipgloss.NewStyle().Foreground(dimmed(accent, level))
-			if level == 1 {
-				style = style.Bold(true)
-			}
+			style = glintStyle(level)
 		} else if i > 0 && r == '\ufe0f' {
 			// VS16 inherits the style of its base character so the emoji
 			// presentation stays intact even when the base is highlighted.
 			if level, ok := highlights[i-1]; ok {
-				style = lipgloss.NewStyle().Foreground(dimmed(accent, level))
-				if level == 1 {
-					style = style.Bold(true)
-				}
+				style = glintStyle(level)
 			}
 		}
 		b.WriteString(style.Render(string(r)))
