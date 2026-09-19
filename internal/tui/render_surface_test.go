@@ -45,7 +45,7 @@ func TestRender_idleWelcome(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := idleWelcome(th, c.width); got != c.want {
+			if got := idleWelcome(th, c.width, 0); got != c.want {
 				t.Errorf("idleWelcome() =\n%q\nwant\n%q", got, c.want)
 			}
 		})
@@ -146,7 +146,7 @@ func TestRender_bandHints(t *testing.T) {
 
 func TestRender_idleWelcome_brandMark(t *testing.T) {
 	th := renderSurfaceTestTheme()
-	got := idleWelcome(th, 2)
+	got := idleWelcome(th, 2, 0)
 
 	for _, want := range []string{"⚒️ Eitri", "──", "⌨ /settings"} {
 		if !strings.Contains(got, want) {
@@ -163,7 +163,7 @@ func TestRender_idleWelcome_ruleWidth(t *testing.T) {
 	for _, w := range cases {
 		w := w
 		t.Run(fmt.Sprintf("width/%d", w), func(t *testing.T) {
-			got := idleWelcome(th, w)
+			got := idleWelcome(th, w, 0)
 			lines := strings.Split(got, "\n")
 			if len(lines) < 3 {
 				t.Fatalf("expected at least 3 lines, got %d", len(lines))
@@ -182,7 +182,7 @@ func TestRender_idleWelcome_ruleWidth(t *testing.T) {
 
 func TestRender_idleWelcome_ruleWidthUTF8(t *testing.T) {
 	th := renderSurfaceTestTheme()
-	got := idleWelcome(th, 40)
+	got := idleWelcome(th, 40, 0)
 	lines := strings.Split(got, "\n")
 	if len(lines) < 3 {
 		t.Fatalf("expected at least 3 lines, got %d", len(lines))

@@ -46,6 +46,8 @@ var glyphInventory = map[string]glyph{
 	"on":                  {"✓", "glyph"},
 	"off":                 {"○", "glyph"},
 	"palette":             {"██", "glyph"},
+	"meterFull":           {"█", "glyph"},
+	"meterEmpty":          {"░", "glyph"},
 	"cursor":              {"┃", "glyph"},
 }
 

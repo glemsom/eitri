@@ -32,7 +32,7 @@ func TestRailRegressionMetersAndModelSessionTruncation(t *testing.T) {
 
 	view := r.render(te, defaultTheme, minWidthRail)
 	plainView := ansiStrip(view)
-	for _, want := range []string{"cache", "80%", "[=====", "ctx", "150.0k", "MODEL", "CONTEXT", "…"} {
+	for _, want := range []string{"cache", "80%", "█████░", "ctx", "150.0k", "MODEL", "CONTEXT", "…"} {
 		if !strings.Contains(plainView, want) {
 			t.Fatalf("rail regression view missing %q:\n%s", want, plainView)
 		}

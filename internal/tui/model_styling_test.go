@@ -493,17 +493,23 @@ func TestModel_stylingPaletteCentralized(t *testing.T) {
 	_ = view(m)
 }
 
-// TestRenderTitledPanel_keepsBorderColorAcrossStyledTitle guards against the
-// forged title's own inline color reset stripping the panel color from the top
-// border's trailing fill: the whole top border must read the same color as the
-// sides and bottom.
-func TestRenderTitledPanel_keepsBorderColorAcrossStyledTitle(t *testing.T) {
+// TestRenderTitledPanel_gradientTopBorderSurvivesStyledTitle guards that the
+// gradient top border survives a title's own inline color reset: every fill
+// cell carries its hue independently, so the border still reaches the web hue
+// after the title.
+func TestRenderTitledPanel_gradientTopBorderSurvivesStyledTitle(t *testing.T) {
+	th := newDefaultTheme()
 	panel := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
 	coloredTitle := lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("forge")
-	got := renderTitledPanel(coloredTitle, 20, panel, "body")
+	got := renderTitledPanel(th, coloredTitle, 20, panel, "body")
 	border := strings.Split(got, "\n")[0]
-	code := strings.SplitN(panel.Render("M"), "M", 2)[0]
-	if strings.Count(border, code) != 2 {
-		t.Fatalf("top border must re-apply the panel color after the title reset (want 2 panel-color segments: opening + trailing fill, got %d): %q", strings.Count(border, code), border)
+	if !strings.Contains(border, "forge") {
+		t.Fatalf("top border must keep the title, got: %q", border)
+	}
+	if !strings.Contains(border, colorSGR(th.accent)) || !strings.Contains(border, colorSGR(th.web)) {
+		t.Fatalf("top border must carry the accent->web gradient, got: %q", border)
+	}
+	if width := lipgloss.Width(border); width != 20 {
+		t.Fatalf("top border width = %d, want 20: %q", width, border)
 	}
 }

@@ -315,6 +315,10 @@ func renderStatsCtxLine(r *Rail, th Theme, liveCtx, railWidth int) string {
 	return line
 }
 
+// railMeter renders a heat meter of the given fraction as a block bar: filled
+// cells in the caller's section hue, empty cells as a faint track. The width
+// vocabulary matches the old ASCII meter (narrow/medium/wide), and the ends are
+// clamped so 0% and 100% stay legible with no off-by-one.
 func railMeter(fraction float64, railWidth int) string {
 	width := 6
 	if railWidth >= 45 {
@@ -330,7 +334,13 @@ func railMeter(fraction float64, railWidth int) string {
 		fraction = 1
 	}
 	filled := int(fraction*float64(width) + 0.5)
-	return "[" + strings.Repeat("=", filled) + strings.Repeat("-", width-filled) + "]"
+	if filled < 0 {
+		filled = 0
+	}
+	if filled > width {
+		filled = width
+	}
+	return strings.Repeat(lookup("meterFull"), filled) + strings.Repeat(lookup("meterEmpty"), width-filled)
 }
 
 // liveContextWarnThreshold is the live context-window size (prompt tokens) at which the STATS ctx line flips to warning styling.

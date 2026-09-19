@@ -670,6 +670,31 @@ func TestRail_truncateCellWidthWideRunes(t *testing.T) {
 	}
 }
 
+func TestRailMeter_blockBar(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		fraction float64
+		rail     int
+		want     string
+	}{
+		{"zero-narrow", 0, 36, "░░░░░░"},
+		{"interior-narrow", 0.4, 36, "██░░░░"},
+		{"full-narrow", 1, 36, "██████"},
+		{"over-full-clamps", 1.5, 36, "██████"},
+		{"negative-clamps", -0.5, 36, "░░░░░░"},
+		{"interior-medium", 0.5, 45, "█████░░░░░"},
+		{"interior-wide", 0.5, 60, "███████░░░░░░░"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := railMeter(c.fraction, c.rail); got != c.want {
+				t.Errorf("railMeter(%v, %d) = %q, want %q", c.fraction, c.rail, got, c.want)
+			}
+		})
+	}
+}
+
 func TestRailStatsContextMeterStates(t *testing.T) {
 	t.Parallel()
 	r := NewRail("opencode-go", "deepseek", "low", true, "sid", "/tmp/sid")
@@ -677,13 +702,13 @@ func TestRailStatsContextMeterStates(t *testing.T) {
 
 	empty := r.renderStats(te, defaultTheme, 36)
 	emptyCtx := lineContaining(empty, "ctx")
-	if !strings.Contains(ansiStrip(emptyCtx), "ctx       0") || strings.Contains(ansiStrip(emptyCtx), "[") {
+	if !strings.Contains(ansiStrip(emptyCtx), "ctx       0") || strings.Contains(ansiStrip(emptyCtx), "░") {
 		t.Fatalf("empty ctx should render numeric without meter, got: %q", empty)
 	}
 
 	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Ctx: 75_000})
 	normal := r.renderStats(te, defaultTheme, 36)
-	if !strings.Contains(ansiStrip(normal), "ctx       75.0k [===---]") {
+	if !strings.Contains(ansiStrip(normal), "ctx       75.0k ███░░░") {
 		t.Fatalf("normal ctx meter missing, got: %q", normal)
 	}
 	if strings.Contains(lineContaining(normal, "ctx 75.0k"), "38;2;247;118;142") {
@@ -692,7 +717,7 @@ func TestRailStatsContextMeterStates(t *testing.T) {
 
 	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Ctx: 150_000})
 	warn := r.renderStats(te, defaultTheme, 36)
-	if !strings.Contains(ansiStrip(warn), "ctx       150.0k [======]") {
+	if !strings.Contains(ansiStrip(warn), "ctx       150.0k ██████") {
 		t.Fatalf("warning ctx meter missing, got: %q", warn)
 	}
 	warnLine := lineContaining(warn, "150.0k")
@@ -710,9 +735,9 @@ func TestRailStatsCacheMeterStates(t *testing.T) {
 		miss int
 		want string
 	}{
-		{"zero", 0, 10, "0% [------]"},
-		{"partial", 4, 6, "40% [==----]"},
-		{"full", 10, 0, "100% [======]"},
+		{"zero", 0, 10, "0% ░░░░░░"},
+		{"partial", 4, 6, "40% ██░░░░"},
+		{"full", 10, 0, "100% ██████"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			te := telemetry.NewTelemetry("deepseek", "low", true, 250)

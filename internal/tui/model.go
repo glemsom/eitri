@@ -344,6 +344,9 @@ func (m Model) Init() tea.Cmd {
 	if m.runtime.HasEvents() {
 		cmds = append(cmds, m.runtime.Wait())
 	}
+	if cmd := m.armIdleEmber(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
 	cmds = append(cmds, clockTick())
 	return tea.Batch(cmds...)
 }
@@ -520,6 +523,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 		cmds = append(cmds, m.trackComposer())
 		m.syncComposerHeight()
+		cmds = append(cmds, m.armIdleEmber())
 		return m, tea.Batch(cmds...)
 
 	case tea.MouseMsg:
@@ -533,7 +537,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case turnDoneMsg:
 		m.runtime.Commit(m.tx, msgi)
 		m.syncComposerRail()
-		return m, nil
+		return m, m.armIdleEmber()
 	case clockTickMsg:
 		return m, clockTick()
 
@@ -553,6 +557,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tx.busyPulse--
 		}
 		return m, spinnerTick()
+
+	case idleEmberTickMsg:
+		if !m.tx.busy && !m.overlayOpen() && motionEnabled() && m.tx.advanceIdleEmber() {
+			return m, idleEmberTick()
+		}
+		m.tx.settleIdleEmber()
+		return m, nil
 
 	case discoverDoneMsg:
 		if m.settings == nil {
@@ -720,6 +731,7 @@ func (m Model) submitPrompt() (tea.Model, tea.Cmd) {
 // acceptance for the turn: re-arming the run ID, draining the merged event
 // feed, and starting the spinner tick so the busy indicator animates.
 func (m *Model) startTurn(prompt string, payload string) tea.Cmd {
+	m.tx.settleIdleEmber()
 	cmd := m.runtime.Begin(m.tx, prompt, payload)
 	m.syncComposerRail()
 	return cmd
@@ -1022,5 +1034,27 @@ func (m Model) applyEvent(update Event) (tea.Model, tea.Cmd) {
 	// under follow, so every event is face damage while the turn streams; once
 	// the feed quiets the loop dies with the clean flag.
 	m, cmd := m.markFaceDamage()
-	return m, tea.Batch(cmd, m.runtime.Wait())
+	return m, tea.Batch(cmd, m.runtime.Wait(), m.armIdleEmber())
+}
+
+// overlayOpen reports whether a modal surface owns the screen, so the idle
+// ember pauses while Settings, Help, or the max-turns prompt is open.
+func (m Model) overlayOpen() bool {
+	return m.settings != nil || m.help != nil || m.prompting
+}
+
+// armIdleEmber re-opens the bounded ember window on activity and returns the
+// tick that drives it. A busy surface, reduced motion, or an open overlay never
+// arms; an already-running ember just has its window extended so no second
+// timer is started.
+func (m *Model) armIdleEmber() tea.Cmd {
+	if m.tx.busy || !motionEnabled() || m.overlayOpen() {
+		return nil
+	}
+	running := m.tx.idleEmberRemaining > 0
+	m.tx.armIdleEmber()
+	if running {
+		return nil
+	}
+	return idleEmberTick()
 }
