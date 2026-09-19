@@ -161,7 +161,7 @@ func TestSnapshot_frames(t *testing.T) {
 	lm = typeText(t, lm, "hello")
 	writeFrame(t, out, "09_light_rail", lm)
 
-	for _, theme := range []string{"nord", "dracula", "solarized", "dark-daltonized"} {
+	for _, theme := range bundledThemeNames {
 		tm := scriptedChat(t, config.Config{
 			Theme: theme, Provider: "deepseek", Model: "deepseek-v4-flash", ReasoningEffort: "high",
 		}, 130, 40)

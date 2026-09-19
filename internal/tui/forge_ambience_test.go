@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"image/color"
+	"slices"
 	"strings"
 	"testing"
 
@@ -46,6 +47,37 @@ func TestGradientRule_blendsAccentToSkillToWeb(t *testing.T) {
 	}
 	if !strings.Contains(rule, colorSGR(th.skill)) {
 		t.Errorf("gradientRule = %q, want the skill hue %q somewhere", rule, colorSGR(th.skill))
+	}
+}
+
+// bundledThemeNames is every explicit palette a user can select. "auto"
+// resolves through the terminal environment and is covered by the theme
+// resolution tests, so the gradient's per-palette contract runs over these.
+var bundledThemeNames = slices.DeleteFunc(slices.Clone(supportedThemes), func(name string) bool {
+	return name == "auto"
+})
+
+func TestGradientRule_everyBundledThemeBlendsThreeHues(t *testing.T) {
+	t.Parallel()
+	const width = 40
+	for _, name := range bundledThemeNames {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			th := themeFor(name)
+			rule := th.gradientRule(width)
+			if plain := ansiStrip(rule); plain != strings.Repeat("─", width) {
+				t.Fatalf("plain = %q, want %d rule cells", plain, width)
+			}
+			if w := lipgloss.Width(rule); w != width {
+				t.Fatalf("display width = %d, want %d", w, width)
+			}
+			for _, hue := range []color.Color{th.accent, th.skill, th.web} {
+				if !strings.Contains(rule, colorSGR(hue)) {
+					t.Errorf("gradient for %s missing hue %s", name, colorSGR(hue))
+				}
+			}
+		})
 	}
 }
 
