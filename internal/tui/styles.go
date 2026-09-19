@@ -12,10 +12,10 @@ type Theme struct {
 	accent      color.Color // the single agent accent used across the surface
 	error       color.Color // semantic color for failures (⚠ errors, ✗ tool outcomes)
 	ok          color.Color // semantic color for successful tool outcomes (✓)
-	shell       color.Color // semantic color for shell tool entries (bash, ⊕)
-	file        color.Color // secondary hue (markdown links, ⊕ fallback)
-	web         color.Color // semantic color for web tool entries (open_in_browser, ⊕)
-	skill       color.Color // secondary hue (markdown images, ⊕ fallback)
+	shell       color.Color // semantic color for shell tool entries (bash, 🐚)
+	file        color.Color // secondary hue (markdown links, 🧰 fallback)
+	web         color.Color // semantic color for web tool entries (open_in_browser, 🌐)
+	skill       color.Color // secondary hue (markdown images, ✨ fallback)
 	thinking    color.Color // de-emphasized chain-of-thought hue (reasoning pane border, ≡ marker)
 	text        color.Color // body text hue for markdown content (mapped from glamour's base 256-color indices)
 	bubble      color.Color
@@ -34,9 +34,10 @@ type Theme struct {
 	streamingErrorPaneStyle    lipgloss.Style // left-bordered pane for streaming error-prefix messages (neutral muted color)
 	userBubbleStyle            lipgloss.Style // the carded background fill for user prompts
 	thinkingStyle              lipgloss.Style // the ≡ collapsed reasoning hint
-	toolStyle                  lipgloss.Style // the ⊕ tool-entry line (uncategorized fallback)
-	toolShellStyle             lipgloss.Style // the ⊕ tool-entry line, shell category
-	toolWebStyle               lipgloss.Style // the ⊕ tool-entry line, web category
+	toolStyle                  lipgloss.Style // the 🧰 tool-entry line (uncategorized fallback)
+	toolShellStyle             lipgloss.Style // the 🐚 tool-entry line, shell category
+	toolWebStyle               lipgloss.Style // the 🌐 tool-entry line, web category
+	toolSkillStyle             lipgloss.Style // the ✨ tool-entry line, skill category
 	outcomeOKStyle             lipgloss.Style // the ✓ tool-outcome tag
 	outcomeErrStyle            lipgloss.Style // the ✗ tool-outcome tag
 	slashSelectStyle           lipgloss.Style // the selected slash-completion candidate
@@ -339,6 +340,7 @@ func newTheme(accent, err, ok, shell, file, web, skill, thinking, text, bubble, 
 		toolStyle:                  lipgloss.NewStyle().Faint(true),
 		toolShellStyle:             lipgloss.NewStyle().Foreground(shell),
 		toolWebStyle:               lipgloss.NewStyle().Foreground(web),
+		toolSkillStyle:             lipgloss.NewStyle().Foreground(skill),
 		outcomeOKStyle:             lipgloss.NewStyle().Foreground(ok),
 		outcomeErrStyle:            lipgloss.NewStyle().Foreground(err),
 		slashSelectStyle:           lipgloss.NewStyle().Bold(true).Foreground(accent),
@@ -421,6 +423,8 @@ func (th Theme) toolCategoryStyle(cat toolCategory) lipgloss.Style {
 		return th.toolShellStyle
 	case catWeb:
 		return th.toolWebStyle
+	case catSkill:
+		return th.toolSkillStyle
 	}
 	return th.toolStyle
 }

@@ -55,7 +55,7 @@ func TestRenderFlow_committedRendersReasoningOnceAtFirstToolBoundary(t *testing.
 	plain := ansiStrip(out)
 
 	ri := strings.Index(plain, "think first")
-	ti := strings.Index(plain, "❯ bash")
+	ti := strings.Index(plain, "🐚️ bash")
 	ai := strings.Index(plain, "Done.")
 	if ri < 0 || ti < 0 || ai < 0 {
 		t.Fatalf("committed flow missing segments ri=%d ti=%d ai=%d:\n%s", ri, ti, ai, plain)
@@ -128,7 +128,7 @@ func TestRenderFlow_liveInterleavesReasoningFragmentsInEmissionOrder(t *testing.
 	plain := ansiStrip(out)
 
 	r1 := strings.Index(plain, "reasoning one")
-	tool := strings.Index(plain, "❯ bash")
+	tool := strings.Index(plain, "🐚️ bash")
 	r2 := strings.Index(plain, "reasoning two")
 	answer := strings.Index(plain, "final answer")
 	if r1 < 0 || tool < 0 || r2 < 0 || answer < 0 {
@@ -296,7 +296,7 @@ func TestRenderFlow_thinkingGateHidesReasoningBody(t *testing.T) {
 	if strings.Contains(plain, "secret") {
 		t.Errorf("thinking-off turn must hide reasoning, got:\n%s", plain)
 	}
-	if !strings.Contains(plain, "❯ bash") || !strings.Contains(plain, "Done") {
+	if !strings.Contains(plain, "🐚️ bash") || !strings.Contains(plain, "Done") {
 		t.Errorf("thinking-off turn must still render tool and answer, got:\n%s", plain)
 	}
 }

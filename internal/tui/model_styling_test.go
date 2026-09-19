@@ -31,7 +31,7 @@ func reasoningPaneRows(t *testing.T, content string) []string {
 	lines := strings.Split(content, "\n")
 	start := -1
 	for i, ln := range lines {
-		if strings.Contains(ln, "≡") {
+		if strings.Contains(ln, "≡") || strings.Contains(ln, "🧠\ufe0f") {
 			start = i + 1
 			break
 		}
@@ -112,8 +112,8 @@ func TestModel_stylingToolOutcomeMarkers(t *testing.T) {
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"true"}`}})
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Result: &ToolResult{Name: "bash", Result: "done\n"}})
 	content := view(m)
-	if !strings.Contains(content, "❯ bash") {
-		t.Errorf("tool glyph ❯ must remain, got: %q", content)
+	if !strings.Contains(content, "🐚\ufe0f bash") {
+		t.Errorf("tool icon 🐚 must remain, got: %q", content)
 	}
 	if !strings.Contains(content, "✓") {
 		t.Errorf("completed tool should carry a ✓ outcome tag, got: %q", content)
@@ -172,10 +172,12 @@ func TestModel_stylingToolCategoryColors(t *testing.T) {
 	}{
 		{"bash", "\x1b[38;2;224;175;104m"},
 		{"open_in_browser", "\x1b[38;2;187;154;247m"},
+		{"skill", "\x1b[38;2;255;135;215m"},
 	}
 	toolGlyphs := map[string]string{
-		"bash":            "❯",
-		"open_in_browser": "◎",
+		"bash":            "🐚\ufe0f",
+		"open_in_browser": "🌐\ufe0f",
+		"skill":           "✨\ufe0f",
 	}
 	for _, tc := range cases {
 		m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: tc.tool, Args: "{}"}})
@@ -195,9 +197,9 @@ func TestModel_stylingToolCategoryColors(t *testing.T) {
 
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Start: &ToolStart{Name: "future_tool", Args: "{}"}})
 	m = feedToolUpdate(t, &m, feed, ToolUpdate{Result: &ToolResult{Name: "future_tool", Result: "done"}})
-	line := lineContaining(view(m), "⊕ future_tool")
+	line := lineContaining(view(m), "🧰\ufe0f future_tool")
 	if line == "" {
-		t.Fatalf("expected ⊕ future_tool entry, got: %q", view(m))
+		t.Fatalf("expected 🧰\ufe0f future_tool entry, got: %q", view(m))
 	}
 	for _, hue := range []string{"38;2;224;175;104", "38;2;125;207;255", "38;2;187;154;247", "38;2;255;135;215"} {
 		if strings.Contains(line, hue) {
