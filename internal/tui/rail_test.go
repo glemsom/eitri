@@ -752,8 +752,7 @@ func TestRailStatsCacheMeterStates(t *testing.T) {
 }
 
 // TestRailMeter_widthVocabularyIsStable locks the narrow/medium/wide tiers so
-// the rail layout cannot shift: 6 cells below 45, 10 cells at 45..59, and 14
-// cells at 60 and above.
+// the rail layout cannot shift.
 func TestRailMeter_widthVocabularyIsStable(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
