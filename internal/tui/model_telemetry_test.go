@@ -104,8 +104,8 @@ func TestModelStatusStripBusySpinner(t *testing.T) {
 	if !strings.Contains(bs, "  Striking the anvil") {
 		t.Errorf("busy status strip missing spinner with double-spaced label, got: %q", bs)
 	}
-	if !strings.Contains(ansiStrip(bs), "⚒️ Eitri is forging") {
-		t.Errorf("busy band missing double-spaced locked panel title, got: %q", bs)
+	if !strings.Contains(ansiStrip(bs), "Eitri is forging") {
+		t.Errorf("busy band missing locked panel title, got: %q", bs)
 	}
 	if !strings.Contains(ansiStrip(bs), "Striking the anvil · Hold steady — composer locked during forging") {
 		t.Errorf("busy band must be a single body line joining the phase verb and the lock copy, got: %q", ansiStrip(bs))

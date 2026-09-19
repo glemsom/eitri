@@ -347,7 +347,7 @@ func (m Model) forgeTitle() string {
 	muted := lipgloss.NewStyle().Foreground(dimmed(accent, 0.65))
 	strong := lipgloss.NewStyle().Foreground(accent)
 	elapsed := forgeElapsed(m)
-	prefix := brandMark() + " Eitri is "
+	prefix := "Eitri is "
 	if !motionEnabled() {
 		return muted.Render(prefix) + strong.Bold(true).Render("forging") + muted.Render(elapsed)
 	}
