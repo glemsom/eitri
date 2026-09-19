@@ -92,3 +92,33 @@ func TestColToRuneIndex_emojiCells(t *testing.T) {
 		}
 	}
 }
+
+// TestCoveredLines_emojiCellAlignment locks that drag-select cell alignment
+// around a two-cell VS16 emoji returns the correct rune substring: both
+// display cells of the emoji map to the base rune, so selecting through the
+// cluster must include the variation selector.
+func TestCoveredLines_emojiCellAlignment(t *testing.T) {
+	line := "ab✏️cd" // runes: a,b,✏,\ufe0f,c,d
+	cases := []struct {
+		name     string
+		from, to int // rune indices after colToRuneIndex conversion
+		want     string
+	}{
+		{"before emoji", 0, 1, "ab"},
+		{"spanning emoji", 0, 3, "ab✏️"},
+		{"after emoji", 0, 5, "ab✏️cd"},
+		{"emoji only", 2, 3, "✏️"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := selectionWeaver{active: true, anchorLine: 0, anchorCol: tc.from, endLine: 0, endCol: tc.to}
+			got, ok := s.coveredLines([]string{line})
+			if !ok {
+				t.Fatalf("coveredLines ok = false, want true")
+			}
+			if got != tc.want {
+				t.Errorf("coveredLines = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

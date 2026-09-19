@@ -2,8 +2,10 @@ package osc52
 
 import (
 	"bytes"
+	"encoding/base64"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 )
 
@@ -70,6 +72,29 @@ func (w *shortWriter) Write(p []byte) (int, error) {
 		return w.max, nil
 	}
 	return len(p), nil
+}
+
+func TestWriteEncodesEmojiBytes(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	text := "✏️ test 🧭" // VS16 pair and wide emoji
+	if err := New(&buf).Write(text); err != nil {
+		t.Fatalf("Write(%q) error = %v, want nil", text, err)
+	}
+	got := buf.String()
+	const prefix = "\x1b]52;c;"
+	const suffix = "\x07"
+	if !strings.HasPrefix(got, prefix) || !strings.HasSuffix(got, suffix) {
+		t.Fatalf("unexpected sequence format: %q", got)
+	}
+	b64 := got[len(prefix) : len(got)-len(suffix)]
+	decoded, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		t.Fatalf("base64 decode error: %v", err)
+	}
+	if string(decoded) != text {
+		t.Errorf("decoded = %q, want %q", string(decoded), text)
+	}
 }
 
 func TestWriteSurfacesShortWrite(t *testing.T) {
