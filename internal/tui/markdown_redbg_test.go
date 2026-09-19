@@ -31,7 +31,7 @@ func TestRenderUserPromptCard_noStrayBackgroundColors(t *testing.T) {
 			if err != nil {
 				t.Fatalf("RenderMarkdown: %v", err)
 			}
-			card := renderUserPromptCard(th, md, 104)
+			card := renderUserPromptCard(th, md, 104, "")
 			_ = os.WriteFile("/tmp/eitri_redbg2.ansi", []byte(card), 0o644)
 
 			bubbleR, bubbleG, bubbleB, _ := th.bubble.RGBA()

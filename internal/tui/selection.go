@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"strings"
+
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
@@ -88,6 +90,22 @@ func (m *Model) mouseToContent(x, y int) (line, col int, ok bool) {
 	return line, col, true
 }
 
+// stripRoleMarks removes injected chrome role marks from copied text so that
+// drag-select copies only payload, never the identity icons.
+func stripRoleMarks(text string) string {
+	userMark := userRoleMark() + " "
+	assistantMark := assistantRoleMark() + " "
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		if strings.HasPrefix(line, userMark) {
+			lines[i] = strings.TrimPrefix(line, userMark)
+		} else if strings.HasPrefix(line, assistantMark) {
+			lines[i] = strings.TrimPrefix(line, assistantMark)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 func (m *Model) copySelection(d selectionWeaver) {
 	lines := m.tx.plainLines()
 	text, ok := d.coveredLines(lines)
@@ -102,6 +120,7 @@ func (m *Model) copySelection(d selectionWeaver) {
 	if text == "" {
 		return // selection covered no text; nothing to copy
 	}
+	text = stripRoleMarks(text)
 	if m.clipboard == nil {
 		m.feedback = failureFeedback("copy failed: clipboard unavailable")
 		return

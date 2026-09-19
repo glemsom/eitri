@@ -53,7 +53,7 @@ func TestAppendMsg_rendersPixelIdenticalThroughFlow(t *testing.T) {
 		var hist strings.Builder
 		tx.renderHistory(&hist, nil, nil)
 
-		want := renderAnswerBlock(th, config.DefaultTheme, tx.transcriptWidth(), tx.messages[0], note, true)
+		want := prependToFirstLine(renderAnswerBlock(th, config.DefaultTheme, tx.transcriptWidth(), tx.messages[0], note, true), assistantRoleMark()+" ")
 		if hist.String() != want {
 			t.Errorf("appended note %q must render pixel-identical through the flow path", note)
 		}

@@ -15,6 +15,8 @@ var glyphInventory = map[string]glyph{
 	"toolWeb":             {"◎", "glyph"},
 	"toolGeneric":         {"⊕", "glyph"},
 	"reasoning":           {"≡", "glyph"},
+	"userRole":            {"🧑\ufe0f", "icon"},
+	"assistantRole":       {"⚒️", "icon"},
 	"brand":               {"⚒️", "icon"},
 	"focus":               {"▸", "glyph"},
 	"ok":                  {"✓", "glyph"},
@@ -67,6 +69,12 @@ func toolGlyph(name string) string {
 	}
 	return lookup("toolGeneric")
 }
+
+// userRoleMark returns the 🧑 user role icon.
+func userRoleMark() string { return lookup("userRole") }
+
+// assistantRoleMark returns the ⚒️ assistant role icon.
+func assistantRoleMark() string { return lookup("assistantRole") }
 
 // brandMark returns the ⚒️ brand icon.
 func brandMark() string { return lookup("brand") }
