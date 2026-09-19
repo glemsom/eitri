@@ -136,8 +136,13 @@ func promptView(th Theme) string {
 }
 
 // thinkingHeader renders a turn's collapsible reasoning block header.
-func thinkingHeader(th Theme, reasoning, effort string) string {
-	hint := fmt.Sprintf("%s %s tok", lookup("reasoning"), formatTokens(tokenEstimate(reasoning)))
+// When expanded the header shows the 🧠 icon; when collapsed it keeps the typographic ≡ N tok hint.
+func thinkingHeader(th Theme, reasoning, effort string, expanded bool) string {
+	marker := lookup("reasoning")
+	if expanded {
+		marker = lookup("reasoningExpanded")
+	}
+	hint := fmt.Sprintf("%s %s tok", marker, formatTokens(tokenEstimate(reasoning)))
 	if effort != "" {
 		hint += " · " + effort
 	}

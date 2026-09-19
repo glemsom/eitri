@@ -11,10 +11,12 @@ type glyph struct {
 // glyphInventory is the single source of truth for every production marker.
 // Color comes from theme roles, never from the glyph's own presentation.
 var glyphInventory = map[string]glyph{
-	"toolBash":            {"❯", "glyph"},
-	"toolWeb":             {"◎", "glyph"},
-	"toolGeneric":         {"⊕", "glyph"},
+	"toolBash":            {"🐚\ufe0f", "icon"},
+	"toolWeb":             {"🌐\ufe0f", "icon"},
+	"toolSkill":           {"✨\ufe0f", "icon"},
+	"toolGeneric":         {"🧰\ufe0f", "icon"},
 	"reasoning":           {"≡", "glyph"},
+	"reasoningExpanded":   {"🧠\ufe0f", "icon"},
 	"phaseReasoning":      {"🧠\uFE0F", "icon"},
 	"phaseWorking":        {"⚒️", "icon"},
 	"phaseAnswering":      {"✍️", "icon"},
@@ -62,13 +64,15 @@ func failurePrefix() string { return lookup("warning") + " " }
 // stoppedMarker returns the suffix marking a user-stopped turn's partial output ("⏹ stopped"). renderHistory appends it under the stopped message's pane so the aborted turn reads as deliberately stopped, never as an error.
 func stoppedMarker() string { return lookup("stopped") + " stopped" }
 
-// toolGlyph maps a tool name to its per-tool glyph.
-func toolGlyph(name string) string {
+// toolIcon maps a tool name to its per-tool icon.
+func toolIcon(name string) string {
 	switch name {
 	case "bash":
 		return lookup("toolBash")
 	case "open_in_browser":
 		return lookup("toolWeb")
+	case "skill":
+		return lookup("toolSkill")
 	}
 	return lookup("toolGeneric")
 }

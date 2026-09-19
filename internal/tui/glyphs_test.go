@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 )
@@ -61,18 +62,19 @@ func TestRoleMark_charter(t *testing.T) {
 	}
 }
 
-func TestToolGlyph_charter(t *testing.T) {
+func TestToolIcon_charter(t *testing.T) {
 	cases := []struct {
 		name string
 		want string
 	}{
-		{"bash", "❯"},
-		{"open_in_browser", "◎"},
-		{"unknown", "⊕"},
+		{"bash", "🐚\ufe0f"},
+		{"open_in_browser", "🌐\ufe0f"},
+		{"skill", "✨\ufe0f"},
+		{"unknown", "🧰\ufe0f"},
 	}
 	for _, c := range cases {
-		if got := toolGlyph(c.name); got != c.want {
-			t.Errorf("toolGlyph(%q) = %q, want %q", c.name, got, c.want)
+		if got := toolIcon(c.name); got != c.want {
+			t.Errorf("toolIcon(%q) = %q, want %q", c.name, got, c.want)
 		}
 	}
 }
@@ -91,7 +93,7 @@ func TestToolEntry_rendersUtf8Glyphs(t *testing.T) {
 	m = toolResult(t, m, ToolResult{Name: "bash", Result: "ok (1ms)", Lines: 1})
 
 	content := plain(view(m))
-	if !strings.Contains(content, "❯ bash") {
+	if !strings.Contains(content, "🐚\ufe0f bash") {
 		t.Errorf("UTF-8 tool label missing, got: %q", content)
 	}
 	if !strings.Contains(content, "✓") {
@@ -99,5 +101,35 @@ func TestToolEntry_rendersUtf8Glyphs(t *testing.T) {
 	}
 	if !strings.Contains(content, "│") {
 		t.Errorf("UTF-8 border glyph missing, got: %q", content)
+	}
+}
+
+// TestToolEntry_noIconInResultBody asserts that the category icons are chrome
+// only: they render on the entry head and never leak into the copyable
+// tool-result body, while emoji the tool itself wrote into its result survive
+// verbatim.
+func TestToolEntry_noIconInResultBody(t *testing.T) {
+	e := toolEntry{
+		name:     "bash",
+		args:     `{"command":"echo hi"}`,
+		result:   "ok\n🎉 user emoji survives",
+		complete: true,
+		lines:    2,
+	}
+	out := renderToolEntry(defaultTheme, e, true, time.Now(), 80, false, false)
+	plain := ansiStrip(out)
+
+	bodyStart := strings.Index(plain, "ok")
+	if bodyStart < 0 {
+		t.Fatalf("result body not found in output: %q", plain)
+	}
+	body := plain[bodyStart:]
+	for _, icon := range []string{"🐚\ufe0f", "🌐\ufe0f", "✨\ufe0f", "🧰\ufe0f", "🧠\ufe0f"} {
+		if strings.Contains(body, icon) {
+			t.Errorf("injected chrome icon %q found inside tool-result body: %q", icon, body)
+		}
+	}
+	if !strings.Contains(body, "🎉 user emoji survives") {
+		t.Errorf("received emoji must survive verbatim in the result body, got: %q", body)
 	}
 }

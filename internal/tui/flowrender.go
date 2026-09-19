@@ -415,7 +415,7 @@ func liveStreamingText(msg message, text string) (string, bool) {
 
 func renderReasoningBlockCached(cache *liveMarkdownCache, theme Theme, config string, width int, effort string, msg message, msgIdx, fragIdx int, text string, expanded, focused bool) string {
 	var b strings.Builder
-	h := thinkingHeader(theme, text, effort)
+	h := thinkingHeader(theme, text, effort, expanded)
 	if focused {
 		h = theme.focusStyle.Render(focusMarker()+" ") + h
 	}
@@ -476,10 +476,10 @@ func renderAnswerBlockCached(cache *liveMarkdownCache, theme Theme, config strin
 	return s
 }
 
-// toolEntryLabel renders the category-colored `⊕ tool` label part of the entry head.
+// toolEntryLabel renders the category-colored icon+tool label part of the entry head.
 func toolEntryLabel(te toolEntry) string {
-	glyph := toolGlyph(te.name)
-	return glyph + " " + te.name
+	icon := toolIcon(te.name)
+	return icon + " " + te.name
 }
 
 // toolEntryArgs renders the dimmed detail part of the entry head: the display args hint.
@@ -491,7 +491,7 @@ func toolEntryArgs(te toolEntry) string {
 	return s
 }
 
-// toolEntryHead renders the compact one-line `⊕ tool args` head shared by the transcript entry and the clipboard copy: the tool name and display args.
+// toolEntryHead renders the compact one-line icon+tool args head shared by the transcript entry and the clipboard copy: the tool name and display args.
 func toolEntryHead(te toolEntry) string {
 	return toolEntryLabel(te) + toolEntryArgs(te)
 }
@@ -514,7 +514,7 @@ func toolArgsHint(argsJSON string) string {
 	return ""
 }
 
-// renderToolEntry renders one tool-call entry as a compact, glanceable line — `⊕ tool args` — with the result collapsed by default to a summary, never a raw dump into the scroll. focused marks the entry as the currently focused block for the per-block expand interaction.
+// renderToolEntry renders one tool-call entry as a compact, glanceable line — icon+tool args — with the result collapsed by default to a summary, never a raw dump into the scroll. focused marks the entry as the currently focused block for the per-block expand interaction.
 func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width int, pulse bool, focused bool) string {
 	var b strings.Builder
 	outcome := ""
@@ -653,13 +653,14 @@ func isToolFailure(result string) bool {
 		strings.HasPrefix(result, "invalid tool arguments:")
 }
 
-// toolCategory groups tool entries by the work the tool does so the transcript can colorize a long session by category: shell commands, web fetches and browser opens.
+// toolCategory groups tool entries by the work the tool does so the transcript can colorize a long session by category: shell commands, web fetches, skill calls, and anything else.
 type toolCategory int
 
 const (
 	catOther toolCategory = iota
 	catShell
 	catWeb
+	catSkill
 )
 
 // toolCategoryOf maps a tool name to its transcript category.
@@ -669,6 +670,8 @@ func toolCategoryOf(name string) toolCategory {
 		return catShell
 	case "open_in_browser":
 		return catWeb
+	case "skill":
+		return catSkill
 	}
 	return catOther
 }

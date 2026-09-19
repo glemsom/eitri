@@ -62,7 +62,7 @@ func TestTranscript_largeCoTCollapsesToHintWhileToolsStayVisible(t *testing.T) {
 	if !strings.Contains(plain, "tok") {
 		t.Errorf("collapsed CoT must keep the ≡ N tok hint, got:\n%s", plain)
 	}
-	if !strings.Contains(plain, "❯ bash") {
+	if !strings.Contains(plain, "🐚️ bash") {
 		t.Errorf("tool call must stay visible under a collapsed CoT, got:\n%s", plain)
 	}
 	if !strings.Contains(plain, "Done.") {
@@ -98,7 +98,7 @@ func TestTranscript_toolResultsExpandedByDefaultShowsResult(t *testing.T) {
 	if !strings.Contains(plain, "a.go") {
 		t.Errorf("tool results expanded by default must render the result body, got:\n%s", plain)
 	}
-	if !strings.Contains(plain, "❯ bash") {
+	if !strings.Contains(plain, "🐚️ bash") {
 		t.Errorf("tool head must render alongside the default-expanded result, got:\n%s", plain)
 	}
 }
@@ -203,7 +203,7 @@ func TestTranscript_eExpandsAllECollapsesToHints(t *testing.T) {
 	if strings.Contains(cl, "a.go") {
 		t.Errorf("E must collapse the tool result to its one-liner, got:\n%s", cl)
 	}
-	if !strings.Contains(cl, "tok") || !strings.Contains(cl, "❯ bash") {
+	if !strings.Contains(cl, "tok") || !strings.Contains(cl, "🐚️ bash") {
 		t.Errorf("E must keep the CoT hint and tool head, got:\n%s", cl)
 	}
 }

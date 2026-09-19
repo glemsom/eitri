@@ -83,35 +83,53 @@ func TestRender_thinkingHeader(t *testing.T) {
 		name      string
 		reasoning string
 		effort    string
+		expanded  bool
 		want      string
 	}{
 		{
-			name:      "no-effort",
+			name:      "collapsed-no-effort",
 			reasoning: "hello world", // 11 runes → 2 tokens
+			expanded:  false,
 			want:      "≡ 2 tok\n",
 		},
 		{
-			name:      "with-effort",
+			name:      "collapsed-with-effort",
 			reasoning: "hello world",
 			effort:    "high",
+			expanded:  false,
 			want:      "≡ 2 tok · high\n",
+		},
+		{
+			name:      "expanded-no-effort",
+			reasoning: "hello world",
+			expanded:  true,
+			want:      "🧠\ufe0f 2 tok\n",
+		},
+		{
+			name:      "expanded-with-effort",
+			reasoning: "hello world",
+			effort:    "high",
+			expanded:  true,
+			want:      "🧠\ufe0f 2 tok · high\n",
 		},
 		{
 			name:      "empty-reasoning",
 			reasoning: "",
 			effort:    "low",
+			expanded:  false,
 			want:      "≡ 0 tok · low\n",
 		},
 		{
 			name:      "thousand-tokens-formats-k",
 			reasoning: strings.Repeat("a", 4000), // 4000 runes → 1000 tokens → "1.0k"
+			expanded:  false,
 			want:      "≡ 1.0k tok\n",
 		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := thinkingHeader(th, c.reasoning, c.effort); got != c.want {
-				t.Errorf("thinkingHeader(%q, %q) =\n%q\nwant\n%q", c.reasoning, c.effort, got, c.want)
+			if got := thinkingHeader(th, c.reasoning, c.effort, c.expanded); got != c.want {
+				t.Errorf("thinkingHeader(%q, %q, %v) =\n%q\nwant\n%q", c.reasoning, c.effort, c.expanded, got, c.want)
 			}
 		})
 	}
