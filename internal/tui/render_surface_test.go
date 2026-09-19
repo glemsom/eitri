@@ -30,7 +30,7 @@ func TestRender_idleWelcome(t *testing.T) {
 			name:  "brand-and-hints-default",
 			width: 2,
 			want: "──\n" +
-				"⚒  Eitri — your terminal coding agent\n" +
+				"⚒️ Eitri — your terminal coding agent\n" +
 				"──\n" +
 				"  ⌨ /settings · /help for commands & keybindings\n",
 		},
@@ -38,7 +38,7 @@ func TestRender_idleWelcome(t *testing.T) {
 			name:  "width-40",
 			width: 40,
 			want: strings.Repeat("─", 40) + "\n" +
-				"⚒  Eitri — your terminal coding agent\n" +
+				"⚒️ Eitri — your terminal coding agent\n" +
 				strings.Repeat("─", 40) + "\n" +
 				"  ⌨ /settings · /help for commands & keybindings\n",
 		},
@@ -130,7 +130,7 @@ func TestRender_idleWelcome_brandMark(t *testing.T) {
 	th := renderSurfaceTestTheme()
 	got := idleWelcome(th, 2)
 
-	for _, want := range []string{"⚒  Eitri", "──", "⌨ /settings"} {
+	for _, want := range []string{"⚒️ Eitri", "──", "⌨ /settings"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("idleWelcome() missing %q, got:\n%s", want, got)
 		}

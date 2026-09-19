@@ -5,37 +5,38 @@ import "strings"
 // glyph is one production marker in the surface charter.
 type glyph struct {
 	utf8 string
+	tier string // "glyph" | "icon"
 }
 
 // glyphInventory is the single source of truth for every production marker.
 // Color comes from theme roles, never from the glyph's own presentation.
 var glyphInventory = map[string]glyph{
-	"toolBash":            {"❯"},
-	"toolWeb":             {"◎"},
-	"toolGeneric":         {"⊕"},
-	"reasoning":           {"≡"},
-	"brand":               {"⚒"},
-	"focus":               {"▸"},
-	"ok":                  {"✓"},
-	"fail":                {"✗"},
-	"stopped":             {"⏹"},
-	"warning":             {"⚠"},
-	"hr":                  {"─"},
-	"keyHint":             {"⌨"},
-	"categoryComposer":    {"✎"},
-	"categoryNav":         {"→"},
-	"categoryPanes":       {"▦"},
-	"categoryActions":     {"★"},
-	"settingsModel":       {"⚙"},
-	"settingsCredentials": {"✱"},
-	"settingsReasoning":   {"≡"},
-	"settingsAppearance":  {"◈"},
-	"settingsWorkspace":   {"◉"},
-	"unsaved":             {"●"},
-	"on":                  {"✓"},
-	"off":                 {"○"},
-	"palette":             {"██"},
-	"cursor":              {"┃"},
+	"toolBash":            {"❯", "glyph"},
+	"toolWeb":             {"◎", "glyph"},
+	"toolGeneric":         {"⊕", "glyph"},
+	"reasoning":           {"≡", "glyph"},
+	"brand":               {"⚒️", "icon"},
+	"focus":               {"▸", "glyph"},
+	"ok":                  {"✓", "glyph"},
+	"fail":                {"✗", "glyph"},
+	"stopped":             {"⏹", "glyph"},
+	"warning":             {"⚠", "glyph"},
+	"hr":                  {"─", "glyph"},
+	"keyHint":             {"⌨", "glyph"},
+	"categoryComposer":    {"✎", "glyph"},
+	"categoryNav":         {"→", "glyph"},
+	"categoryPanes":       {"▦", "glyph"},
+	"categoryActions":     {"★", "glyph"},
+	"settingsModel":       {"⚙", "glyph"},
+	"settingsCredentials": {"✱", "glyph"},
+	"settingsReasoning":   {"≡", "glyph"},
+	"settingsAppearance":  {"◈", "glyph"},
+	"settingsWorkspace":   {"◉", "glyph"},
+	"unsaved":             {"●", "glyph"},
+	"on":                  {"✓", "glyph"},
+	"off":                 {"○", "glyph"},
+	"palette":             {"██", "glyph"},
+	"cursor":              {"┃", "glyph"},
 }
 
 // lookup returns the glyph for the current locale. Panics if name is not in the inventory so a typo is caught immediately during development/testing.
@@ -47,13 +48,13 @@ func lookup(name string) string {
 	return ent.utf8
 }
 
-// failurePrefix is the error-shaped assistant content prefix ("⚠ "), with its ASCII "! " fallback.
+// failurePrefix is the error-shaped assistant content prefix ("⚠ ").
 func failurePrefix() string { return lookup("warning") + " " }
 
-// stoppedMarker returns the suffix marking a user-stopped turn's partial output ("⏹ stopped"), with its ASCII "! stopped" fallback. renderHistory appends it under the stopped message's pane so the aborted turn reads as deliberately stopped, never as an error.
+// stoppedMarker returns the suffix marking a user-stopped turn's partial output ("⏹ stopped"). renderHistory appends it under the stopped message's pane so the aborted turn reads as deliberately stopped, never as an error.
 func stoppedMarker() string { return lookup("stopped") + " stopped" }
 
-// toolGlyph maps a tool name to its per-tool glyph, with an ASCII fallback.
+// toolGlyph maps a tool name to its per-tool glyph.
 func toolGlyph(name string) string {
 	switch name {
 	case "bash":
@@ -64,13 +65,13 @@ func toolGlyph(name string) string {
 	return lookup("toolGeneric")
 }
 
-// brandMark returns the ⚒ brand glyph with its "+" ASCII fallback.
+// brandMark returns the ⚒️ brand icon.
 func brandMark() string { return lookup("brand") }
 
-// focusMarker returns the ▸ cursor glyph prefixing a focused collapsible block's hint/head line, with its ASCII fallback.
+// focusMarker returns the ▸ cursor glyph prefixing a focused collapsible block's hint/head line.
 func focusMarker() string { return lookup("focus") }
 
-// hr returns a horizontal-rule separator (──) with its "--" ASCII fallback.
+// hr returns a horizontal-rule separator (──).
 func hr() string { return lookup("hr") + lookup("hr") }
 
 // hrWidth returns a horizontal-rule separator repeated to the given width.

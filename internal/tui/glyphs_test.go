@@ -27,6 +27,31 @@ func TestGlyphInventory_widthStability(t *testing.T) {
 	}
 }
 
+func TestGlyphInventory_iconContract(t *testing.T) {
+	for name, ent := range glyphInventory {
+		if ent.tier != "icon" {
+			continue
+		}
+		// VS16-normalised: must end with U+FE0F.
+		if !strings.HasSuffix(ent.utf8, "\ufe0f") {
+			t.Errorf("glyphInventory[%q] icon %q is not VS16-normalised", name, ent.utf8)
+		}
+		// Width must be exactly 2.
+		if got := ansi.StringWidth(ent.utf8); got != 2 {
+			t.Errorf("glyphInventory[%q] icon %q width = %d, want 2", name, ent.utf8, got)
+		}
+		// No ZWJ (U+200D) or skin-tone modifiers (U+1F3FB–U+1F3FF).
+		for _, r := range ent.utf8 {
+			if r == '\u200d' {
+				t.Errorf("glyphInventory[%q] icon %q contains ZWJ (U+200D)", name, ent.utf8)
+			}
+			if r >= '\U0001f3fb' && r <= '\U0001f3ff' {
+				t.Errorf("glyphInventory[%q] icon %q contains skin-tone modifier %U", name, ent.utf8, r)
+			}
+		}
+	}
+}
+
 func TestToolGlyph_charter(t *testing.T) {
 	cases := []struct {
 		name string

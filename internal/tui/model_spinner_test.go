@@ -427,7 +427,7 @@ func TestForgeTitle_glintMovesAndPreservesText(t *testing.T) {
 	m.tx.forgeFrame = 20
 	second := m.forgeTitle()
 
-	if ansiStrip(first) != "⚒  Eitri is forging" {
+	if ansiStrip(first) != "⚒️ Eitri is forging" {
 		t.Fatalf("forge title text = %q", ansiStrip(first))
 	}
 	if first == second {
@@ -446,7 +446,7 @@ func TestForgeTitle_reducedMotionIsStatic(t *testing.T) {
 	if first != second {
 		t.Fatal("reduced-motion forge title must remain static")
 	}
-	if ansiStrip(first) != "⚒  Eitri is forging" {
+	if ansiStrip(first) != "⚒️ Eitri is forging" {
 		t.Fatalf("static forge title text = %q", ansiStrip(first))
 	}
 }
