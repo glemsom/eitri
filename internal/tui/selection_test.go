@@ -791,3 +791,59 @@ func TestDragSelect_dragOnToolCardStillCopies(t *testing.T) {
 		t.Errorf("drag-select on expanded tool card must copy text, got %q", copied)
 	}
 }
+
+// TestDragSelect_emojiSurvivesCopyFidelity locks that a received emoji
+// (including a VS16 pair) survives plain-text extraction → drag-select →
+// clipboard byte-for-byte. The during-drag highlight is also verified to
+// cover the correct cell span around two-cell emoji.
+func TestDragSelect_emojiSurvivesCopyFidelity(t *testing.T) {
+	t.Parallel()
+	var copied string
+	answer := "✏️ emoji 🧭"
+	m := NewModelCfg(Dependencies{
+		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
+			return TurnResult{Answer: answer}, nil
+		},
+		WorkspacePath: "/tmp/acme",
+		Clipboard:     func(s string) error { copied = s; return nil },
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "hi")
+	m = submitAndWait(t, m)
+	view(m)
+
+	rows, top := historyContentRows(m)
+	if top != 0 {
+		t.Fatalf("test assumes offset 0, got %d", top)
+	}
+	row, rowY := "", 0
+	for i, r := range rows {
+		if strings.Contains(r, "✏️") {
+			row, rowY = r, i
+			break
+		}
+	}
+	if row == "" {
+		t.Fatalf("could not locate the answer with emoji in the history rows, got: %q", rows)
+	}
+	col := strings.Index(row, "✏️")
+	if col < 0 {
+		t.Fatalf("could not locate the emoji in the row, got: %q", row)
+	}
+	disp := displayCol(row, col)
+	endDisp := disp + lipgloss.Width(answer) - 1
+
+	m = mustUpdate(t, m, dragMsg("press", disp, rowY))
+	m = mustUpdate(t, m, dragMsg("motion", endDisp, rowY))
+
+	// Verify the highlight covers the exact text including two-cell emoji.
+	if spans := selectionSpans(view(m), defaultTheme.selectionBgSGR()); strings.Join(spans, "") != answer {
+		t.Errorf("during-drag highlight spans = %q, want %q", strings.Join(spans, ""), answer)
+	}
+
+	mustUpdate(t, m, dragMsg("release", endDisp, rowY))
+
+	if copied != answer {
+		t.Errorf("emoji drag copy = %q, want %q", copied, answer)
+	}
+}
