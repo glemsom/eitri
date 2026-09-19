@@ -53,7 +53,7 @@ func (r *Rail) line(b *strings.Builder, key, val string, railWidth int) {
 	}
 	contentWidth := railWidth - 2
 	if lipgloss.Width(s) > contentWidth {
-		s = r.truncateCellWidth(s, contentWidth-1) + g("…", "...")
+		s = r.truncateCellWidth(s, contentWidth-1) + "…"
 	}
 	b.WriteString(s + "\n")
 }
@@ -108,7 +108,7 @@ func (r *Rail) lineAligned(b *strings.Builder, key, val string, keyWidth, railWi
 	}
 	contentWidth := railWidth - 2
 	if lipgloss.Width(s) > contentWidth {
-		s = r.truncateCellWidth(s, contentWidth-1) + g("…", "...")
+		s = r.truncateCellWidth(s, contentWidth-1) + "…"
 	}
 	b.WriteString(s + "\n")
 }
@@ -377,7 +377,7 @@ func styledRail(content string, maxHeight, railWidth int) string {
 	return lipgloss.NewStyle().
 		Width(railWidth).
 		PaddingLeft(1).
-		Border(lipgloss.Border{Left: g("│", "|")}).
+		Border(lipgloss.Border{Left: "│"}).
 		BorderLeft(true).
 		Render(strings.TrimRight(content, "\n"))
 }

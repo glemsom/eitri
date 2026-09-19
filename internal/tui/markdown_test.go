@@ -32,7 +32,7 @@ func TestRenderMarkdown_representativeBlocks(t *testing.T) {
 func TestRenderMarkdown_allSupportedThemes(t *testing.T) {
 	t.Parallel()
 	in := "# Heading\n\nSome **bold** and `code` text.\n"
-	for _, theme := range []string{"dark", "light", "dracula", "tokyo-night", "pink", "notty", "auto"} {
+	for _, theme := range []string{"dark", "light", "dracula", "tokyo-night", "pink", "auto"} {
 		out, err := RenderMarkdown(in, 80, theme)
 		if err != nil {
 			t.Fatalf("RenderMarkdown(theme=%q): %v", theme, err)
@@ -105,7 +105,7 @@ func containsClassicColor(s string) bool {
 // malformed input.
 func TestRemapMarkdownColors_matchesReference(t *testing.T) {
 	t.Parallel()
-	for _, theme := range []string{"dark", "light", "dracula", "tokyo-night", "pink", "nord", "gruvbox", "solarized", "dark-daltonized", "light-daltonized", "notty"} {
+	for _, theme := range []string{"dark", "light", "dracula", "tokyo-night", "pink", "nord", "gruvbox", "solarized", "dark-daltonized", "light-daltonized"} {
 		th := themeFor(theme)
 		inputs := []string{
 			"# H **b** `c` *i*",
@@ -167,7 +167,7 @@ func hasBullet(s string) bool {
 func TestRenderMarkdown_noUnmanagedBaseText(t *testing.T) {
 	t.Parallel()
 	in := "Hello world, a short line.\n\n- first item\n- second item\n\n> blockquote\n\n---\n\n`code`\n\n```go\nfunc main() {}\n```\n\n[link](http://x.com)\n\n![img](http://x.com/a.png)\n"
-	for _, theme := range []string{"dark", "light", "dracula", "tokyo-night", "pink", "nord", "gruvbox", "solarized", "dark-daltonized", "light-daltonized", "notty", "auto"} {
+	for _, theme := range []string{"dark", "light", "dracula", "tokyo-night", "pink", "nord", "gruvbox", "solarized", "dark-daltonized", "light-daltonized", "auto"} {
 		out, err := RenderMarkdown(in, 40, theme)
 		if err != nil {
 			t.Fatalf("RenderMarkdown(theme=%q): %v", theme, err)

@@ -31,7 +31,6 @@ func buildCommittedTurns(tx *Transcript, n int) {
 //
 // Run: go test ./internal/tui -run TestCommittedCommitCostFlatInHistorySize
 func TestCommittedCommitCostFlatInHistorySize(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	for _, n := range []int{10, 100, 1000} {
 		t.Run("N="+strconv.Itoa(n), func(t *testing.T) {
 			tx := memoTestTx()
@@ -62,7 +61,6 @@ func TestCommittedCommitCostFlatInHistorySize(t *testing.T) {
 //
 // Run: go test ./internal/tui -run xxx -bench BenchmarkCommittedCommitCost -benchmem -benchtime 30x
 func BenchmarkCommittedCommitCost_FlatInHistory(b *testing.B) {
-	b.Setenv("EITRI_ASCII_GLYPHS", "1")
 	for _, n := range []int{10, 100, 1000} {
 		b.Run("N="+strconv.Itoa(n), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {

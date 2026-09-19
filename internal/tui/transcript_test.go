@@ -12,7 +12,6 @@ import (
 )
 
 func TestTranscript_rendersStandalone(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 	tx := &Transcript{
 		theme:           th,
@@ -45,7 +44,6 @@ func TestTranscript_rendersStandalone(t *testing.T) {
 }
 
 func TestTranscript_appendMsgAppendsAndInvalidates(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 	tx := &Transcript{
 		theme:       th,
@@ -70,7 +68,6 @@ func TestTranscript_appendMsgAppendsAndInvalidates(t *testing.T) {
 }
 
 func TestTranscript_thinkingGateScopesReasoningBlock(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 
 	render := func(thinkingRequested bool) string {
@@ -107,7 +104,6 @@ func TestTranscript_thinkingGateScopesReasoningBlock(t *testing.T) {
 }
 
 func TestTranscript_expandAllOverridesThinkingExpansion(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 
 	render := func(expandAll bool, forceExpand bool, forceCollapse bool) string {
@@ -180,7 +176,6 @@ func TestTranscript_ownsRailSurface(t *testing.T) {
 }
 
 func TestTranscript_dynamicRailWidth(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 	tx := &Transcript{
 		theme:       th,
@@ -215,7 +210,7 @@ func TestTranscript_dynamicRailWidth(t *testing.T) {
 		if w := lipgloss.Width(ln); w > 120 {
 			t.Errorf("surface row width %d exceeds terminal 120 at railWidth 22: %q", w, ln)
 		}
-		if strings.Contains(ln, g("│", "|")) {
+		if strings.Contains(ln, "│") {
 			bordered = true
 		}
 	}
@@ -225,7 +220,6 @@ func TestTranscript_dynamicRailWidth(t *testing.T) {
 }
 
 func TestTranscript_matchesModelRender(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 	msgs := []message{{role: "you", content: "hello"}, {role: "eitri", content: "**plain** answer"}}
 	tx := Transcript{
@@ -311,7 +305,6 @@ func TestTranscript_navigateScrollsSharedViewport(t *testing.T) {
 
 func transcriptWithTool(t *testing.T) Transcript {
 	t.Helper()
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 	var log toolLog
 	log.SetAnchor(0)
@@ -512,7 +505,6 @@ func committedReasoningFlowTranscript(reasoning, answer string) *Transcript {
 }
 
 func TestRenderHistory_streamingAssistantUsesDimmedPane(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 
 	render := func(streaming bool) string {
@@ -549,7 +541,6 @@ func TestRenderHistory_streamingAssistantUsesDimmedPane(t *testing.T) {
 }
 
 func TestRenderHistory_completedAssistantHasNoCopyHostileLeftBar(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 	var hist strings.Builder
 	tx := newStreamPaneTestTranscript(th, []message{{role: "eitri", content: "done", streaming: false}})
@@ -560,7 +551,7 @@ func TestRenderHistory_completedAssistantHasNoCopyHostileLeftBar(t *testing.T) {
 	if line == "" {
 		t.Fatalf("completed render must contain message content, got: %q", rendered)
 	}
-	if strings.Contains(ansiStrip(line), g("│", "|")) {
+	if strings.Contains(ansiStrip(line), "│") {
 		t.Errorf("completed assistant reply must not render a left bar, got line: %q", line)
 	}
 }
@@ -570,7 +561,7 @@ func reasoningLineInfo(s, body string) (string, bool) {
 		if !strings.Contains(ansiStrip(line), body) {
 			continue
 		}
-		framed := strings.Contains(line, g("\u2502", "|"))
+		framed := strings.Contains(line, "\u2502")
 		start := strings.Index(line, "\x1b[38;2;")
 		if start == -1 {
 			return "", framed
@@ -585,7 +576,6 @@ func reasoningLineInfo(s, body string) (string, bool) {
 }
 
 func TestRenderHistory_liveReasoningBlockUsesStreamingPane(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 
 	render := func(streaming bool) string {
@@ -623,7 +613,6 @@ func TestRenderHistory_liveReasoningBlockUsesStreamingPane(t *testing.T) {
 }
 
 func TestRenderHistory_liveReasoningRespectsTabCollapse(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := liveReasoningFlowTranscript("hidden reasoning")
 	tx.messages[1].expansion.set(blockReasoning, reasoningWholeID, false)
 
@@ -635,7 +624,6 @@ func TestRenderHistory_liveReasoningRespectsTabCollapse(t *testing.T) {
 }
 
 func TestRenderHistory_liveReasoningBlockRespectsThinkingGate(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := liveReasoningFlowTranscript("sneaked reasoning")
 	tx.messages[1].thinkingRequested = false
 
@@ -648,7 +636,6 @@ func TestRenderHistory_liveReasoningBlockRespectsThinkingGate(t *testing.T) {
 }
 
 func TestTranscript_liveReasoningBlockTogglesViaTab(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 
 	tx := liveReasoningFlowTranscript("visible reasoning")
 
@@ -686,7 +673,6 @@ func TestTranscript_liveReasoningBlockTogglesViaTab(t *testing.T) {
 }
 
 func TestRenderHistory_streamingErrorPrefixUsesDimmedErrorPane(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 
 	render := func(streaming bool) string {

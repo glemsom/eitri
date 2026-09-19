@@ -57,7 +57,7 @@ func truncateFront(s string, w int) string {
 		return s
 	}
 	tail := string(runes[len(runes)-keep:])
-	ell := g("…", "...")
+	ell := "…"
 	if ansi.StringWidth(ell+tail) > w {
 		tail = truncateWidth(tail, w-ansi.StringWidth(ell))
 	}
@@ -122,7 +122,7 @@ func tokenEstimate(s string) int {
 // idleWelcome is the empty-transcript welcome block: brand mark + keybinding hints.
 func idleWelcome(th Theme, width int) string {
 	return th.headerStyle.Render(hrWidth(width)) + "\n" +
-		th.headerStyle.Render(brandMark()+"  Eitri") + th.statusStyle.Render(g(" — ", " - ")+"your terminal coding agent") + "\n" +
+		th.headerStyle.Render(brandMark()+"  Eitri") + th.statusStyle.Render(" — your terminal coding agent") + "\n" +
 		th.headerStyle.Render(hrWidth(width)) + "\n" +
 		th.statusStyle.Render("  "+keyHint()+" /settings · /help for commands & keybindings") + "\n"
 }
@@ -131,18 +131,18 @@ func idleWelcome(th Theme, width int) string {
 func promptView(th Theme) string {
 	return th.headerStyle.Render("run paused at the max-turns cap") + "\n\n" +
 		"  Continue the run with more turns?\n" +
-		"  " + th.statusStyle.Render("y") + " continue" + g(" · ", " . ") + th.statusStyle.Render("n") + " stop" + g(" · ", " . ") + th.statusStyle.Render("esc") + " cancel\n"
+		"  " + th.statusStyle.Render("y") + " continue" + " · " + th.statusStyle.Render("n") + " stop" + " · " + th.statusStyle.Render("esc") + " cancel\n"
 }
 
 // thinkingHeader renders a turn's collapsible reasoning block header.
 func thinkingHeader(th Theme, reasoning, effort string) string {
 	hint := fmt.Sprintf("%s %s tok", lookup("reasoning"), formatTokens(tokenEstimate(reasoning)))
 	if effort != "" {
-		hint += g(" · ", " . ") + effort
+		hint += " · " + effort
 	}
 	return th.thinkingStyle.Render(hint) + "\n"
 }
 
 func bandHints() string {
-	return strings.Join([]string{"/settings", "ctrl+e expand/collapse", "shift+enter newline"}, g(" · ", " . "))
+	return strings.Join([]string{"/settings", "ctrl+e expand/collapse", "shift+enter newline"}, " · ")
 }

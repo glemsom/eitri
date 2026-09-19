@@ -50,7 +50,6 @@ func largeCotFlowTranscript() *Transcript {
 // reasoning body must reduce to the ≡ N tok hint and the tool call must still
 // render inside the same flow, in arrival order.
 func TestTranscript_largeCoTCollapsesToHintWhileToolsStayVisible(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := largeCotFlowTranscript()
 
 	var hist strings.Builder
@@ -63,7 +62,7 @@ func TestTranscript_largeCoTCollapsesToHintWhileToolsStayVisible(t *testing.T) {
 	if !strings.Contains(plain, "tok") {
 		t.Errorf("collapsed CoT must keep the ≡ N tok hint, got:\n%s", plain)
 	}
-	if !strings.Contains(plain, "$ bash") {
+	if !strings.Contains(plain, "❯ bash") {
 		t.Errorf("tool call must stay visible under a collapsed CoT, got:\n%s", plain)
 	}
 	if !strings.Contains(plain, "Done.") {
@@ -74,7 +73,6 @@ func TestTranscript_largeCoTCollapsesToHintWhileToolsStayVisible(t *testing.T) {
 // TestTranscript_coTExpandedByDefaultShowsBody flips the Settings toggle:
 // CoT collapsed by default OFF means the reasoning body renders on its own.
 func TestTranscript_coTExpandedByDefaultShowsBody(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := largeCotFlowTranscript()
 	tx.cotExpanded = true // the "CoT collapsed by default" setting is off
 
@@ -90,7 +88,6 @@ func TestTranscript_coTExpandedByDefaultShowsBody(t *testing.T) {
 // TestTranscript_toolResultsExpandedByDefaultShowsResult flips the Settings
 // toggle: tool results collapsed by default OFF means the result body renders.
 func TestTranscript_toolResultsExpandedByDefaultShowsResult(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := largeCotFlowTranscript()
 	tx.toolResultsExpanded = true // the "tool results collapsed by default" setting is off
 
@@ -101,7 +98,7 @@ func TestTranscript_toolResultsExpandedByDefaultShowsResult(t *testing.T) {
 	if !strings.Contains(plain, "a.go") {
 		t.Errorf("tool results expanded by default must render the result body, got:\n%s", plain)
 	}
-	if !strings.Contains(plain, "$ bash") {
+	if !strings.Contains(plain, "❯ bash") {
 		t.Errorf("tool head must render alongside the default-expanded result, got:\n%s", plain)
 	}
 }
@@ -110,7 +107,6 @@ func TestTranscript_toolResultsExpandedByDefaultShowsResult(t *testing.T) {
 // Tab cycles the focus through the collapsible blocks (CoT, then tools) and
 // Enter toggles the focused block between hint and full body.
 func TestTranscript_blockFocusCyclesAndToggles(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := flowTranscript()                                           // reasoning + tool + answer, collapsed by default
 	tx.messages[1].expansion.clear(blockReasoning, reasoningWholeID) // flowTranscript seeds it expanded; clear the per-block state
 
@@ -171,7 +167,6 @@ func TestTranscript_blockFocusCyclesAndToggles(t *testing.T) {
 // TestTranscript_focusedBlockRendersMarker shows the focused block's hint line
 // carries the focus marker so the user can see where Enter will land.
 func TestTranscript_focusedBlockRendersMarker(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := flowTranscript()
 	tx.focusNext() // focus the reasoning header
 
@@ -188,7 +183,6 @@ func TestTranscript_focusedBlockRendersMarker(t *testing.T) {
 // expands every collapsible block, E collapses every collapsible block back to
 // its hint/one-liner.
 func TestTranscript_eExpandsAllECollapsesToHints(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := flowTranscript()
 
 	tx.setExpandAll(true)
@@ -209,7 +203,7 @@ func TestTranscript_eExpandsAllECollapsesToHints(t *testing.T) {
 	if strings.Contains(cl, "a.go") {
 		t.Errorf("E must collapse the tool result to its one-liner, got:\n%s", cl)
 	}
-	if !strings.Contains(cl, "tok") || !strings.Contains(cl, "$ bash") {
+	if !strings.Contains(cl, "tok") || !strings.Contains(cl, "❯ bash") {
 		t.Errorf("E must keep the CoT hint and tool head, got:\n%s", cl)
 	}
 }

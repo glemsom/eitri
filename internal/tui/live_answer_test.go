@@ -53,7 +53,6 @@ func renderFlow(t *testing.T, tx *Transcript) string {
 // answer must render in the dimmed streaming pane, not the full accent used by
 // a completed turn.
 func TestRenderFlow_liveAnswerDeemphasizedWhileStreaming(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 
 	live := renderFlow(t, liveAnswerFlow(t, true, false, "the haiku begins here"))
@@ -80,7 +79,6 @@ func TestRenderFlow_liveAnswerDeemphasizedWhileStreaming(t *testing.T) {
 // (accent-dimmed) and marked with the stopped marker — never lost, never an
 // error.
 func TestRenderFlow_stopRevealsPartialAnswer(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 
 	const partial = "only the first two lines"
@@ -101,7 +99,6 @@ func TestRenderFlow_stopRevealsPartialAnswer(t *testing.T) {
 // restyled as an error: the partial answer must keep the stopped (accent-dimmed)
 // pane and never the error panes, which would read the stop as a failure.
 func TestRenderFlow_stopNotMisreadAsError(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 
 	const partial = "partial words"

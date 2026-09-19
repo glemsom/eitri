@@ -11,7 +11,6 @@ import (
 var updateGolden = flag.Bool("update", false, "update golden files")
 
 func TestHelpView_snapshot(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 
 	for _, name := range supportedThemes {
 		t.Run(name, func(t *testing.T) {
@@ -43,7 +42,6 @@ func TestHelpView_snapshot(t *testing.T) {
 }
 
 func TestHelpView_sections(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()
 
 	for _, want := range []string{"COMMANDS", "KEYBINDINGS", "WORKSPACE MENTIONS", "CONCEPTS"} {
@@ -54,7 +52,6 @@ func TestHelpView_sections(t *testing.T) {
 }
 
 func TestHelpView_markdownHeaders(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()
 
 	for _, want := range []string{"# COMMANDS", "# KEYBINDINGS", "# WORKSPACE MENTIONS", "# CONCEPTS"} {
@@ -70,7 +67,6 @@ func TestHelpView_markdownHeaders(t *testing.T) {
 }
 
 func TestHelpView_codeSpans(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()
 
 	for _, name := range []string{"/settings", "/login", "/help"} {
@@ -86,7 +82,6 @@ func TestHelpView_codeSpans(t *testing.T) {
 }
 
 func TestHelpView_renderedHeaders(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	out, err := RenderMarkdown(helpView(), 80, "dark")
 	if err != nil {
 		t.Fatalf("RenderMarkdown: %v", err)
@@ -120,7 +115,6 @@ func TestHelpView_renderedCommandRowsStayOnSeparateLines(t *testing.T) {
 }
 
 func TestHelpView_commands(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()
 
 	for _, cmd := range []string{"/settings", "/login", "/help"} {
@@ -131,7 +125,6 @@ func TestHelpView_commands(t *testing.T) {
 }
 
 func TestHelpView_builtInCommandsComplete(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()
 
 	for _, bc := range BuiltinSlashCommands {
@@ -147,7 +140,6 @@ func TestHelpView_builtInCommandsComplete(t *testing.T) {
 // skills are dynamic, so listing them would drift; explaining the discovery
 // mechanism (type `/` to see them) keeps the reference accurate.
 func TestHelpView_skillDiscoveryHelp(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()
 
 	if !strings.Contains(got, "discovered skills") {
@@ -156,7 +148,6 @@ func TestHelpView_skillDiscoveryHelp(t *testing.T) {
 }
 
 func TestHelpView_alignedColumns(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()
 
 	sections := []struct {
@@ -225,11 +216,10 @@ func assertAligned(t *testing.T, label string, lines, descs []string) {
 }
 
 func TestHelpView_keybindingCategories(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()
 
 	for _, want := range []string{
-		"c COMPOSER", "n NAVIGATION", "p PANES", "a ACTIONS",
+		"✎ COMPOSER", "→ NAVIGATION", "▦ PANES", "★ ACTIONS",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("helpView() missing keybinding category %q", want)
@@ -238,7 +228,6 @@ func TestHelpView_keybindingCategories(t *testing.T) {
 }
 
 func TestHelpView_keybindingsComplete(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()
 
 	sec := keybindingsSection(t, got)
@@ -252,7 +241,6 @@ func TestHelpView_keybindingsComplete(t *testing.T) {
 }
 
 func TestHelpView_mentionsComplete(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()
 
 	sec := sectionLines(t, got, "WORKSPACE MENTIONS")

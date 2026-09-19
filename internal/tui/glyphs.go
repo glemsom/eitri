@@ -1,56 +1,41 @@
 package tui
 
-import (
-	"os"
-	"strings"
-)
-
-// The TUI's decorative glyph charter (benchmark §3.6/§4.3): every non-ASCII glyph the surface renders has an ASCII fallback, selected when the terminal locale cannot render non-ASCII characters (or EITRI_ASCII_GLYPHS=1 forces the fallback, for testing).
-func g(utf8, ascii string) string {
-	if os.Getenv("EITRI_ASCII_GLYPHS") != "" || !localeSupportsUTF8() {
-		return ascii
-	}
-	return utf8
-}
+import "strings"
 
 // glyph is one production marker in the surface charter.
 type glyph struct {
-	utf8  string
-	ascii string
-	width int
+	utf8 string
 }
 
 // glyphInventory is the single source of truth for every production marker.
-// Every entry has an ASCII fallback and a declared, stable cell width on the
-// default UTF-8 path. Color comes from theme roles, never from the glyph's
-// own presentation.
+// Color comes from theme roles, never from the glyph's own presentation.
 var glyphInventory = map[string]glyph{
-	"toolBash":            {"❯", "$", 1},
-	"toolWeb":             {"◎", "W", 1},
-	"toolGeneric":         {"⊕", "+", 1},
-	"reasoning":           {"≡", "?", 1},
-	"brand":               {"⚒", "+", 1},
-	"focus":               {"▸", ">", 1},
-	"ok":                  {"✓", "ok", 1},
-	"fail":                {"✗", "X", 1},
-	"stopped":             {"⏹", "!", 1},
-	"warning":             {"⚠", "!", 1},
-	"hr":                  {"─", "-", 1},
-	"keyHint":             {"⌨", "k", 1},
-	"categoryComposer":    {"✎", "c", 1},
-	"categoryNav":         {"→", "n", 1},
-	"categoryPanes":       {"▦", "p", 1},
-	"categoryActions":     {"★", "a", 1},
-	"settingsModel":       {"⚙", "*", 1},
-	"settingsCredentials": {"✱", "*", 1},
-	"settingsReasoning":   {"≡", "*", 1},
-	"settingsAppearance":  {"◈", "*", 1},
-	"settingsWorkspace":   {"◉", "*", 1},
-	"unsaved":             {"●", "*", 1},
-	"on":                  {"✓", "*", 1},
-	"off":                 {"○", "*", 1},
-	"palette":             {"██", "##", 2},
-	"cursor":              {"┃", "|", 1},
+	"toolBash":            {"❯"},
+	"toolWeb":             {"◎"},
+	"toolGeneric":         {"⊕"},
+	"reasoning":           {"≡"},
+	"brand":               {"⚒"},
+	"focus":               {"▸"},
+	"ok":                  {"✓"},
+	"fail":                {"✗"},
+	"stopped":             {"⏹"},
+	"warning":             {"⚠"},
+	"hr":                  {"─"},
+	"keyHint":             {"⌨"},
+	"categoryComposer":    {"✎"},
+	"categoryNav":         {"→"},
+	"categoryPanes":       {"▦"},
+	"categoryActions":     {"★"},
+	"settingsModel":       {"⚙"},
+	"settingsCredentials": {"✱"},
+	"settingsReasoning":   {"≡"},
+	"settingsAppearance":  {"◈"},
+	"settingsWorkspace":   {"◉"},
+	"unsaved":             {"●"},
+	"on":                  {"✓"},
+	"off":                 {"○"},
+	"palette":             {"██"},
+	"cursor":              {"┃"},
 }
 
 // lookup returns the glyph for the current locale. Panics if name is not in the inventory so a typo is caught immediately during development/testing.
@@ -59,7 +44,7 @@ func lookup(name string) string {
 	if !ok {
 		panic("unknown glyph: " + name)
 	}
-	return g(ent.utf8, ent.ascii)
+	return ent.utf8
 }
 
 // failurePrefix is the error-shaped assistant content prefix ("⚠ "), with its ASCII "! " fallback.

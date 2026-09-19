@@ -82,7 +82,6 @@ func TestReasoning_expansionSeamOwnsWholeBlockForces(t *testing.T) {
 // confirms the open/collapsed body follows the seam force rather than the old
 // thinkingExpanded flag.
 func TestReasoning_renderDelegatesToSeam(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 
 	tx := committedReasoningFlowTranscript("the body", "answer")
 	var hidden strings.Builder

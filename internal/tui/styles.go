@@ -275,8 +275,8 @@ func newLightDaltonizedTheme() Theme {
 // whole surface with the same theme the Markdown renderer applied. "auto"
 // follows the terminal background; any other unknown name falls back to
 // default — mirroring the renderer's fallback so the chrome and Markdown never
-// disagree. notty needs no special case: the TUI never runs there, the boot
-// guard refuses non-interactive contexts.
+// disagree. "notty" is no longer selectable but stored configs fall back to
+// default.
 func themeFor(name string) Theme {
 	if name == "auto" {
 		return themeFor(autoTheme())
@@ -399,7 +399,7 @@ func answerPane(c color.Color) lipgloss.Style {
 // borderedPane builds the shared reasoning pane style with one-cell left padding and the given accent color.
 func borderedPane(c color.Color) lipgloss.Style {
 	return lipgloss.NewStyle().
-		Border(lipgloss.Border{Left: g("│", "|")}).
+		Border(lipgloss.Border{Left: "│"}).
 		BorderLeft(true).
 		BorderForeground(c).
 		PaddingLeft(1)

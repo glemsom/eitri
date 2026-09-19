@@ -160,7 +160,6 @@ func TestRendererSwitchesToCheapOnlyForStreamingPanes(t *testing.T) {
 // committed pane body must not start with an empty bordered line (a `│` with
 // no text after it), and the live body must match in that respect.
 func TestStreamingCommittedNoLeadingBlankLine(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 	width := 40
 
@@ -195,7 +194,6 @@ func TestStreamingCommittedNoLeadingBlankLine(t *testing.T) {
 // direct glamour render. The comparison is byte-for-byte on the pane-wrapped
 // body, the same bytes the transcript paints.
 func TestCommittedParityCheapRendererNeverLeaksIntoCommitted(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 
 	sample := "A **bold** lead, a `code` span, and\n\n- a bullet list\n\nanother paragraph with *em* text."

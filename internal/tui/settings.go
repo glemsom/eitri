@@ -835,7 +835,7 @@ func settingsView(f settingsForm) string {
 
 	switch f.discoverState {
 	case discoverLoading:
-		b.WriteString(th.statusStyle.Render("   discovering models" + g("…", "...")))
+		b.WriteString(th.statusStyle.Render("   discovering models…"))
 		b.WriteString("\n")
 	case discoverError:
 		b.WriteString(th.statusStyle.Render("   model discovery failed: " + f.discoverErr))
@@ -871,7 +871,7 @@ func settingsView(f settingsForm) string {
 	}
 	b.WriteString("\n" + th.statusStyle.Render(strings.Repeat(hr(), 58)) + "\n")
 	b.WriteString(state + "   " + save + "  " + cancel + "\n")
-	b.WriteString(th.statusStyle.Render(g("↑/↓ navigate", "up/down navigate") + " " + g("·", ".") + " " + g("←/→ adjust", "left/right adjust") + " " + g("·", ".") + " ctrl+, save " + g("·", ".") + " esc close"))
+	b.WriteString(th.statusStyle.Render("↑/↓ navigate · ←/→ adjust · ctrl+, save · esc close"))
 	return b.String()
 }
 

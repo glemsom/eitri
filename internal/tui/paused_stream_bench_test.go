@@ -30,7 +30,6 @@ func TestPausedStreamRenderKeepsViewportCachedAcrossDeltas(t *testing.T) {
 // path: once the reader scrolls away, later deltas must not re-feed the full
 // transcript into the viewport just to preserve the paused reading position.
 func BenchmarkPausedStreamRender_PerDelta(b *testing.B) {
-	b.Setenv("EITRI_ASCII_GLYPHS", "1")
 	for _, turns := range []int{200, 800} {
 		b.Run("turns_"+strconv.Itoa(turns), func(b *testing.B) {
 			tx := pausedStreamRenderTranscript(b, turns)

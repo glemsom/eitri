@@ -54,7 +54,6 @@ func busyCacheTranscript(delta string) (*Transcript, *TurnSession) {
 // requirement: the busy-path concatenation (cached prefix + live
 // tail) must equal a fresh full render of the same state, every delta.
 func TestBusyRender_concatenatedMatchesFullRender(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx, s := busyCacheTranscript("")
 	_ = s
 
@@ -78,7 +77,6 @@ func TestBusyRender_concatenatedMatchesFullRender(t *testing.T) {
 // live tail, never the whole committed history. The prefix string is stable
 // across stream deltas.
 func TestBusyRender_prefixCachedAcrossDeltas(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx, s := busyCacheTranscript("")
 	_ = s
 
@@ -107,7 +105,6 @@ func TestBusyRender_prefixCachedAcrossDeltas(t *testing.T) {
 // prefix so the next busy frame re-renders it rather than serving stale bytes,
 // and that the rebuilt concatenation stays byte-identical to a full render.
 func TestBusyRender_committedMutationInvalidatesPrefix(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx, s := busyCacheTranscript("")
 	_ = s
 

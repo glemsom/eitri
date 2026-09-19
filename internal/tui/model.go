@@ -232,11 +232,7 @@ func newModelHistory(path string) *PromptHistory {
 // NewModelCfg builds a TUI model wired to the given dependencies.
 func NewModelCfg(d Dependencies) Model {
 	comp := textarea.New()
-	if !localeSupportsUTF8() {
-		comp.Prompt = "| " // ASCII composer rail
-	} else {
-		comp.Prompt = lookup("cursor") + " "
-	}
+	comp.Prompt = lookup("cursor") + " "
 	comp.Focus()
 	comp.CharLimit = 0
 	comp.ShowLineNumbers = false
