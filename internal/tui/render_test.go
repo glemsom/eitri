@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -39,6 +40,42 @@ func TestRender_busyLine(t *testing.T) {
 		t.Setenv("EITRI_NO_MOTION", "1")
 		if got := busyLine(0, PhaseWorking); got != "… thinking" {
 			t.Errorf("reduced-motion busyLine = %q, want %q", got, "… thinking")
+		}
+	})
+}
+
+func TestRender_forgeBusyLine(t *testing.T) {
+	cases := []struct {
+		phase Phase
+		want  string
+	}{
+		{PhaseReasoning, "🧠"},
+		{PhaseWorking, "⚒️"},
+		{PhaseAnswering, "✍️"},
+	}
+
+	t.Run("motion", func(t *testing.T) {
+		for _, c := range cases {
+			got := forgeBusyLine(0, c.phase)
+			if !strings.Contains(got, c.want) {
+				t.Errorf("forgeBusyLine(0, %v) = %q, missing icon %q", c.phase, got, c.want)
+			}
+			if !strings.Contains(got, forgeVerb(c.phase)) {
+				t.Errorf("forgeBusyLine(0, %v) = %q, missing verb %q", c.phase, got, forgeVerb(c.phase))
+			}
+		}
+	})
+
+	t.Run("reduced-motion", func(t *testing.T) {
+		t.Setenv("EITRI_NO_MOTION", "1")
+		for _, c := range cases {
+			got := forgeBusyLine(0, c.phase)
+			if !strings.Contains(got, c.want) {
+				t.Errorf("reduced-motion forgeBusyLine(0, %v) = %q, missing icon %q", c.phase, got, c.want)
+			}
+			if !strings.Contains(got, "… forging") {
+				t.Errorf("reduced-motion forgeBusyLine(0, %v) = %q, missing fallback %q", c.phase, got, "… forging")
+			}
 		}
 	})
 }
