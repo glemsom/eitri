@@ -16,18 +16,24 @@ import (
 
 // Transcript is the single owner of the transcript region: the layout/scroll/follow/render concerns that used to live in the TUI Model god-object, and the only home of the transcript state.
 type Transcript struct {
-	theme           Theme
-	messages        []message
-	busy            bool
-	busyStartedAt   time.Time
-	spinner         int
-	forgeFrame      int
-	busyPulse       int
-	reasoningEffort string
-	configTheme     string
-	log             toolLog
-	expandAll       bool
-	collapseAll     bool
+	theme         Theme
+	messages      []message
+	busy          bool
+	busyStartedAt time.Time
+	spinner       int
+	forgeFrame    int
+	busyPulse     int
+	// idleEmberFrame is the current idle-ember shimmer frame (0 is settled) and
+	// idleEmberRemaining is how many ticks are left in the bounded post-activity
+	// window. The pair mirrors the busy glint frame; the ember tick is its own
+	// timer so a run and an idle surface never arm the same state twice.
+	idleEmberFrame     int
+	idleEmberRemaining int
+	reasoningEffort    string
+	configTheme        string
+	log                toolLog
+	expandAll          bool
+	collapseAll        bool
 	// cotExpanded and toolResultsExpanded are the render defaults flipped by
 	// hint/one-liner by default; true renders the full body by default.
 	cotExpanded         bool
@@ -711,7 +717,7 @@ func (t *Transcript) renderMessageRange(b *strings.Builder, toolRows *[]toolRowR
 	}
 	if withHeader {
 		if len(t.messages) == 0 && !t.busy {
-			emit(idleWelcome(t.theme, t.transcriptWidth()))
+			emit(idleWelcome(t.theme, t.transcriptWidth(), t.idleEmberFrame))
 		}
 	}
 	now := time.Time{}
@@ -1062,7 +1068,7 @@ func (t *Transcript) recordLayout() {
 		t.ensureCommittedUnits(len(t.messages))
 		var hist strings.Builder
 		if len(t.messages) == 0 {
-			hist.WriteString(idleWelcome(t.theme, t.transcriptWidth()))
+			hist.WriteString(idleWelcome(t.theme, t.transcriptWidth(), t.idleEmberFrame))
 		}
 		row := 0
 		for i, u := range t.units {
@@ -1190,6 +1196,37 @@ func (t *Transcript) endTurn() {
 	t.forgeFrame = 0
 	t.layout.dirty = true
 	t.busyPrefixDirty = true
+}
+
+// armIdleEmber restarts the idle-ember window at its leading frame, extending
+// the bounded shimmer after input or a new event.
+func (t *Transcript) armIdleEmber() {
+	t.idleEmberFrame = 0
+	t.idleEmberRemaining = idleEmberWindow
+}
+
+// settleIdleEmber parks the ember on the static mark and closes the window, so
+// a busy turn, an overlay, or reduced motion stops the idle wakeup.
+func (t *Transcript) settleIdleEmber() {
+	t.idleEmberFrame = 0
+	t.idleEmberRemaining = 0
+}
+
+// advanceIdleEmber steps the ember within the open window and reports whether
+// the window is still open (and so whether the tick should be re-armed). When
+// the window closes the frame settles back to the static mark.
+func (t *Transcript) advanceIdleEmber() bool {
+	if t.idleEmberRemaining <= 0 {
+		t.idleEmberFrame = 0
+		return false
+	}
+	t.idleEmberFrame++
+	t.idleEmberRemaining--
+	if t.idleEmberRemaining <= 0 {
+		t.idleEmberFrame = 0
+		return false
+	}
+	return true
 }
 
 func (t *Transcript) toggleExpandAll() bool {

@@ -9,7 +9,7 @@ import (
 )
 
 func TestRenderTitledPanelTruncatesBodyToNarrowWidth(t *testing.T) {
-	got := renderTitledPanel("Long title", 8, lipgloss.NewStyle(), "abcdefghi")
+	got := renderTitledPanel(newDefaultTheme(), "Long title", 8, lipgloss.NewStyle(), "abcdefghi")
 	for _, line := range strings.Split(ansiStrip(got), "\n") {
 		if strings.HasPrefix(line, "│") && lipgloss.Width(line) > 8 {
 			t.Fatalf("panel body row exceeds panel width 8: %q\n%s", line, got)

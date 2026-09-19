@@ -87,6 +87,15 @@ func TestSnapshot_frames(t *testing.T) {
 	m = resizeTo(t, m, 120, 40)
 	writeFrame(t, out, "01_idle", m)
 
+	emDeps, _ := snapshotDeps(cfg)
+	em := NewModelCfg(emDeps)
+	em = resizeTo(t, em, 120, 40)
+	em.tx.armIdleEmber()
+	for range 6 {
+		em = upd(t, em, idleEmberTickMsg{})
+	}
+	writeFrame(t, out, "01b_idle_ember", em)
+
 	m = upd(t, m, telemetryUpdateMsg{update: telemetry.TelemetryUpdate{Kind: telemetry.TelemetryTurn}})
 	m = upd(t, m, telemetryUpdateMsg{update: telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 12400, Miss: 3600, Output: 2100}})
 

@@ -120,11 +120,13 @@ func tokenEstimate(s string) int {
 	return len([]rune(s)) / 4
 }
 
-// idleWelcome is the empty-transcript welcome block: brand mark + keybinding hints.
-func idleWelcome(th Theme, width int) string {
-	return th.headerStyle.Render(hrWidth(width)) + "\n" +
-		th.headerStyle.Render(brandMark()+" Eitri") + th.statusStyle.Render(" — your terminal coding agent") + "\n" +
-		th.headerStyle.Render(hrWidth(width)) + "\n" +
+// idleWelcome is the empty-transcript welcome block: the gradient brand with
+// the optional idle-ember shimmer, framed by gradient rules and keybinding
+// hints.
+func idleWelcome(th Theme, width, emberFrame int) string {
+	return th.gradientRule(width) + "\n" +
+		brandWordmark(th, emberFrame) + th.statusStyle.Render(" — your terminal coding agent") + "\n" +
+		th.gradientRule(width) + "\n" +
 		th.statusStyle.Render("  "+keyHint()+" /settings · /help for commands & keybindings") + "\n"
 }
 
