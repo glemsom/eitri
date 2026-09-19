@@ -408,6 +408,23 @@ func TestSettingsView_RendersKnobsAndSave(t *testing.T) {
 	}
 }
 
+func TestSettingsView_SectionIcons(t *testing.T) {
+	t.Parallel()
+	f := newSettingsForm(cfgFixture(), []string{})
+	view := settingsView(f)
+	for _, want := range []string{
+		lookup("settingsModel") + " model",
+		lookup("settingsCredentials") + " provider credentials",
+		lookup("settingsReasoning") + " reasoning & limits",
+		lookup("settingsAppearance") + " appearance",
+		lookup("settingsWorkspace") + " workspace access",
+	} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("settings view %q missing section %q", view, want)
+		}
+	}
+}
+
 func TestSettingsForm_CollapseTogglesAdjust(t *testing.T) {
 	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{}) // both collapsed-by-default on
