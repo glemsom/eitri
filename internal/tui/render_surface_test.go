@@ -189,7 +189,7 @@ func TestHelpView_glyphs(t *testing.T) {
 			t.Errorf("helpView() missing command code span %q", want)
 		}
 	}
-	for _, want := range []string{"✎ COMPOSER", "→ NAVIGATION", "▦ PANES", "★ ACTIONS"} {
+	for _, want := range []string{"✍️ COMPOSER", "🧭️ NAVIGATION", "🪟️ PANES", "⚡️ ACTIONS"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("helpView() missing keybinding category %q", want)
 		}

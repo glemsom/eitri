@@ -219,7 +219,7 @@ func TestHelpView_keybindingCategories(t *testing.T) {
 	got := helpView()
 
 	for _, want := range []string{
-		"✎ COMPOSER", "→ NAVIGATION", "▦ PANES", "★ ACTIONS",
+		"✍️ COMPOSER", "🧭️ NAVIGATION", "🪟️ PANES", "⚡️ ACTIONS",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("helpView() missing keybinding category %q", want)
