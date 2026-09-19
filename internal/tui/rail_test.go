@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"github.com/glemsom/eitri/internal/tui/telemetry"
 	"strings"
 	"testing"
@@ -745,6 +746,93 @@ func TestRailStatsCacheMeterStates(t *testing.T) {
 			view := r.renderStats(te, defaultTheme, 36)
 			if !strings.Contains(ansiStrip(view), tc.want) {
 				t.Fatalf("cache meter missing %q, got: %q", tc.want, view)
+			}
+		})
+	}
+}
+
+// TestRailMeter_widthVocabularyIsStable locks the narrow/medium/wide tiers so
+// the rail layout cannot shift.
+func TestRailMeter_widthVocabularyIsStable(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		rail int
+		want int
+	}{
+		{minWidthRail, 6},
+		{44, 6},
+		{45, 10},
+		{59, 10},
+		{60, 14},
+		{200, 14},
+	} {
+		t.Run(fmt.Sprintf("rail/%d", tc.rail), func(t *testing.T) {
+			t.Parallel()
+			if got := lipgloss.Width(railMeter(0.5, tc.rail)); got != tc.want {
+				t.Errorf("railMeter width at rail %d = %d, want %d", tc.rail, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestRailStatsMeterHueEveryBundledTheme locks the heat-meter contract: on
+// every bundled palette and at each rail width tier, the cache and ctx meters
+// render as block bars inside the STATS section hue, and the ctx line flares to
+// the palette's error hue at the ceiling without losing its meter.
+func TestRailStatsMeterHueEveryBundledTheme(t *testing.T) {
+	t.Parallel()
+	widths := []struct {
+		rail     int
+		cacheBar string
+		ctxBar   string
+		fullBar  string
+	}{
+		{rail: 36, cacheBar: "██░░░░", ctxBar: "███░░░", fullBar: "██████"},
+		{rail: 45, cacheBar: "████░░░░░░", ctxBar: "█████░░░░░", fullBar: "██████████"},
+		{rail: 60, cacheBar: "██████░░░░░░░░", ctxBar: "███████░░░░░░░", fullBar: "██████████████"},
+	}
+	for _, name := range bundledThemeNames {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			th := themeFor(name)
+			for _, tc := range widths {
+				t.Run(fmt.Sprintf("width/%d", tc.rail), func(t *testing.T) {
+					t.Parallel()
+					r := NewRail("opencode-go", "deepseek", "low", true, "sid", "/tmp/sid")
+
+					te := telemetry.NewTelemetry("deepseek", "low", true, 250)
+					te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 4, Miss: 6, Ctx: liveContextWarnThreshold / 2})
+					view := r.renderStats(te, th, tc.rail)
+
+					cacheLine := lineContaining(view, "cache")
+					if !strings.Contains(ansiStrip(cacheLine), "40% "+tc.cacheBar) {
+						t.Errorf("cache meter = %q, want bar %q", ansiStrip(cacheLine), tc.cacheBar)
+					}
+					if !strings.Contains(cacheLine, colorSGR(th.railHues[railStats])) {
+						t.Errorf("cache line missing STATS hue: %q", cacheLine)
+					}
+					ctxLine := lineContaining(view, "ctx")
+					if !strings.Contains(ansiStrip(ctxLine), tc.ctxBar) {
+						t.Errorf("ctx meter = %q, want bar %q", ansiStrip(ctxLine), tc.ctxBar)
+					}
+					if !strings.Contains(ctxLine, colorSGR(th.railHues[railStats])) {
+						t.Errorf("ctx line missing STATS hue below ceiling: %q", ctxLine)
+					}
+					if strings.Contains(ctxLine, colorSGR(th.error)) {
+						t.Errorf("ctx line below ceiling carries error hue: %q", ctxLine)
+					}
+
+					te = telemetry.NewTelemetry("deepseek", "low", true, 250)
+					te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Ctx: liveContextWarnThreshold})
+					warn := r.renderStats(te, th, tc.rail)
+					warnCtx := lineContaining(warn, "ctx")
+					if !strings.Contains(ansiStrip(warnCtx), tc.fullBar) {
+						t.Errorf("ceiling ctx meter = %q, want full bar %q", ansiStrip(warnCtx), tc.fullBar)
+					}
+					if !strings.Contains(warnCtx, colorSGR(th.error)) {
+						t.Errorf("ceiling ctx line missing error hue: %q", warnCtx)
+					}
+				})
 			}
 		})
 	}
