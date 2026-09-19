@@ -347,18 +347,19 @@ func (m Model) forgeTitle() string {
 	muted := lipgloss.NewStyle().Foreground(dimmed(accent, 0.65))
 	strong := lipgloss.NewStyle().Foreground(accent)
 	elapsed := forgeElapsed(m)
+	prefix := brandMark() + " Eitri is "
 	if !motionEnabled() {
-		return muted.Render("⚒  Eitri is ") + strong.Bold(true).Render("forging") + muted.Render(elapsed)
+		return muted.Render(prefix) + strong.Bold(true).Render("forging") + muted.Render(elapsed)
 	}
 
 	// Sweep over visible glyphs rather than spaces so the three-cell glint keeps
 	// its shape as it crosses the whole title; the elapsed readout rides the
 	// same sweep so the timer moves with the forge cadence instead of drifting.
-	title := []rune("⚒  Eitri is forging" + elapsed)
+	title := []rune(prefix + "forging" + elapsed)
 
 	var glyphs []int
 	for i, r := range title {
-		if r != ' ' {
+		if r != ' ' && r != '\ufe0f' {
 			glyphs = append(glyphs, i)
 		}
 	}
@@ -385,13 +386,24 @@ func (m Model) forgeTitle() string {
 		highlights[glyphs[start+i]] = levels[i]
 	}
 
+	glintStyle := func(level float64) lipgloss.Style {
+		s := lipgloss.NewStyle().Foreground(dimmed(accent, level))
+		if level == 1 {
+			s = s.Bold(true)
+		}
+		return s
+	}
+
 	var b strings.Builder
 	for i, r := range title {
 		style := muted
 		if level, ok := highlights[i]; ok {
-			style = lipgloss.NewStyle().Foreground(dimmed(accent, level))
-			if level == 1 {
-				style = style.Bold(true)
+			style = glintStyle(level)
+		} else if i > 0 && r == '\ufe0f' {
+			// VS16 inherits the style of its base character so the emoji
+			// presentation stays intact even when the base is highlighted.
+			if level, ok := highlights[i-1]; ok {
+				style = glintStyle(level)
 			}
 		}
 		b.WriteString(style.Render(string(r)))
