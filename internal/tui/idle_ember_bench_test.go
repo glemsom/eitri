@@ -25,7 +25,7 @@ func BenchmarkIdleEmberRender(b *testing.B) {
 		b.Run(mode.name, func(b *testing.B) {
 			m := NewModelCfg(Dependencies{})
 			nm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
-			m = asBenchModel(b, nm)
+			m = asModel(b, nm)
 			m.tx.armIdleEmber()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
@@ -36,13 +36,4 @@ func BenchmarkIdleEmberRender(b *testing.B) {
 			}
 		})
 	}
-}
-
-func asBenchModel(b *testing.B, tm tea.Model) Model {
-	b.Helper()
-	m, ok := tm.(Model)
-	if !ok {
-		b.Fatalf("tea.Model is %T, want Model", tm)
-	}
-	return m
 }

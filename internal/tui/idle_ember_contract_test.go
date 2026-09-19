@@ -73,7 +73,7 @@ func TestIdleEmber_runBeginStopsImmediately(t *testing.T) {
 
 func TestIdleEmber_overlaysStopArming(t *testing.T) {
 	openOverlay := map[string]func(t *testing.T, m Model) Model{
-		"settings": func(t *testing.T, m Model) Model { return openSettingsForTest(t, m) },
+		"settings": openSettingsForTest,
 		"help": func(t *testing.T, m Model) Model {
 			m = typeText(t, m, "/help")
 			return keypress(t, m, "enter")
