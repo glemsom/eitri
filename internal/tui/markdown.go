@@ -308,8 +308,12 @@ func RenderPromptMarkdown(prompt string, width int, theme string) (string, error
 }
 
 // renderUserPromptCard renders a user prompt as the carded bubble. glamour's per-token SGR resets would clear the card's Background, so reattachBubbleBackground re-asserts the bubble tint after every reset. glamour also pre-pads rows and lipgloss's Width() alignment then emits a couple of unstyled trailing cells at the right edge, so every glamour row is padded to the content width (w-4) with the bubble background and Width() is not used — lipgloss's 2-col padding closes the box with no extra width-fill left to trip on (benchmark §4.1).
-func renderUserPromptCard(th Theme, md string, w int) string {
+// When roleMark is non-empty it is prepended to the first line inside the bubble so the mark shares the card background and the total width stays w.
+func renderUserPromptCard(th Theme, md string, w int, roleMark string) string {
 	out := reattachBubbleBackground(md, th)
+	if roleMark != "" {
+		out = prependToFirstLine(out, roleMark)
+	}
 	bg := bubbleBgSGR(th)
 	cw := w - 4 // bubble content width: Width(w) minus 2-left + 2-right padding
 	if cw > 0 {

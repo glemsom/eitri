@@ -13,6 +13,19 @@ import (
 
 const collapsedToolCommandMaxLines = 5
 
+// prependToFirstLine prepends prefix to the first line of s, leaving other
+// lines untouched. If s is empty or prefix is empty, s is returned unchanged.
+func prependToFirstLine(s, prefix string) string {
+	if prefix == "" || s == "" {
+		return s
+	}
+	lines := strings.Split(s, "\n")
+	if len(lines) > 0 {
+		lines[0] = prefix + lines[0]
+	}
+	return strings.Join(lines, "\n")
+}
+
 // flowInput is one turn's complete rendering context for the flow renderer:
 // its arrival-ordered event log, the assistant-message snapshot that carries
 // the derived reasoning/answer text and the committed-vs-live stream state,
@@ -40,6 +53,10 @@ type flowInput struct {
 	// ToolLog, when non-nil, is the owning log whose completed-entry render
 	// cache memoizes committed tool cards across frames. See toolLog.renderEntry.
 	ToolLog *toolLog
+	// RoleMark, when non-empty, is prepended to the first line of the rendered
+	// flow so the assistant turn carries its identity mark without entering the
+	// copyable payload.
+	RoleMark string
 }
 
 // flowTool is one tool entry the flow renderer emits: the log entry plus its
@@ -113,7 +130,11 @@ func RenderFlow(in flowInput) (string, []toolRowRange) {
 		toolLog:       in.ToolLog,
 	}
 	items := r.fold(in.Events, in.Msg)
-	return r.render(items, in.Msg, in.MsgIdx, in.IsFocused)
+	text, rows := r.render(items, in.Msg, in.MsgIdx, in.IsFocused)
+	if in.RoleMark != "" {
+		text = prependToFirstLine(text, in.RoleMark)
+	}
+	return text, rows
 }
 
 // fold turns the event log into its named flow blocks in emission order. The

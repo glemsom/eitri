@@ -591,11 +591,17 @@ func (t *Transcript) committedEmission(i, anchor int) (string, []toolRowRange, i
 	msg := t.messages[i]
 	if msg.role == "you" {
 		w := t.transcriptWidth()
-		md, _ := RenderPromptMarkdown(msg.content, w-4, t.configTheme)
-		emit(renderUserPromptCard(t.theme, md, w) + "\n")
+		roleMark := userRoleMark() + " "
+		mdWidth := w - 4
+		if roleMark != "" {
+			mdWidth -= ansi.StringWidth(roleMark)
+		}
+		md, _ := RenderPromptMarkdown(msg.content, mdWidth, t.configTheme)
+		card := renderUserPromptCard(t.theme, md, w, roleMark)
+		emit(card + "\n")
 	} else if len(msg.events) > 0 {
 		base := nl
-		block, rrows := t.renderEventFlow(msg.events, anchor, msg, i, time.Time{})
+		block, rrows := t.renderEventFlow(msg.events, anchor, msg, i, time.Time{}, assistantRoleMark()+" ")
 		emit(block)
 		for _, r := range rrows {
 			rows = append(rows, toolRowRange{start: base + r.start, end: base + r.end, idx: r.idx})
@@ -729,7 +735,7 @@ func (t *Transcript) renderMessageRange(b *strings.Builder, toolRows *[]toolRowR
 	// code can drift from RenderFlow.
 	emitFlow := func(events []TimelineEvent, anchor, msgIdx int, msg message) {
 		base := nl
-		block, rows := t.renderEventFlow(events, anchor, msg, msgIdx, now)
+		block, rows := t.renderEventFlow(events, anchor, msg, msgIdx, now, assistantRoleMark()+" ")
 		emit(block)
 		recordToolRows(rows, base)
 	}
@@ -789,7 +795,7 @@ func (t *Transcript) renderMessageRange(b *strings.Builder, toolRows *[]toolRowR
 // FlowRenderer seam and returns the rendered text plus tool-entry row ranges
 // in toolLog.Render's shape, so the shared row->entry hit-test works on merged
 // streams.
-func (t *Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg message, msgIdx int, now time.Time) (string, []toolRowRange) {
+func (t *Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg message, msgIdx int, now time.Time, roleMark string) (string, []toolRowRange) {
 	tools := make([]flowTool, 0)
 	for _, idx := range t.log.anchoredIndices(anchor) {
 		tools = append(tools, flowTool{
@@ -813,6 +819,7 @@ func (t *Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg mes
 		IsFocused:     t.focusedBlockIs,
 		MarkdownCache: &t.liveMarkdownCache,
 		ToolLog:       &t.log,
+		RoleMark:      roleMark,
 	})
 }
 

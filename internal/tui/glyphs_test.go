@@ -52,6 +52,15 @@ func TestGlyphInventory_iconContract(t *testing.T) {
 	}
 }
 
+func TestRoleMark_charter(t *testing.T) {
+	if got := userRoleMark(); got != lookup("userRole") {
+		t.Errorf("userRoleMark() = %q, want %q", got, lookup("userRole"))
+	}
+	if got := assistantRoleMark(); got != lookup("assistantRole") {
+		t.Errorf("assistantRoleMark() = %q, want %q", got, lookup("assistantRole"))
+	}
+}
+
 func TestToolGlyph_charter(t *testing.T) {
 	cases := []struct {
 		name string

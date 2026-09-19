@@ -180,7 +180,7 @@ func TestDragSelect_copiesSelectedRange(t *testing.T) {
 			break
 		}
 	}
-	col := strings.Index(row, "answer")
+	col := lipgloss.Width(row[:strings.Index(row, "answer")])
 	if col < 0 {
 		t.Fatalf("could not locate the answer word in the history rows, got: %q", rows)
 	}
@@ -244,6 +244,7 @@ func TestDragSelect_multilineRangeJoinsRows(t *testing.T) {
 	m = mustUpdate(t, m, dragMsg("motion", endCol, endRow))
 	mustUpdate(t, m, dragMsg("release", endCol, endRow))
 
+	want = stripRoleMarks(want)
 	if copied != want {
 		t.Errorf("multi-line drag copy = %q, want %q", copied, want)
 	}
@@ -368,13 +369,13 @@ func TestDragSelect_wideCharCopyMatchesHighlight(t *testing.T) {
 	var copied string
 	m, _, _, answerRow := newWideAnswerModel(t, &copied)
 
-	m = mustUpdate(t, m, dragMsg("press", 3, answerRow))
-	m = mustUpdate(t, m, dragMsg("motion", 8, answerRow))
+	m = mustUpdate(t, m, dragMsg("press", 6, answerRow))
+	m = mustUpdate(t, m, dragMsg("motion", 11, answerRow))
 	if spans := selectionSpans(view(m), defaultTheme.selectionBgSGR()); strings.Join(spans, "") != "ab你de" {
 		t.Errorf("during-drag highlight spans = %q, want %q", spans, "ab你de")
 	}
 
-	mustUpdate(t, m, dragMsg("release", 9, answerRow))
+	mustUpdate(t, m, dragMsg("release", 12, answerRow))
 	if copied != "ab你de" {
 		t.Errorf("wide-char drag copy = %q, want %q", copied, "ab你de")
 	}
@@ -385,9 +386,9 @@ func TestDragSelect_boundaryInsideWideCharNoPanic(t *testing.T) {
 	var copied string
 	m, _, _, answerRow := newWideAnswerModel(t, &copied)
 
-	m = mustUpdate(t, m, dragMsg("press", 4, answerRow))
-	m = mustUpdate(t, m, dragMsg("motion", 6, answerRow))
-	mustUpdate(t, m, dragMsg("release", 6, answerRow))
+	m = mustUpdate(t, m, dragMsg("press", 7, answerRow))
+	m = mustUpdate(t, m, dragMsg("motion", 9, answerRow))
+	mustUpdate(t, m, dragMsg("release", 9, answerRow))
 	if copied != "b你" {
 		t.Errorf("boundary-inside-wide-char copy = %q, want %q", copied, "b你")
 	}
@@ -468,7 +469,7 @@ func TestDragSelect_backwardsDragCopiesSameRange(t *testing.T) {
 			break
 		}
 	}
-	col := strings.Index(row, "answer")
+	col := lipgloss.Width(row[:strings.Index(row, "answer")])
 	if col < 0 {
 		t.Fatalf("could not locate the answer word in the history rows, got: %q", rows)
 	}

@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/glemsom/eitri/internal/config"
 )
 
@@ -538,9 +540,11 @@ func TestTranscript_emptyTimelineGapRendersThroughFlowRenderer(t *testing.T) {
 	// FlowRenderer emitter produces for the synthesized (empty) log — no
 	// legacy tool-log branch output beneath the card.
 	want := ""
-	md, _ := RenderPromptMarkdown("run it", tx.transcriptWidth()-4, tx.configTheme)
-	want += renderUserPromptCard(tx.theme, md, tx.transcriptWidth()) + "\n"
-	flow, _ := tx.renderEventFlow(nil, 0, message{}, 0, time.Time{})
+	roleMark := userRoleMark() + " "
+	md, _ := RenderPromptMarkdown("run it", tx.transcriptWidth()-4-ansi.StringWidth(roleMark), tx.configTheme)
+	card := renderUserPromptCard(tx.theme, md, tx.transcriptWidth(), roleMark)
+	want += card + "\n"
+	flow, _ := tx.renderEventFlow(nil, 0, message{}, 0, time.Time{}, assistantRoleMark()+" ")
 	want += flow
 	want += tx.theme.statusStyle.Render(busyLine(tx.spinner, tx.phase())) + "\n"
 
