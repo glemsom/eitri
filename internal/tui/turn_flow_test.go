@@ -53,7 +53,7 @@ func TestTranscript_rendersTurnAsFlatFlowInArrivalOrder(t *testing.T) {
 	plain := ansiStrip(hist.String())
 
 	ri := strings.Index(plain, "Let me check the repo first.")
-	ti := strings.Index(plain, "❯ bash")
+	ti := strings.Index(plain, "🐚️ bash")
 	ai := strings.Index(plain, "Done.")
 	if ri < 0 || ti < 0 || ai < 0 {
 		t.Fatalf("flat flow render is missing segments (reasoning %d, tool %d, answer %d):\n%s", ri, ti, ai, plain)
@@ -65,7 +65,7 @@ func TestTranscript_rendersTurnAsFlatFlowInArrivalOrder(t *testing.T) {
 	}
 	// No segment may render twice: the flow replaces the three separate panes
 	// (thinking pane / tool log / answer pane) with one pass over the events.
-	for _, marker := range []string{"Let me check the repo first.", "❯ bash", "2 lines", "Done."} {
+	for _, marker := range []string{"Let me check the repo first.", "🐚️ bash", "2 lines", "Done."} {
 		if n := strings.Count(plain, marker); n != 1 {
 			t.Errorf("marker %q rendered %d times, want exactly once (flat flow, no duplicates):\n%s", marker, n, plain)
 		}
@@ -146,7 +146,7 @@ func TestTranscript_flatFlowCollapsesReasoningOnCompletion(t *testing.T) {
 		t.Errorf("collapsed reasoning must keep the ≡ N tok hint, got:\n%s", plain)
 	}
 	// The tool entry and answer must still render after the reasoning hint.
-	if !strings.Contains(plain, "❯ bash") || !strings.Contains(plain, "Done.") {
+	if !strings.Contains(plain, "🐚️ bash") || !strings.Contains(plain, "Done.") {
 		t.Errorf("collapsed turn must still render tool and answer, got:\n%s", plain)
 	}
 }

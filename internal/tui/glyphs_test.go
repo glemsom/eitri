@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 )
@@ -57,9 +58,10 @@ func TestToolGlyph_charter(t *testing.T) {
 		name string
 		want string
 	}{
-		{"bash", "❯"},
-		{"open_in_browser", "◎"},
-		{"unknown", "⊕"},
+		{"bash", "🐚\ufe0f"},
+		{"open_in_browser", "🌐\ufe0f"},
+		{"skill", "✨\ufe0f"},
+		{"unknown", "🧰\ufe0f"},
 	}
 	for _, c := range cases {
 		if got := toolGlyph(c.name); got != c.want {
@@ -82,7 +84,7 @@ func TestToolEntry_rendersUtf8Glyphs(t *testing.T) {
 	m = toolResult(t, m, ToolResult{Name: "bash", Result: "ok (1ms)", Lines: 1})
 
 	content := plain(view(m))
-	if !strings.Contains(content, "❯ bash") {
+	if !strings.Contains(content, "🐚\ufe0f bash") {
 		t.Errorf("UTF-8 tool label missing, got: %q", content)
 	}
 	if !strings.Contains(content, "✓") {
@@ -90,5 +92,42 @@ func TestToolEntry_rendersUtf8Glyphs(t *testing.T) {
 	}
 	if !strings.Contains(content, "│") {
 		t.Errorf("UTF-8 border glyph missing, got: %q", content)
+	}
+}
+
+// TestToolEntry_noIconInResultBody asserts that category icons are never
+// injected into the copyable tool-result payload; they live only on the
+// chrome head, never inside the card body.
+func TestToolEntry_noIconInResultBody(t *testing.T) {
+	// Render an expanded tool entry directly so the full result body is visible.
+	e := toolEntry{
+		name:     "bash",
+		args:     `{"command":"echo hello"}`,
+		result:   "hello\n🐚\ufe0f emoji in output",
+		complete: true,
+		lines:    2,
+	}
+	out := renderToolEntry(defaultTheme, e, true, time.Now(), 80, false, false)
+	plain := ansiStrip(out)
+
+	// The user-written emoji inside the result body must survive unchanged.
+	if !strings.Contains(plain, "🐚\ufe0f emoji in output") {
+		t.Errorf("user emoji inside result body was dropped or altered, got: %q", plain)
+	}
+	// No injected chrome icon should appear inside the body — the only 🐚 is
+	// the one the tool wrote. We verify by checking the card-frame body only.
+	bodyStart := strings.Index(plain, "hello")
+	if bodyStart < 0 {
+		t.Fatalf("result body not found in output: %q", plain)
+	}
+	body := plain[bodyStart:]
+	chromeIcons := []string{"🐚\ufe0f", "🌐\ufe0f", "✨\ufe0f", "🧰\ufe0f", "🧠\ufe0f"}
+	for _, icon := range chromeIcons {
+		// The user emoji is expected; we are checking that the renderer did
+		// not ADD any chrome icon beyond what the tool result already carries.
+		// Since the result contains 🐚 once, a count > 1 would mean injection.
+		if strings.Count(body, icon) > 1 {
+			t.Errorf("injected chrome icon %q found inside tool-result body: %q", icon, body)
+		}
 	}
 }

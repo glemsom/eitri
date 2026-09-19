@@ -43,7 +43,7 @@ func TestModel_toolEditEntryRenders(t *testing.T) {
 	}})
 
 	content := view(m)
-	if !strings.Contains(content, "❯ bash") {
+	if !strings.Contains(content, "🐚️ bash") {
 		t.Errorf("expected a one-line bash entry, got: %q", content)
 	}
 	if !strings.Contains(content, "ls") {
@@ -70,7 +70,7 @@ func TestModel_toolEntryCollapsedThenExpandable(t *testing.T) {
 	}})
 
 	content := view(m)
-	if !strings.Contains(content, "❯ bash") {
+	if !strings.Contains(content, "🐚️ bash") {
 		t.Errorf("expected a one-line bash entry, got: %q", content)
 	}
 	if !strings.Contains(content, "+3 more") {
@@ -127,11 +127,11 @@ func TestModel_stylingToolHeadSplitsLabelAndArgs(t *testing.T) {
 	m = toolStart(t, m, "bash", `{"command":"go test ./..."}`)
 	m = toolResult(t, m, ToolResult{Name: "bash", Result: "ok (1ms)", Lines: 1})
 
-	line := lineContaining(view(m), "❯ bash")
+	line := lineContaining(view(m), "🐚️ bash")
 	if line == "" {
 		t.Fatalf("tool head row missing, got: %q", view(m))
 	}
-	if !strings.Contains(line, "\x1b[38;2;224;175;104m❯ bash\x1b[m\x1b[2m  go test ./...") {
+	if !strings.Contains(line, "\x1b[38;2;224;175;104m🐚️ bash\x1b[m\x1b[2m  go test ./...") {
 		t.Errorf("tool head must color the label and dim the args, got line: %q", line)
 	}
 }
@@ -174,7 +174,7 @@ func TestModel_toolArgsTruncateToWidth(t *testing.T) {
 	m = toolStart(t, m, "bash", `{"command":"curl --fail --max-time 30 https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After"}`)
 	m = toolResult(t, m, ToolResult{Name: "bash", Result: "error: fetch failed", Lines: 1})
 
-	line := lineContaining(view(m), "❯ bash")
+	line := lineContaining(view(m), "🐚️ bash")
 	if line == "" {
 		t.Fatalf("tool row missing, got: %q", view(m))
 	}

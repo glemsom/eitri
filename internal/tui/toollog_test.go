@@ -136,12 +136,12 @@ func TestToolLog_HeadForms(t *testing.T) {
 		{
 			name:  "plain args",
 			entry: toolEntry{name: "bash", args: `{"command":"ls"}`},
-			want:  "❯ bash  ls",
+			want:  "🐚️ bash  ls",
 		},
 		{
 			name:  "curl fetch in bash",
 			entry: toolEntry{name: "bash", args: `{"command":"curl --fail --max-time 30 https://example.com"}`},
-			want:  "❯ bash  curl --fail --max-time 30 https://example.com",
+			want:  "🐚️ bash  curl --fail --max-time 30 https://example.com",
 		},
 	}
 	for _, c := range cases {
@@ -219,7 +219,7 @@ func TestToolLog_RenderOutcomeElapsedAndTruncation(t *testing.T) {
 	l.SetStart(0, start)
 
 	got, _ := renderViaFlow(l, viewDefault, true, time.Now(), 80, 0, false)
-	if !strings.Contains(got, "❯ bash") {
+	if !strings.Contains(got, "🐚️ bash") {
 		t.Errorf("head missing, got %q", got)
 	}
 	if !strings.Contains(got, "1m 44s") {
