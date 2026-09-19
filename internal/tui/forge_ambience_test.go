@@ -81,6 +81,58 @@ func TestGradientRule_everyBundledThemeBlendsThreeHues(t *testing.T) {
 	}
 }
 
+// TestRenderTitledPanel_gradientContractEveryTheme guards the chrome panel's
+// top border: every band panel built on the titled-panel primitive must carry
+// the same accent -> web gradient as the idle banner for every bundled palette
+// and at narrow and wide widths, with the plain text and display width intact.
+func TestRenderTitledPanel_gradientContractEveryTheme(t *testing.T) {
+	t.Parallel()
+	const title = "Commands"
+	for _, name := range bundledThemeNames {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			th := themeFor(name)
+			for _, width := range []int{8, 20, 100} {
+				width := width
+				t.Run(fmt.Sprintf("width/%d", width), func(t *testing.T) {
+					t.Parallel()
+					border := strings.Split(renderTitledPanel(th, title, width, th.bandSeparatorStyle, "body"), "\n")[0]
+					if got := lipgloss.Width(border); got != width {
+						t.Fatalf("top border width = %d, want %d: %q", got, width, border)
+					}
+					plain := ansiStrip(border)
+					if !strings.HasPrefix(plain, "╭") || !strings.HasSuffix(plain, "╮") {
+						t.Fatalf("top border plain = %q, want ╭...╮", plain)
+					}
+					fits := lipgloss.Width(title)+3 <= width-2
+					if fits != strings.Contains(plain, title) {
+						t.Errorf("top border plain = %q, title shown = %v, want %v at width %d", plain, strings.Contains(plain, title), fits, width)
+					}
+					for _, hue := range []color.Color{th.accent, th.web} {
+						if !strings.Contains(border, colorSGR(hue)) {
+							t.Errorf("gradient for %s at width %d missing hue %s: %q", name, width, colorSGR(hue), border)
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestRenderTitledPanel_nilPaletteFallsBackToPlainBorder(t *testing.T) {
+	t.Parallel()
+	th := renderSurfaceTestTheme()
+	got := renderTitledPanel(th, "Commands", 20, th.bandSeparatorStyle, "body")
+	if strings.Contains(got, "\x1b[") {
+		t.Errorf("nil palette top border must carry no SGR, got %q", got)
+	}
+	border := strings.Split(got, "\n")[0]
+	if want := "╭─ Commands ───────╮"; border != want {
+		t.Errorf("nil palette top border = %q, want %q", border, want)
+	}
+}
+
 func TestGradientRule_nilPaletteFallsBackToPlainRule(t *testing.T) {
 	t.Parallel()
 	th := renderSurfaceTestTheme()

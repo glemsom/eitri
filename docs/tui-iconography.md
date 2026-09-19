@@ -69,5 +69,5 @@ Two directions, never mixed:
 
 - Registry test: every `icon` entry is VS16-normalized, width 2, and contains no ZWJ or modifier codepoint.
 - Copy test: a model-emitted emoji (including a VS16 pair) survives `plainLines()` → drag-select → OSC 52.
-- Gradient test: every bundled palette blends accent → skill → web at a fixed width, so the gradient cannot regress to a flat hue without a per-theme change.
+- Gradient test: every bundled palette blends accent → skill → web at a fixed width, and the chrome panel's top border carries the same gradient at narrow and wide widths, so the gradient cannot regress to a flat hue without a per-theme change.
 - Snapshot frames across every bundled theme (dark, light, and each specialty palette) are the visual regression gate, each carrying a mid-ember idle frame.
