@@ -1201,14 +1201,14 @@ func (t *Transcript) endTurn() {
 // armIdleEmber restarts the idle-ember window at its leading frame, extending
 // the bounded shimmer after input or a new event.
 func (t *Transcript) armIdleEmber() {
-	t.idleEmberFrame = 0
+	t.setIdleEmberFrame(0)
 	t.idleEmberRemaining = idleEmberWindow
 }
 
 // settleIdleEmber parks the ember on the static mark and closes the window, so
 // a busy turn, an overlay, or reduced motion stops the idle wakeup.
 func (t *Transcript) settleIdleEmber() {
-	t.idleEmberFrame = 0
+	t.setIdleEmberFrame(0)
 	t.idleEmberRemaining = 0
 }
 
@@ -1217,16 +1217,30 @@ func (t *Transcript) settleIdleEmber() {
 // the window closes the frame settles back to the static mark.
 func (t *Transcript) advanceIdleEmber() bool {
 	if t.idleEmberRemaining <= 0 {
-		t.idleEmberFrame = 0
+		t.setIdleEmberFrame(0)
 		return false
 	}
-	t.idleEmberFrame++
+	t.setIdleEmberFrame(t.idleEmberFrame + 1)
 	t.idleEmberRemaining--
 	if t.idleEmberRemaining <= 0 {
-		t.idleEmberFrame = 0
+		t.setIdleEmberFrame(0)
 		return false
 	}
 	return true
+}
+
+// setIdleEmberFrame stores a new ember frame and dirties the cached layout when
+// the frame actually changed, so the shimmer reaches the rendered welcome.
+func (t *Transcript) setIdleEmberFrame(frame int) {
+	if t.idleEmberFrame == frame {
+		return
+	}
+	t.idleEmberFrame = frame
+	// Only the empty-transcript welcome draws the ember, so a transcript with
+	// messages must not pay a full re-layout on every ember tick.
+	if len(t.messages) == 0 {
+		t.layout.dirty = true
+	}
 }
 
 func (t *Transcript) toggleExpandAll() bool {

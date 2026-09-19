@@ -101,3 +101,20 @@ func TestIdleEmber_settledFrameEqualsReducedMotion(t *testing.T) {
 		t.Errorf("reduced-motion brand must equal the settled frame:\n settled=%q\n frozen =%q", settled, frozen)
 	}
 }
+
+func TestIdleEmber_changesRenderedWelcome(t *testing.T) {
+	m := idleEmberModel(t)
+	m = resizeTo(t, m, 120, 40)
+	settled := view(m)
+	m.tx.armIdleEmber()
+	for range 5 {
+		m = upd(t, m, idleEmberTickMsg{})
+	}
+	ember := view(m)
+	if settled == ember {
+		t.Fatal("idle ember frame must change the rendered welcome, not just its state")
+	}
+	if ansiStrip(settled) != ansiStrip(ember) {
+		t.Error("idle ember must not change the welcome's plain text")
+	}
+}
