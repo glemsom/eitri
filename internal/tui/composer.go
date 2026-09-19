@@ -126,8 +126,8 @@ func renderTitledPanel(th Theme, title string, width int, style lipgloss.Style, 
 	}
 	titleWidth := lipgloss.Width(title)
 	// The top border carries the same theme gradient as the idle banner. Since
-	// each cell is styled independently, a title's own inline reset can never
-	// strip the gradient from the fill after it.
+	// each gradient run is styled independently, a title's own inline reset can
+	// never strip the gradient from the fill after it.
 	showTitle := titleWidth > 0 && titleWidth+3 <= width-2
 	var b strings.Builder
 	if showTitle {
