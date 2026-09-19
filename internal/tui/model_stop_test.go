@@ -237,9 +237,8 @@ func TestModel_turnCancelErrorSurfacesAsStopped(t *testing.T) {
 }
 
 func TestRender_stoppedMarkerPin(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
-	if stoppedMarker() != "! stopped" {
-		t.Errorf("stoppedMarker = %q, want %q", stoppedMarker(), "! stopped")
+	if stoppedMarker() != "⏹ stopped" {
+		t.Errorf("stoppedMarker = %q, want %q", stoppedMarker(), "⏹ stopped")
 	}
 }
 

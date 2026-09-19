@@ -178,7 +178,7 @@ func TestModel_toolArgsTruncateToWidth(t *testing.T) {
 	if line == "" {
 		t.Fatalf("tool row missing, got: %q", view(m))
 	}
-	if !strings.Contains(line, g("…", "...")) {
+	if !strings.Contains(line, "…") {
 		t.Errorf("long args must truncate with an ellipsis, got: %q", line)
 	}
 	if width := lipgloss.Width(ansiStrip(line)); width > 78 {

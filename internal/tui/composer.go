@@ -124,7 +124,7 @@ func renderTitledPanel(title string, width int, style lipgloss.Style, body strin
 	if inner < 0 {
 		inner = 0
 	}
-	h := g("─", "-")
+	h := "─"
 	titleText := h + " " + title + " "
 	if lipgloss.Width(titleText) > width-2 {
 		titleText = h
@@ -138,25 +138,25 @@ func renderTitledPanel(title string, width int, style lipgloss.Style, body strin
 	// panel color from the trailing fill and corner. Re-applying the panel style
 	// to the tail keeps the top border the same color as the sides and bottom.
 	var b strings.Builder
-	b.WriteString(style.Render(g("╭", "+") + titleText))
-	b.WriteString(style.Render(strings.Repeat(h, topFill) + g("╮", "+")))
+	b.WriteString(style.Render("╭" + titleText))
+	b.WriteString(style.Render(strings.Repeat(h, topFill) + "╮"))
 	for _, line := range strings.Split(body, "\n") {
 		plainLine := ansiStrip(line)
 		if lipgloss.Width(plainLine) > inner {
-			line = truncateWidth(plainLine, inner-1) + g("…", "...")
+			line = truncateWidth(plainLine, inner-1) + "…"
 		}
 		pad := inner - lipgloss.Width(line)
 		if pad < 0 {
 			pad = 0
 		}
 		b.WriteByte('\n')
-		b.WriteString(style.Render(g("│", "|")))
+		b.WriteString(style.Render("│"))
 		b.WriteString(line)
 		b.WriteString(strings.Repeat(" ", pad))
-		b.WriteString(style.Render(g("│", "|")))
+		b.WriteString(style.Render("│"))
 	}
 	b.WriteByte('\n')
-	b.WriteString(style.Render(g("╰", "+") + strings.Repeat(h, inner) + g("╯", "+")))
+	b.WriteString(style.Render("╰" + strings.Repeat(h, inner) + "╯"))
 	return b.String()
 }
 
@@ -289,7 +289,7 @@ func fitBandLine(s string, width int) string {
 	if lipgloss.Width(s) > width {
 		// Reserve the ellipsis's own width so the filled line stays exactly
 		// width columns even when the ASCII ellipsis is wider than one rune.
-		ell := g("…", "...")
+		ell := "…"
 		keep := width - lipgloss.Width(ell)
 		if keep < 1 {
 			keep = 1
@@ -329,12 +329,12 @@ func forgeElapsed(m Model) string {
 }
 
 func (m Model) composerHint() string {
-	sep := g(" · ", " . ")
+	sep := " · "
 	if m.tx.busy {
 		return "ctrl+c stop" + sep + "pgup read history" + sep + "end follow"
 	}
 	if m.slash.isOpen() || m.mention.isOpen() {
-		return g("↑/↓", "up/down") + " navigate" + sep + "tab/enter select" + sep + "esc close"
+		return "↑/↓ navigate" + sep + "tab/enter select" + sep + "esc close"
 	}
 	return "enter send" + sep + "shift+enter newline" + sep + "ctrl+e expand/collapse" + sep + "/settings"
 }

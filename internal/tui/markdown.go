@@ -17,7 +17,7 @@ import (
 
 var supportedThemes = []string{
 	"dark", "light", "dracula", "tokyo-night", "pink", "nord", "gruvbox", "solarized",
-	"dark-daltonized", "light-daltonized", "notty", "auto",
+	"dark-daltonized", "light-daltonized", "auto",
 }
 
 type markdownRendererCacheKey struct {

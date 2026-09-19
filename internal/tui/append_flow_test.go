@@ -11,7 +11,6 @@ import (
 // appended note carries its own one-event transcript event log, so the
 // history renderer can route it through the FlowRenderer like any turn.
 func TestAppendMsg_synthesizesAnswerEventLog(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := newTestTx()
 
 	tx.appendMsg(helpView())
@@ -35,7 +34,6 @@ func TestAppendMsg_synthesizesAnswerEventLog(t *testing.T) {
 // help, login, and failure notes: the history render of an appended note must
 // equal exactly what the shared answer emitter produces for it.
 func TestAppendMsg_rendersPixelIdenticalThroughFlow(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 	notes := []string{
 		helpView(),

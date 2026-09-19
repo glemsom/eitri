@@ -91,7 +91,7 @@ func TestModel_stylingAgentPaneBordered(t *testing.T) {
 	if pane == "" {
 		t.Fatalf("expected agent answer in view, got: %q", view(m))
 	}
-	if strings.Contains(ansiStrip(pane), g("│", "|")) {
+	if strings.Contains(ansiStrip(pane), "│") {
 		t.Errorf("agent answer must not render a copy-hostile left bar, got line: %q", pane)
 	}
 }
@@ -148,7 +148,7 @@ func TestModel_stylingErrorMarker(t *testing.T) {
 	if pane == "" {
 		t.Fatalf("expected error text in content, got: %q", content)
 	}
-	if strings.Contains(ansiStrip(pane), g("│", "|")) {
+	if strings.Contains(ansiStrip(pane), "│") {
 		t.Errorf("error must not render a copy-hostile left bar, got line: %q", pane)
 	}
 }

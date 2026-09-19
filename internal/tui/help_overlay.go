@@ -127,8 +127,8 @@ func (h *HelpOverlay) View() string {
 // footer renders the scroll/close hint with a position readout, shown only when
 // the reference overflows the viewport.
 func (h *HelpOverlay) footer() string {
-	sep := g(" · ", " . ")
-	hint := g("↑/↓", "up/down") + " scroll" + sep + "pgup/pgdn page" + sep + "esc close"
+	sep := " · "
+	hint := "↑/↓ scroll" + sep + "pgup/pgdn page" + sep + "esc close"
 	if rows := h.viewRows(); len(h.lines) > rows {
 		last := min(h.offset+rows, len(h.lines))
 		hint += fmt.Sprintf("   %d–%d/%d", h.offset+1, last, len(h.lines))

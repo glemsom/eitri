@@ -53,7 +53,6 @@ func buildLiveThinkBlob(wantBytes int) string {
 //
 // Run: go test ./internal/tui -run xxx -bench BenchmarkLiveThinkingRender -benchtime 100x
 func BenchmarkLiveThinkingRender(b *testing.B) {
-	b.Setenv("EITRI_ASCII_GLYPHS", "1")
 	const width = 120
 	// One realistic ~9KiB windowed reasoning body, reused across iterations.
 	blob := buildLiveThinkBlob(9 << 10)

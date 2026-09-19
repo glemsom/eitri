@@ -60,7 +60,6 @@ func focusBlock(tx *Transcript, idx int) {
 // and tool result as a collapsed one-liner, and stays scrollable — the
 // long-session shape a large reasoning block must never blow out of view.
 func TestTranscript_20TurnHistoryStaysScannable(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := longSessionTranscript(20)
 
 	var hist strings.Builder
@@ -100,7 +99,6 @@ func TestTranscript_20TurnHistoryStaysScannable(t *testing.T) {
 // interleaved event sequence (reasoning before tool before answer) exactly
 // once, in arrival order, nested between its neighbors' answers.
 func TestTranscript_pastTurnExpandReplaysFullInterleavedSequence(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := longSessionTranscript(20)
 	k := 10
 

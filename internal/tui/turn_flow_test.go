@@ -46,7 +46,6 @@ func flowTranscript() *Transcript {
 }
 
 func TestTranscript_rendersTurnAsFlatFlowInArrivalOrder(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := flowTranscript()
 
 	var hist strings.Builder
@@ -54,7 +53,7 @@ func TestTranscript_rendersTurnAsFlatFlowInArrivalOrder(t *testing.T) {
 	plain := ansiStrip(hist.String())
 
 	ri := strings.Index(plain, "Let me check the repo first.")
-	ti := strings.Index(plain, g("❯ bash", "$ bash"))
+	ti := strings.Index(plain, "❯ bash")
 	ai := strings.Index(plain, "Done.")
 	if ri < 0 || ti < 0 || ai < 0 {
 		t.Fatalf("flat flow render is missing segments (reasoning %d, tool %d, answer %d):\n%s", ri, ti, ai, plain)
@@ -66,7 +65,7 @@ func TestTranscript_rendersTurnAsFlatFlowInArrivalOrder(t *testing.T) {
 	}
 	// No segment may render twice: the flow replaces the three separate panes
 	// (thinking pane / tool log / answer pane) with one pass over the events.
-	for _, marker := range []string{"Let me check the repo first.", g("❯ bash", "$ bash"), "2 lines", "Done."} {
+	for _, marker := range []string{"Let me check the repo first.", "❯ bash", "2 lines", "Done."} {
 		if n := strings.Count(plain, marker); n != 1 {
 			t.Errorf("marker %q rendered %d times, want exactly once (flat flow, no duplicates):\n%s", marker, n, plain)
 		}
@@ -74,7 +73,6 @@ func TestTranscript_rendersTurnAsFlatFlowInArrivalOrder(t *testing.T) {
 }
 
 func TestTranscript_flatFlowAnswerKeepsAgentHue(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := flowTranscript()
 
 	var hist strings.Builder
@@ -90,7 +88,6 @@ func TestTranscript_flatFlowAnswerKeepsAgentHue(t *testing.T) {
 }
 
 func TestTranscript_liveTurnRendersFromTimelineFlow(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 	var log toolLog
 	log.SetAnchor(0)
@@ -135,7 +132,6 @@ func TestTranscript_liveTurnRendersFromTimelineFlow(t *testing.T) {
 }
 
 func TestTranscript_flatFlowCollapsesReasoningOnCompletion(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := flowTranscript()
 	tx.messages[1].expansion.clear(blockReasoning, reasoningWholeID) // the turn completed (no expand-all mode)
 
@@ -150,7 +146,7 @@ func TestTranscript_flatFlowCollapsesReasoningOnCompletion(t *testing.T) {
 		t.Errorf("collapsed reasoning must keep the ≡ N tok hint, got:\n%s", plain)
 	}
 	// The tool entry and answer must still render after the reasoning hint.
-	if !strings.Contains(plain, g("❯ bash", "$ bash")) || !strings.Contains(plain, "Done.") {
+	if !strings.Contains(plain, "❯ bash") || !strings.Contains(plain, "Done.") {
 		t.Errorf("collapsed turn must still render tool and answer, got:\n%s", plain)
 	}
 }
@@ -269,7 +265,6 @@ func liveReasoningInterleaveTranscript() *Transcript {
 }
 
 func TestTranscript_liveReasoningInterleavesWithToolsInEmissionOrder(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := liveReasoningInterleaveTranscript()
 
 	var hist strings.Builder
@@ -308,7 +303,6 @@ func TestTranscript_liveReasoningInterleavesWithToolsInEmissionOrder(t *testing.
 // again exposes each reasoning fragment as its own focusable block, so Tab + Enter
 // collapses just the fragment under the cursor and leaves the others expanded.
 func TestTranscript_liveReasoningFocusTogglesSingleFragmentIndependently(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := liveReasoningInterleaveTranscript() // reasoning frag0, tool read, reasoning frag1, tool bash
 
 	// The live turn exposes each reasoning fragment as its own collapsible block,
@@ -368,7 +362,6 @@ func TestTranscript_liveReasoningFocusTogglesSingleFragmentIndependently(t *test
 }
 
 func TestRenderHistory_liveInterleavedReasoningRespectsThinkingGate(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := liveReasoningInterleaveTranscript()
 	tx.messages[1].thinkingRequested = false
 
@@ -385,7 +378,6 @@ func TestRenderHistory_liveInterleavedReasoningRespectsThinkingGate(t *testing.T
 }
 
 func TestTranscript_committedReasoningSnapshotRendersOnce(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 	var log toolLog
 	log.SetAnchor(0)
@@ -432,7 +424,6 @@ func TestTranscript_committedReasoningSnapshotRendersOnce(t *testing.T) {
 // exactly once, at the tail (directly before the answer), through the
 // full Transcript render path rather than only the flow fold.
 func TestTranscript_committedReasoningSnapshotOnceAtTailWhenNoToolFollows(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 	tx := &Transcript{
 		theme:           th,
@@ -470,7 +461,6 @@ func TestTranscript_committedReasoningSnapshotOnceAtTailWhenNoToolFollows(t *tes
 }
 
 func TestTranscript_partialAnswersInterleaveWithToolsInArrivalOrder(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := answerInterleaveTranscript()
 	tx.messages[1].events = tx.LiveTimeline()
 
@@ -539,7 +529,6 @@ func TestTurnFlowEvents_emptyTimelineGapIsFlow(t *testing.T) {
 }
 
 func TestTranscript_emptyTimelineGapRendersThroughFlowRenderer(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := gapTranscript()
 
 	var hist strings.Builder
@@ -561,7 +550,6 @@ func TestTranscript_emptyTimelineGapRendersThroughFlowRenderer(t *testing.T) {
 }
 
 func TestTranscript_instantErrorTurnRendersFlow(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	s := NewTurnSession(stubTurn("", errors.New("boom")))
 
 	tx := newTestTx()

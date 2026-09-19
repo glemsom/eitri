@@ -520,7 +520,7 @@ func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width
 	}
 	budget := width - lipgloss.Width(label) - 8 - lipgloss.Width(limitNote) // room for the outcome + timer + limit
 	if budget > 1 && !strings.Contains(args, "\n") && lipgloss.Width(args) > budget {
-		args = truncateWidth(args, budget-1) + g("…", "...")
+		args = truncateWidth(args, budget-1) + "…"
 	}
 	head := th.toolCategoryStyle(toolCategoryOf(te.name)).Render(label)
 	if pulse && !te.complete {
@@ -593,7 +593,7 @@ func clampLines(s string, max int) string {
 	if len(lines) <= max {
 		return s
 	}
-	return strings.Join(lines[:max], "\n") + g("…", "...")
+	return strings.Join(lines[:max], "\n") + "…"
 }
 
 // cardFrame is the expanded tool card's frame: a left border in the entry's
@@ -607,7 +607,7 @@ func cardFrame(th Theme, te toolEntry) lipgloss.Style {
 		c = th.toolCategoryStyle(toolCategoryOf(te.name)).GetForeground()
 	}
 	return lipgloss.NewStyle().
-		Border(lipgloss.Border{Left: g("│", "|")}, false, false, false, true).
+		Border(lipgloss.Border{Left: "│"}, false, false, false, true).
 		PaddingLeft(1).
 		BorderForeground(c)
 }

@@ -53,7 +53,6 @@ func liveToolBusyTranscript() *Transcript {
 // history for rebuild, and the busy-path output stays byte-identical to a fresh
 // full render (the live tail picks the tool up without re-rendering the prefix).
 func TestLiveToolStartDoesNotInvalidateCommittedPrefix(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := liveToolBusyTranscript()
 	tx.renderPaneContent()
 	if tx.busyPrefixDirty {
@@ -91,7 +90,6 @@ func TestLiveToolStartDoesNotInvalidateCommittedPrefix(t *testing.T) {
 // AC1: the tool's result landing while the turn still streams is equally
 // live-only and must not rebuild the committed prefix.
 func TestLiveToolResultDoesNotInvalidateCommittedPrefix(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := liveToolBusyTranscript()
 	tx.applyTool(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
 	tx.renderPaneContent()
@@ -123,7 +121,6 @@ func TestLiveToolResultDoesNotInvalidateCommittedPrefix(t *testing.T) {
 // history for rebuild — so an idle or animated long session keeps its cached
 // prefix and consumes no committed-history work.
 func TestIdleAndTimerFramesDoNotRebuildCommittedPrefix(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	m := newStreamingModel()
 	m = resize(t, m)
 

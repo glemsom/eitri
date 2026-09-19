@@ -16,7 +16,6 @@ import (
 //
 // Run: go test ./internal/tui -run xxx -bench BenchmarkBusyRender -benchtime 30x
 func BenchmarkBusyRender_PerDelta(b *testing.B) {
-	b.Setenv("EITRI_ASCII_GLYPHS", "1")
 	for _, turns := range []int{200, 800} {
 		b.Run("turns_"+strconv.Itoa(turns), func(b *testing.B) {
 			tx := benchBusyTx()
@@ -40,7 +39,6 @@ func BenchmarkBusyRender_PerDelta(b *testing.B) {
 // committed history: the live-tail render alone. The 800-turn result should sit
 // close to this, demonstrating independence from history size.
 func BenchmarkBusyRender_LiveTailFloor(b *testing.B) {
-	b.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := benchBusyTx()
 	benchBusyLive(tx, 2000)
 
@@ -92,7 +90,6 @@ func benchStreamingLiveReason(reasonKB int) *Transcript {
 //
 // Run: go test ./internal/tui -run xxx -bench BenchmarkStreamingAutoExpandReason -benchtime 200x
 func BenchmarkStreamingAutoExpandReason(b *testing.B) {
-	b.Setenv("EITRI_ASCII_GLYPHS", "1")
 	for _, kb := range []int{30, 100} {
 		b.Run("reason_"+strconv.Itoa(kb)+"kiB", func(b *testing.B) {
 			tx := benchStreamingLiveReason(kb)
@@ -115,7 +112,6 @@ func BenchmarkStreamingAutoExpandReason(b *testing.B) {
 //
 // Run: go test ./internal/tui -run xxx -bench BenchmarkBusyRender_LiveTailGrows -benchtime 200x
 func BenchmarkBusyRender_LiveTailGrows(b *testing.B) {
-	b.Setenv("EITRI_ASCII_GLYPHS", "1")
 	delta := "chain of thought reasoning tokens here and more analysis "
 	for _, kb := range []int{2, 8, 16} {
 		b.Run("reason_"+strconv.Itoa(kb)+"kiB", func(b *testing.B) {
@@ -156,7 +152,6 @@ func BenchmarkBusyRender_LiveTailGrows(b *testing.B) {
 //
 // Run: go test ./internal/tui -run xxx -bench BenchmarkRemapMarkdownColors -benchtime 100x
 func BenchmarkRemapMarkdownColors(b *testing.B) {
-	b.Setenv("EITRI_ASCII_GLYPHS", "1")
 	body := strings.Repeat("## heading paragraph with `code` and **bold** reasoning tokens\n", 400)
 	s, err := RenderMarkdown(body, 100, "dark")
 	if err != nil {

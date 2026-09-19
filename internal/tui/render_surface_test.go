@@ -19,7 +19,6 @@ func renderSurfaceTestTheme() Theme {
 }
 
 func TestRender_idleWelcome(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := renderSurfaceTestTheme()
 
 	cases := []struct {
@@ -30,18 +29,18 @@ func TestRender_idleWelcome(t *testing.T) {
 		{
 			name:  "brand-and-hints-default",
 			width: 2,
-			want: "--\n" +
-				"+  Eitri - your terminal coding agent\n" +
-				"--\n" +
-				"  k /settings · /help for commands & keybindings\n",
+			want: "──\n" +
+				"⚒  Eitri — your terminal coding agent\n" +
+				"──\n" +
+				"  ⌨ /settings · /help for commands & keybindings\n",
 		},
 		{
 			name:  "width-40",
 			width: 40,
-			want: strings.Repeat("-", 40) + "\n" +
-				"+  Eitri - your terminal coding agent\n" +
-				strings.Repeat("-", 40) + "\n" +
-				"  k /settings · /help for commands & keybindings\n",
+			want: strings.Repeat("─", 40) + "\n" +
+				"⚒  Eitri — your terminal coding agent\n" +
+				strings.Repeat("─", 40) + "\n" +
+				"  ⌨ /settings · /help for commands & keybindings\n",
 		},
 	}
 	for _, c := range cases {
@@ -54,7 +53,6 @@ func TestRender_idleWelcome(t *testing.T) {
 }
 
 func TestRender_promptView(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := renderSurfaceTestTheme()
 
 	cases := []struct {
@@ -65,7 +63,7 @@ func TestRender_promptView(t *testing.T) {
 			name: "full-prompt",
 			want: "run paused at the max-turns cap\n\n" +
 				"  Continue the run with more turns?\n" +
-				"  y continue . n stop . esc cancel\n",
+				"  y continue · n stop · esc cancel\n",
 		},
 	}
 	for _, c := range cases {
@@ -79,7 +77,6 @@ func TestRender_promptView(t *testing.T) {
 }
 
 func TestRender_thinkingHeader(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := renderSurfaceTestTheme()
 
 	cases := []struct {
@@ -91,24 +88,24 @@ func TestRender_thinkingHeader(t *testing.T) {
 		{
 			name:      "no-effort",
 			reasoning: "hello world", // 11 runes → 2 tokens
-			want:      "? 2 tok\n",
+			want:      "≡ 2 tok\n",
 		},
 		{
 			name:      "with-effort",
 			reasoning: "hello world",
 			effort:    "high",
-			want:      "? 2 tok . high\n",
+			want:      "≡ 2 tok · high\n",
 		},
 		{
 			name:      "empty-reasoning",
 			reasoning: "",
 			effort:    "low",
-			want:      "? 0 tok . low\n",
+			want:      "≡ 0 tok · low\n",
 		},
 		{
 			name:      "thousand-tokens-formats-k",
 			reasoning: strings.Repeat("a", 4000), // 4000 runes → 1000 tokens → "1.0k"
-			want:      "? 1.0k tok\n",
+			want:      "≡ 1.0k tok\n",
 		},
 	}
 	for _, c := range cases {
@@ -121,21 +118,19 @@ func TestRender_thinkingHeader(t *testing.T) {
 }
 
 func TestRender_bandHints(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 
 	got := bandHints()
-	want := "/settings . ctrl+e expand/collapse . shift+enter newline"
+	want := "/settings · ctrl+e expand/collapse · shift+enter newline"
 	if got != want {
 		t.Errorf("bandHints() = %q, want %q", got, want)
 	}
 }
 
 func TestRender_idleWelcome_brandMark(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := renderSurfaceTestTheme()
 	got := idleWelcome(th, 2)
 
-	for _, want := range []string{"+  Eitri", "--", "k /settings"} {
+	for _, want := range []string{"⚒  Eitri", "──", "⌨ /settings"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("idleWelcome() missing %q, got:\n%s", want, got)
 		}
@@ -167,8 +162,7 @@ func TestRender_idleWelcome_ruleWidth(t *testing.T) {
 	}
 }
 
-func TestRender_idleWelcome_ruleWidthASCII(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
+func TestRender_idleWelcome_ruleWidthUTF8(t *testing.T) {
 	th := renderSurfaceTestTheme()
 	got := idleWelcome(th, 40)
 	lines := strings.Split(got, "\n")
@@ -176,14 +170,13 @@ func TestRender_idleWelcome_ruleWidthASCII(t *testing.T) {
 		t.Fatalf("expected at least 3 lines, got %d", len(lines))
 	}
 	topRule := lines[0]
-	want := strings.Repeat("-", 40)
+	want := strings.Repeat("─", 40)
 	if topRule != want {
 		t.Errorf("top rule = %q, want %q", topRule, want)
 	}
 }
 
 func TestHelpView_glyphs(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	got := helpView()
 
 	for _, want := range []string{"# COMMANDS", "# KEYBINDINGS", "# CONCEPTS"} {
@@ -196,7 +189,7 @@ func TestHelpView_glyphs(t *testing.T) {
 			t.Errorf("helpView() missing command code span %q", want)
 		}
 	}
-	for _, want := range []string{"c COMPOSER", "n NAVIGATION", "p PANES", "a ACTIONS"} {
+	for _, want := range []string{"✎ COMPOSER", "→ NAVIGATION", "▦ PANES", "★ ACTIONS"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("helpView() missing keybinding category %q", want)
 		}

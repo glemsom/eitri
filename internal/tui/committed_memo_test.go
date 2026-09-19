@@ -66,7 +66,6 @@ func assertLayoutMatchesFreshFullRender(t *testing.T, tx *Transcript) {
 // memo and serves the prior units from the memo, so per-turn commit cost is
 // bounded by the new turn rather than growing with the committed-history length.
 func TestCommittedTurnRendersOnlyItsOwnUnits(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := memoTestTx()
 
 	commitTurn(t, tx, "first", "answer one")
@@ -93,7 +92,6 @@ func TestCommittedTurnRendersOnlyItsOwnUnits(t *testing.T) {
 // property across a wider sweep: each additional committed turn adds exactly
 // its own unit renders regardless of how many prior turns sit above it.
 func TestCommittedTurnRenderCountFlatInPriorHistory(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := memoTestTx()
 
 	commitTurn(t, tx, "zero", "z")
@@ -111,7 +109,6 @@ func TestCommittedTurnRenderCountFlatInPriorHistory(t *testing.T) {
 // identical to a fresh full render, and the memo renders exactly one unit per
 // settled message regardless of history length.
 func TestIncrementalByteIdentityWithManyPriorTurns(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := memoTestTx()
 
 	for i := 0; i < 40; i++ {
@@ -184,7 +181,6 @@ func shapeFixture() *Transcript {
 // byte-identical to a fresh full render, and the row->message / row->tool
 // indexes match so scroll/selection/block-focus hit-tests cannot drift.
 func TestIncrementalMatchesFullRenderAcrossTurnShapes(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := shapeFixture()
 	assertLayoutMatchesFreshFullRender(t, tx)
 }
@@ -193,7 +189,6 @@ func TestIncrementalMatchesFullRenderAcrossTurnShapes(t *testing.T) {
 // real commits (the path that exercises memo extension turn by turn) and checks
 // byte-identity and index identity after each.
 func TestIncrementalMatchesFullRenderAfterCommits(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := memoTestTx()
 
 	commitTurn(t, tx, "plain", "plain answer")

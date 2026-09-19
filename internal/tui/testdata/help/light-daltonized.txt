@@ -8,21 +8,21 @@
 
 # KEYBINDINGS
 
-  c COMPOSER
+  ✎ COMPOSER
   `up/down`      navigate completion candidates; recall a prior/next prompt when the completion list is closed
   `tab`          accept highlighted completion or cycle block focus when composer is empty
   `esc`          close completion list, close mention dropdown, or stop a running turn
   `enter`        submit draft or toggle focused block when empty
   `shift+enter`  insert newline
-  n NAVIGATION
+  → NAVIGATION
   `pgup/pgdn`    scroll history
   `home/end`     jump to oldest/newest history
   `mouse wheel`  scroll history
-  p PANES
+  ▦ PANES
   `ctrl+e`  toggle expanded/collapsed view
   `ctrl+x`  narrow pane
   `ctrl+z`  widen pane
-  a ACTIONS
+  ★ ACTIONS
   `ctrl+c`  stop a running turn, or quit when idle
 
 # WORKSPACE MENTIONS

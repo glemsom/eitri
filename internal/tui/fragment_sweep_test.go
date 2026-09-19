@@ -161,7 +161,6 @@ func mustFocused(tx *Transcript) collapsibleBlock {
 // a focused interleaved reasoning run collapses exactly that run's body and
 // leaves its streamed siblings expanded; Enter again re-expands only it.
 func TestTranscript_enterTogglesSingleInterleavedRunIndependently(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := livePerDeltaWithToolTranscript() // pre-tool run (fragA fragB), tool, post-tool run (fragC)
 
 	tx.focusNext() // pre-tool run (fragIdx 0)

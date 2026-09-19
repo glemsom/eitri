@@ -345,7 +345,7 @@ func TestSettingsForm_ThemeCyclesAllThemes(t *testing.T) {
 	f := newSettingsForm(cfgFixture(), []string{}) // seeded "dark"
 	f.field = fieldTheme
 
-	want := []string{"light", "dracula", "tokyo-night", "pink", "nord", "gruvbox", "solarized", "dark-daltonized", "light-daltonized", "notty", "auto", "dark"}
+	want := []string{"light", "dracula", "tokyo-night", "pink", "nord", "gruvbox", "solarized", "dark-daltonized", "light-daltonized", "auto", "dark"}
 	for _, w := range want {
 		f.adjust(1)
 		if got := f.draft().Theme; got != w {

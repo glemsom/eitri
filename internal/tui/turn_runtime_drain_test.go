@@ -80,7 +80,6 @@ func TestEventFeed_TryNext(t *testing.T) {
 // growing markdown took on the order of a minute; the batch-drain keeps it
 // under a second.
 func TestQuadraticLiveTail_StaysBounded(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := newTestTx()
 	tx.busy = true
 	tx.messages = append(tx.messages, message{role: "you", content: "live prompt"})

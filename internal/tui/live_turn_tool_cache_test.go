@@ -18,7 +18,6 @@ import (
 //
 // Run: go test ./internal/tui -run xxx -bench BenchmarkLiveTurnTimeline -benchmem
 func BenchmarkLiveTurnTimeline(b *testing.B) {
-	b.Setenv("EITRI_ASCII_GLYPHS", "1")
 	for _, events := range []int{200, 8000} {
 		b.Run("events_"+strconv.Itoa(events), func(b *testing.B) {
 			th := themeFor(config.DefaultTheme)
@@ -54,7 +53,6 @@ func BenchmarkLiveTurnTimeline(b *testing.B) {
 // guard behind BenchmarkLiveTurnTimeline: the cache may only make frames
 // cheaper, not different.
 func TestLiveTurnToolCache_byteIdentical(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 	results := []string{"ok", "line1\nline2\nline3", "error executing tool: boom", ""}
 	for _, res := range results {
@@ -82,7 +80,6 @@ func TestLiveTurnToolCache_byteIdentical(t *testing.T) {
 // render width: a width change must not serve bytes built for another width,
 // and the original width must still hit on return.
 func TestLiveTurnToolCache_widthIsKeyed(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 	l := &toolLog{}
 	l.entries = []toolEntry{{name: "bash", args: "a very long command argument that should wrap under narrow widths in interesting ways", anchor: 0, complete: true, result: "ok", startedAt: tt0, doneAt: tt1}}
@@ -102,7 +99,6 @@ func TestLiveTurnToolCache_widthIsKeyed(t *testing.T) {
 // cached rows, because toolLog entries are append-only and their indexes are
 // therefore stable.
 func TestLiveTurnToolCache_completionInvalidatesStartRetains(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 	l := &toolLog{}
 	l.SetAnchor(0)
@@ -117,7 +113,7 @@ func TestLiveTurnToolCache_completionInvalidatesStartRetains(t *testing.T) {
 		t.Fatal("completed entry must not be served from a stale pre-result cache")
 	}
 	got := l.renderEntry(0, 120, th, false, false, false)
-	if !strings.Contains(got, "2 line") || !strings.Contains(got, "ok") {
+	if !strings.Contains(got, "2 line") || !strings.Contains(got, "✓") {
 		t.Fatalf("completed result must render its summary, got %q", got)
 	}
 	// A completed entry renders once and lands in the cache.
@@ -137,7 +133,7 @@ func TestLiveTurnToolCache_completionInvalidatesStartRetains(t *testing.T) {
 	if _, ok := l.cached(0, 120, false, false); !ok {
 		t.Fatal("appending a new entry must not evict a completed sibling's cached render")
 	}
-	if got := l.renderEntry(0, 120, th, false, false, false); !strings.Contains(got, "2 line") || !strings.Contains(got, "ok") {
+	if got := l.renderEntry(0, 120, th, false, false, false); !strings.Contains(got, "2 line") || !strings.Contains(got, "✓") {
 		t.Fatalf("completed sibling should still render from cache, got %q", got)
 	}
 }
@@ -161,7 +157,6 @@ func parseUTC(s string) time.Time { v, _ := time.Parse(time.RFC3339, s); return 
 //
 // Run: go test ./internal/tui -run xxx -bench BenchmarkToolEntryRender -benchmem
 func BenchmarkToolEntryRender_CachedAcrossStarts(b *testing.B) {
-	b.Setenv("EITRI_ASCII_GLYPHS", "1")
 	th := themeFor(config.DefaultTheme)
 	for _, n := range []int{1, 200} {
 		b.Run("tools_"+strconv.Itoa(n), func(b *testing.B) {

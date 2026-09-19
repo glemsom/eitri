@@ -39,7 +39,6 @@ func bashTool() flowTool {
 }
 
 func TestRenderFlow_committedRendersReasoningOnceAtFirstToolBoundary(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	in := renderFlowInput(
 		[]TimelineEvent{
 			{Kind: EventReasoning, Delta: "think first"},
@@ -56,7 +55,7 @@ func TestRenderFlow_committedRendersReasoningOnceAtFirstToolBoundary(t *testing.
 	plain := ansiStrip(out)
 
 	ri := strings.Index(plain, "think first")
-	ti := strings.Index(plain, "$ bash")
+	ti := strings.Index(plain, "❯ bash")
 	ai := strings.Index(plain, "Done.")
 	if ri < 0 || ti < 0 || ai < 0 {
 		t.Fatalf("committed flow missing segments ri=%d ti=%d ai=%d:\n%s", ri, ti, ai, plain)
@@ -84,7 +83,6 @@ func TestRenderFlow_committedRendersReasoningOnceAtFirstToolBoundary(t *testing.
 // boundary to anchor it, renders exactly once at the tail, directly before the
 // answer.
 func TestRenderFlow_committedReasoningSnapshotOnceAtTailWhenNoToolFollows(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	in := renderFlowInput(
 		[]TimelineEvent{
 			{Kind: EventReasoning, Delta: "think first"},
@@ -114,7 +112,6 @@ func TestRenderFlow_committedReasoningSnapshotOnceAtTailWhenNoToolFollows(t *tes
 }
 
 func TestRenderFlow_liveInterleavesReasoningFragmentsInEmissionOrder(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	in := renderFlowInput(
 		[]TimelineEvent{
 			{Kind: EventReasoning, Delta: "reasoning one"},
@@ -131,7 +128,7 @@ func TestRenderFlow_liveInterleavesReasoningFragmentsInEmissionOrder(t *testing.
 	plain := ansiStrip(out)
 
 	r1 := strings.Index(plain, "reasoning one")
-	tool := strings.Index(plain, "$ bash")
+	tool := strings.Index(plain, "❯ bash")
 	r2 := strings.Index(plain, "reasoning two")
 	answer := strings.Index(plain, "final answer")
 	if r1 < 0 || tool < 0 || r2 < 0 || answer < 0 {
@@ -160,7 +157,6 @@ func TestRenderFlow_liveInterleavesReasoningFragmentsInEmissionOrder(t *testing.
 // tail. Each delta renders separately (one header per fragment), and the whole
 // streamed span never appears as a single contiguous block.
 func TestRenderFlow_liveReasoningCoalescesContiguousDeltas(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	in := renderFlowInput(
 		[]TimelineEvent{
 			{Kind: EventReasoning, Delta: "think "},
@@ -195,7 +191,6 @@ func TestRenderFlow_liveReasoningCoalescesContiguousDeltas(t *testing.T) {
 }
 
 func TestRenderFlow_committedCollapsesReasoningToHint(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	in := renderFlowInput(
 		[]TimelineEvent{
 			{Kind: EventReasoning, Delta: "hidden body"},
@@ -220,7 +215,6 @@ func TestRenderFlow_committedCollapsesReasoningToHint(t *testing.T) {
 }
 
 func TestRenderFlow_committedAnswersInterleaveWithToolsInArrivalOrder(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	in := renderFlowInput(
 		[]TimelineEvent{
 			{Kind: EventAnswer, Delta: "alpha, "},
@@ -266,7 +260,6 @@ func TestRenderFlow_committedAnswersInterleaveWithToolsInArrivalOrder(t *testing
 }
 
 func TestRenderFlow_stoppedTurnRendersMarkerOnFinalAnswer(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	in := renderFlowInput(
 		[]TimelineEvent{
 			{Kind: EventAnswer, Delta: "partial"},
@@ -287,7 +280,6 @@ func TestRenderFlow_stoppedTurnRendersMarkerOnFinalAnswer(t *testing.T) {
 }
 
 func TestRenderFlow_thinkingGateHidesReasoningBody(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	in := renderFlowInput(
 		[]TimelineEvent{
 			{Kind: EventReasoning, Delta: "secret"},
@@ -304,7 +296,7 @@ func TestRenderFlow_thinkingGateHidesReasoningBody(t *testing.T) {
 	if strings.Contains(plain, "secret") {
 		t.Errorf("thinking-off turn must hide reasoning, got:\n%s", plain)
 	}
-	if !strings.Contains(plain, "$ bash") || !strings.Contains(plain, "Done") {
+	if !strings.Contains(plain, "❯ bash") || !strings.Contains(plain, "Done") {
 		t.Errorf("thinking-off turn must still render tool and answer, got:\n%s", plain)
 	}
 }
@@ -316,7 +308,6 @@ func TestRenderFlow_thinkingGateHidesReasoningBody(t *testing.T) {
 // hit-test cannot drift from what rendered.
 
 func TestRenderFlow_collapsedToolHeadClampsMultilineCommand(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	cmd := "cat <<'EOF' > file\none\ntwo\nthree\nfour\nfive\nsix\nEOF"
 	args, _ := json.Marshal(map[string]string{"command": cmd})
 	events := []TimelineEvent{
@@ -331,7 +322,7 @@ func TestRenderFlow_collapsedToolHeadClampsMultilineCommand(t *testing.T) {
 	if strings.Contains(p, "five") || strings.Contains(p, "six") {
 		t.Errorf("collapsed tool head must hide command lines after five, got:\n%s", p)
 	}
-	if !strings.Contains(p, "...") {
+	if !strings.Contains(p, "…") {
 		t.Errorf("collapsed tool head must mark hidden command lines, got:\n%s", p)
 	}
 
@@ -344,7 +335,6 @@ func TestRenderFlow_collapsedToolHeadClampsMultilineCommand(t *testing.T) {
 }
 
 func TestRenderFlow_toolEntryExpansionDrivesBodyAndRows(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	events := []TimelineEvent{
 		{Kind: EventToolStart, Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}},
 		{Kind: EventToolResult, Result: &ToolResult{Name: "bash", Result: "a.go\nb.go", Lines: 2}},
@@ -380,7 +370,6 @@ func TestRenderFlow_toolEntryExpansionDrivesBodyAndRows(t *testing.T) {
 // tail raced past busy=false and was dropped). The authoritative snapshot must
 // still render the full answer instead of vanishing behind the early fragment.
 func TestRenderFlow_committedSnapshotTailSurvivesDroppedDeltas(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	in := renderFlowInput(
 		[]TimelineEvent{
 			{Kind: EventAnswer, Delta: "Let me run tests."},
@@ -405,7 +394,6 @@ func TestRenderFlow_committedSnapshotTailSurvivesDroppedDeltas(t *testing.T) {
 // that are a true prefix of the committed content, or blind-slicing
 // content[emittedAnswerLen:] cuts the start of the real answer.
 func TestRenderFlow_interimNarrationDoesNotCorruptCommittedTail(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	const content = "The full answer begins here and continues with much more detail about everything that was done."
 	in := renderFlowInput(
 		[]TimelineEvent{
@@ -435,7 +423,6 @@ func TestRenderFlow_interimNarrationDoesNotCorruptCommittedTail(t *testing.T) {
 // content so no line silently exceeds the transcript width, and no bytes are
 // dropped.
 func TestRenderToolEntry_expandedLongLineWrapsAtWidth(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	for _, width := range []int{80, 40} {
 		t.Run(strconv.Itoa(width), func(t *testing.T) {
 			longLine := strings.Repeat("a", 200)
@@ -460,16 +447,16 @@ func TestRenderToolEntry_expandedLongLineWrapsAtWidth(t *testing.T) {
 			foundContent := false
 			for _, ln := range lines {
 				if !frameStarted {
-					if strings.HasPrefix(ln, "| ") {
+					if strings.HasPrefix(ln, "│ ") {
 						frameStarted = true
 					} else {
 						continue
 					}
 				}
-				if !strings.HasPrefix(ln, "| ") {
+				if !strings.HasPrefix(ln, "│ ") {
 					continue
 				}
-				content := strings.TrimPrefix(ln, "| ")
+				content := strings.TrimPrefix(ln, "│ ")
 				if content != "" {
 					foundContent = true
 				}
@@ -491,7 +478,6 @@ func TestRenderToolEntry_expandedLongLineWrapsAtWidth(t *testing.T) {
 // TestRenderToolEntry_expandedMultilineWrapsPreservingNewlines locks that
 // embedded newlines are preserved and each logical line is wrapped independently.
 func TestRenderToolEntry_expandedMultilineWrapsPreservingNewlines(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	width := 40
 	line1 := strings.Repeat("b", 100)
 	line2 := strings.Repeat("c", 100)
@@ -516,16 +502,16 @@ func TestRenderToolEntry_expandedMultilineWrapsPreservingNewlines(t *testing.T) 
 	frameStarted := false
 	for _, ln := range lines {
 		if !frameStarted {
-			if strings.HasPrefix(ln, "| ") {
+			if strings.HasPrefix(ln, "│ ") {
 				frameStarted = true
 			} else {
 				continue
 			}
 		}
-		if !strings.HasPrefix(ln, "| ") {
+		if !strings.HasPrefix(ln, "│ ") {
 			continue
 		}
-		content := strings.TrimPrefix(ln, "| ")
+		content := strings.TrimPrefix(ln, "│ ")
 		if len(content) > contentWidth {
 			t.Errorf("frame content exceeds content width %d: %q (len=%d)", contentWidth, content, len(content))
 		}

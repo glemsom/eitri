@@ -11,7 +11,6 @@ import (
 // its own "≡ N tok" header — the user saw a fresh card per token. Contiguous
 // deltas must instead coalesce into ONE card.
 func TestTranscript_liveTokenDeltasCoalesceToOneCard(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	// ~17 tokens of reasoning streamed as 17 single-token deltas.
 	deltas := strings.Fields("Let me check the environment first before editing the file carefully")
 	tx := livePerDeltaTranscript(deltas)

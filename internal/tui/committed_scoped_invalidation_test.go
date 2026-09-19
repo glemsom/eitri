@@ -71,7 +71,6 @@ func scopedMemoTx() *Transcript {
 // committed units come from the memo, and the memo stays byte-identical to a
 // fresh full render.
 func TestReasoningToggleRerendersOnlyItsUnit(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := scopedMemoTx()
 	tx.ensureLayout()
 	base := tx.committedUnitRenders
@@ -98,7 +97,6 @@ func TestReasoningToggleRerendersOnlyItsUnit(t *testing.T) {
 // entry's expansion re-renders only the unit whose flow draws that entry, and
 // the memo stays byte-identical to a fresh full render.
 func TestToolToggleRerendersOnlyItsUnit(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := scopedMemoTx()
 	tx.ensureLayout()
 	base := tx.committedUnitRenders
@@ -123,7 +121,6 @@ func TestToolToggleRerendersOnlyItsUnit(t *testing.T) {
 // committed unit no matter how much history sits above it, so a toggle on a
 // 1000-turn session costs the same as on a 10-turn one.
 func TestScopedToggleCostFlatInHistorySize(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	for _, n := range []int{10, 100, 1000} {
 		t.Run("N="+strconv.Itoa(n), func(t *testing.T) {
 			tx := memoTestTx()
@@ -145,7 +142,6 @@ func TestScopedToggleCostFlatInHistorySize(t *testing.T) {
 // genuinely re-wraps every committed unit, so the memo re-renders all of them
 // and the output stays byte-identical to a fresh render at the new width.
 func TestWidthChangeRerendersAllCommittedUnits(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := scopedMemoTx()
 	tx.ensureLayout()
 	base := tx.committedUnitRenders
@@ -163,7 +159,6 @@ func TestWidthChangeRerendersAllCommittedUnits(t *testing.T) {
 // re-colors every committed unit, so the memo re-renders all of them and the
 // output stays byte-correct.
 func TestThemeChangeRerendersAllCommittedUnits(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := scopedMemoTx()
 	tx.ensureLayout()
 	base := tx.committedUnitRenders
@@ -184,7 +179,6 @@ func TestThemeChangeRerendersAllCommittedUnits(t *testing.T) {
 // 1 -> unit 3) refreshes two, and each step stays byte-identical to a fresh
 // render.
 func TestFocusMoveRerendersOnlyAffectedUnits(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := scopedMemoTx()
 	tx.ensureLayout()
 	base := tx.committedUnitRenders
@@ -213,7 +207,6 @@ func TestFocusMoveRerendersOnlyAffectedUnits(t *testing.T) {
 // region, so no committed unit re-renders and the busy-path prefix stays
 // byte-stable.
 func TestLiveToolToggleDoesNotTouchCommittedMemo(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := liveToolBusyTranscript()
 	tx.applyTool(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
 	idx := len(tx.log.entries) - 1 // anchored to the live prompt, not committed
@@ -237,7 +230,6 @@ func TestLiveToolToggleDoesNotTouchCommittedMemo(t *testing.T) {
 // AC1: a tool observation landing on a committed entry re-renders only that
 // entry's units, not the whole prefix.
 func TestCommittedToolObservationRerendersOnlyItsUnit(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := busyWithCommittedToolTranscript()
 	tx.renderPaneContent()
 	base := tx.committedUnitRenders
@@ -261,7 +253,6 @@ func TestCommittedToolObservationRerendersOnlyItsUnit(t *testing.T) {
 // message's unit re-renders — and a later toggle of the never-drawn entry it
 // introduced re-renders nothing at all.
 func TestPostTurnToolObservationScopedToCommittedUnits(t *testing.T) {
-	t.Setenv("EITRI_ASCII_GLYPHS", "1")
 	tx := scopedMemoTx()
 	tx.ensureLayout()
 	base := tx.committedUnitRenders
