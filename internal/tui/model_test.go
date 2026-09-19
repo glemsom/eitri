@@ -339,11 +339,11 @@ func runSubmitted(t *testing.T, m Model, cmd tea.Cmd) Model {
 	return runSubmitted(t, m, next)
 }
 
-func asModel(t *testing.T, tm tea.Model) Model {
-	t.Helper()
+func asModel(tb testing.TB, tm tea.Model) Model {
+	tb.Helper()
 	md, ok := tm.(Model)
 	if !ok {
-		t.Fatalf("tea.Model is %T, want Model", tm)
+		tb.Fatalf("tea.Model is %T, want Model", tm)
 	}
 	return md
 }

@@ -56,7 +56,7 @@ Brand reuse is allowed (⚒️ serves the assistant chip and the working phase).
 
 The forge's colour depth is glyph-tier: the **ember gradient** (the idle brand wordmark, the banner rules, and the chrome panel's top border) blends the active palette's accent → skill → web hues through one reusable helper, so every theme gets the treatment with no per-theme work; the **heat meters** render cache and context usage as block bars in the section hue, with the context bar flaring to the error hue at the ceiling; the **idle ember** sweeps a bounded highlight across the brand while the surface is idle. None of it adds an icon, and none of it adds an ASCII fallback.
 
-The ember is motion-gated by `EITRI_NO_MOTION` and runs only for a bounded window after activity: a run, an open overlay, or reduced motion settles it to the static gradient mark, and the next input or event re-arms it. There is no new config key, and the underlying gradient and meter helpers are pure functions of the theme/width and the fraction/width.
+The ember is motion-gated by `EITRI_NO_MOTION` and runs only for a bounded window after activity: a run, an open overlay, or reduced motion settles it to the static gradient mark, and the next input or event re-arms it. It rides its own `idleEmberTickInterval`, distinct from the busy spinner's tick, so a run and an idle surface never arm the same timer state and neither tick advances the other's frame. There is no new config key, and the underlying gradient and meter helpers are pure functions of the theme/width and the fraction/width.
 
 ## Copy and payload
 
@@ -71,4 +71,6 @@ Two directions, never mixed:
 - Copy test: a model-emitted emoji (including a VS16 pair) survives `plainLines()` → drag-select → OSC 52.
 - Gradient test: every bundled palette blends accent → skill → web at a fixed width, and the chrome panel's top border carries the same gradient at narrow and wide widths, so the gradient cannot regress to a flat hue without a per-theme change.
 - Meter test: on every bundled palette and at each rail width tier, the cache and ctx meters render as block bars in the STATS hue, and the ctx line flares to the error hue at the ceiling while keeping the meter's width vocabulary.
+- Idle-ember contract test: the idle tick stays distinct from the busy spinner tick and never advances its frame; a run beginning or any open overlay (settings, help, max-turns) settles the ember immediately; a completed turn re-arms the bounded window; a re-arm extends the window without starting a second timer; and every bundled palette shimmers without changing the brand's plain text. The reduced-motion render equals the settled render on every palette.
+- Idle-ember benchmark (`BenchmarkIdleEmberRender`): the mid-ember idle view renders at the settled view's per-frame cost, so the shimmer adds no measurable render regression.
 - Snapshot frames across every bundled theme (dark, light, and each specialty palette) are the visual regression gate, each carrying a mid-ember idle frame.
