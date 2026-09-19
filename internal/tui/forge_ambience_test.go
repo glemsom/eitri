@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"image/color"
+	"slices"
 	"strings"
 	"testing"
 
@@ -52,10 +53,9 @@ func TestGradientRule_blendsAccentToSkillToWeb(t *testing.T) {
 // bundledThemeNames is every explicit palette a user can select. "auto"
 // resolves through the terminal environment and is covered by the theme
 // resolution tests, so the gradient's per-palette contract runs over these.
-var bundledThemeNames = []string{
-	"dark", "dracula", "tokyo-night", "pink", "light", "nord",
-	"gruvbox", "solarized", "dark-daltonized", "light-daltonized",
-}
+var bundledThemeNames = slices.DeleteFunc(slices.Clone(supportedThemes), func(name string) bool {
+	return name == "auto"
+})
 
 func TestGradientRule_everyBundledThemeBlendsThreeHues(t *testing.T) {
 	t.Parallel()
