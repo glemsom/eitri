@@ -131,19 +131,17 @@ func renderTitledPanel(th Theme, title string, width int, style lipgloss.Style, 
 	showTitle := titleWidth > 0 && titleWidth+3 <= width-2
 	var b strings.Builder
 	if showTitle {
-		b.WriteString(th.gradientCell(0, width))
-		b.WriteString(th.gradientCell(1, width))
+		b.WriteString(th.gradientCorner(0, width))
+		b.WriteString(th.gradientRuns(1, 2, width))
 		b.WriteString(" ")
 		b.WriteString(style.Render(title))
 		b.WriteString(" ")
-		for col := titleWidth + 4; col < width-1; col++ {
-			b.WriteString(th.gradientCell(col, width))
-		}
-		b.WriteString(th.gradientCell(width-1, width))
+		b.WriteString(th.gradientRuns(titleWidth+4, width-1, width))
+		b.WriteString(th.gradientCorner(width-1, width))
 	} else {
-		for col := range width {
-			b.WriteString(th.gradientCell(col, width))
-		}
+		b.WriteString(th.gradientCorner(0, width))
+		b.WriteString(th.gradientRuns(1, width-1, width))
+		b.WriteString(th.gradientCorner(width-1, width))
 	}
 	for _, line := range strings.Split(body, "\n") {
 		plainLine := ansiStrip(line)
