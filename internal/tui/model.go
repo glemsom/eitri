@@ -275,6 +275,7 @@ func NewModelCfg(d Dependencies) Model {
 	}
 
 	m.runtime = NewTurnRuntime(NewTurnSession(d.Turn), d.Events)
+	m.runtime.SetTranscript(transcript)
 	m.runtime.SetThinkingEnabled(d.Config.ThinkingEnabled)
 	if !isSupportedTheme(d.Config.Theme) {
 		m.feedback = neutralFeedback(fmt.Sprintf("unknown theme %q, using %s", d.Config.Theme, config.DefaultTheme))
@@ -298,11 +299,7 @@ func newHistoryViewport() viewport.Model {
 
 // SetTurnSession replaces the live Run implementation owned by TurnRuntime.
 func (m *Model) SetTurnSession(ts *TurnSession) {
-	var events *EventFeed
-	if m.runtime != nil {
-		events = m.runtime.events
-	}
-	m.runtime = NewTurnRuntime(ts, events)
+	m.runtime.SetSession(ts)
 }
 
 // ContinueHook returns the interactive continuation hook wired to this Model's prompt channels.
@@ -532,7 +529,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case turnDoneMsg:
-		m.runtime.Commit(m.tx, msgi)
+		m.runtime.Commit(msgi)
 		m.syncComposerRail()
 		return m, m.armIdleEmber()
 	case clockTickMsg:
@@ -729,7 +726,7 @@ func (m Model) submitPrompt() (tea.Model, tea.Cmd) {
 // feed, and starting the spinner tick so the busy indicator animates.
 func (m *Model) startTurn(prompt string, payload string) tea.Cmd {
 	m.tx.settleIdleEmber()
-	cmd := m.runtime.Begin(m.tx, prompt, payload)
+	cmd := m.runtime.Begin(prompt, payload)
 	m.syncComposerRail()
 	return cmd
 }
@@ -1019,19 +1016,15 @@ func (m Model) applyEvent(update Event) (tea.Model, tea.Cmd) {
 	if !m.runtime.HasEvents() {
 		return m, nil
 	}
+	cmd := m.runtime.Handle(update)
 	if update.TurnStart {
-		m.runtime.OnTurnStart(update.RunID)
-		return m, m.runtime.Wait()
+		return m, cmd
 	}
-	if m.runtime.Accept(update) {
-		m.runtime.Observe(m.tx, update)
-	}
-	m.runtime.DrainReady(m.tx)
 	// A live turn's deltas can re-layout the rail and move the face's placement
 	// under follow, so every event is face damage while the turn streams; once
 	// the feed quiets the loop dies with the clean flag.
-	m, cmd := m.markFaceDamage()
-	return m, tea.Batch(cmd, m.runtime.Wait(), m.armIdleEmber())
+	m, damageCmd := m.markFaceDamage()
+	return m, tea.Batch(cmd, damageCmd, m.armIdleEmber())
 }
 
 // overlayOpen reports whether a modal surface owns the screen, so the idle

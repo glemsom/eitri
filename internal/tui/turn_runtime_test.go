@@ -56,7 +56,8 @@ func TestTurnRuntimeBeginDrainsEventFeed(t *testing.T) {
 	rt := NewTurnRuntime(s, feed)
 
 	tx := newTestTx()
-	cmd := rt.Begin(&tx, "hello", "")
+	rt.SetTranscript(&tx)
+	cmd := rt.Begin("hello", "")
 	if cmd == nil {
 		t.Fatal("Begin should return a command")
 	}
@@ -72,9 +73,10 @@ func TestTurnRuntimeObserveGrowsStreamingMessage(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	rt := NewTurnRuntime(s, nil)
 	tx := newTestTx()
-	rt.Begin(&tx, "hi", "")
+	rt.SetTranscript(&tx)
+	rt.Begin("hi", "")
 
-	rt.Observe(&tx, Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "Hello"}})
+	rt.Handle(Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "Hello"}})
 
 	last := tx.messages[len(tx.messages)-1]
 	if got := last.content; got != "Hello" {
@@ -87,9 +89,10 @@ func TestTurnRuntimeObserveUpdatesLiveReasoning(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	rt := NewTurnRuntime(s, nil)
 	tx := newTestTx()
-	rt.Begin(&tx, "hi", "")
+	rt.SetTranscript(&tx)
+	rt.Begin("hi", "")
 
-	rt.Observe(&tx, Event{Stream: &StreamUpdate{Kind: ReasoningStream, Delta: "think"}})
+	rt.Handle(Event{Stream: &StreamUpdate{Kind: ReasoningStream, Delta: "think"}})
 
 	last := tx.messages[len(tx.messages)-1]
 	if last.reasoning != "think" || last.content != "" {
@@ -103,8 +106,9 @@ func TestTurnRuntimeObserveDropsStreamWhenIdle(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	rt := NewTurnRuntime(s, nil)
 	tx := newTestTx()
+	rt.SetTranscript(&tx)
 
-	rt.Observe(&tx, Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "late"}})
+	rt.Handle(Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "late"}})
 
 	if len(tx.messages) != 0 {
 		t.Fatalf("expected no messages from a dropped idle stream delta, got %+v", tx.messages)
@@ -117,11 +121,12 @@ func TestTurnRuntimeObservePreservesMixedTimelineOrder(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	rt := NewTurnRuntime(s, nil)
 	tx := newTestTx()
-	rt.Begin(&tx, "hi", "")
+	rt.SetTranscript(&tx)
+	rt.Begin("hi", "")
 
-	rt.Observe(&tx, Event{Tool: &ToolUpdate{Start: &ToolStart{Name: "read"}}})
-	rt.Observe(&tx, Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "done"}})
-	rt.Observe(&tx, Event{Tool: &ToolUpdate{Result: &ToolResult{Name: "read", Result: "ok", Lines: 1}}})
+	rt.Handle(Event{Tool: &ToolUpdate{Start: &ToolStart{Name: "read"}}})
+	rt.Handle(Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "done"}})
+	rt.Handle(Event{Tool: &ToolUpdate{Result: &ToolResult{Name: "read", Result: "ok", Lines: 1}}})
 
 	events := rt.LiveTimeline()
 	if len(events) != 3 {
@@ -140,9 +145,10 @@ func TestTurnRuntimeObserveFoldsToolIntoLog(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	rt := NewTurnRuntime(s, nil)
 	tx := newTestTx()
-	rt.Begin(&tx, "hi", "")
+	rt.SetTranscript(&tx)
+	rt.Begin("hi", "")
 
-	rt.Observe(&tx, Event{Tool: &ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}}})
+	rt.Handle(Event{Tool: &ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}}})
 
 	if tx.log.Len() != 1 {
 		t.Fatalf("tool log entries = %d, want 1", tx.log.Len())
@@ -156,10 +162,11 @@ func TestTurnRuntimeObserveArmsPulseOnToolStartWhenThinkingOff(t *testing.T) {
 	s.SetThinkingEnabled(false)
 	rt := NewTurnRuntime(s, nil)
 	tx := newTestTx()
-	rt.Begin(&tx, "hi", "")
+	rt.SetTranscript(&tx)
+	rt.Begin("hi", "")
 	tx.busyPulse = 0
 
-	rt.Observe(&tx, Event{Tool: &ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}}})
+	rt.Handle(Event{Tool: &ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}}})
 
 	if tx.busyPulse == 0 {
 		t.Fatal("expected busy pulse to be armed on tool start when thinking is off")
@@ -172,10 +179,11 @@ func TestTurnRuntimeObserveSkipsPulseOnToolStartWhenThinkingOn(t *testing.T) {
 	s.SetThinkingEnabled(true)
 	rt := NewTurnRuntime(s, nil)
 	tx := newTestTx()
-	rt.Begin(&tx, "hi", "")
+	rt.SetTranscript(&tx)
+	rt.Begin("hi", "")
 	tx.busyPulse = 0
 
-	rt.Observe(&tx, Event{Tool: &ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}}})
+	rt.Handle(Event{Tool: &ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}}})
 
 	if tx.busyPulse != 0 {
 		t.Fatalf("busy pulse = %d, want 0 when thinking is on", tx.busyPulse)
@@ -194,10 +202,11 @@ func newTestRuntime(answer string, err error) *TurnRuntime {
 func TestTurnRuntimeCommitSuccessStreaming(t *testing.T) {
 	rt := newTestRuntime("", nil)
 	tx := newTestTx()
-	rt.Begin(&tx, "q", "")
-	rt.Observe(&tx, Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "partial"}})
+	rt.SetTranscript(&tx)
+	rt.Begin("q", "")
+	rt.Handle(Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "partial"}})
 
-	stopped, err := rt.Commit(&tx, turnDoneMsg{answer: "final answer", reasoning: "reasoned"})
+	stopped, err := rt.Commit(turnDoneMsg{answer: "final answer", reasoning: "reasoned"})
 	if stopped || err != nil {
 		t.Fatalf("stopped=%v err=%v, want false/nil", stopped, err)
 	}
@@ -215,9 +224,10 @@ func TestTurnRuntimeCommitSuccessStreaming(t *testing.T) {
 func TestTurnRuntimeCommitSuccessNoStreaming(t *testing.T) {
 	rt := newTestRuntime("", nil)
 	tx := newTestTx()
-	rt.Begin(&tx, "q", "")
+	rt.SetTranscript(&tx)
+	rt.Begin("q", "")
 
-	stopped, err := rt.Commit(&tx, turnDoneMsg{answer: "the answer"})
+	stopped, err := rt.Commit(turnDoneMsg{answer: "the answer"})
 	if stopped || err != nil {
 		t.Fatalf("stopped=%v err=%v, want false/nil", stopped, err)
 	}
@@ -231,10 +241,11 @@ func TestTurnRuntimeCommitSuccessNoStreaming(t *testing.T) {
 func TestTurnRuntimeCommitStoppedStreaming(t *testing.T) {
 	rt := newTestRuntime("", nil)
 	tx := newTestTx()
-	rt.Begin(&tx, "q", "")
-	rt.Observe(&tx, Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "partial"}})
+	rt.SetTranscript(&tx)
+	rt.Begin("q", "")
+	rt.Handle(Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "partial"}})
 
-	stopped, err := rt.Commit(&tx, turnDoneMsg{stopped: true})
+	stopped, err := rt.Commit(turnDoneMsg{stopped: true})
 	if !stopped || err != nil {
 		t.Fatalf("stopped=%v err=%v, want true/nil", stopped, err)
 	}
@@ -248,9 +259,10 @@ func TestTurnRuntimeCommitStoppedStreaming(t *testing.T) {
 func TestTurnRuntimeCommitError(t *testing.T) {
 	rt := newTestRuntime("", nil)
 	tx := newTestTx()
-	rt.Begin(&tx, "q", "")
+	rt.SetTranscript(&tx)
+	rt.Begin("q", "")
 
-	stopped, err := rt.Commit(&tx, turnDoneMsg{err: errors.New("provider failed")})
+	stopped, err := rt.Commit(turnDoneMsg{err: errors.New("provider failed")})
 	if stopped || err == nil {
 		t.Fatalf("stopped=%v err=%v, want false/non-nil", stopped, err)
 	}
@@ -262,11 +274,12 @@ func TestTurnRuntimeCommitError(t *testing.T) {
 func TestTurnRuntimePostCompletionToolObservation(t *testing.T) {
 	rt := newTestRuntime("answer", nil)
 	tx := newTestTx()
-	cmd := rt.Begin(&tx, "q", "")
-	if _, err := rt.Commit(&tx, cmd().(turnDoneMsg)); err != nil {
+	rt.SetTranscript(&tx)
+	cmd := rt.Begin("q", "")
+	if _, err := rt.Commit(cmd().(turnDoneMsg)); err != nil {
 		t.Fatal(err)
 	}
-	rt.Observe(&tx, Event{Tool: &ToolUpdate{Result: &ToolResult{Name: "read", Result: "late"}}})
+	rt.Handle(Event{Tool: &ToolUpdate{Result: &ToolResult{Name: "read", Result: "late"}}})
 	events := tx.messages[len(tx.messages)-1].events
 	if len(events) != 2 || events[1].Kind != EventToolResult {
 		t.Fatalf("events = %+v", events)
@@ -276,17 +289,18 @@ func TestTurnRuntimePostCompletionToolObservation(t *testing.T) {
 func TestTurnRuntimeLaterRunIsolation(t *testing.T) {
 	rt := newTestRuntime("answer", nil)
 	tx := newTestTx()
-	first := rt.Begin(&tx, "one", "")
-	rt.Observe(&tx, Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "old"}})
-	if _, err := rt.Commit(&tx, first().(turnDoneMsg)); err != nil {
+	rt.SetTranscript(&tx)
+	first := rt.Begin("one", "")
+	rt.Handle(Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "old"}})
+	if _, err := rt.Commit(first().(turnDoneMsg)); err != nil {
 		t.Fatal(err)
 	}
-	second := rt.Begin(&tx, "two", "")
+	second := rt.Begin("two", "")
 	if rt.LiveTimeline() != nil {
 		t.Fatal("later run inherited timeline")
 	}
-	rt.Observe(&tx, Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "new"}})
-	if _, err := rt.Commit(&tx, second().(turnDoneMsg)); err != nil {
+	rt.Handle(Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "new"}})
+	if _, err := rt.Commit(second().(turnDoneMsg)); err != nil {
 		t.Fatal(err)
 	}
 	if got := tx.messages[len(tx.messages)-1].content; got != "answer" {
@@ -300,9 +314,10 @@ func TestTurnRuntimeLaterRunIsolation(t *testing.T) {
 func TestTurnRuntimeCommitErrorPreservesPartialOutput(t *testing.T) {
 	rt := newTestRuntime("", nil)
 	tx := newTestTx()
-	rt.Begin(&tx, "q", "")
-	rt.Observe(&tx, Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "partial"}})
-	stopped, err := rt.Commit(&tx, turnDoneMsg{err: errors.New("provider failed")})
+	rt.SetTranscript(&tx)
+	rt.Begin("q", "")
+	rt.Handle(Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "partial"}})
+	stopped, err := rt.Commit(turnDoneMsg{err: errors.New("provider failed")})
 	if stopped || err == nil {
 		t.Fatalf("stopped=%v err=%v", stopped, err)
 	}
@@ -316,6 +331,23 @@ func TestTurnRuntimeCommitErrorPreservesPartialOutput(t *testing.T) {
 
 // Stop cancels the in-flight turn started through Begin, so the turn's
 // cancelable context observes cancellation.
+// Stop before Begin is harmless and must not poison the next run's context.
+func TestTurnRuntimeStopBeforeBeginDoesNotAffectLaterRun(t *testing.T) {
+	started := make(chan struct{})
+	rt := NewTurnRuntime(NewTurnSession(func(ctx context.Context, _ string, _ string) (TurnResult, error) {
+		close(started)
+		return TurnResult{Answer: "ok"}, nil
+	}), nil)
+	tx := newTestTx()
+	rt.SetTranscript(&tx)
+	rt.Stop()
+	msg := rt.Begin("later", "")().(turnDoneMsg)
+	<-started
+	if msg.err != nil || msg.stopped || msg.answer != "ok" {
+		t.Fatalf("later run result = %+v, want successful result", msg)
+	}
+}
+
 func TestTurnRuntimeStopCancelsBegunTurn(t *testing.T) {
 	cancelSeen := func(ctx context.Context, _ string, _ string) (TurnResult, error) {
 		<-ctx.Done()
@@ -323,7 +355,8 @@ func TestTurnRuntimeStopCancelsBegunTurn(t *testing.T) {
 	}
 	rt := NewTurnRuntime(NewTurnSession(cancelSeen), nil)
 	tx := newTestTx()
-	cmd := rt.Begin(&tx, "hi", "")
+	rt.SetTranscript(&tx)
+	cmd := rt.Begin("hi", "")
 
 	rt.Stop()
 
@@ -352,24 +385,35 @@ func TestTurnRuntimeThinkingEnabledRoundTrips(t *testing.T) {
 func TestTurnRuntimeMarksLayoutDirtyThroughFullTurn(t *testing.T) {
 	rt := newTestRuntime("final answer", nil)
 	tx := newTestTx()
+	rt.SetTranscript(&tx)
 	tx.layout.dirty = false
-	cmd := rt.Begin(&tx, "do the thing", "")
+	cmd := rt.Begin("do the thing", "")
 	if !tx.layout.dirty {
 		t.Fatal("Begin must mark the transcript layout dirty")
 	}
 
 	tx.layout.dirty = false
-	rt.Observe(&tx, Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "final answer"}})
+	rt.Handle(Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "final answer"}})
 	if !tx.layout.dirty {
 		t.Fatal("Observe must mark the transcript layout dirty")
 	}
 
 	tx.layout.dirty = false
 	msg := cmd().(turnDoneMsg)
-	if _, err := rt.Commit(&tx, msg); err != nil {
+	if _, err := rt.Commit(msg); err != nil {
 		t.Fatalf("Commit returned err %v", err)
 	}
 	if !tx.layout.dirty {
 		t.Fatal("Commit must mark the transcript layout dirty")
+	}
+}
+
+func TestTurnRuntimeOwnsBoundTranscriptContext(t *testing.T) {
+	tx := newTestTx()
+	rt := NewTurnRuntime(NewTurnSession(stubTurn("ok", nil)), nil)
+	rt.SetTranscript(&tx)
+	rt.Begin("prompt", "")
+	if !tx.busy || len(tx.messages) != 1 || tx.messages[0].content != "prompt" {
+		t.Fatalf("runtime did not preserve prompt/live context: busy=%v messages=%+v", tx.busy, tx.messages)
 	}
 }

@@ -23,7 +23,7 @@ func TestTurnRuntime_DrainReadyBatchesBacklog(t *testing.T) {
 	tx.busy = true
 	tx.messages = append(tx.messages, message{role: "you", content: "prompt"})
 	tx.live = s
-	txp := &tx
+	rt.SetTranscript(&tx)
 
 	const n = 50
 	for i := 0; i < n; i++ {
@@ -37,9 +37,8 @@ func TestTurnRuntime_DrainReadyBatchesBacklog(t *testing.T) {
 		t.Fatal("expected a queued event")
 	}
 	if rt.Accept(first) {
-		rt.Observe(txp, first)
+		rt.Handle(first)
 	}
-	rt.DrainReady(txp)
 
 	if got := len(s.flow.Content()); got != n {
 		t.Fatalf("expected all %d queued deltas applied by DrainReady, got %d bytes", n, got)
@@ -87,9 +86,9 @@ func TestQuadraticLiveTail_StaysBounded(t *testing.T) {
 
 	s := NewTurnSession(nil)
 	tx.live = s
-	txp := &tx
 	feed := NewEventFeed()
 	rt := NewTurnRuntime(s, feed)
+	rt.SetTranscript(&tx)
 	rt.OnTurnStart(0)
 
 	chunk := "chain of thought reasoning tokens and analysis segment number "
@@ -109,10 +108,9 @@ func TestQuadraticLiveTail_StaysBounded(t *testing.T) {
 			break
 		}
 		if rt.Accept(u) {
-			rt.Observe(txp, u)
+			rt.Handle(u)
 		}
-		rt.DrainReady(txp)
-		_ = txp.renderPaneContent()
+		_ = tx.renderPaneContent()
 	}
 	elapsed := time.Since(start)
 	if elapsed > 5*time.Second {

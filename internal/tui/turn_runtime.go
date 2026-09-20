@@ -6,10 +6,11 @@ import tea "charm.land/bubbletea/v2"
 // acceptance, event projection, and completion. TurnSession and Fold remain
 // implementation collaborators behind this seam.
 type TurnRuntime struct {
-	session   *TurnSession
-	fold      *Fold
-	events    *EventFeed
-	liveRunID int
+	session    *TurnSession
+	fold       *Fold
+	events     *EventFeed
+	transcript *Transcript
+	liveRunID  int
 }
 
 // NewTurnRuntime builds a runtime bound to the given turn session and live
@@ -19,13 +20,27 @@ func NewTurnRuntime(session *TurnSession, events *EventFeed) *TurnRuntime {
 	return &TurnRuntime{session: session, fold: NewFold(session), events: events, liveRunID: -1}
 }
 
+// SetTranscript binds the live transcript context owned by this runtime.
+// Callers configure the runtime once; lifecycle and projection operations then
+// use the bound transcript rather than coordinating TurnSession or Fold.
+func (rt *TurnRuntime) SetTranscript(tx *Transcript) { rt.transcript = tx }
+
 // HasEvents reports whether a live merged event feed is wired.
 func (rt *TurnRuntime) HasEvents() bool { return rt.events != nil }
+
+// SetSession replaces the provider session while retaining the runtime seam
+// and its event feed.
+func (rt *TurnRuntime) SetSession(session *TurnSession) {
+	rt.session = session
+	rt.fold = NewFold(session)
+	rt.liveRunID = -1
+}
 
 // Begin arms a fresh run ID, drains any stale events left over from a prior
 // turn, and starts the session's turn; when a live event feed is wired the
 // returned command also starts the spinner so the busy indicator animates.
-func (rt *TurnRuntime) Begin(tx *Transcript, prompt, payload string) tea.Cmd {
+func (rt *TurnRuntime) Begin(prompt, payload string) tea.Cmd {
+	tx := rt.transcript
 	rt.liveRunID = -1
 	if rt.events != nil {
 		rt.events.Drain()
@@ -64,9 +79,24 @@ func (rt *TurnRuntime) Wait() tea.Cmd {
 	return eventWait(rt.events)
 }
 
+// Handle accepts one feed event and schedules the next one. Run-ID policy,
+// turn-start handling, observation, and non-blocking backlog batching all live
+// here so callers only need to forward feed messages to the runtime.
+func (rt *TurnRuntime) Handle(u Event) tea.Cmd {
+	if u.TurnStart {
+		rt.OnTurnStart(u.RunID)
+		return rt.Wait()
+	}
+	if rt.Accept(u) {
+		rt.project(u)
+	}
+	rt.drainReady()
+	return rt.Wait()
+}
+
 // Commit reconciles one turn completion into the transcript for the live Run.
-func (rt *TurnRuntime) Commit(tx *Transcript, msg turnDoneMsg) (stopped bool, err error) {
-	return rt.session.Commit(tx, msg)
+func (rt *TurnRuntime) Commit(msg turnDoneMsg) (stopped bool, err error) {
+	return rt.session.Commit(rt.transcript, msg)
 }
 
 // Stop cancels the in-flight Run.
@@ -100,7 +130,7 @@ func (rt *TurnRuntime) LiveTimeline() []TimelineEvent { return rt.session.LiveTi
 // token. Order is preserved: events are still applied one at a time, in
 // arrival order, through the same Accept/Observe path a single event would
 // take.
-func (rt *TurnRuntime) DrainReady(tx *Transcript) {
+func (rt *TurnRuntime) drainReady() {
 	if rt.events == nil {
 		return
 	}
@@ -114,7 +144,7 @@ func (rt *TurnRuntime) DrainReady(tx *Transcript) {
 			continue
 		}
 		if rt.Accept(u) {
-			rt.Observe(tx, u)
+			rt.project(u)
 		}
 	}
 }
@@ -128,7 +158,8 @@ func (rt *TurnRuntime) DrainReady(tx *Transcript) {
 // never returns a command today; the return type matches the turn runtime's
 // external shape so callers do not need to change if projection later needs
 // to trigger one.
-func (rt *TurnRuntime) Observe(tx *Transcript, u Event) tea.Cmd {
+func (rt *TurnRuntime) project(u Event) tea.Cmd {
+	tx := rt.transcript
 	if u.Stream != nil && tx.busy {
 		rt.fold.Stream(tx, u.Stream.Kind, u.Stream.Delta)
 	}
