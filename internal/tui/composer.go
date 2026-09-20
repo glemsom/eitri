@@ -296,14 +296,13 @@ func fitBandLine(s string, width int) string {
 		width = 1
 	}
 	if lipgloss.Width(s) > width {
-		// Reserve the ellipsis's own width so the filled line stays exactly
-		// width columns even when the ASCII ellipsis is wider than one rune.
 		ell := "…"
-		keep := width - lipgloss.Width(ell)
-		if keep < 1 {
-			keep = 1
+		ellWidth := lipgloss.Width(ell)
+		if width <= ellWidth {
+			s = truncateWidth(s, width)
+		} else {
+			s = truncateWidth(s, width-ellWidth) + ell
 		}
-		s = truncateWidth(s, keep) + ell
 	}
 	pad := width - lipgloss.Width(s)
 	if pad < 0 {

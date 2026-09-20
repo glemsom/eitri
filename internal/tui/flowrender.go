@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -406,7 +407,11 @@ func liveStreamingText(msg message, text string) (string, bool) {
 	if !msg.streaming || len(text) <= liveStreamingMarkdownWindow {
 		return text, false
 	}
-	window := text[len(text)-liveStreamingMarkdownWindow:]
+	start := len(text) - liveStreamingMarkdownWindow
+	for start < len(text) && !utf8.RuneStart(text[start]) {
+		start++
+	}
+	window := text[start:]
 	if i := strings.IndexByte(window, '\n'); i >= 0 {
 		window = window[i+1:]
 	}
@@ -540,8 +545,18 @@ func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width
 		limitNote = th.statusStyle.Render(fmt.Sprintf("limit %ds", int(te.timeout.Seconds())))
 	}
 	budget := width - lipgloss.Width(label) - 8 - lipgloss.Width(limitNote) // room for the outcome + timer + limit
-	if budget > 1 && !strings.Contains(args, "\n") && lipgloss.Width(args) > budget {
-		args = truncateWidth(args, budget-1) + "…"
+	if budget > 1 {
+		lines := strings.Split(args, "\n")
+		for i, line := range lines {
+			limit := budget
+			if i == 0 {
+				limit = budget - 1 // reserve the ellipsis on the first line when needed
+			}
+			if lipgloss.Width(line) > limit {
+				lines[i] = truncateWidth(line, limit) + "…"
+			}
+		}
+		args = strings.Join(lines, "\n")
 	}
 	head := th.toolCategoryStyle(toolCategoryOf(te.name)).Render(label)
 	if pulse && !te.complete {
@@ -610,9 +625,15 @@ func clampLines(s string, max int) string {
 	if max <= 0 || s == "" {
 		return ""
 	}
-	lines := strings.Split(s, "\n")
+	trailingNewline := strings.HasSuffix(s, "\n")
+	lines := strings.Split(strings.TrimSuffix(s, "\n"), "\n")
 	if len(lines) <= max {
 		return s
+	}
+	if trailingNewline {
+		// The terminal newline terminates the last visible line; it is not a
+		// separate command row in the collapsed preview.
+		lines = lines[:len(lines)-1]
 	}
 	return strings.Join(lines[:max], "\n") + "…"
 }
