@@ -804,7 +804,12 @@ func (m *Model) applyRecall(entries []string) {
 	}
 	m.syncComposerHeight()
 	m.composer.MoveToEnd()
-	m.trackComposer()
+	// Recalled prompts are inert drafts until edited or submitted. In
+	// particular, do not open slash completion for a recalled `/skill` line:
+	// doing so would consume the next Up key as completion navigation instead
+	// of allowing recall to continue through older prompts.
+	m.slash.Reset()
+	m.mention.Reset()
 }
 
 // canRecall reports whether arrow recall may fire right now: an open

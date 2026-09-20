@@ -158,6 +158,23 @@ func TestArrowRecall_slashLineRecalledInert(t *testing.T) {
 	}
 }
 
+func TestArrowRecall_slashLineContinuesToOlderPrompt(t *testing.T) {
+	t.Parallel()
+	m := NewModelCfg(Dependencies{
+		Turn:   func(context.Context, string, string) (TurnResult, error) { return TurnResult{Answer: "ok"}, nil },
+		Skills: &SkillsSurface{Items: []SkillItem{{Name: "review"}}, Activate: func(context.Context, string) (string, error) { return "payload", nil }},
+	})
+	m = resize(t, m)
+	m = pushHistory(t, m, "older")
+	m = typeText(t, m, "/review")
+	m = submitAndWait(t, m)
+	m = keypress(t, m, "up")
+	m = keypress(t, m, "up")
+	if got := m.composer.Value(); got != "older" {
+		t.Fatalf("second up after recalled slash command = %q, want older prompt", got)
+	}
+}
+
 func TestArrowRecall_slashLineSubmitsOnEnter(t *testing.T) {
 	t.Parallel()
 	var activated []string
