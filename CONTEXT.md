@@ -1,6 +1,17 @@
 # Eitri
 
-Eitri is a self-hosted, single-binary AI coding agent that reads, writes, and runs code in a user's workspace through natural-language conversation with any OpenAI-compatible model provider.
+Eitri is a self-hosted, single-binary AI coding agent that reads, writes, and runs code in a user's workspace through natural-language conversation with any OpenAI-compatible model provider. It is Linux-only and follows the Unix philosophy: use small, composable GNU/Linux programs and connect them to achieve useful results.
+
+## Philosophy
+
+**Unix composition**:
+The preferred way to accomplish work is to compose existing GNU/Linux programs through clear inputs and outputs, rather than adding bespoke capability to Eitri. Composition should remain inspectable, replaceable, and useful outside the assistant where practical.
+
+**Throwaway script**:
+A short-lived Bash or Python program used as glue when a pipeline alone cannot express the required state, branching, or coordination. It is task-local machinery, not a permanent domain concept or product extension.
+
+**Linux-only boundary**:
+Eitri's supported environment is GNU/Linux. Platform-specific behavior may rely on the conventions and programs of that environment; portability to other operating systems is not a design goal.
 
 ## Language
 

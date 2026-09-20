@@ -2,6 +2,14 @@
 
 This is the implementation map for agents and maintainers. User-facing behavior belongs in [README.md](README.md); domain terminology belongs in [CONTEXT.md](CONTEXT.md).
 
+## Eitri philosophy
+
+Eitri is a Linux-only assistant built in the Unix tradition: compose small, capable programs rather than reimplementing their responsibilities. The agent's primary way to interact with the system is the GNU/Linux command line, and the toolset should expose dependable existing programs whenever they provide the needed capability.
+
+Prefer a pipeline of simple commands whose inputs and outputs are inspectable. When coordination requires state, branching, or more involved control flow, use a short-lived throwaway script—typically Bash or Python—rather than growing a permanent abstraction prematurely. Such scripts are glue for the current task, not a new product surface.
+
+This keeps the architecture small, transparent, and replaceable: composition belongs at the edges, stable behavior belongs in focused packages, and platform-specific behavior may assume GNU/Linux. Changes should preserve this bias toward standard tools, text streams, explicit boundaries, and minimal custom machinery.
+
 ## Dependency map
 
 ```mermaid
