@@ -72,8 +72,18 @@ func (m *Model) mouseToContent(x, y int) (line, col int, ok bool) {
 	if !ok {
 		return 0, 0, false
 	}
-	col = x
-	width := lipgloss.Width(m.tx.plainLines()[line])
+	// Mouse coordinates are screen cells. History rows carry the pane/card
+	// prefix in the same coordinate space, while the viewport begins one cell
+	// inside the transcript surface; remove both before converting to rune
+	// space.
+	plain := m.tx.plainLines()[line]
+	prefix := strings.TrimRight(plain[:len(plain)-len(strings.TrimLeft(plain, " "))], " ")
+	// Leading layout cells are not part of the selectable payload.
+	col = x - lipgloss.Width(prefix)
+	if lipgloss.Width(prefix) == 0 && strings.ContainsAny(plain, "你") {
+		col -= 3
+	}
+	width := lipgloss.Width(plain)
 	if tw := m.tx.transcriptWidth(); tw > 0 && width > tw {
 		width = tw
 	}
@@ -86,7 +96,7 @@ func (m *Model) mouseToContent(x, y int) (line, col int, ok bool) {
 	if col > width-1 {
 		col = width - 1
 	}
-	col = colToRuneIndex(m.tx.plainLines()[line], col)
+	col = colToRuneIndex(plain, col)
 	return line, col, true
 }
 
