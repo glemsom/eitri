@@ -107,7 +107,7 @@ func TestRenderTitledPanel_gradientContractEveryTheme(t *testing.T) {
 			for _, tc := range widths {
 				t.Run(fmt.Sprintf("width/%d", tc.width), func(t *testing.T) {
 					t.Parallel()
-					border := strings.Split(renderTitledPanel(th, title, tc.width, th.bandSeparatorStyle, "body"), "\n")[0]
+					border := strings.Split(renderTitledPanel(th, title, tc.width, th.bandSeparatorStyle, frameLevelIdle, "body"), "\n")[0]
 					if got := lipgloss.Width(border); got != tc.width {
 						t.Fatalf("top border width = %d, want %d: %q", got, tc.width, border)
 					}
@@ -133,10 +133,73 @@ func TestRenderTitledPanel_gradientContractEveryTheme(t *testing.T) {
 	}
 }
 
+// TestRenderTitledPanel_frameGradientAllEdges guards that the titled panel's
+// whole frame — not just the top rule — carries the theme gradient: the side
+// rails and the bottom rule take the accent hue on the left and the web hue on
+// the right, so the frame reads as one sweep instead of a gradient lid over a
+// flat surround.
+func TestRenderTitledPanel_frameGradientAllEdges(t *testing.T) {
+	t.Parallel()
+	for _, name := range bundledThemeNames {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			th := themeFor(name)
+			lines := strings.Split(renderTitledPanel(th, "Ask Eitri", 40, th.bandSeparatorStyle, frameLevelIdle, "body"), "\n")
+			if len(lines) < 3 {
+				t.Fatalf("panel = %q, want top/body/bottom rows", lines)
+			}
+			top, body, bottom := lines[0], lines[1], lines[len(lines)-1]
+			accent, web := colorSGR(th.accent), colorSGR(th.web)
+			if !strings.Contains(top, accent) || !strings.Contains(top, web) {
+				t.Errorf("top rule missing accent/web gradient: %q", top)
+			}
+			assertRail(t, "side rails", body, accent+"│", web+"│")
+			assertRail(t, "bottom rule", bottom, accent+"╰", web+"╯")
+		})
+	}
+}
+
+// TestRenderTitledPanel_forgingMutesWholeFrame guards the state-as-color
+// contract on the forging panel: the muted level scales the whole gradient
+// uniformly, so the top rule, the side rails, and the bottom rule all share the
+// dimmed accent -> web sweep — never a bright top over dimmed sides.
+func TestRenderTitledPanel_forgingMutesWholeFrame(t *testing.T) {
+	t.Parallel()
+	th := newDefaultTheme()
+	panel := renderTitledPanel(th, "Ask Eitri", 40, lipgloss.NewStyle(), frameLevelForging, "body")
+	lines := strings.Split(panel, "\n")
+	top, body, bottom := lines[0], lines[1], lines[len(lines)-1]
+
+	dimAccent := colorSGR(dimmed(th.accent, float64(frameLevelForging)/100))
+	dimWeb := colorSGR(dimmed(th.web, float64(frameLevelForging)/100))
+	if !strings.Contains(top, dimAccent) || !strings.Contains(top, dimWeb) {
+		t.Errorf("forging top rule missing dimmed gradient: %q", top)
+	}
+	assertRail(t, "forging side rails", body, dimAccent+"│", dimWeb+"│")
+	assertRail(t, "forging bottom rule", bottom, dimAccent+"╰", dimWeb+"╯")
+	if strings.Contains(panel, colorSGR(th.accent)) || strings.Contains(panel, colorSGR(th.web)) {
+		t.Errorf("forging frame must not carry the full-brightness hues: %q", panel)
+	}
+}
+
+// assertRail checks a row carries the accent-hued opening mark before the
+// web-hued closing mark, so the gradient sweeps left to right across the edge.
+func assertRail(t *testing.T, what, row, left, right string) {
+	t.Helper()
+	li, ri := strings.Index(row, left), strings.Index(row, right)
+	if li < 0 || ri < 0 {
+		t.Errorf("%s must carry the gradient sweep (left %q, right %q): %q", what, left, right, row)
+		return
+	}
+	if li >= ri {
+		t.Errorf("%s must run accent before web: %q", what, row)
+	}
+}
+
 func TestRenderTitledPanel_nilPaletteFallsBackToPlainBorder(t *testing.T) {
 	t.Parallel()
 	th := renderSurfaceTestTheme()
-	got := renderTitledPanel(th, "Commands", 20, th.bandSeparatorStyle, "body")
+	got := renderTitledPanel(th, "Commands", 20, th.bandSeparatorStyle, frameLevelIdle, "body")
 	if strings.Contains(got, "\x1b[") {
 		t.Errorf("nil palette top border must carry no SGR, got %q", got)
 	}

@@ -52,6 +52,10 @@ func lerpColor(a, b color.Color, t float64) color.Color {
 // would make the whole view measurably slower.
 const gradientBands = 9
 
+// gradientFull is full frame brightness, the level the idle banner and panels
+// draw at; the forging frame scales the same palette below it.
+const gradientFull uint8 = 100
+
 // gradientRule renders a horizontal rule of width cells blended across the
 // theme's accent -> skill -> web hues: the single reusable gradient helper the
 // idle banner and the chrome panel both draw through. Plain text under
@@ -62,25 +66,45 @@ func (th Theme) gradientRule(width int) string {
 }
 
 // gradientKey identifies a cached band palette: the three blended palette
-// colors. Themes are values, so the key packs their RGB rather than comparing
-// interfaces.
+// colors and the frame brightness they were scaled to. Themes are values, so
+// the key packs their RGB rather than comparing interfaces.
 type gradientKey struct {
 	accent, skill, web uint32
+	level              uint8 // frame brightness percent (1..100)
+}
+
+// gradientKey packs the theme's blended palette and a brightness percent into a
+// comparable cache key.
+func (th Theme) gradientKey(level uint8) gradientKey {
+	return gradientKey{colorKey(th.accent), colorKey(th.skill), colorKey(th.web), level}
 }
 
 // gradientBandColorsCache memoizes each palette's band colors so per-frame
 // rules reuse them instead of re-interpolating.
 var gradientBandColorsCache sync.Map // gradientKey -> []color.Color
 
-// gradientBandColors returns the fixed band colors for the theme.
+// gradientBandColors returns the fixed band colors for the theme at full
+// brightness — the idle banner rules and the idle chrome frame.
 func (th Theme) gradientBandColors() []color.Color {
-	key := gradientKey{colorKey(th.accent), colorKey(th.skill), colorKey(th.web)}
+	return th.gradientBandColorsAt(gradientFull)
+}
+
+// gradientBandColorsAt returns the band colors scaled to the given brightness
+// percent, so the forging frame can mute the whole gradient — top, sides, and
+// bottom alike — through one palette instead of a separate flat style.
+func (th Theme) gradientBandColorsAt(level uint8) []color.Color {
+	key := th.gradientKey(level)
 	if v, ok := gradientBandColorsCache.Load(key); ok {
 		return v.([]color.Color)
 	}
+	f := float64(level) / 100
 	colors := make([]color.Color, gradientBands)
 	for i := range colors {
-		colors[i] = gradientColorAt(th, float64(i)/float64(gradientBands-1))
+		c := gradientColorAt(th, float64(i)/float64(gradientBands-1))
+		if f < 1 {
+			c = dimmed(c, f)
+		}
+		colors[i] = c
 	}
 	actual, _ := gradientBandColorsCache.LoadOrStore(key, colors)
 	return actual.([]color.Color)
@@ -95,11 +119,18 @@ func gradientBand(col, width int) int {
 	return (col*(gradientBands-1) + (width-1)/2) / (width - 1)
 }
 
-// gradientRuns renders the rule cells for columns [start,end) as one SGR run
-// per colour band, so the rendered rule carries a handful of escapes instead of
-// one per cell. Results are memoized because the chrome panel top border is
-// rebuilt several times per rendered frame.
+// gradientRuns renders the rule cells for columns [start,end) at full
+// brightness — the banner and idle panel rules.
 func (th Theme) gradientRuns(start, end, width int) string {
+	return th.gradientRunsAt(start, end, width, gradientFull)
+}
+
+// gradientRunsAt renders the rule cells for columns [start,end) as one SGR run
+// per colour band, so the rendered rule carries a handful of escapes instead of
+// one per cell. Results are memoized because the chrome panel border is rebuilt
+// several times per rendered frame. level scales the palette so the forging
+// frame draws the same rule muted.
+func (th Theme) gradientRunsAt(start, end, width int, level uint8) string {
 	if start < 0 {
 		start = 0
 	}
@@ -113,7 +144,7 @@ func (th Theme) gradientRuns(start, end, width int) string {
 		return strings.Repeat(lookup("hr"), end-start)
 	}
 	key := gradientRunKey{
-		palette: gradientKey{colorKey(th.accent), colorKey(th.skill), colorKey(th.web)},
+		palette: th.gradientKey(level),
 		width:   width,
 		start:   start,
 		end:     end,
@@ -125,7 +156,7 @@ func (th Theme) gradientRuns(start, end, width int) string {
 	}
 	gradientRunsMu.Unlock()
 
-	colors := th.gradientBandColors()
+	colors := th.gradientBandColorsAt(level)
 	var b strings.Builder
 	runStart := start
 	runBand := gradientBand(start, width)
@@ -182,9 +213,10 @@ func colorKey(c color.Color) uint32 {
 	return uint32(r>>8)<<16 | uint32(g>>8)<<8 | uint32(b>>8)
 }
 
-// gradientRune styles one rule cell (or border corner) with the theme hue at
-// the cell's horizontal position, emitting a minimal SGR run.
-func gradientRune(th Theme, glyph string, col, width int) string {
+// gradientRune styles one border cell — a rule, a side rail, or a corner — with
+// the theme hue at the cell's horizontal column, emitting a minimal SGR run.
+// level scales the hue so the forging frame draws the same cell muted.
+func gradientRune(th Theme, glyph string, col, width int, level uint8) string {
 	t := 0.0
 	if width > 1 {
 		t = float64(col) / float64(width-1)
@@ -193,18 +225,22 @@ func gradientRune(th Theme, glyph string, col, width int) string {
 	if c == nil {
 		return glyph
 	}
+	if level < gradientFull {
+		c = dimmed(c, float64(level)/100)
+	}
 	return styledGlyph(c, glyph)
 }
 
-// gradientCorner styles the top-border corner at col (0 is the opening corner,
-// any other column the closing one). Corners are uncached because a panel has
-// only two of them.
-func (th Theme) gradientCorner(col, width int) string {
-	glyph := "╭"
+// gradientCorner styles a panel corner at col: the opening glyph at column 0,
+// the closing glyph anywhere else. One helper serves the top (╭/╮) and bottom
+// (╰/╯) frames so both corners of a rule carry the hue of the column they cap.
+// Corners are uncached because a panel has only a few of them.
+func (th Theme) gradientCorner(open, close string, col, width int, level uint8) string {
+	glyph := open
 	if col != 0 {
-		glyph = "╮"
+		glyph = close
 	}
-	return gradientRune(th, glyph, col, width)
+	return gradientRune(th, glyph, col, width, level)
 }
 
 // brandWordmark renders the idle brand ("⚒️ Eitri") with a gradient across the

@@ -501,7 +501,7 @@ func TestRenderTitledPanel_gradientTopBorderSurvivesStyledTitle(t *testing.T) {
 	th := newDefaultTheme()
 	panel := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
 	coloredTitle := lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("forge")
-	got := renderTitledPanel(th, coloredTitle, 20, panel, "body")
+	got := renderTitledPanel(th, coloredTitle, 20, panel, frameLevelIdle, "body")
 	border := strings.Split(got, "\n")[0]
 	if !strings.Contains(border, "forge") {
 		t.Fatalf("top border must keep the title, got: %q", border)
