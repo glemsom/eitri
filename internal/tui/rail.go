@@ -195,7 +195,11 @@ func (r *Rail) renderStats(te *telemetry.Telemetry, th Theme, railWidth int) str
 	}
 	var body strings.Builder
 	kw := railKeyWidth(railWidth)
-	r.lineAligned(&body, "cache", fmt.Sprintf("%.0f%% %s", pct, railMeter(pct/100, railWidth)), kw, railWidth)
+	cacheVal := fmt.Sprintf("%.0f%%", pct)
+	if totalIn > 0 {
+		cacheVal += " " + railMeter(pct/100, railWidth)
+	}
+	r.lineAligned(&body, "cache", cacheVal, kw, railWidth)
 	r.lineAligned(&body, "turns", fmt.Sprintf("%d/%d", turns, maxTurns), kw, railWidth)
 	r.lineAligned(&body, "elapsed", formatElapsed(elapsed), kw, railWidth)
 	r.lineAligned(&body, "tokens", fmt.Sprintf("%s in/%s out", formatTokens(totalIn), formatTokens(out)), kw, railWidth)

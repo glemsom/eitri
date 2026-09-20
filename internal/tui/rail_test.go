@@ -727,6 +727,24 @@ func TestRailStatsContextMeterStates(t *testing.T) {
 	}
 }
 
+func TestRailStatsCacheNoMeterWithoutData(t *testing.T) {
+	t.Parallel()
+	r := NewRail("opencode-go", "deepseek", "low", true, "sid", "/tmp/sid")
+	te := telemetry.NewTelemetry("deepseek", "low", true, 250)
+
+	empty := r.renderStats(te, defaultTheme, 36)
+	emptyCache := lineContaining(empty, "cache")
+	if !strings.Contains(ansiStrip(emptyCache), "0%") || strings.Contains(ansiStrip(emptyCache), "░") {
+		t.Fatalf("empty cache should render numeric without meter, got: %q", empty)
+	}
+
+	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 0, Miss: 10})
+	withData := r.renderStats(te, defaultTheme, 36)
+	if !strings.Contains(ansiStrip(withData), "0% ░░░░░░") {
+		t.Fatalf("cache meter must appear once data exists, got: %q", withData)
+	}
+}
+
 func TestRailStatsCacheMeterStates(t *testing.T) {
 	t.Parallel()
 	r := NewRail("opencode-go", "deepseek", "low", true, "sid", "/tmp/sid")
