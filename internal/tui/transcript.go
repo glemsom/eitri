@@ -607,7 +607,7 @@ func (t *Transcript) committedEmission(i, anchor int) (string, []toolRowRange, i
 		emit(card + "\n")
 	} else if len(msg.events) > 0 {
 		base := nl
-		block, rrows := t.renderEventFlow(msg.events, anchor, msg, i, time.Time{}, assistantRoleMark()+" ")
+		block, rrows := t.renderEventFlow(msg.events, anchor, msg, i, time.Time{}, "")
 		emit(block)
 		for _, r := range rrows {
 			rows = append(rows, toolRowRange{start: base + r.start, end: base + r.end, idx: r.idx})
@@ -741,7 +741,7 @@ func (t *Transcript) renderMessageRange(b *strings.Builder, toolRows *[]toolRowR
 	// code can drift from RenderFlow.
 	emitFlow := func(events []TimelineEvent, anchor, msgIdx int, msg message) {
 		base := nl
-		block, rows := t.renderEventFlow(events, anchor, msg, msgIdx, now, assistantRoleMark()+" ")
+		block, rows := t.renderEventFlow(events, anchor, msg, msgIdx, now, "")
 		emit(block)
 		recordToolRows(rows, base)
 	}

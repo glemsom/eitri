@@ -23,7 +23,7 @@ func TestRoleMarks_userPromptCarriesRoleMark(t *testing.T) {
 	}
 }
 
-func TestRoleMarks_assistantTurnCarriesRoleMark(t *testing.T) {
+func TestRoleMarks_assistantTurnOmitsRoleMark(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{
 		Turn: func(ctx context.Context, prompt string, _ string) (TurnResult, error) {
@@ -35,8 +35,8 @@ func TestRoleMarks_assistantTurnCarriesRoleMark(t *testing.T) {
 	m = submitAndWait(t, m)
 
 	plain := plain(view(m))
-	if !strings.Contains(plain, assistantRoleMark()) {
-		t.Errorf("assistant turn must carry the assistant role mark %q, got:\n%s", assistantRoleMark(), plain)
+	if strings.Contains(plain, assistantRoleMark()) {
+		t.Errorf("assistant response must omit the assistant role mark %q, got:\n%s", assistantRoleMark(), plain)
 	}
 }
 
