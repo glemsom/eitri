@@ -23,14 +23,6 @@ const (
 	composerCaretBlink = false
 )
 
-// Titled-panel frame levels: an idle panel draws the full theme gradient, while
-// the forging panel mutes that same gradient uniformly so its sides and bottom
-// still match its top (state-as-color, without splitting the frame's palette).
-const (
-	frameLevelIdle    uint8 = gradientFull
-	frameLevelForging uint8 = 45
-)
-
 // minComposerRows is how tall the composer rests when the draft is empty, so the input field reads as a multi-line composer rather than a single-line prompt.
 const minComposerRows = 2
 
@@ -128,10 +120,11 @@ func composerPanelBodyWidth(bandWidth int) int {
 // bottom — carries the theme gradient: the top and bottom rules sweep accent ->
 // skill -> web across the width, and the side rails take the hue at their own
 // column, so the left rail starts on the accent and the right rail lands on the
-// web. titleStyle colors the title text; frameLevel scales the frame gradient
-// (full while idle, muted while forging). Each gradient cell is styled
-// independently, so a title's own inline reset can never strip the frame color.
-func renderTitledPanel(th Theme, title string, width int, titleStyle lipgloss.Style, frameLevel uint8, body string) string {
+// web. The idle and forging panels share this one full-strength frame; only
+// their title and body copy distinguish the states. titleStyle colors the title
+// text. Each gradient cell is styled independently, so a title's own inline
+// reset can never strip the frame color.
+func renderTitledPanel(th Theme, title string, width int, titleStyle lipgloss.Style, body string) string {
 	if width < 2 {
 		width = 2
 	}
@@ -143,17 +136,17 @@ func renderTitledPanel(th Theme, title string, width int, titleStyle lipgloss.St
 	showTitle := titleWidth > 0 && titleWidth+3 <= width-2
 	var b strings.Builder
 	if showTitle {
-		b.WriteString(th.gradientCorner("╭", "╮", 0, width, frameLevel))
-		b.WriteString(th.gradientRunsAt(1, 2, width, frameLevel))
+		b.WriteString(th.gradientCorner("╭", "╮", 0, width))
+		b.WriteString(th.gradientRuns(1, 2, width))
 		b.WriteString(" ")
 		b.WriteString(titleStyle.Render(title))
 		b.WriteString(" ")
-		b.WriteString(th.gradientRunsAt(titleWidth+4, width-1, width, frameLevel))
-		b.WriteString(th.gradientCorner("╭", "╮", width-1, width, frameLevel))
+		b.WriteString(th.gradientRuns(titleWidth+4, width-1, width))
+		b.WriteString(th.gradientCorner("╭", "╮", width-1, width))
 	} else {
-		b.WriteString(th.gradientCorner("╭", "╮", 0, width, frameLevel))
-		b.WriteString(th.gradientRunsAt(1, width-1, width, frameLevel))
-		b.WriteString(th.gradientCorner("╭", "╮", width-1, width, frameLevel))
+		b.WriteString(th.gradientCorner("╭", "╮", 0, width))
+		b.WriteString(th.gradientRuns(1, width-1, width))
+		b.WriteString(th.gradientCorner("╭", "╮", width-1, width))
 	}
 	for _, line := range strings.Split(body, "\n") {
 		plainLine := ansiStrip(line)
@@ -165,15 +158,15 @@ func renderTitledPanel(th Theme, title string, width int, titleStyle lipgloss.St
 			pad = 0
 		}
 		b.WriteByte('\n')
-		b.WriteString(gradientRune(th, "│", 0, width, frameLevel))
+		b.WriteString(gradientRune(th, "│", 0, width))
 		b.WriteString(line)
 		b.WriteString(strings.Repeat(" ", pad))
-		b.WriteString(gradientRune(th, "│", width-1, width, frameLevel))
+		b.WriteString(gradientRune(th, "│", width-1, width))
 	}
 	b.WriteByte('\n')
-	b.WriteString(th.gradientCorner("╰", "╯", 0, width, frameLevel))
-	b.WriteString(th.gradientRunsAt(1, width-1, width, frameLevel))
-	b.WriteString(th.gradientCorner("╰", "╯", width-1, width, frameLevel))
+	b.WriteString(th.gradientCorner("╰", "╯", 0, width))
+	b.WriteString(th.gradientRuns(1, width-1, width))
+	b.WriteString(th.gradientCorner("╰", "╯", width-1, width))
 	return b.String()
 }
 
@@ -207,7 +200,7 @@ func (m Model) renderBand(b *strings.Builder) {
 	var inner strings.Builder
 	if m.tx.busy {
 		body := forgeBusyLine(m.tx.spinner, m.tx.phase()) + " · " + m.tx.theme.statusStyle.Render("Hold steady — composer locked during forging")
-		inner.WriteString(renderTitledPanel(m.tx.theme, m.forgeTitle(), m.tx.bandWidth(), lipgloss.NewStyle(), frameLevelForging, body))
+		inner.WriteString(renderTitledPanel(m.tx.theme, m.forgeTitle(), m.tx.bandWidth(), lipgloss.NewStyle(), body))
 	} else {
 		if m.slash.isOpen() {
 			body := m.slash.RenderCompletionBody(m.tx.theme)
@@ -217,13 +210,13 @@ func (m Model) renderBand(b *strings.Builder) {
 				}
 				body += badge
 			}
-			inner.WriteString(renderTitledPanel(m.tx.theme, "Commands", m.tx.bandWidth(), m.tx.theme.bandSeparatorStyle, frameLevelIdle, body))
+			inner.WriteString(renderTitledPanel(m.tx.theme, "Commands", m.tx.bandWidth(), m.tx.theme.bandSeparatorStyle, body))
 			inner.WriteByte('\n')
 		} else if m.mention.isOpen() {
-			inner.WriteString(renderTitledPanel(m.tx.theme, "Workspace mentions", m.tx.bandWidth(), m.tx.theme.bandSeparatorStyle, frameLevelIdle, m.mention.RenderCompletionBody(m.tx.theme)))
+			inner.WriteString(renderTitledPanel(m.tx.theme, "Workspace mentions", m.tx.bandWidth(), m.tx.theme.bandSeparatorStyle, m.mention.RenderCompletionBody(m.tx.theme)))
 			inner.WriteByte('\n')
 		}
-		inner.WriteString(renderTitledPanel(m.tx.theme, "Ask Eitri", m.tx.bandWidth(), m.tx.theme.bandSeparatorStyle, frameLevelIdle, m.composer.View()))
+		inner.WriteString(renderTitledPanel(m.tx.theme, "Ask Eitri", m.tx.bandWidth(), m.tx.theme.bandSeparatorStyle, m.composer.View()))
 	}
 	inner.WriteByte('\n')
 	inner.WriteString(m.renderBandStatusRow())

@@ -107,7 +107,7 @@ func TestRenderTitledPanel_gradientContractEveryTheme(t *testing.T) {
 			for _, tc := range widths {
 				t.Run(fmt.Sprintf("width/%d", tc.width), func(t *testing.T) {
 					t.Parallel()
-					border := strings.Split(renderTitledPanel(th, title, tc.width, th.bandSeparatorStyle, frameLevelIdle, "body"), "\n")[0]
+					border := strings.Split(renderTitledPanel(th, title, tc.width, th.bandSeparatorStyle, "body"), "\n")[0]
 					if got := lipgloss.Width(border); got != tc.width {
 						t.Fatalf("top border width = %d, want %d: %q", got, tc.width, border)
 					}
@@ -144,7 +144,7 @@ func TestRenderTitledPanel_frameGradientAllEdges(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			th := themeFor(name)
-			lines := strings.Split(renderTitledPanel(th, "Ask Eitri", 40, th.bandSeparatorStyle, frameLevelIdle, "body"), "\n")
+			lines := strings.Split(renderTitledPanel(th, "Ask Eitri", 40, th.bandSeparatorStyle, "body"), "\n")
 			if len(lines) < 3 {
 				t.Fatalf("panel = %q, want top/body/bottom rows", lines)
 			}
@@ -159,26 +159,33 @@ func TestRenderTitledPanel_frameGradientAllEdges(t *testing.T) {
 	}
 }
 
-// TestRenderTitledPanel_forgingMutesWholeFrame guards the state-as-color
-// contract on the forging panel: the muted level scales the whole gradient
-// uniformly, so the top rule, the side rails, and the bottom rule all share the
-// dimmed accent -> web sweep — never a bright top over dimmed sides.
-func TestRenderTitledPanel_forgingMutesWholeFrame(t *testing.T) {
+// TestModel_forgingComposerFrameMatchesIdle guards that the forging composer
+// draws the same full-strength gradient frame as the idle composer: only the
+// title and body copy distinguish the states, never a muted frame. The top
+// rule's web hue is the tell — the forge title glint sweeps only the accent.
+func TestModel_forgingComposerFrameMatchesIdle(t *testing.T) {
 	t.Parallel()
-	th := newDefaultTheme()
-	panel := renderTitledPanel(th, "Ask Eitri", 40, lipgloss.NewStyle(), frameLevelForging, "body")
-	lines := strings.Split(panel, "\n")
-	top, body, bottom := lines[0], lines[1], lines[len(lines)-1]
+	m := newStreamingModel()
+	m = resize(t, m)
+	m = typeText(t, m, "hi")
+	m, _ = submitBusy(t, m)
+	th := m.tx.theme
 
-	dimAccent := colorSGR(dimmed(th.accent, float64(frameLevelForging)/100))
-	dimWeb := colorSGR(dimmed(th.web, float64(frameLevelForging)/100))
-	if !strings.Contains(top, dimAccent) || !strings.Contains(top, dimWeb) {
-		t.Errorf("forging top rule missing dimmed gradient: %q", top)
+	var topBorder string
+	for _, line := range strings.Split(view(m), "\n") {
+		if strings.Contains(ansiStrip(line), "Eitri is forging") {
+			topBorder = line
+			break
+		}
 	}
-	assertRail(t, "forging side rails", body, dimAccent+"│", dimWeb+"│")
-	assertRail(t, "forging bottom rule", bottom, dimAccent+"╰", dimWeb+"╯")
-	if strings.Contains(panel, colorSGR(th.accent)) || strings.Contains(panel, colorSGR(th.web)) {
-		t.Errorf("forging frame must not carry the full-brightness hues: %q", panel)
+	if topBorder == "" {
+		t.Fatalf("forging composer panel missing from:\n%s", view(m))
+	}
+	if !strings.Contains(topBorder, colorSGR(th.web)) {
+		t.Errorf("forging frame must carry the full-strength web hue on its top rule, got %q", topBorder)
+	}
+	if dimWeb := colorSGR(dimmed(th.web, 0.45)); strings.Contains(topBorder, dimWeb) {
+		t.Errorf("forging frame must not be muted, found dimmed web %q in %q", dimWeb, topBorder)
 	}
 }
 
@@ -199,7 +206,7 @@ func assertRail(t *testing.T, what, row, left, right string) {
 func TestRenderTitledPanel_nilPaletteFallsBackToPlainBorder(t *testing.T) {
 	t.Parallel()
 	th := renderSurfaceTestTheme()
-	got := renderTitledPanel(th, "Commands", 20, th.bandSeparatorStyle, frameLevelIdle, "body")
+	got := renderTitledPanel(th, "Commands", 20, th.bandSeparatorStyle, "body")
 	if strings.Contains(got, "\x1b[") {
 		t.Errorf("nil palette top border must carry no SGR, got %q", got)
 	}
