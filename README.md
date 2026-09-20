@@ -1,19 +1,22 @@
 # Eitri
 
-Eitri is a self-hosted AI coding agent for Linux. It runs as a single Go binary, uses natural-language prompts to read, edit, and run code in a workspace, and connects to local or hosted model providers.
-
-Eitri keeps its system prompt small, uses Unix tools through `bash`, and stores configuration and sessions locally under `~/.eitri`.
+Eitri is a self-hosted AI coding agent for GNU/Linux. It runs as a single Go binary, uses natural-language prompts to read, edit, and run code in a workspace, and connects to local or hosted model providers.
 
 ## Install and run
 
-Requirements: Linux, Go for building, and the runtime tools listed below.
+Requirements are GNU/Linux, Go to build Eitri, and the [runtime tools](#runtime-requirements).
 
 ```sh
 make build
 ./bin/eitri
 ```
 
-The first launch opens settings for provider and credential configuration. Install the binary with `make install` (to `~/.local/bin/eitri`).
+The first launch opens settings for provider and credential configuration. Install the binary with:
+
+```sh
+make install                 # installs to ~/.local/bin/eitri
+eitri
+```
 
 ## Usage
 
@@ -21,20 +24,20 @@ The first launch opens settings for provider and credential configuration. Insta
 eitri                         # interactive TUI
 eitri -b "Review this diff"   # one batch run
 git diff | eitri -b "Review this diff"
-eitri session list             # list saved sessions
+eitri session list
 eitri session show <guid>
 eitri session talk <guid>
 eitri session grep <pattern> [guid|all]
 eitri --version
 ```
 
-Batch mode reads only piped, non-TTY stdin and appends it as fenced context. Input is limited to 1 MiB. `--format json` emits one JSON object containing `answer`, `session`, `turns`, and `stopped`; `-v` sends reasoning to stderr. See [docs/batch-mode.md](docs/batch-mode.md) for the input, output, and exit-code contract.
+Batch mode accepts only piped, non-TTY stdin and appends it as fenced context. Input is limited to 1 MiB. `--format json` emits one object containing `answer`, `session`, `turns`, and `stopped`; `-v` sends reasoning to stderr. See [docs/batch-mode.md](docs/batch-mode.md) for the input, output, and exit-code contract.
 
 Useful flags:
 
 | Flag | Purpose |
 | --- | --- |
-| `-d` | Write full provider HTTP traces to the session. |
+| `-d` | Record full provider HTTP traces in the session. |
 | `--yolo-unsafe` | Disable bubblewrap; `bash` runs with the user's full permissions. |
 | `--pprof <addr>` | Enable localhost pprof diagnostics. `--pprof-mutex` and `--pprof-block` add profiles. |
 | `--format text\|json` | Select batch output format. |
@@ -45,23 +48,21 @@ The TUI's `/help` is the authoritative reference for keybindings and slash comma
 
 By default, every `bash` command runs in a bubblewrap cage with a read-only root, writable workspace and session temporary directory, and isolated PID, `/proc`, and `/dev` namespaces. `--yolo-unsafe` removes this cage and must only be used with trusted prompts and workloads.
 
-Commands are time-limited: 120 seconds by default, configurable per call up to 3600 seconds.
+Commands are limited to 120 seconds by default; each call can request up to 3600 seconds.
 
-## Configuration and data
+## Providers and local data
 
-`EITRI_DIR` changes the data directory (default `~/.eitri`). `EITRI_CONFIG` changes the config path (default `<data directory>/config.json`). The data directory contains configuration, sessions, transcripts, and materialized builtin skills.
+Supported providers are `opencode-go`, `github-copilot`, and `custom-openai`. Configure the provider, credentials, and model in the TUI's `/settings`; provider-specific login is available through `/login` where applicable.
 
-Supported providers are `opencode-go`, `github-copilot`, and `custom-openai`. Settings can be changed in the TUI; credentials are stored in the local config.
-
-Important config keys include `provider`, `model`, `reasoning_effort`, `thinking_enabled`, `max_turns` (default `250`), `context_overflow_recovery`, `extra_writable_paths`, `theme`, and `rail_width`. Eitri manages provider credential objects in the config. Do not commit this file.
+Eitri stores configuration, credentials, sessions, transcripts, and materialized builtin skills under `~/.eitri`. Set `EITRI_DIR` to change the data directory, or `EITRI_CONFIG` to change the config path (default: `<data directory>/config.json`). Do not commit the config file.
 
 Sessions are append-only and can be inspected with the `session` commands. See [docs/sessions.md](docs/sessions.md).
 
 ## Skills and workspace instructions
 
-Eitri discovers skills in this order: project `.agents/skills`, user `~/.agents/skills`, then builtin skills. A higher-priority skill with the same name shadows a lower-priority one. Builtins currently include `subagents` and `web-access`.
+Skills are discovered in project `.agents/skills`, user `~/.agents/skills`, then builtin skills. A same-named skill in a higher-priority scope shadows lower-priority scopes. Builtins currently include `subagents` and `web-access`.
 
-An `AGENTS.md` in the workspace root is loaded as repository instructions. `CONTEXT.md` documents Eitri's internal terminology; `ARCHITECTURE.md` maps the implementation for maintainers and agents.
+An `AGENTS.md` in the workspace root is loaded as repository instructions. [CONTEXT.md](CONTEXT.md) defines internal terms; [ARCHITECTURE.md](ARCHITECTURE.md) maps implementation boundaries.
 
 ## Build and test
 
@@ -73,7 +74,9 @@ git diff | eitri -b "Review this diff"
 
 ## Runtime requirements
 
-Eitri verifies these commands before starting (unless `--yolo-unsafe` removes the `bwrap` requirement): `bwrap`, `bash`, `rg`, `curl`, `lynx`, `patch`, `python3`, `git`, `jq`, and `xdg-open`.
+Eitri verifies these commands before starting, unless `--yolo-unsafe` removes the `bwrap` requirement:
+
+`bwrap`, `bash`, `rg`, `curl`, `lynx`, `patch`, `python3`, `git`, `jq`, and `xdg-open`.
 
 Debian/Ubuntu:
 
@@ -81,4 +84,4 @@ Debian/Ubuntu:
 sudo apt install bubblewrap bash ripgrep curl lynx patch python3 git jq xdg-utils
 ```
 
-Fedora and Arch package managers provide the same package names. Core utilities such as `sed`, `awk`, and `diff` are assumed.
+Fedora and Arch provide the same package names. Core utilities such as `sed`, `awk`, and `diff` are assumed.

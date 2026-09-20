@@ -1,144 +1,73 @@
-# Eitri
+# Eitri domain context
 
-Eitri is a self-hosted, single-binary AI coding agent that reads, writes, and runs code in a user's workspace through natural-language conversation with any OpenAI-compatible model provider. It is Linux-only and follows the Unix philosophy: use small, composable GNU/Linux programs and connect them to achieve useful results.
+Eitri is a self-hosted, single-binary AI coding agent for GNU/Linux. It reads, writes, and runs code in a declared workspace through natural-language conversation with local or hosted model providers. This document defines stable terms; implementation paths belong in [ARCHITECTURE.md](ARCHITECTURE.md).
 
-## Philosophy
+## Principles
 
-**Unix composition**:
-The preferred way to accomplish work is to compose existing GNU/Linux programs through clear inputs and outputs, rather than adding bespoke capability to Eitri. Composition should remain inspectable, replaceable, and useful outside the assistant where practical.
+- **Unix composition:** Prefer existing GNU/Linux programs with inspectable inputs and outputs over bespoke capabilities.
+- **Throwaway script:** Short-lived Bash or Python glue for task-local state, branching, or coordination; not a permanent product surface.
+- **Linux-only boundary:** GNU/Linux conventions and programs are supported; portability is not a design goal.
 
-**Throwaway script**:
-A short-lived Bash or Python program used as glue when a pipeline alone cannot express the required state, branching, or coordination. It is task-local machinery, not a permanent domain concept or product extension.
+## Terminology at a glance
 
-**Linux-only boundary**:
-Eitri's supported environment is GNU/Linux. Platform-specific behavior may rely on the conventions and programs of that environment; portability to other operating systems is not a design goal.
+| Term | Meaning |
+| --- | --- |
+| Turn | One provider request/response cycle. |
+| Run | One bounded execution of the turn loop. |
+| Session | The append-only, GUID-named on-disk record of a run. |
+| Persisted transcript | JSONL message-layer record of provider requests and responses. |
+| TUI transcript view | The rendered conversation in the terminal. |
+| Provider | An adapter for a model endpoint, including authentication and streaming. |
+| Toolset | The fixed tools promised to the model: `bash` and `open_in_browser`. |
+| Workspace | The declared host directory the run may operate in. |
+| Sandbox | The default bubblewrap boundary around `bash`. |
+| Skill | A discovered and validated pack of agent instructions and resources. |
+| Batch mode | One-shot execution that runs one `Run` and exits. |
 
-## Language
+## Runs and sessions
 
-### Runs and sessions
+**Turn** is one provider request/response cycle, including any streamed tool calls. Avoid “cycle” and “iteration.”
 
-**Turn**:
-One provider request/response cycle: the agent sends the whole message history and consumes the streamed reply (which may include tool calls).
-_Avoid_: Cycle, iteration
+**Run** is one bounded turn-loop execution: a batch invocation or one TUI submission. It ends with a final answer, the maximum-turn cap, or user stop. Avoid “invocation” and “request.”
 
-**Run**:
-One bounded execution of the turn loop against a prompt — a batch invocation, or one submission inside the interactive TUI. A run ends on a final answer, the max-turn cap, or a user stop.
-_Avoid_: Invocation, request
+**Session** is the append-only on-disk trail of one run, identified by a GUID. It is not an editable conversation or chat history.
 
-**Session**:
-The on-disk trail of one run, GUID-named under the data directory. The GUID is the session's identity; sessions are append-only records, never edited.
-_Avoid_: Conversation, chat history
+**Persisted transcript** is the message-layer JSONL record inside a session: the ground truth for debugging and performance work. **TUI transcript view** is its rendered terminal counterpart; use the qualifier when referring to the UI.
 
-**Transcript**:
-The message-layer record inside a session directory: one JSON line per request and response, exactly what went over the wire. The ground truth for debugging and performance work.
-_Avoid_: Log, history dump
+## Providers and context
 
-**Live session key**:
-The session GUID currently bound to the interactive TUI, held behind a mutable holder so `/new` re-mints it and every surface observes the new key at the next turn boundary.
-_Avoid_: Active session, current chat
+**Provider** is a model endpoint behind one adapter: model discovery, streaming, generation control, and authentication. “Dialect” is the provider-agnostic shape translated at the provider seam into a wire format.
 
-**Data directory**:
-The local state root (`~/.eitri` by default, overridable with `EITRI_DIR`) holding config, sessions, and skills. The user owns it; the binary creates it on first launch.
-_Avoid_: Config dir, home
+**Compaction** is model-based summarization of older turns when context is near or beyond the provider limit. **Compression** is deterministic, zero-LLM bounding of tool output by stripping ANSI and applying line and byte caps. Do not use these terms interchangeably.
 
-### Provider and context
+**Context overflow** is a provider refusal that the request exceeds its context window; it triggers emergency compaction.
 
-**Provider**:
-An OpenAI-compatible model endpoint behind one adapter: model discovery, streaming, generation control, and auth. Local or cloud; no vendor is built-in-only.
-_Avoid_: Backend, vendor
+## Tools and sandbox
 
-**Dialect**:
-The canonical, provider-agnostic shape of a tool definition or message, translated at the provider seam into whatever wire format the endpoint speaks.
-_Avoid_: Format, encoding
+**Toolset** is the fixed set of tools and backing commands unconditionally promised to the model. Eitri verifies them at launch.
 
-**Compaction**:
-Proactive summarization of older turns when prompt usage crosses a fraction of the context window, keeping the session alive across long runs; also forced reactively on a context overflow from the provider.
-_Avoid_: Summarization, trimming
+**Workspace** is the session's declared scope and is writable by design. The current working directory is only the incidental process location.
 
-**Context overflow**:
-A provider refusal signaling the request exceeded the context window; detected from both the sentinel and provider error bodies, and triggers emergency compaction.
-_Avoid_: Token limit error
+**Sandbox** is the default bubblewrap boundary: read-only root, writable workspace and session temporary directory, and isolated PID, `/proc`, and `/dev` namespaces. `--yolo-unsafe` drops this boundary and runs bash directly as the user.
 
-**Compression**:
-The deterministic, zero-LLM shrinking of high-volume tool output at the tool-result boundary — line caps, byte caps, ANSI stripping — with one merged "+N more, +N bytes truncated" hint from a single authoritative byte count, never silent truncation.
-_Avoid_: Compaction (that is the LLM-driven summarization of turns)
+**Session temp** is the per-session writable directory for ephemeral artifacts. It is distinct from the system-wide `/tmp`.
 
-### Tools and sandbox
+## Skills
 
-**Toolset**:
-The declared, fixed set of tools the agent prompt promises unconditionally (`bash`, `open_in_browser`, and their backing binaries). Eitri verifies every one at launch and refuses to start if anything is missing — the prompt never hallucinates a tool that isn't there.
-_Avoid_: Plugin set, extensions
+**Skill** is a discovered, validated pack of instructions and resources. Skills are resolved project > user > builtin; exact-name collisions are shadowed by the stronger scope. A skill may be human-invocable through `/skillname`, model-invocable through the rendered index, or both.
 
-**Workspace**:
-The host directory the session operates in; writable by design.
-_Avoid_: Project root, cwd (cwd is the incidental current directory; the workspace is the session's declared scope)
+**Builtin skills root** is the materialized builtin-skill directory under `$EITRI_DIR`. Builtins are authored in the repository's skillpack source and overridden by same-named project or user skills.
 
-**Sandbox**:
-The bubblewrap cage confining every `bash` execution by default: read-only root, writable workspace and session temp, isolated PID/`/proc`/`/dev` namespaces. Dropped only by the explicit `--yolo-unsafe` opt-out. The prompt claims no containment either way: the sandbox sentence moved with the batch-subagent guidance into the `subagents` skill.
-_Avoid_: Cage, jail (colloquially fine, but "sandbox" is canonical)
+**Skill activation** is the slash-command path that resolves a skill, records the invocation, and injects its body into the next turn.
 
-**Session temp**:
-The per-session writable scratch directory (`$TMPDIR`-style host path) the agent is told to write ephemeral artifacts to.
-_Avoid_: Scratchpad, tmp (the ambiguous system-wide /tmp)
+**Subagent** is a batch-mode Eitri process launched by the agent in an isolated execution directory. Its machine-readable result is the `answer` field of the JSON batch envelope, not parsed prose.
 
-### Skills
+## Modes and TUI
 
-**Skill**:
-A discovered, validated pack of agent instructions (body plus resources) found under the builtin, user, or project scope, activated by the human via `/skillname` or read by the model itself through `bash`.
-_Avoid_: Prompt template, plugin
+**Batch mode** runs one `Run` from `eitri -b <prompt>` and exits. Piped non-TTY stdin is appended after the prompt as fenced context; it is input, not instructions. `--format json` emits the machine-readable batch envelope.
 
-**Builtin skills root**:
-The binary-owned ROM at `$EITRI_DIR/skills-builtin` where embedded builtin skill packs are materialized at boot. Refreshed only on content mismatch (upgrades win, edits reverted by design); a builtin is overridden by a same-named skill in the user or project scope.
-_Avoid_: Engine skills, embedded skills
+**Debug mode** (`-d`) records raw HTTP request and response bodies in the session.
 
-**Skillspack source**:
-The repo directory `internal/engine/skillspack/` — the single place builtin skill packs are authored and edited. The materialized skills-builtin root is its output, and from inside an agent sandbox `~/.eitri` is read-only (only the workspace, the session's `$TMPDIR`, and any user-configured `extra_writable_paths` are writable), so agent edits to builtin skills land in the skillspack source, never in the materialized ROM.
-_Avoid_: Skills-builtin editing, builtin skill patching
+**Composer** is the TUI input surface for prompts, mentions, and slash commands. **Turn session** is the TUI owner of one run's context, cancellation, thinking state, and timeline.
 
-**Skill catalog**:
-The filtered, trust-gated set of skills for a run, backing both the human slash surface and the model-facing skill index. On exact-name collision the strongest claim wins: project > user > builtin.
-_Avoid_: Skill list, registry
-
-**Model-invocable skill**:
-A skill the model may discover and load on its own via the rendered index; non-model-invocable skills stay reachable only through the human slash surface.
-_Avoid_: Auto skill, hidden skill
-
-**Skill activation**:
-The slash-command path that resolves `/skillname`, appends the invocation to the transcript, and injects the skill body into the follow-up turn's context.
-_Avoid_: Skill run, skill load
-
-### TUI surface
-
-**Transcript (TUI)**:
-The scrolling rendered record of the conversation in the terminal — distinct from the on-disk transcript, which is the same trail's message-layer record.
-_Avoid_: Log view
-
-**Composer**:
-The input surface where the user writes prompts, mentions, and slash commands.
-_Avoid_: Input box, prompt field
-
-**Turn session**:
-The TUI-side owner of one run's lifecycle — context, cancellation, thinking toggle, and timeline — committed to the transcript when the run settles.
-_Avoid_: Run state, turn manager
-
-**Stop**:
-The user's cancellation of a live run, surfaced as the dedicated `ErrStopped` sentinel so it is always distinguishable from a failure.
-_Avoid_: Interrupt, cancel (cancel implies the ambient context cancellation; Stop is the user-facing act)
-
-### Modes
-
-**Batch mode**:
-One-shot execution: `eitri -b "<prompt>"` runs a single run and exits; piped (non-TTY) stdin is appended after the prompt as fenced stdin context, `--format json` prints one machine-parseable envelope `{answer, session, turns, stopped}` in place of the plain answer, and batch is also the substrate for subagent dispatch.
-_Avoid_: Headless mode, non-interactive mode
-
-**Stdin context**:
-The fenced `Stdin input:` block batch mode appends after the `-b` prompt when stdin is piped (non-TTY), so upstream data is declared input — never instructions. Empty stdin appends nothing; input over the 1 MiB cap is refused rather than truncated; stdin piped without `-b` refuses the launch because the TUI would silently drain it.
-_Avoid_: Piped context, fenced input block
-
-**Debug mode**:
-`-d`: additionally records raw HTTP request/response bodies into the session directory.
-_Avoid_: Verbose, trace mode (trace is the artifact, not the mode)
-
-**Subagent**:
-A batch-mode Eitri process launched by the agent itself in an isolated execution directory and awaited in the same shell invocation; its result is collected from the `--format json` envelope's `answer` field, never parsed out of prose stdout.
-_Avoid_: Child agent, worker
+**Stop** is the user's cancellation of a live run, represented by the dedicated `ErrStopped` sentinel. It is distinct from a provider or tool failure.

@@ -1,59 +1,59 @@
 # Eitri architecture
 
-This is the implementation map for agents and maintainers. User-facing behavior belongs in [README.md](README.md); domain terminology belongs in [CONTEXT.md](CONTEXT.md).
+This document maps implementation boundaries for maintainers and agents. User-facing behavior belongs in [README.md](README.md); domain terminology belongs in [CONTEXT.md](CONTEXT.md). Detailed operational contracts live under `docs/`.
 
-## Eitri philosophy
-
-Eitri is a Linux-only assistant built in the Unix tradition: compose small, capable programs rather than reimplementing their responsibilities. The agent's primary way to interact with the system is the GNU/Linux command line, and the toolset should expose dependable existing programs whenever they provide the needed capability.
-
-Prefer a pipeline of simple commands whose inputs and outputs are inspectable. When coordination requires state, branching, or more involved control flow, use a short-lived throwaway script—typically Bash or Python—rather than growing a permanent abstraction prematurely. Such scripts are glue for the current task, not a new product surface.
-
-This keeps the architecture small, transparent, and replaceable: composition belongs at the edges, stable behavior belongs in focused packages, and platform-specific behavior may assume GNU/Linux. Changes should preserve this bias toward standard tools, text streams, explicit boundaries, and minimal custom machinery.
-
-## Dependency map
+## Runtime flow
 
 ```mermaid
-flowchart BT
+flowchart TB
   main[main.go] --> app[internal/app]
-  config[internal/config] --> app
+  app --> config[internal/config]
+  app --> provider[internal/provider]
+  app --> session[internal/session]
   app --> engine[internal/engine]
   app --> tui[internal/tui]
-  engine --> provider[internal/provider]
+  engine --> provider
   engine --> tools[internal/tools]
-  engine --> session[internal/session]
+  engine --> session
   tools --> session
   tools --> compress[internal/compress]
 ```
 
-`main.go` parses flags and dispatches `session` commands. `internal/app` is the composition root. Higher layers call lower layers; providers and tools do not depend on the TUI.
+Startup resolves paths, loads configuration, verifies the declared runtime toolset, materializes builtin skills, and constructs the provider, tools, engine, and session store. The app then starts batch mode or the TUI.
 
-## Packages
+One run follows this path:
+
+1. The engine assembles the stable prompt head, workspace directives, skills, repository instructions, persisted history, and user prompt.
+2. The provider translates canonical messages and tools into its wire dialect and streams the response.
+3. Tool calls go through the fixed tool registry. Bash uses bubblewrap by default or the direct backend with `--yolo-unsafe`.
+4. Tool output is deterministically compressed before returning to the engine. Older history is compacted with an LLM when context requires it.
+5. Typed engine events drive the TUI; requests and responses are appended to the session transcript.
+
+## Package boundaries
 
 ### `internal/app`
 
-Bootstraps the process: resolves `EITRI_DIR`, loads config, verifies runtime dependencies, materializes embedded builtin skills, constructs providers/tools/engine/session, and starts batch or TUI mode. It also owns pprof setup, Copilot login, and the session CLI.
+Composition root. Resolves `EITRI_DIR`, loads config, verifies dependencies, materializes builtin skills, constructs providers/tools/engine/session, and starts batch or TUI mode. It also owns pprof setup, Copilot login, and session subcommands.
 
 ### `internal/config`
 
-Reads and writes `<data directory>/config.json`. Defaults are provider `opencode-go`, model `deepseek-v4-flash`, low reasoning effort, thinking enabled, collapsed reasoning/tool results, context-overflow recovery enabled, and 250 maximum turns.
+Reads and writes `<data directory>/config.json`. Defaults include provider `opencode-go`, model `deepseek-v4-flash`, low reasoning effort, thinking enabled, collapsed reasoning/tool results, context-overflow recovery, and 250 maximum turns.
 
 ### `internal/engine`
 
-Runs one bounded agent run. It builds the stable embedded persona head, separate workspace/skill/`AGENTS.md` system directives, persisted history, and the user prompt. It streams provider responses, dispatches tool calls, emits typed events, enforces the turn cap, exposes the `ErrStopped` sentinel, and retries once after context-overflow compaction.
-
-`compact.go` performs LLM-based history compaction. `message_partition.go` preserves the stable head. `prompt.md` is embedded at build time. `skillspack/` embeds builtin `subagents` and `web-access` skills and materializes them under `$EITRI_DIR/skills-builtin`.
+Runs the bounded agent loop. It assembles prompts, streams provider responses, dispatches tool calls, emits typed events, enforces the turn cap, exposes `ErrStopped`, and retries once after context-overflow compaction. `prompt.md` is embedded at build time; `skillspack/` embeds builtin skills and materializes them under `$EITRI_DIR/skills-builtin`.
 
 ### `internal/provider`
 
-Defines the provider seam and canonical messages, tools, streams, usage, and errors. Dialects translate canonical requests and SSE responses to Chat Completions, Anthropic Messages, or OpenAI Responses wire formats. Adapters implement OpenCode Go, GitHub Copilot, and custom OpenAI-compatible providers. The logging decorator writes wire-level request/response records to the session transcript.
+Defines canonical messages, tools, streams, usage, and errors. Dialects translate canonical requests and SSE responses to Chat Completions, Anthropic Messages, or OpenAI Responses formats. Adapters implement OpenCode Go, GitHub Copilot, and custom OpenAI-compatible providers. The logging decorator records wire-level data in the session transcript.
 
 ### `internal/tools`
 
-Defines the fixed tool surface: `bash` and `open_in_browser`. `sandbox.go` runs bash through bubblewrap; `direct.go` is the `--yolo-unsafe` backend. Both use the same command environment contract. `skills.go` discovers and validates project, user, and builtin skills, with project > user > builtin shadowing.
+Defines `bash` and `open_in_browser`. `sandbox.go` runs bash through bubblewrap; `direct.go` runs it directly for `--yolo-unsafe`. `skills.go` discovers and validates project, user, and builtin skills, with project > user > builtin shadowing.
 
 ### `internal/compress`
 
-Deterministically bounds tool results: strips ANSI, applies line and byte limits, and reports dropped output explicitly. This is separate from engine compaction and uses no model call.
+Deterministically bounds tool results by stripping ANSI and applying line and byte limits. It reports dropped output explicitly and never performs model-based compaction.
 
 ### `internal/session`
 
@@ -61,21 +61,21 @@ Stores GUID-named, append-only session directories under the data directory. Mes
 
 ### `internal/tui`
 
-Bubble Tea terminal UI. `model.go` coordinates the composer, transcript, right rail, and turn session. The engine is the only provider caller; the TUI consumes engine events and rejects stale events from prior runs. Rendering, selection, markdown, themes, settings, login, help, and slash commands live here. `livekey` owns the current session GUID; `telemetry` feeds the render diagnostics workflow.
+Bubble Tea terminal UI. It owns the composer, rendered transcript, right rail, settings, login, help, slash commands, and turn lifecycle. The engine is the only provider caller. Run IDs reject stale events from prior runs.
 
 ### Small packages
 
-`internal/osc52` writes clipboard escape sequences, `internal/constants` holds cross-layer limits, and `internal/testutil` contains shared test helpers. `internal/tools/memtmp` manages per-session temporary storage.
+`internal/osc52` writes clipboard escape sequences; `internal/constants` holds cross-layer limits; `internal/testutil` contains shared test helpers; `internal/tools/memtmp` manages per-session temporary storage.
 
-## Important invariants
+## Invariants
 
-1. The declared runtime toolset is checked at boot, so the prompt does not promise unavailable commands.
-2. The stable system prompt head is byte-identical across turns; variable workspace directives are separate messages to preserve provider cacheability.
-3. Compression is deterministic tool-output bounding; compaction is LLM summarization of older history.
-4. User cancellation is represented by `ErrStopped`, distinct from provider or tool failure.
+1. Boot verifies every declared runtime tool, so the prompt does not promise unavailable commands.
+2. The stable system-prompt head is byte-identical across turns; variable workspace directives are separate messages for provider cacheability.
+3. Compression bounds tool output deterministically; compaction summarizes older history with a model.
+4. User stop is represented by `ErrStopped`, distinct from provider or tool failure.
 5. Sessions and transcripts are append-only.
-6. Sandboxing claims are mode-dependent: default bash is bubblewrap-confined; `--yolo-unsafe` runs directly and is not represented as contained to the agent.
-7. Live rendering flows through typed engine events, with run-ID stale-event rejection.
+6. Default bash is bubblewrap-confined; `--yolo-unsafe` executes directly and is not represented as sandboxed.
+7. TUI rendering uses typed engine events and rejects stale run IDs.
 
 ## Where to start
 
