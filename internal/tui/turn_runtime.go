@@ -2,11 +2,9 @@ package tui
 
 import tea "charm.land/bubbletea/v2"
 
-// TurnRuntime owns one agent turn's live event acceptance: the current run
-// ID, stale-event rejection, and draining/waiting on the live merged event
-// feed. It wraps the existing TurnSession and Fold modules, which for now
-// still own turn start/stop/commit and stream/tool projection respectively;
-// later seams move that behaviour behind TurnRuntime too.
+// TurnRuntime is the sole TUI-facing owner of one live Run: lifecycle, event
+// acceptance, event projection, and completion. TurnSession and Fold remain
+// implementation collaborators behind this seam.
 type TurnRuntime struct {
 	session   *TurnSession
 	fold      *Fold
@@ -41,7 +39,11 @@ func (rt *TurnRuntime) Begin(tx *Transcript, prompt, payload string) tea.Cmd {
 
 // OnTurnStart records the run ID for a turn's engine-reported start; only
 // events matching this run ID are accepted until the next Begin/OnTurnStart.
-func (rt *TurnRuntime) OnTurnStart(runID int) { rt.liveRunID = runID }
+func (rt *TurnRuntime) OnTurnStart(runID int) {
+	if runID != 0 {
+		rt.liveRunID = runID
+	}
+}
 
 // Accept reports whether a live event belongs to the current run: direct
 // events with RunID == 0 (tests and package-local callers) are always
@@ -62,22 +64,23 @@ func (rt *TurnRuntime) Wait() tea.Cmd {
 	return eventWait(rt.events)
 }
 
-// Commit reconciles one turn completion into the transcript through the
-// session; Model routes turnDoneMsg here instead of calling TurnSession
-// directly.
+// Commit reconciles one turn completion into the transcript for the live Run.
 func (rt *TurnRuntime) Commit(tx *Transcript, msg turnDoneMsg) (stopped bool, err error) {
 	return rt.session.Commit(tx, msg)
 }
 
-// Stop cancels the in-flight turn through the session; Model routes
-// non-skill stops here instead of calling TurnSession directly.
+// Stop cancels the in-flight Run.
 func (rt *TurnRuntime) Stop() {
 	rt.session.Stop()
 }
 
 // SetThinkingEnabled sets the thinking-enabled flag used when the turn
 // creates messages.
-func (rt *TurnRuntime) SetThinkingEnabled(v bool) { rt.session.SetThinkingEnabled(v) }
+func (rt *TurnRuntime) SetThinkingEnabled(v bool) {
+	if rt.session != nil {
+		rt.session.SetThinkingEnabled(v)
+	}
+}
 
 // ThinkingEnabled reports the thinking-enabled flag used when the turn
 // creates messages.

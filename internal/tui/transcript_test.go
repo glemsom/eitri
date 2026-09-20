@@ -346,8 +346,8 @@ func TestTranscript_applyFoldsToolUpdate(t *testing.T) {
 	tx := transcriptWithTool(t)
 	before := tx.log.Len()
 
-	applyTool(&tx, ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}})
-	applyTool(&tx, ToolUpdate{Result: &ToolResult{Name: "read", Result: "contents", Lines: 1}})
+	tx.applyTool(ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}})
+	tx.applyTool(ToolUpdate{Result: &ToolResult{Name: "read", Result: "contents", Lines: 1}})
 
 	if tx.log.Len() != before+1 {
 		t.Fatalf("apply must fold a new entry, got len before=%d after=%d", before, tx.log.Len())

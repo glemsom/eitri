@@ -124,8 +124,8 @@ func TestModel_SettingsSaveAppliesThinkingStateToLiveSession(t *testing.T) {
 	m = focusField(t, m, fieldSave)
 	m = keypress(t, m, "enter")
 
-	if m.session.ThinkingEnabled() {
-		t.Fatal("turn session ThinkingEnabled = true after Settings save, want false")
+	if m.runtime.ThinkingEnabled() {
+		t.Fatal("runtime ThinkingEnabled = true after Settings save, want false")
 	}
 	if m.tx.reasoningEffort != "medium" {
 		t.Fatalf("transcript reasoningEffort = %q, want medium", m.tx.reasoningEffort)

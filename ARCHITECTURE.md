@@ -61,7 +61,7 @@ Stores GUID-named, append-only session directories under the data directory. Mes
 
 ### `internal/tui`
 
-Bubble Tea terminal UI. It owns the composer, rendered transcript, right rail, settings, login, help, slash commands, and turn lifecycle. The engine is the only provider caller. Run IDs reject stale events from prior runs.
+Bubble Tea terminal UI. It owns the composer, rendered transcript, right rail, settings, login, help, slash commands, and turn lifecycle. `TurnRuntime` is the sole caller-facing seam for a live Run; `TurnSession` and `Fold` are internal collaborators. The engine is the only provider caller. Run IDs reject stale events from prior runs.
 
 ### Small packages
 
@@ -87,7 +87,7 @@ Bubble Tea terminal UI. It owns the composer, rendered transcript, right rail, s
 | Bash execution | `internal/tools/sandbox.go`, `direct.go`, `tool_bash.go` |
 | Tool output limits | `internal/compress/compress.go` |
 | Sessions/transcripts | `internal/session`, `internal/provider/messagelog.go` |
-| TUI turn lifecycle | `internal/tui/turn_session.go`, `turn_runtime.go`, `internal/engine/events.go` |
+| TUI turn lifecycle | `internal/tui/turn_runtime.go` (caller seam), `turn_session.go` and `fold.go` (implementation), `internal/engine/events.go` |
 | Skills | `internal/tools/skills.go`, `internal/engine/skillspack` |
 | Batch contract | `docs/batch-mode.md` |
 | Session commands | `docs/sessions.md` |

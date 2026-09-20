@@ -172,7 +172,6 @@ func failureFeedback(text string) composerFeedback {
 // Model is the Bubble Tea state backing the TUI.
 type Model struct {
 	composer textarea.Model
-	session  *TurnSession
 	deps     Dependencies
 	tx       *Transcript
 
@@ -202,7 +201,7 @@ type Model struct {
 
 	// history is the Model-owned in-memory ring of submitted user prompts that
 	// arrow-key recall reads from; it survives a `/new` because it lives on the
-	// Model, not the transcript or session.
+	// Model, not the transcript or runtime.
 	history *PromptHistory
 
 	// histIdx is the arrow-recall cursor into the history ring, or -1 while no
@@ -262,7 +261,6 @@ func NewModelCfg(d Dependencies) Model {
 
 	m := Model{
 		composer:     comp,
-		session:      NewTurnSession(d.Turn),
 		deps:         d,
 		tx:           transcript,
 		continueReq:  make(chan struct{}, 1),
@@ -276,7 +274,7 @@ func NewModelCfg(d Dependencies) Model {
 		histIdx:      -1,
 	}
 
-	m.runtime = NewTurnRuntime(m.session, d.Events)
+	m.runtime = NewTurnRuntime(NewTurnSession(d.Turn), d.Events)
 	m.runtime.SetThinkingEnabled(d.Config.ThinkingEnabled)
 	if !isSupportedTheme(d.Config.Theme) {
 		m.feedback = neutralFeedback(fmt.Sprintf("unknown theme %q, using %s", d.Config.Theme, config.DefaultTheme))
@@ -298,14 +296,13 @@ func newHistoryViewport() viewport.Model {
 	return v
 }
 
-// SetTurnSession wires the TurnSession that owns turn start/stop and commits turn completion.
+// SetTurnSession replaces the live Run implementation owned by TurnRuntime.
 func (m *Model) SetTurnSession(ts *TurnSession) {
-	m.session = ts
 	var events *EventFeed
 	if m.runtime != nil {
 		events = m.runtime.events
 	}
-	m.runtime = NewTurnRuntime(m.session, events)
+	m.runtime = NewTurnRuntime(ts, events)
 }
 
 // ContinueHook returns the interactive continuation hook wired to this Model's prompt channels.

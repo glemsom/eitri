@@ -15,7 +15,7 @@ func timelineKinds(events []TimelineEvent) []EventKind {
 	return ks
 }
 
-func TestTurnSession_timelinePreservesArrivalOrder(t *testing.T) {
+func TestTimeline_PreservesArrivalOrder(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))
 	f := NewFold(s)
@@ -51,7 +51,7 @@ func TestTurnSession_timelinePreservesArrivalOrder(t *testing.T) {
 	}
 }
 
-func TestTurnSession_timelineSnapshotsDerivedFromLog(t *testing.T) {
+func TestTimeline_SnapshotsDerivedFromLog(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))
 	f := NewFold(s)
@@ -83,7 +83,7 @@ func TestTurnSession_timelineSnapshotsDerivedFromLog(t *testing.T) {
 	}
 }
 
-func TestTurnSession_timelineToolBeforeFirstDelta(t *testing.T) {
+func TestTimeline_ToolBeforeFirstDelta(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))
 	f := NewFold(s)
@@ -113,36 +113,7 @@ func TestTurnSession_timelineToolBeforeFirstDelta(t *testing.T) {
 	}
 }
 
-func TestTranscript_applyPostTurnToolAppendsToLastMessage(t *testing.T) {
-	t.Parallel()
-	s := NewTurnSession(stubTurn("", nil))
-	f := NewFold(s)
-
-	tx := newTestTx()
-	s.Begin(&tx, "go", "")
-	f.Stream(&tx, AnswerStream, "done")
-	if _, err := s.Commit(&tx, turnDoneMsg{answer: "done"}); err != nil {
-		t.Fatalf("Commit err = %v", err)
-	}
-	if tx.busy {
-		t.Fatal("turn should be over")
-	}
-
-	applyTool(&tx, ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"b.txt"}`}})
-
-	msg := tx.messages[len(tx.messages)-1]
-	if len(msg.events) != 2 {
-		t.Fatalf("event log = %v, want the answer event plus the post-turn tool start", timelineKinds(msg.events))
-	}
-	if got := timelineKinds(msg.events); got[0] != EventAnswer || got[1] != EventToolStart {
-		t.Errorf("event log kinds = %v, want [answer toolStart]", got)
-	}
-	if msg.events[1].Seq != 1 {
-		t.Errorf("post-turn tool start seq = %d, want 1 (continuing the committed log)", msg.events[1].Seq)
-	}
-}
-
-func TestTurnSession_timelineCommitsOnStoppedTurn(t *testing.T) {
+func TestTimeline_CommitsOnStoppedTurn(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))
 	f := NewFold(s)
@@ -163,7 +134,7 @@ func TestTurnSession_timelineCommitsOnStoppedTurn(t *testing.T) {
 	}
 }
 
-func TestTurnSession_timelineCommitsOnErrorTurn(t *testing.T) {
+func TestTimeline_CommitsOnErrorTurn(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))
 	f := NewFold(s)

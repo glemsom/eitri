@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestCommit_successStreaming(t *testing.T) {
+func TestRunCommit_successStreaming(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))
 	tx := newTestTx()
@@ -27,7 +27,7 @@ func TestCommit_successStreaming(t *testing.T) {
 	}
 }
 
-func TestCommit_successNoStreaming(t *testing.T) {
+func TestRunCommit_successNoStreaming(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))
 	tx := newTestTx()
@@ -42,7 +42,7 @@ func TestCommit_successNoStreaming(t *testing.T) {
 	}
 }
 
-func TestCommit_stoppedStreaming(t *testing.T) {
+func TestRunCommit_stoppedStreaming(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))
 	tx := newTestTx()
@@ -61,7 +61,7 @@ func TestCommit_stoppedStreaming(t *testing.T) {
 	}
 }
 
-func TestCommit_stoppedNoStreaming(t *testing.T) {
+func TestRunCommit_stoppedNoStreaming(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))
 	tx := newTestTx()
@@ -76,7 +76,7 @@ func TestCommit_stoppedNoStreaming(t *testing.T) {
 	}
 }
 
-func TestCommit_stoppedStreamingFallsBackToLivePartialWhenFinalEmpty(t *testing.T) {
+func TestRunCommit_stoppedStreamingFallsBackToLivePartialWhenFinalEmpty(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))
 	f := NewFold(s)
@@ -95,7 +95,7 @@ func TestCommit_stoppedStreamingFallsBackToLivePartialWhenFinalEmpty(t *testing.
 	}
 }
 
-func TestCommit_errorAppendsFailureMessage(t *testing.T) {
+func TestRunCommit_errorAppendsFailureMessage(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))
 	tx := newTestTx()
@@ -113,7 +113,7 @@ func TestCommit_errorAppendsFailureMessage(t *testing.T) {
 	}
 }
 
-func TestCommit_fullCycleThroughVerbsAlone(t *testing.T) {
+func TestRunCommit_fullCycleThroughVerbsAlone(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("final", nil))
 	f := NewFold(s)

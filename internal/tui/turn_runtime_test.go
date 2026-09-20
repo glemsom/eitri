@@ -17,6 +17,18 @@ func TestTurnRuntimeRecordsRunIDAndAcceptsMatching(t *testing.T) {
 }
 
 // TurnRuntime.Accept rejects events whose run ID does not match the current run.
+func TestTurnRuntimeIgnoresZeroTurnStartRunID(t *testing.T) {
+	rt := NewTurnRuntime(NewTurnSession(stubTurn("ok", nil)), nil)
+	rt.OnTurnStart(7)
+	rt.OnTurnStart(0)
+	if !rt.Accept(Event{RunID: 7}) {
+		t.Fatal("expected the active nonzero run ID to remain accepted")
+	}
+	if rt.Accept(Event{RunID: 8}) {
+		t.Fatal("expected a different nonzero run ID to remain rejected")
+	}
+}
+
 func TestTurnRuntimeRejectsMismatchedRunID(t *testing.T) {
 	rt := NewTurnRuntime(NewTurnSession(stubTurn("ok", nil)), nil)
 	rt.OnTurnStart(7)
@@ -96,6 +108,30 @@ func TestTurnRuntimeObserveDropsStreamWhenIdle(t *testing.T) {
 
 	if len(tx.messages) != 0 {
 		t.Fatalf("expected no messages from a dropped idle stream delta, got %+v", tx.messages)
+	}
+}
+
+// Observe preserves stream/tool arrival order and exposes the resulting timeline
+// through TurnRuntime rather than requiring callers to coordinate Fold.
+func TestTurnRuntimeObservePreservesMixedTimelineOrder(t *testing.T) {
+	s := NewTurnSession(stubTurn("ok", nil))
+	rt := NewTurnRuntime(s, nil)
+	tx := newTestTx()
+	rt.Begin(&tx, "hi", "")
+
+	rt.Observe(&tx, Event{Tool: &ToolUpdate{Start: &ToolStart{Name: "read"}}})
+	rt.Observe(&tx, Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "done"}})
+	rt.Observe(&tx, Event{Tool: &ToolUpdate{Result: &ToolResult{Name: "read", Result: "ok", Lines: 1}}})
+
+	events := rt.LiveTimeline()
+	if len(events) != 3 {
+		t.Fatalf("timeline events = %d, want 3", len(events))
+	}
+	if events[0].Kind != EventToolStart || events[1].Kind != EventAnswer || events[2].Kind != EventToolResult {
+		t.Fatalf("timeline kinds = %v, want tool start, answer, tool result", []EventKind{events[0].Kind, events[1].Kind, events[2].Kind})
+	}
+	if got := tx.log.Len(); got != 1 {
+		t.Fatalf("tool log entries = %d, want 1", got)
 	}
 }
 
@@ -219,6 +255,61 @@ func TestTurnRuntimeCommitError(t *testing.T) {
 		t.Fatalf("stopped=%v err=%v, want false/non-nil", stopped, err)
 	}
 	if len(tx.messages) != 2 || tx.messages[1].role != "eitri" {
+		t.Fatalf("messages = %+v", tx.messages)
+	}
+}
+
+func TestTurnRuntimePostCompletionToolObservation(t *testing.T) {
+	rt := newTestRuntime("answer", nil)
+	tx := newTestTx()
+	cmd := rt.Begin(&tx, "q", "")
+	if _, err := rt.Commit(&tx, cmd().(turnDoneMsg)); err != nil {
+		t.Fatal(err)
+	}
+	rt.Observe(&tx, Event{Tool: &ToolUpdate{Result: &ToolResult{Name: "read", Result: "late"}}})
+	events := tx.messages[len(tx.messages)-1].events
+	if len(events) != 2 || events[1].Kind != EventToolResult {
+		t.Fatalf("events = %+v", events)
+	}
+}
+
+func TestTurnRuntimeLaterRunIsolation(t *testing.T) {
+	rt := newTestRuntime("answer", nil)
+	tx := newTestTx()
+	first := rt.Begin(&tx, "one", "")
+	rt.Observe(&tx, Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "old"}})
+	if _, err := rt.Commit(&tx, first().(turnDoneMsg)); err != nil {
+		t.Fatal(err)
+	}
+	second := rt.Begin(&tx, "two", "")
+	if rt.LiveTimeline() != nil {
+		t.Fatal("later run inherited timeline")
+	}
+	rt.Observe(&tx, Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "new"}})
+	if _, err := rt.Commit(&tx, second().(turnDoneMsg)); err != nil {
+		t.Fatal(err)
+	}
+	if got := tx.messages[len(tx.messages)-1].content; got != "answer" {
+		t.Fatalf("content = %q", got)
+	}
+	if len(tx.messages[len(tx.messages)-1].events) != 1 {
+		t.Fatal("later run inherited events")
+	}
+}
+
+func TestTurnRuntimeCommitErrorPreservesPartialOutput(t *testing.T) {
+	rt := newTestRuntime("", nil)
+	tx := newTestTx()
+	rt.Begin(&tx, "q", "")
+	rt.Observe(&tx, Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "partial"}})
+	stopped, err := rt.Commit(&tx, turnDoneMsg{err: errors.New("provider failed")})
+	if stopped || err == nil {
+		t.Fatalf("stopped=%v err=%v", stopped, err)
+	}
+	if tx.messages[1].content != "partial" || tx.messages[1].streaming {
+		t.Fatalf("partial = %+v", tx.messages[1])
+	}
+	if len(tx.messages) != 3 || tx.messages[2].content == "" {
 		t.Fatalf("messages = %+v", tx.messages)
 	}
 }
