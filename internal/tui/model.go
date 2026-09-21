@@ -486,7 +486,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.completeSlashCommand()
 				return m, nil
 			}
-			if m.composer.Value() == "" {
+			if strings.TrimSpace(m.composer.Value()) == "" {
 				m.tx.focusNext() // empty composer: Tab cycles the block focus
 				return m, nil
 			}
