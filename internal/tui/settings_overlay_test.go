@@ -36,7 +36,7 @@ func TestSettingsOverlay_OpenArmsDiscoveryOnlyWhenModelListEmpty(t *testing.T) {
 			return nil, errors.New("should not run during open")
 		},
 	}
-	o, cmd := openSettingsOverlay(cfgFixture(), []string{"deepseek-v4-flash"}, defaultTheme, nil, nil, deps)
+	o, cmd := openSettingsOverlay(cfgFixture(), []string{"deepseek-v4-flash"}, defaultTheme, nil, deps)
 	if cmd != nil {
 		t.Fatal("open with a known model list returned a command, want none")
 	}
@@ -44,7 +44,7 @@ func TestSettingsOverlay_OpenArmsDiscoveryOnlyWhenModelListEmpty(t *testing.T) {
 		t.Fatalf("discoverState = %v, want discoverIdle", o.discoverState)
 	}
 
-	o, cmd = openSettingsOverlay(cfgFixture(), nil, defaultTheme, nil, nil, deps)
+	o, cmd = openSettingsOverlay(cfgFixture(), nil, defaultTheme, nil, deps)
 	if cmd == nil {
 		t.Fatal("open with no models and discovery available returned nil command")
 	}
@@ -57,7 +57,7 @@ func TestSettingsOverlay_EscClosesWithoutPersisting(t *testing.T) {
 	t.Parallel()
 	saved := false
 	deps := Dependencies{Save: func(config.Config) error { saved = true; return nil }}
-	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, deps)
+	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, deps)
 
 	outcome, cmd := o.Key(tea.KeyPressMsg{Code: tea.KeyEsc})
 	if outcome != outcomeClosed || cmd != nil {
@@ -70,7 +70,7 @@ func TestSettingsOverlay_EscClosesWithoutPersisting(t *testing.T) {
 
 func TestSettingsOverlay_ArrowUpDownNavigateRows(t *testing.T) {
 	t.Parallel()
-	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, Dependencies{})
+	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, Dependencies{})
 
 	outcome, cmd := o.Key(tea.KeyPressMsg{Code: tea.KeyDown})
 	if outcome != outcomeContinue || cmd != nil {
@@ -97,7 +97,7 @@ func TestSettingsOverlay_SaveReportsStatusAndReturnsDraft(t *testing.T) {
 		Save:     func(c config.Config) error { saved = c; return nil },
 		SaveBack: func(c config.Config) { mirrored = c },
 	}
-	o, _ := openSettingsOverlay(cfgFixture(), []string{"deepseek-v4-flash"}, defaultTheme, nil, nil, deps)
+	o, _ := openSettingsOverlay(cfgFixture(), []string{"deepseek-v4-flash"}, defaultTheme, nil, deps)
 	focusOverlayField(t, o, fieldSave)
 
 	cfg, status, applied := o.Save()
@@ -137,7 +137,7 @@ func TestSettingsOverlay_SaveFailureCarriesError(t *testing.T) {
 		Save:     func(config.Config) error { return errors.New("disk full") },
 		SaveBack: func(config.Config) { mirrored = true },
 	}
-	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, deps)
+	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, deps)
 	_, status, applied := o.Save()
 	if status != "save failed: disk full" {
 		t.Fatalf("save status = %q, want \"save failed: disk full\"", status)
@@ -154,7 +154,7 @@ func TestSettingsOverlay_HandleSavesOnEnterAtSaveField(t *testing.T) {
 	t.Parallel()
 	var saved config.Config
 	deps := Dependencies{Save: func(c config.Config) error { saved = c; return nil }}
-	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, deps)
+	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, deps)
 	focusOverlayField(t, o, fieldSave)
 
 	res := o.Handle(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -172,7 +172,7 @@ func TestSettingsOverlay_HandleSavesOnEnterAtSaveField(t *testing.T) {
 func TestSettingsOverlay_HandleAppliesFreshDiscoveryDropsStale(t *testing.T) {
 	t.Parallel()
 	deps := Dependencies{}
-	o, _ := openSettingsOverlay(cfgFixture(), nil, defaultTheme, nil, nil, deps)
+	o, _ := openSettingsOverlay(cfgFixture(), nil, defaultTheme, nil, deps)
 
 	stale := o.Handle(discoverDoneMsg{provider: "some-other-provider", models: []string{"stale-model"}})
 	if stale.handled || len(o.models) != 1 {
@@ -193,7 +193,7 @@ func TestSettingsOverlay_HandleAppliesFreshDiscoveryDropsStale(t *testing.T) {
 
 func TestSettingsOverlay_ViewRendersSurface(t *testing.T) {
 	t.Parallel()
-	o, _ := openSettingsOverlay(cfgFixture(), []string{"deepseek-v4-flash"}, defaultTheme, nil, nil, Dependencies{})
+	o, _ := openSettingsOverlay(cfgFixture(), []string{"deepseek-v4-flash"}, defaultTheme, nil, Dependencies{})
 	content := o.View()
 	if !strings.Contains(content, "Eitri Settings") {
 		t.Fatalf("view %q missing title", content)
@@ -208,7 +208,7 @@ func TestSettingsOverlay_ViewFitsResizeWidthBeforeClippingHeight(t *testing.T) {
 	cfg.Provider = string(provider.ProviderCustomOpenAI)
 	cfg.CustomOpenAI.BaseURL = "https://example.test/a-very-long-base-url-that-must-wrap"
 	cfg.ExtraWritablePaths = []string{"/a/very/long/writable/path/that-must-wrap"}
-	o, _ := openSettingsOverlay(cfg, []string{"a-very-long-model-name-that-must-wrap"}, defaultTheme, nil, nil, Dependencies{})
+	o, _ := openSettingsOverlay(cfg, []string{"a-very-long-model-name-that-must-wrap"}, defaultTheme, nil, Dependencies{})
 
 	for _, size := range []tea.WindowSizeMsg{{Width: 28, Height: 10}, {Width: 12, Height: 6}} {
 		o.Handle(size)
@@ -233,7 +233,7 @@ func TestSettingsOverlay_ProviderChangeArmsDiscoveryForDraftProvider(t *testing.
 			return []string{"gpt-4o"}, nil
 		},
 	}
-	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, deps)
+	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, deps)
 
 	outcome, cmd := o.Key(tea.KeyPressMsg{Code: tea.KeyTab})
 	if outcome != outcomeContinue || cmd == nil {
@@ -258,7 +258,7 @@ func TestSettingsOverlay_ProviderChangeArmsDiscoveryForDraftProvider(t *testing.
 
 func TestSettingsOverlay_DirtyEscapeRequiresExplicitDiscard(t *testing.T) {
 	cfg := cfgFixture()
-	o, _ := openSettingsOverlay(cfg, []string{cfg.Model}, defaultTheme, nil, nil, Dependencies{})
+	o, _ := openSettingsOverlay(cfg, []string{cfg.Model}, defaultTheme, nil, Dependencies{})
 	o.cfg.ThinkingEnabled = !o.cfg.ThinkingEnabled
 
 	res := o.Handle(tea.KeyPressMsg{Code: tea.KeyEscape})
@@ -274,7 +274,7 @@ func TestSettingsOverlay_DirtyEscapeRequiresExplicitDiscard(t *testing.T) {
 func TestSettingsOverlay_CtrlSSavesFromAnyField(t *testing.T) {
 	cfg := cfgFixture()
 	saved := false
-	o, _ := openSettingsOverlay(cfg, []string{cfg.Model}, defaultTheme, nil, nil, Dependencies{Save: func(config.Config) error { saved = true; return nil }})
+	o, _ := openSettingsOverlay(cfg, []string{cfg.Model}, defaultTheme, nil, Dependencies{Save: func(config.Config) error { saved = true; return nil }})
 	o.cfg.ThinkingEnabled = !o.cfg.ThinkingEnabled
 
 	res := o.Handle(tea.KeyPressMsg{Code: ',', Mod: tea.ModCtrl})
@@ -285,7 +285,7 @@ func TestSettingsOverlay_CtrlSSavesFromAnyField(t *testing.T) {
 
 func TestSettingsOverlay_UserCanExplicitlyDiscardDirtyDraft(t *testing.T) {
 	cfg := cfgFixture()
-	o, _ := openSettingsOverlay(cfg, []string{cfg.Model}, defaultTheme, nil, nil, Dependencies{})
+	o, _ := openSettingsOverlay(cfg, []string{cfg.Model}, defaultTheme, nil, Dependencies{})
 	o.cfg.ThinkingEnabled = !o.cfg.ThinkingEnabled
 
 	o.Handle(tea.KeyPressMsg{Code: tea.KeyEscape})

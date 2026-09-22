@@ -22,7 +22,7 @@ type TelemetryUpdate struct {
 	Ctx    int
 }
 
-// Telemetry is the live session telemetry surface consumed by the right rail's STATS section and the settings readout.
+// Telemetry is the live session telemetry surface consumed by the right rail's STATS section.
 type Telemetry struct {
 	model    string
 	effort   string

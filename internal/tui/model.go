@@ -282,7 +282,7 @@ func NewModelCfg(d Dependencies) Model {
 	}
 	if d.NeedsSetup {
 		m.tx.appendMsg("Welcome to Eitri! Please configure your provider in Settings to get started.")
-		if o, _ := openSettingsOverlay(d.Config, d.Models, m.tx.theme, m.telemetry, m.deps.ThinkingSuppression, m.deps); o != nil {
+		if o, _ := openSettingsOverlay(d.Config, d.Models, m.tx.theme, m.deps.ThinkingSuppression, m.deps); o != nil {
 			m.settings = o
 		}
 	}

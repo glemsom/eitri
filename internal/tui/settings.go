@@ -16,7 +16,6 @@ import (
 
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/provider"
-	"github.com/glemsom/eitri/internal/tui/telemetry"
 )
 
 // Field indexes for the settings form, in display/cycle order.
@@ -67,7 +66,6 @@ type settingsForm struct {
 	textInputActive     bool
 	textInput           textinput.Model
 	textInputField      int
-	telemetry           *telemetry.Telemetry
 	discoverState       discoverState
 	discoverErr         string
 	thinkingSuppression func() bool
@@ -464,15 +462,14 @@ const (
 )
 
 // openSettingsOverlay seeds the overlay from the loaded config + discovery,
-// borrowing the live theme and telemetry for rendering (the cost readout was
-// available it arms the loading state and returns the discovery command.
-func openSettingsOverlay(cfg config.Config, models []string, theme Theme, telemetry *telemetry.Telemetry, thinkingSuppressed func() bool, deps Dependencies) (*SettingsOverlay, tea.Cmd) {
+// borrowing the live theme for rendering. It arms the loading state and
+// returns the discovery command.
+func openSettingsOverlay(cfg config.Config, models []string, theme Theme, thinkingSuppressed func() bool, deps Dependencies) (*SettingsOverlay, tea.Cmd) {
 	if cfg.Provider == "" {
 		cfg = config.Default()
 	}
 	sf := newSettingsForm(cfg, models)
 	sf.theme = theme
-	sf.telemetry = telemetry
 	sf.thinkingSuppression = thinkingSuppressed
 	o := &SettingsOverlay{settingsForm: sf, discover: deps.DiscoverModels, save: deps.Save, saveBack: deps.SaveBack}
 	if len(models) != 0 || o.discover == nil {
@@ -849,13 +846,6 @@ func settingsView(f settingsForm) string {
 	default:
 	}
 
-	if f.telemetry != nil {
-		b.WriteString(th.statusStyle.Render(fmt.Sprintf(
-			"   cache:%.0f%%", f.telemetry.HitPercent(),
-		)))
-		b.WriteString("\n")
-	}
-
 	b.WriteString(th.statusStyle.Render("   " + settingsHelp(f)))
 	b.WriteString("\n")
 
@@ -883,7 +873,7 @@ func settingsView(f settingsForm) string {
 
 // startSettings opens the Settings surface and returns the command to run.
 func (m Model) startSettings() (tea.Model, tea.Cmd) {
-	o, cmd := openSettingsOverlay(m.deps.Config, m.deps.Models, m.tx.theme, m.telemetry, m.deps.ThinkingSuppression, m.deps)
+	o, cmd := openSettingsOverlay(m.deps.Config, m.deps.Models, m.tx.theme, m.deps.ThinkingSuppression, m.deps)
 	o.height = m.tx.height
 	m.settings = o
 	return m, cmd

@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"github.com/glemsom/eitri/internal/tui/telemetry"
 	"os"
 	"path/filepath"
 	"strings"
@@ -509,31 +508,6 @@ func TestSettingsView_RendersWritableListWhenFocused(t *testing.T) {
 	}
 }
 
-func TestSettingsView_RendersLiveCacheReadout(t *testing.T) {
-	t.Parallel()
-	te := telemetry.NewTelemetry("deepseek-v4-flash", "high", true, 250)
-	te.Apply(telemetry.TelemetryUpdate{Kind: telemetry.TelemetryUsage, Hit: 100_000, Miss: 25_000, Output: 10_000})
-
-	f := newSettingsForm(cfgFixture(), []string{"grok-2"})
-	f.telemetry = te
-	view := settingsView(f)
-	if !strings.Contains(view, "cache:80%") {
-		t.Fatalf("settings view %q missing live cache hit-ratio readout", view)
-	}
-	if strings.Contains(view, "cost") {
-		t.Fatalf("settings view %q must not render a cost readout", view)
-	}
-}
-
-func TestSettingsView_TelemetryReadoutZeroWhenNone(t *testing.T) {
-	t.Parallel()
-	f := newSettingsForm(cfgFixture(), []string{})
-	view := settingsView(f)
-	if strings.Contains(view, "cache:") {
-		t.Fatalf("settings view %q renders a readout without telemetry wired", view)
-	}
-}
-
 func TestSettingsView_PaletteSwatchTracksTheme(t *testing.T) {
 	t.Parallel()
 	f := newSettingsForm(cfgFixture(), []string{}) // seeded "dark"
@@ -556,7 +530,7 @@ func TestSettingsView_PaletteSwatchTracksTheme(t *testing.T) {
 
 func TestSettingsOverlay_WritablePathsCannotBeManuallyEdited(t *testing.T) {
 	t.Parallel()
-	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, Dependencies{})
+	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, Dependencies{})
 	o.field = fieldPaths
 
 	o.Key(tea.KeyPressMsg{Text: "x", Code: 'x'})
@@ -588,7 +562,7 @@ func TestSettingsOverlay_FilePickerCanNavigateBackToParent(t *testing.T) {
 	if err := os.Mkdir(child, 0o755); err != nil {
 		t.Fatalf("mkdir child: %v", err)
 	}
-	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, Dependencies{})
+	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, Dependencies{})
 	o.field = fieldPaths
 	outcome, cmd := o.Key(tea.KeyPressMsg{Text: "+", Code: '+'})
 	if outcome != outcomeContinue || cmd == nil {
@@ -656,7 +630,7 @@ func TestSettingsOverlay_AddFolderPickerOpenAndSelectKeysDisjoint(t *testing.T) 
 
 func TestSettingsOverlay_FilePickerSelectAddsHighlightedFolderWithoutDescending(t *testing.T) {
 	dir, child := makeChildDir(t)
-	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, Dependencies{})
+	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, Dependencies{})
 	startAddPathPicker(t, o, dir)
 
 	o.Handle(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
@@ -675,7 +649,7 @@ func TestSettingsOverlay_FilePickerSelectAddsHighlightedFolderWithoutDescending(
 
 func TestSettingsOverlay_FilePickerOpenKeyDescendsNotSelects(t *testing.T) {
 	dir, child := makeChildDir(t)
-	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, Dependencies{})
+	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, Dependencies{})
 	startAddPathPicker(t, o, dir)
 
 	o.Handle(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -701,7 +675,7 @@ func TestSettingsOverlay_FilePickerSelectOnFileAddsNothing(t *testing.T) {
 	if err := os.WriteFile(file, nil, 0o644); err != nil {
 		t.Fatalf("write notes.txt: %v", err)
 	}
-	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, Dependencies{})
+	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, Dependencies{})
 	startAddPathPicker(t, o, dir) // listing: [sub, notes.txt]
 	o.Handle(tea.KeyPressMsg{Code: tea.KeyDown})
 	o.Handle(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
@@ -716,7 +690,7 @@ func TestSettingsOverlay_FilePickerSelectOnFileAddsNothing(t *testing.T) {
 
 func TestSettingsOverlay_FilePickerSelectClosesPickerBeforeTab(t *testing.T) {
 	dir, child := makeChildDir(t)
-	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, nil, Dependencies{})
+	o, _ := openSettingsOverlay(cfgFixture(), []string{"m"}, defaultTheme, nil, Dependencies{})
 	startAddPathPicker(t, o, dir)
 	o.Handle(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
 	o.Handle(tea.KeyPressMsg{Code: tea.KeyTab})
