@@ -357,3 +357,59 @@ func TestSaveWritesContextOverflowRecoveryAndDropsCompactionFraction(t *testing.
 		t.Fatalf("saved config %s still contains compaction_fraction", text)
 	}
 }
+
+func TestSaveCreatesPrivateConfigThatLoads(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "config.json")
+	want := Default()
+	want.OpenCodeGo.Key = "secret"
+
+	if err := Save(want, path); err != nil {
+		t.Fatalf("Save() error = %v, want nil", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat() error = %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("config permissions = %o, want 600", got)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if got.OpenCodeGo.Key != want.OpenCodeGo.Key {
+		t.Fatalf("Load() key = %q, want %q", got.OpenCodeGo.Key, want.OpenCodeGo.Key)
+	}
+}
+
+func TestSaveFailurePreservesExistingConfig(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	old := Default()
+	old.OpenCodeGo.Key = "old-secret"
+	if err := Save(old, path); err != nil {
+		t.Fatalf("initial Save() error = %v", err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatalf("Chmod() error = %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+
+	updated := old
+	updated.OpenCodeGo.Key = "new-secret"
+	if err := Save(updated, path); err == nil {
+		t.Skip("cannot induce a write failure with the current privileges")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() after failed Save() error = %v", err)
+	}
+	if string(after) != string(before) {
+		t.Fatalf("failed Save() changed config:\n got %s\nwant %s", after, before)
+	}
+}

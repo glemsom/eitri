@@ -46,11 +46,11 @@ type Config struct {
 	// CoTCollapsedByDefault and ToolResultsCollapsedByDefault are the
 	// tool results render as hints/one-liners until expanded, so a large CoT
 	// never pushes tool calls out of view.
-	CoTCollapsedByDefault         bool          `json:"cot_collapsed_by_default"`
-	ToolResultsCollapsedByDefault bool          `json:"tool_results_collapsed_by_default"`
-	MaxTurns                      int           `json:"max_turns"`
-	ContextOverflowRecovery       bool          `json:"context_overflow_recovery"`
-	ExtraWritablePaths            []string      `json:"extra_writable_paths,omitempty"`
+	CoTCollapsedByDefault         bool             `json:"cot_collapsed_by_default"`
+	ToolResultsCollapsedByDefault bool             `json:"tool_results_collapsed_by_default"`
+	MaxTurns                      int              `json:"max_turns"`
+	ContextOverflowRecovery       bool             `json:"context_overflow_recovery"`
+	ExtraWritablePaths            []string         `json:"extra_writable_paths,omitempty"`
 	Theme                         string           `json:"theme"`
 	RailWidth                     int              `json:"rail_width,omitempty"`
 	Copilot                       CopilotConfig    `json:"copilot,omitempty"`
@@ -120,15 +120,46 @@ func Load(path string) (Config, error) {
 
 // Save writes cfg to path as JSON, creating parent directories as needed.
 func Save(cfg Config, path string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
 	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode config: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		return fmt.Errorf("write config %s: %w", path, err)
+
+	tmp, err := os.CreateTemp(dir, ".config-*")
+	if err != nil {
+		return fmt.Errorf("create temporary config: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return fmt.Errorf("set temporary config permissions: %w", err)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write temporary config: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return fmt.Errorf("sync temporary config: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temporary config: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("replace config %s: %w", path, err)
+	}
+	if dir, err := os.Open(dir); err != nil {
+		return fmt.Errorf("open config dir: %w", err)
+	} else {
+		defer dir.Close()
+		if err := dir.Sync(); err != nil {
+			return fmt.Errorf("sync config dir: %w", err)
+		}
 	}
 	return nil
 }

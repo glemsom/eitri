@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/glemsom/eitri/internal/provider"
+	"github.com/glemsom/eitri/internal/session"
 )
 
 type sessionCycle struct {
@@ -139,6 +140,9 @@ func ListSessions(dataDir string, out io.Writer) error {
 
 // ShowSession prints a compact per-cycle summary of a session; with turn > 0 it prints only that cycle's full JSON records.
 func ShowSession(dataDir, guid string, turn int, noReasoning bool, out io.Writer) error {
+	if err := session.ValidateGUID(guid); err != nil {
+		return err
+	}
 	cycles, err := readCycles(filepath.Join(dataDir, "sessions", guid, "messages.jsonl"))
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -229,6 +233,9 @@ type TalkOptions struct {
 
 // TalkSession prints a session's conversation as plain text, one block per message: `[N] role:` followed by the full untruncated content. Request history shared with the previous cycle is skipped.
 func TalkSession(dataDir, guid string, opts TalkOptions, out io.Writer) error {
+	if err := session.ValidateGUID(guid); err != nil {
+		return err
+	}
 	cycles, err := readCycles(filepath.Join(dataDir, "sessions", guid, "messages.jsonl"))
 	if err != nil {
 		return fmt.Errorf("session %s unreadable: %w", guid, err)
@@ -319,10 +326,15 @@ func indent(s string) string {
 
 // GrepSession prints one compact line per cycle whose message-layer content matches substr — snippets around each hit, or full field text when full is set. Empty guid searches all sessions.
 func GrepSession(dataDir, pattern, guid string, full bool, out io.Writer) error {
+	all := guid == "" || guid == "all"
+	if !all {
+		if err := session.ValidateGUID(guid); err != nil {
+			return err
+		}
+	}
 	var rendered strings.Builder
 	root := filepath.Join(dataDir, "sessions")
 	dirs := []string{filepath.Join(root, guid)}
-	all := guid == "" || guid == "all"
 	if all {
 		entries, err := os.ReadDir(root)
 		if err != nil {

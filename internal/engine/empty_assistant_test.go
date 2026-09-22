@@ -63,3 +63,78 @@ func TestRunAgentEOFSilentDoesNotPersistEmptyAssistant(t *testing.T) {
 		t.Fatal("second provider stream never ran")
 	}
 }
+
+func TestRunAgentEOFPartialOutputWithoutTerminalSignalFails(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		chunk provider.Chunk
+	}{
+		{name: "content", chunk: provider.Chunk{Content: "partial answer"}},
+		{name: "reasoning", chunk: provider.Chunk{ReasoningContent: "partial reasoning"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			tr := &mockTranscript{}
+			e := New(provider.NewScripted(func(_ context.Context, _ provider.Request) (provider.Stream, error) {
+				return provider.StreamFunc(tt.chunk), nil
+			}), tr)
+
+			_, err := e.RunAgent(context.Background(), RunRequest{Model: "m", Prompt: "hi"}, AgentOptions{})
+			if !errors.Is(err, ErrStreamEOF) {
+				t.Fatalf("RunAgent error = %v, want ErrStreamEOF", err)
+			}
+			if len(tr.lines) != 0 {
+				t.Fatalf("transcript lines = %q, want none for truncated output", tr.lines)
+			}
+		})
+	}
+}
+
+func TestRunAgentEOFTerminalToolCallSucceeds(t *testing.T) {
+	t.Parallel()
+
+	streams := 0
+	e := New(provider.NewScripted(func(_ context.Context, _ provider.Request) (provider.Stream, error) {
+		streams++
+		if streams == 1 {
+			return provider.StreamFunc(provider.Chunk{ToolCalls: []provider.ToolCall{{ID: "call-1", Name: "bash", Arguments: "{}"}}}), nil
+		}
+		return provider.StreamFunc(provider.Chunk{Content: "complete", Done: true}), nil
+	}), nil)
+
+	res, err := e.RunAgent(context.Background(), RunRequest{Model: "m", Prompt: "hi"}, AgentOptions{
+		Tools:    []provider.Tool{{Type: "function", Function: provider.ToolFunction{Name: "bash"}}},
+		Executor: ExecutorFunc(func(context.Context, string, string) (ToolExecResult, error) { return ToolExecResult{}, nil }),
+	})
+	if err != nil {
+		t.Fatalf("RunAgent error = %v, want nil", err)
+	}
+	if res.Answer != "complete" {
+		t.Fatalf("Answer = %q, want complete", res.Answer)
+	}
+	if streams != 2 {
+		t.Fatalf("provider streams = %d, want 2", streams)
+	}
+}
+
+func TestRunAgentEOFTerminalFinishReasonSucceeds(t *testing.T) {
+	t.Parallel()
+
+	e := New(provider.NewScripted(func(_ context.Context, _ provider.Request) (provider.Stream, error) {
+		return provider.StreamFunc(
+			provider.Chunk{Content: "complete"},
+			provider.Chunk{FinishReason: "stop"},
+		), nil
+	}), nil)
+
+	res, err := e.RunAgent(context.Background(), RunRequest{Model: "m", Prompt: "hi"}, AgentOptions{})
+	if err != nil {
+		t.Fatalf("RunAgent error = %v, want nil", err)
+	}
+	if res.Answer != "complete" {
+		t.Fatalf("Answer = %q, want complete", res.Answer)
+	}
+}

@@ -2,7 +2,6 @@
 package compress
 
 import (
-	"regexp"
 	"strings"
 	"unicode/utf8"
 
@@ -15,8 +14,80 @@ const maxLines = 500
 // DefaultByteCap is the shared byte budget every tool result is measured against at the tool-result boundary before it enters message history: the bytes the provider sees and that land in the session-cache head are bounded, so one oversized fetch (via curl) or whole-file read cannot exhaust the context window. 64 KiB fits comfortably inside deepseek's economics — a prompt token is ~3.5 bytes, so a capped result is ~18K tokens, small next to the ~1M-token context — while staying far under the session-cache head that must remain byte-stable.
 const DefaultByteCap = constants.DefaultByteCap
 
-// ansiRE matches ANSI/CSI escape sequences that noisy CLI tools emit for color and progress (e.g. `\x1b[31m`, `\x1b[2K`).
-var ansiRE = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]`)
+// stripTerminalControls removes ECMA-48 terminal controls while preserving ordinary text.
+func stripTerminalControls(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); {
+		r, size := utf8.DecodeRuneInString(s[i:])
+		switch {
+		case r == 0x1b:
+			if i+size == len(s) {
+				i += size
+				continue
+			}
+			switch s[i+size] {
+			case '[':
+				i = skipCSI(s, i+size+1)
+			case ']':
+				i = skipStringControl(s, i+size+1, true)
+			case 'P', 'X', '^', '_':
+				i = skipStringControl(s, i+size+1, false)
+			default:
+				i = skipEscape(s, i+size)
+			}
+		case r == 0x9b || s[i] == 0x9b:
+			i = skipCSI(s, i+size)
+		case r == 0x9d || s[i] == 0x9d:
+			i = skipStringControl(s, i+size, true)
+		case r == 0x90 || r == 0x98 || r == 0x9e || r == 0x9f || s[i] == 0x90 || s[i] == 0x98 || s[i] == 0x9e || s[i] == 0x9f:
+			i = skipStringControl(s, i+size, false)
+		case r == 0x9c || s[i] == 0x9c:
+			i += size
+		default:
+			b.WriteString(s[i : i+size])
+			i += size
+		}
+	}
+	return b.String()
+}
+
+func skipCSI(s string, i int) int {
+	for i < len(s) && s[i] >= 0x30 && s[i] <= 0x3f {
+		i++
+	}
+	for i < len(s) && s[i] >= 0x20 && s[i] <= 0x2f {
+		i++
+	}
+	if i < len(s) && s[i] >= 0x40 && s[i] <= 0x7e {
+		return i + 1
+	}
+	return len(s)
+}
+
+func skipStringControl(s string, i int, bellTerminates bool) int {
+	for i < len(s) {
+		r, size := utf8.DecodeRuneInString(s[i:])
+		if (bellTerminates && r == 0x07) || r == 0x9c || s[i] == 0x9c {
+			return i + size
+		}
+		if r == 0x1b && i+size < len(s) && s[i+size] == '\\' {
+			return i + size + 1
+		}
+		i += size
+	}
+	return i
+}
+
+func skipEscape(s string, i int) int {
+	for i < len(s) && s[i] >= 0x20 && s[i] <= 0x2f {
+		i++
+	}
+	if i < len(s) && s[i] >= 0x30 && s[i] <= 0x7e {
+		return i + 1
+	}
+	return i
+}
 
 func Compress(raw string) string {
 	out, _, _ := CompressResult(raw)
@@ -24,7 +95,7 @@ func Compress(raw string) string {
 }
 
 func CompressResult(raw string) (text string, compressed bool, dropped int) {
-	text = ansiRE.ReplaceAllString(raw, "")
+	text = stripTerminalControls(raw)
 	lines := splitLines(text)
 	lines = screenProgressFrames(lines)
 

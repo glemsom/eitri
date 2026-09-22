@@ -38,6 +38,9 @@ func New(dataDir string, debug bool) (*Session, error) {
 // NewWithGUID creates a session under dataDir/sessions/guid. It is used by `/new`,
 // where the TUI has already minted and displayed the fresh live key.
 func NewWithGUID(dataDir, guid string, debug bool) (*Session, error) {
+	if err := ValidateGUID(guid); err != nil {
+		return nil, err
+	}
 	dir := filepath.Join(dataDir, "sessions", guid)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create session dir %s: %w", dir, err)
@@ -119,6 +122,19 @@ func appendFile(path string, body []byte) {
 	defer f.Close()
 	_, _ = f.Write(body)
 	_, _ = f.Write([]byte{'\n'})
+}
+
+// ValidateGUID verifies that guid has the canonical format minted by NewGUID.
+func ValidateGUID(guid string) error {
+	if len(guid) != 32 {
+		return fmt.Errorf("invalid session GUID %q", guid)
+	}
+	for _, c := range guid {
+		if !('0' <= c && c <= '9' || 'a' <= c && c <= 'f') {
+			return fmt.Errorf("invalid session GUID %q", guid)
+		}
+	}
+	return nil
 }
 
 func NewGUID() (string, error) {

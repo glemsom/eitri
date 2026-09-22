@@ -20,7 +20,7 @@ import (
 // displayed GUID and expose that GUID's temp directory to bash.
 func TestRunEngineTurnRebindsSessionArtifactsAfterNew(t *testing.T) {
 	dataDir := t.TempDir()
-	oldSess, err := session.NewWithGUID(dataDir, "old", false)
+	oldSess, err := session.NewWithGUID(dataDir, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", false)
 	if err != nil {
 		t.Fatalf("old session: %v", err)
 	}
@@ -30,7 +30,7 @@ func TestRunEngineTurnRebindsSessionArtifactsAfterNew(t *testing.T) {
 		return provider.StreamFunc(provider.Chunk{Content: "ok"}, provider.Chunk{Done: true, FinishReason: "stop"}), nil
 	}), oldSess.MessageLogSink())
 	e := engine.New(logged, oldSess)
-	live := livekey.NewLiveSessionKey("old")
+	live := livekey.NewLiveSessionKey("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 	bind := func(key string) error {
 		sess, err := session.NewWithGUID(dataDir, key, false)
 		if err != nil {
@@ -43,12 +43,12 @@ func TestRunEngineTurnRebindsSessionArtifactsAfterNew(t *testing.T) {
 	if _, err := turn(context.Background(), "old prompt", ""); err != nil {
 		t.Fatalf("old session turn: %v", err)
 	}
-	live.Set("fresh")
+	live.Set("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
 	if _, err := turn(context.Background(), "fresh prompt", ""); err != nil {
 		t.Fatalf("fresh session turn: %v", err)
 	}
 
-	freshDir := filepath.Join(dataDir, "sessions", "fresh")
+	freshDir := filepath.Join(dataDir, "sessions", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
 	if _, err := os.Stat(filepath.Join(freshDir, "messages.jsonl")); err != nil {
 		t.Fatalf("fresh session messages.jsonl missing: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestRunEngineTurnRebindsSessionArtifactsAfterNew(t *testing.T) {
 	if !strings.Contains(string(transcript), "ok") {
 		t.Fatalf("fresh transcript = %q, want answer", transcript)
 	}
-	oldDir := filepath.Join(dataDir, "sessions", "old")
+	oldDir := filepath.Join(dataDir, "sessions", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 	oldTranscript, err := os.ReadFile(filepath.Join(oldDir, "transcript.md"))
 	if err != nil {
 		t.Fatalf("old session transcript missing: %v", err)

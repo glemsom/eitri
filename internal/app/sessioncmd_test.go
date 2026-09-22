@@ -2,12 +2,12 @@ package app
 
 import (
 	"bytes"
-
-	"github.com/glemsom/eitri/internal/provider"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/glemsom/eitri/internal/provider"
 )
 
 // writeMessagesFixture creates a session dir with a two-cycle messages.jsonl.
@@ -35,22 +35,65 @@ func writeMessagesFixture(t *testing.T, dataDir, guid string) {
 
 func TestListSessions(t *testing.T) {
 	dataDir := t.TempDir()
-	writeMessagesFixture(t, dataDir, "aaaa1111")
+	writeMessagesFixture(t, dataDir, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1")
 	var out bytes.Buffer
 	if err := ListSessions(dataDir, &out); err != nil {
 		t.Fatalf("ListSessions() error = %v", err)
 	}
 	got := out.String()
-	if !strings.Contains(got, "aaaa1111") || !strings.Contains(got, "2 cycles") || !strings.Contains(got, "m1") {
+	if !strings.Contains(got, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1") || !strings.Contains(got, "2 cycles") || !strings.Contains(got, "m1") {
 		t.Errorf("unexpected list output: %q", got)
+	}
+}
+
+func TestSessionCommandsRejectMalformedAndTraversalGUIDs(t *testing.T) {
+	dataDir := t.TempDir()
+	for _, guid := range []string{"../escape", "not-a-guid", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA"} {
+		t.Run(guid, func(t *testing.T) {
+			commands := []struct {
+				name string
+				run  func(*bytes.Buffer) error
+			}{
+				{"show", func(out *bytes.Buffer) error { return ShowSession(dataDir, guid, 0, false, out) }},
+				{"talk", func(out *bytes.Buffer) error { return TalkSession(dataDir, guid, TalkOptions{}, out) }},
+				{"grep", func(out *bytes.Buffer) error { return GrepSession(dataDir, "needle", guid, false, out) }},
+			}
+			for _, command := range commands {
+				t.Run(command.name, func(t *testing.T) {
+					if err := command.run(&bytes.Buffer{}); err == nil {
+						t.Fatalf("%s accepted invalid GUID %q", command.name, guid)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestSessionCommandsAcceptGeneratedGUID(t *testing.T) {
+	dataDir := t.TempDir()
+	guid := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	writeMessagesFixture(t, dataDir, guid)
+	for _, command := range []struct {
+		name string
+		run  func(*bytes.Buffer) error
+	}{
+		{"show", func(out *bytes.Buffer) error { return ShowSession(dataDir, guid, 0, false, out) }},
+		{"talk", func(out *bytes.Buffer) error { return TalkSession(dataDir, guid, TalkOptions{}, out) }},
+		{"grep", func(out *bytes.Buffer) error { return GrepSession(dataDir, "one file", guid, false, out) }},
+	} {
+		t.Run(command.name, func(t *testing.T) {
+			if err := command.run(&bytes.Buffer{}); err != nil {
+				t.Fatalf("%s rejected valid GUID: %v", command.name, err)
+			}
+		})
 	}
 }
 
 func TestShowSessionSummaryAndTurn(t *testing.T) {
 	dataDir := t.TempDir()
-	writeMessagesFixture(t, dataDir, "bbbb2222")
+	writeMessagesFixture(t, dataDir, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
 	var out bytes.Buffer
-	if err := ShowSession(dataDir, "bbbb2222", 0, false, &out); err != nil {
+	if err := ShowSession(dataDir, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", 0, false, &out); err != nil {
 		t.Fatalf("ShowSession() error = %v", err)
 	}
 	summary := out.String()
@@ -64,7 +107,7 @@ func TestShowSessionSummaryAndTurn(t *testing.T) {
 	}
 
 	out.Reset()
-	if err := ShowSession(dataDir, "bbbb2222", 1, false, &out); err != nil {
+	if err := ShowSession(dataDir, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", 1, false, &out); err != nil {
 		t.Fatalf("ShowSession(turn 1) error = %v", err)
 	}
 	turnJSON := out.String()
@@ -75,18 +118,18 @@ func TestShowSessionSummaryAndTurn(t *testing.T) {
 
 func TestGrepSession(t *testing.T) {
 	dataDir := t.TempDir()
-	writeMessagesFixture(t, dataDir, "cccc3333")
+	writeMessagesFixture(t, dataDir, "cccccccccccccccccccccccccccccccc")
 	var out bytes.Buffer
 	if err := GrepSession(dataDir, "one file", "", false, &out); err != nil {
 		t.Fatalf("GrepSession() error = %v", err)
 	}
 	got := out.String()
-	if !strings.Contains(got, "cccc3333:2") || !strings.Contains(got, "resp.content") {
+	if !strings.Contains(got, "cccccccccccccccccccccccccccccccc:2") || !strings.Contains(got, "resp.content") {
 		t.Errorf("grep output missing cycle hit: %q", got)
 	}
 
 	out.Reset()
-	if err := GrepSession(dataDir, "zzz-no-match-zzz", "cccc3333", false, &out); err != nil {
+	if err := GrepSession(dataDir, "zzz-no-match-zzz", "cccccccccccccccccccccccccccccccc", false, &out); err != nil {
 		t.Fatalf("GrepSession() error = %v", err)
 	}
 	if out.Len() != 0 {
@@ -97,12 +140,12 @@ func TestGrepSession(t *testing.T) {
 func TestRunSessionCmdDispatch(t *testing.T) {
 	dataDir := t.TempDir()
 	t.Setenv(DataDirEnv, dataDir)
-	writeMessagesFixture(t, dataDir, "dddd4444")
+	writeMessagesFixture(t, dataDir, "dddddddddddddddddddddddddddddddd")
 	var out bytes.Buffer
-	if err := RunSessionCmd([]string{"show", "dddd4444"}, &out); err != nil {
+	if err := RunSessionCmd([]string{"show", "dddddddddddddddddddddddddddddddd"}, &out); err != nil {
 		t.Fatalf("RunSessionCmd(show) error = %v", err)
 	}
-	if !strings.Contains(out.String(), "dddd4444") == false && !strings.Contains(out.String(), "[1]") {
+	if !strings.Contains(out.String(), "dddddddddddddddddddddddddddddddd") == false && !strings.Contains(out.String(), "[1]") {
 		t.Errorf("dispatch output unexpected: %q", out.String())
 	}
 	if err := RunSessionCmd([]string{"bogus"}, &out); err == nil {
@@ -152,7 +195,7 @@ func TestRunBatchWritesMessageTranscript(t *testing.T) {
 
 func TestShowSessionNoReasoning(t *testing.T) {
 	dataDir := t.TempDir()
-	guid := "eeee5555"
+	guid := "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
 	dir := filepath.Join(dataDir, "sessions", guid)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
@@ -189,9 +232,9 @@ func TestShowSessionNoReasoning(t *testing.T) {
 
 func TestTalkSession(t *testing.T) {
 	dataDir := t.TempDir()
-	writeMessagesFixture(t, dataDir, "ffff6666")
+	writeMessagesFixture(t, dataDir, "ffffffffffffffffffffffffffffffff")
 	var out bytes.Buffer
-	if err := TalkSession(dataDir, "ffff6666", TalkOptions{}, &out); err != nil {
+	if err := TalkSession(dataDir, "ffffffffffffffffffffffffffffffff", TalkOptions{}, &out); err != nil {
 		t.Fatalf("TalkSession() error = %v", err)
 	}
 	full := out.String()
@@ -206,7 +249,7 @@ func TestTalkSession(t *testing.T) {
 	}
 
 	out.Reset()
-	if err := TalkSession(dataDir, "ffff6666", TalkOptions{FromTurn: 2, ToTurn: 2}, &out); err != nil {
+	if err := TalkSession(dataDir, "ffffffffffffffffffffffffffffffff", TalkOptions{FromTurn: 2, ToTurn: 2}, &out); err != nil {
 		t.Fatalf("TalkSession(turn 2) error = %v", err)
 	}
 	if strings.Contains(out.String(), "[1]") || !strings.Contains(out.String(), "[2] assistant:") {
@@ -214,7 +257,7 @@ func TestTalkSession(t *testing.T) {
 	}
 
 	out.Reset()
-	if err := TalkSession(dataDir, "ffff6666", TalkOptions{Role: "user"}, &out); err != nil {
+	if err := TalkSession(dataDir, "ffffffffffffffffffffffffffffffff", TalkOptions{Role: "user"}, &out); err != nil {
 		t.Fatalf("TalkSession(role=user) error = %v", err)
 	}
 	got := out.String()
@@ -225,7 +268,7 @@ func TestTalkSession(t *testing.T) {
 
 func TestTalkSessionReasoning(t *testing.T) {
 	dataDir := t.TempDir()
-	guid := "aaaa7777"
+	guid := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	dir := filepath.Join(dataDir, "sessions", guid)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
@@ -261,9 +304,9 @@ func TestTalkSessionReasoning(t *testing.T) {
 
 func TestGrepSessionFullMode(t *testing.T) {
 	dataDir := t.TempDir()
-	writeMessagesFixture(t, dataDir, "bbbb8888")
+	writeMessagesFixture(t, dataDir, "dddddddddddddddddddddddddddddddd")
 	var out bytes.Buffer
-	if err := GrepSession(dataDir, "one file", "bbbb8888", true, &out); err != nil {
+	if err := GrepSession(dataDir, "one file", "dddddddddddddddddddddddddddddddd", true, &out); err != nil {
 		t.Fatalf("GrepSession(full) error = %v", err)
 	}
 	got := out.String()
@@ -278,16 +321,16 @@ func TestGrepSessionFullMode(t *testing.T) {
 func TestRunSessionCmdTalkAndGrepFull(t *testing.T) {
 	dataDir := t.TempDir()
 	t.Setenv(DataDirEnv, dataDir)
-	writeMessagesFixture(t, dataDir, "cccc9999")
+	writeMessagesFixture(t, dataDir, "cccccccccccccccccccccccccccccccc")
 	var out bytes.Buffer
-	if err := RunSessionCmd([]string{"talk", "cccc9999", "--turn", "1-2", "--role", "user"}, &out); err != nil {
+	if err := RunSessionCmd([]string{"talk", "cccccccccccccccccccccccccccccccc", "--turn", "1-2", "--role", "user"}, &out); err != nil {
 		t.Fatalf("RunSessionCmd(talk) error = %v", err)
 	}
 	if !strings.Contains(out.String(), "[1] user:") || strings.Contains(out.String(), "[2] assistant") {
 		t.Errorf("dispatched talk wrong:\n%s", out.String())
 	}
 	out.Reset()
-	if err := RunSessionCmd([]string{"grep", "one file", "cccc9999", "-full"}, &out); err != nil {
+	if err := RunSessionCmd([]string{"grep", "one file", "cccccccccccccccccccccccccccccccc", "-full"}, &out); err != nil {
 		t.Fatalf("RunSessionCmd(grep -full) error = %v", err)
 	}
 	if !strings.Contains(out.String(), "there is one file") {
@@ -307,30 +350,30 @@ func TestRunSessionCmdTalkAndGrepFull(t *testing.T) {
 func TestRunSessionCmdRejectsUndocumentedGrammar(t *testing.T) {
 	dataDir := t.TempDir()
 	t.Setenv(DataDirEnv, dataDir)
-	writeMessagesFixture(t, dataDir, "strict-guid")
+	writeMessagesFixture(t, dataDir, "11111111111111111111111111111111")
 
 	tests := [][]string{
 		{"list", "extra"},
-		{"show", "strict-guid", "extra"},
-		{"show", "strict-guid", "--turn", "1junk"},
-		{"show", "strict-guid", "--turn", "0"},
-		{"show", "strict-guid", "--turn"},
+		{"show", "11111111111111111111111111111111", "extra"},
+		{"show", "11111111111111111111111111111111", "--turn", "1junk"},
+		{"show", "11111111111111111111111111111111", "--turn", "0"},
+		{"show", "11111111111111111111111111111111", "--turn"},
 		{"show", "--no-reasoning"},
-		{"show", "strict-guid", "--no-reasoning", "--no-reasoning"},
-		{"talk", "strict-guid", "--turn", "1-2junk"},
-		{"talk", "strict-guid", "--turn", "1-"},
-		{"talk", "strict-guid", "--from", "2junk"},
-		{"talk", "strict-guid", "--from", "0"},
-		{"talk", "strict-guid", "--role", "human"},
-		{"talk", "strict-guid", "--role"},
+		{"show", "11111111111111111111111111111111", "--no-reasoning", "--no-reasoning"},
+		{"talk", "11111111111111111111111111111111", "--turn", "1-2junk"},
+		{"talk", "11111111111111111111111111111111", "--turn", "1-"},
+		{"talk", "11111111111111111111111111111111", "--from", "2junk"},
+		{"talk", "11111111111111111111111111111111", "--from", "0"},
+		{"talk", "11111111111111111111111111111111", "--role", "human"},
+		{"talk", "11111111111111111111111111111111", "--role"},
 		{"talk", "--all"},
-		{"talk", "strict-guid", "--turn", "1", "--from", "2"},
-		{"talk", "strict-guid", "--all", "--all"},
-		{"grep", "files", "guid=strict-guid"},
-		{"grep", "files", "strict-guid", "--full"},
-		{"grep", "files", "-full", "strict-guid"},
-		{"grep", "files", "all", "strict-guid"},
-		{"grep", "files", "strict-guid", "-full", "extra"},
+		{"talk", "11111111111111111111111111111111", "--turn", "1", "--from", "2"},
+		{"talk", "11111111111111111111111111111111", "--all", "--all"},
+		{"grep", "files", "guid=11111111111111111111111111111111"},
+		{"grep", "files", "11111111111111111111111111111111", "--full"},
+		{"grep", "files", "-full", "11111111111111111111111111111111"},
+		{"grep", "files", "all", "11111111111111111111111111111111"},
+		{"grep", "files", "11111111111111111111111111111111", "-full", "extra"},
 	}
 	for _, args := range tests {
 		t.Run(strings.Join(args, "_"), func(t *testing.T) {
@@ -354,22 +397,26 @@ func writeCorruptMessagesFixture(t *testing.T, dataDir, guid, contents string) {
 
 func TestSessionCommandsReportMalformedTranscript(t *testing.T) {
 	dataDir := t.TempDir()
-	writeCorruptMessagesFixture(t, dataDir, "corrupt-guid", "{not json}\n")
+	writeCorruptMessagesFixture(t, dataDir, "22222222222222222222222222222222", "{not json}\n")
 
 	tests := []struct {
 		name string
 		run  func(*bytes.Buffer) error
 	}{
 		{"list", func(out *bytes.Buffer) error { return ListSessions(dataDir, out) }},
-		{"show", func(out *bytes.Buffer) error { return ShowSession(dataDir, "corrupt-guid", 0, false, out) }},
-		{"talk", func(out *bytes.Buffer) error { return TalkSession(dataDir, "corrupt-guid", TalkOptions{}, out) }},
+		{"show", func(out *bytes.Buffer) error {
+			return ShowSession(dataDir, "22222222222222222222222222222222", 0, false, out)
+		}},
+		{"talk", func(out *bytes.Buffer) error {
+			return TalkSession(dataDir, "22222222222222222222222222222222", TalkOptions{}, out)
+		}},
 		{"grep", func(out *bytes.Buffer) error { return GrepSession(dataDir, "anything", "", false, out) }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var out bytes.Buffer
 			err := tt.run(&out)
-			if err == nil || !strings.Contains(err.Error(), "corrupt-guid") || !strings.Contains(err.Error(), "line 1") {
+			if err == nil || !strings.Contains(err.Error(), "22222222222222222222222222222222") || !strings.Contains(err.Error(), "line 1") {
 				t.Fatalf("error = %v, want session and malformed line", err)
 			}
 			if out.Len() != 0 {
@@ -381,10 +428,10 @@ func TestSessionCommandsReportMalformedTranscript(t *testing.T) {
 
 func TestShowSessionReportsTruncatedTranscript(t *testing.T) {
 	dataDir := t.TempDir()
-	writeCorruptMessagesFixture(t, dataDir, "truncated-guid", `{"dir":"req","model":"m1","messages":[`)
+	writeCorruptMessagesFixture(t, dataDir, "33333333333333333333333333333333", `{"dir":"req","model":"m1","messages":[`)
 	var out bytes.Buffer
-	err := ShowSession(dataDir, "truncated-guid", 0, false, &out)
-	if err == nil || !strings.Contains(err.Error(), "truncated-guid") || !strings.Contains(err.Error(), "line 1") {
+	err := ShowSession(dataDir, "33333333333333333333333333333333", 0, false, &out)
+	if err == nil || !strings.Contains(err.Error(), "33333333333333333333333333333333") || !strings.Contains(err.Error(), "line 1") {
 		t.Fatalf("error = %v, want session and truncated line", err)
 	}
 	if out.Len() != 0 {
@@ -394,11 +441,11 @@ func TestShowSessionReportsTruncatedTranscript(t *testing.T) {
 
 func TestShowSessionReportsEmptyState(t *testing.T) {
 	dataDir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dataDir, "sessions", "empty-guid"), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Join(dataDir, "sessions", "44444444444444444444444444444444"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	if err := ShowSession(dataDir, "empty-guid", 0, false, &out); err != nil {
+	if err := ShowSession(dataDir, "44444444444444444444444444444444", 0, false, &out); err != nil {
 		t.Fatalf("ShowSession() error = %v", err)
 	}
 	got := out.String()
@@ -409,27 +456,27 @@ func TestShowSessionReportsEmptyState(t *testing.T) {
 
 func TestListSessionsSkipsMissingTranscript(t *testing.T) {
 	dataDir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dataDir, "sessions", "missing-guid"), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Join(dataDir, "sessions", "55555555555555555555555555555555"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	writeMessagesFixture(t, dataDir, "valid-guid")
+	writeMessagesFixture(t, dataDir, "66666666666666666666666666666666")
 	var out bytes.Buffer
 	if err := ListSessions(dataDir, &out); err != nil {
 		t.Fatalf("ListSessions() error = %v", err)
 	}
-	if !strings.Contains(out.String(), "valid-guid") {
+	if !strings.Contains(out.String(), "66666666666666666666666666666666") {
 		t.Errorf("list missing valid session: %q", out.String())
 	}
-	if strings.Contains(out.String(), "missing-guid") {
+	if strings.Contains(out.String(), "55555555555555555555555555555555") {
 		t.Errorf("list included incomplete session: %q", out.String())
 	}
 }
 
 func TestSessionCommandsReportTruncatedAndStructurallyInvalidTranscripts(t *testing.T) {
 	fixtures := map[string]string{
-		"truncated-guid":     `{"dir":"req","model":"m1","messages":[`,
-		"response-only-guid": "{\"dir\":\"resp\",\"finish_reason\":\"stop\"}\n",
-		"trailing-req-guid":  "{\"dir\":\"req\",\"model\":\"m1\",\"messages\":[]}\n",
+		"33333333333333333333333333333333": `{"dir":"req","model":"m1","messages":[`,
+		"77777777777777777777777777777777": "{\"dir\":\"resp\",\"finish_reason\":\"stop\"}\n",
+		"88888888888888888888888888888888": "{\"dir\":\"req\",\"model\":\"m1\",\"messages\":[]}\n",
 	}
 	for guid, contents := range fixtures {
 		t.Run(guid, func(t *testing.T) {
@@ -458,9 +505,9 @@ func TestSessionCommandsReportTruncatedAndStructurallyInvalidTranscripts(t *test
 func TestRunSessionCmdTalkRejectsRemovedAllFlag(t *testing.T) {
 	dataDir := t.TempDir()
 	t.Setenv(DataDirEnv, dataDir)
-	writeMessagesFixture(t, dataDir, "no-all-guid")
+	writeMessagesFixture(t, dataDir, "99999999999999999999999999999999")
 
-	err := RunSessionCmd([]string{"talk", "no-all-guid", "--all"}, &bytes.Buffer{})
+	err := RunSessionCmd([]string{"talk", "99999999999999999999999999999999", "--all"}, &bytes.Buffer{})
 	if err == nil {
 		t.Fatal("session talk --all succeeded; want usage error")
 	}

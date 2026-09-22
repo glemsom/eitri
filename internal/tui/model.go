@@ -520,6 +520,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.armIdleEmber())
 		return m, tea.Batch(cmds...)
 
+	case tea.PasteMsg:
+		// A busy turn, modal overlay, or continuation prompt owns input instead
+		// of the hidden composer, so discard bracketed paste just like key edits.
+		if m.tx.busy || m.settings != nil || m.help != nil || m.prompting {
+			return m, nil
+		}
+		m.endRecall()
+		nm, cmd := m.composer.Update(msgi)
+		m.composer = nm
+		cmds = append(cmds, cmd)
+		cmds = append(cmds, m.trackComposer())
+		m.syncComposerHeight()
+		cmds = append(cmds, m.armIdleEmber())
+		return m, tea.Batch(cmds...)
+
 	case tea.MouseMsg:
 		m.updateMouse(msgi)
 		return m, nil

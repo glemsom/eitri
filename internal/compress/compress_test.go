@@ -50,6 +50,46 @@ func TestCompressStripsANSI(t *testing.T) {
 	}
 }
 
+func TestCompressStripsTerminalStringControls(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{"osc BEL", "before\x1b]8;;https://example.com\aafter\n", "beforeafter\n"},
+		{"osc ST", "before\x1b]0;window title\x1b\\after\n", "beforeafter\n"},
+		{"dcs", "before\x1bP$qpayload\x1b\\after\n", "beforeafter\n"},
+		{"sos", "before\x1bXpayload\x1b\\after\n", "beforeafter\n"},
+		{"pm", "before\x1b^payload\x1b\\after\n", "beforeafter\n"},
+		{"apc", "before\x1b_payload\x1b\\after\n", "beforeafter\n"},
+		{"unterminated OSC", "before\x1b]0;secret", "before\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := Compress(tc.raw); got != tc.want {
+				t.Fatalf("Compress(%q) = %q, want %q", tc.raw, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCompressStripsMalformedCSI(t *testing.T) {
+	t.Parallel()
+	raw := "before\x1b[31\a\rafter"
+	if got := Compress(raw); got != "before\n" {
+		t.Fatalf("Compress(%q) = %q, want %q", raw, got, "before\n")
+	}
+}
+
+func TestCompressStripsUTF8C1Controls(t *testing.T) {
+	t.Parallel()
+	raw := "before\u009b31mred\u009b0mafter\n"
+	if got := Compress(raw); got != "beforeredafter\n" {
+		t.Fatalf("Compress(%q) = %q, want %q", raw, got, "beforeredafter\n")
+	}
+}
+
 func TestCompressDedupesConsecutiveLines(t *testing.T) {
 	t.Parallel()
 	raw := "a\nb\nb\nb\nc\nc\n"

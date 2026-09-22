@@ -28,6 +28,36 @@ func TestNewGUIDMintsUniqueHexID(t *testing.T) {
 	}
 }
 
+func TestNewWithGUIDRejectsMalformedAndTraversalGUIDs(t *testing.T) {
+	dataDir := t.TempDir()
+	for _, guid := range []string{"", "../escape", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"} {
+		t.Run(guid, func(t *testing.T) {
+			if _, err := NewWithGUID(dataDir, guid, false); err == nil {
+				t.Fatalf("NewWithGUID(%q) succeeded, want invalid GUID error", guid)
+			}
+		})
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "escape")); !os.IsNotExist(err) {
+		t.Fatalf("traversal created directory outside sessions: %v", err)
+	}
+}
+
+func TestNewWithGUIDAcceptsGeneratedGUID(t *testing.T) {
+	dataDir := t.TempDir()
+	guid, err := NewGUID()
+	if err != nil {
+		t.Fatalf("NewGUID() error = %v", err)
+	}
+	s, err := NewWithGUID(dataDir, guid, false)
+	if err != nil {
+		t.Fatalf("NewWithGUID() error = %v", err)
+	}
+	defer s.Close()
+	if got, want := s.Dir(), filepath.Join(dataDir, "sessions", guid); got != want {
+		t.Fatalf("Dir() = %q, want %q", got, want)
+	}
+}
+
 func TestNewCreatesGUIDTranscriptDir(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

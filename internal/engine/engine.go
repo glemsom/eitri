@@ -20,10 +20,9 @@ var ErrMaxTurns = errors.New("maximum turn limit reached")
 // ErrStopped is the dedicated stop sentinel: it wraps context.Canceled so a caller distinguishes a user-stopped turn (esc in the TUI) from a failure with errors.Is(err, context.Canceled), while the wrapped cause keeps the sentinel from matching unrelated errors.
 var ErrStopped = fmt.Errorf("turn stopped: %w", context.Canceled)
 
-// ErrStreamEOF is returned when a provider stream ends with EOF before it ever
-// delivered a terminal signal (a done chunk, a non-empty finish_reason, or
-// tool calls). That is a truncated/aborted response, not a clean completion; it
-// must surface as a failed turn rather than silently producing an empty answer.
+// ErrStreamEOF is returned when a provider stream ends with EOF before it
+// delivers a terminal signal (a done chunk, a non-empty finish_reason, or tool
+// calls). That is a truncated/aborted response, not a clean completion.
 var ErrStreamEOF = errors.New("provider stream ended without a complete response; the connection was closed mid-stream")
 
 // TranscriptWriter records the run's on-disk trail.
@@ -312,6 +311,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		e.emit(TurnEvent{RunID: runID, Turn: turn, Start: true})
 		var done provider.Chunk
 		var chunks int
+		terminal := false
 		for {
 			c, err := s.Next()
 			chunks++
@@ -325,14 +325,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 					e.finishStopped(final, req.Prompt, runID, turn)
 					return final, ErrStopped
 				}
-				// A complete response always ends with a terminal signal: a done
-				// chunk ([DONE] / message_stop), a non-empty finish_reason on the
-				// final content chunk, or tool calls. EOF with none of those means
-				// the connection was cut before the response finished (the model
-				// answered nothing, so streaming it results in an empty, misleading
-				// turn). Fail loudly so a truncated provider response is never
-				// mistaken for a completed empty answer.
-				if done.FinishReason == "" && len(done.ToolCalls) == 0 && content.Len() == 0 && reasoning.Len() == 0 {
+				if !terminal {
 					return final, fmt.Errorf("provider stream truncated after %d chunk(s): %w", chunks, ErrStreamEOF)
 				}
 				break
@@ -362,6 +355,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 				opts.lastUsage = c.Usage
 			}
 			done = c
+			terminal = terminal || c.Done || c.FinishReason != "" || len(c.ToolCalls) != 0
 			if c.Done {
 				break
 			}
