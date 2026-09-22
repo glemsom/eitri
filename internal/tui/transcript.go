@@ -204,21 +204,34 @@ func (t Transcript) railVisible() bool { return t.rail != nil }
 
 // transcriptWidth returns the column width the transcript pane should use for
 // wrapping: the terminal width (or a sane default before a resize) minus the
-// 2-col gutter, and minus the rail + separator when the rail is visible, so
-// the history re-wraps to leave the rail room.
+// 2-col gutter, and minus the rail + separator when the rail is visible. A
+// one-column minimum keeps the wrapping helpers valid; surfaceWithRail clips
+// that column when an exceptionally narrow terminal gives all space to the
+// permanent rail.
 func (t Transcript) transcriptWidth() int {
-	base := t.width
-	if base == 0 {
-		base = presizeTerminalWidth
-	}
-	w := base - 2
-	if t.railVisible() {
-		w -= t.railWidthOrDefault() + 1
-		if w < 20 {
-			w = 20
-		}
+	w := t.unclampedTranscriptWidth()
+	if w < 1 {
+		return 1
 	}
 	return w
+}
+
+// unclampedTranscriptWidth is the visual width allocated to the transcript.
+// Unlike transcriptWidth it may be zero, which lets surfaceWithRail keep a
+// permanent rail within terminals too narrow to show both panes.
+func (t Transcript) unclampedTranscriptWidth() int {
+	w := t.bandWidth() - 2
+	if t.railVisible() {
+		w -= t.layoutRailWidth() + 1
+	}
+	return max(0, w)
+}
+
+// layoutRailWidth caps the configured rail width to what the terminal can
+// hold. styledRail adds one border column, so a rail width of n occupies n+1
+// columns beside the transcript.
+func (t Transcript) layoutRailWidth() int {
+	return min(t.railWidthOrDefault(), max(0, t.bandWidth()-1))
 }
 
 // bandWidth returns the column width the bottom band renders at: the terminal width, or a sane non-composer default before the first resize lands.
@@ -257,7 +270,7 @@ func (t Transcript) surfaceWithRail(pane, rail string, bandHeight int) string {
 	for i := len(rows); i < vh; i++ {
 		rows = append(rows, "")
 	}
-	leftWidth := t.transcriptWidth()
+	leftWidth := t.unclampedTranscriptWidth()
 	for i := 0; i < vh && i < len(railRows); i++ {
 		rows[i] = ansi.Truncate(rows[i], leftWidth, "") + strings.Repeat(" ", max(0, leftWidth-ansi.StringWidth(rows[i]))) + railRows[i]
 	}
@@ -269,7 +282,7 @@ func (t *Transcript) viewWithRail(pane string, bandHeight int) string {
 	if !t.railVisible() {
 		return pane
 	}
-	rw := t.railWidthOrDefault()
+	rw := t.layoutRailWidth()
 	height := t.railClampHeight(bandHeight)
 	content := t.rail.renderLiveWithTools(t.telemetry, t.theme, rw, t.phase(), t.spinner, &t.log)
 	if content != t.railRenderInput || height != t.railRenderHeight || rw != t.railRenderWidth {

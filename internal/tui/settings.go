@@ -12,6 +12,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/provider"
@@ -448,6 +449,7 @@ type SettingsOverlay struct {
 	// saveBack mirrors an accepted draft back to the caller (engine-side apply).
 	saveBack func(config.Config)
 	status   string
+	width    int
 	height   int
 }
 
@@ -624,6 +626,7 @@ type settingsResult struct {
 func (o *SettingsOverlay) Handle(msg tea.Msg) settingsResult {
 	switch msgi := msg.(type) {
 	case tea.WindowSizeMsg:
+		o.width = msgi.Width
 		o.height = msgi.Height
 		return settingsResult{outcome: outcomeContinue, handled: true}
 	case tea.KeyPressMsg:
@@ -655,6 +658,9 @@ func (o *SettingsOverlay) View() string {
 	view := settingsView(o.settingsForm)
 	if o.status != "" {
 		view += "\n" + o.theme.statusStyle.Render("   "+o.status)
+	}
+	if o.width > 0 {
+		view = ansi.Wrap(view, o.width, "")
 	}
 	if o.height <= 0 {
 		return view

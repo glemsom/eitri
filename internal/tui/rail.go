@@ -383,6 +383,17 @@ func (m *Model) persistRailWidth() {
 
 // styledRail frames the rail's rendered sections into a fixed-width right column with a left border, so it reads as a distinct state pane alongside the transcript.
 func styledRail(content string, maxHeight, railWidth int) string {
+	// Lipgloss imposes a four-column minimum for this border and padding.
+	// Below that, retain a clipped rail marker rather than overflowing the
+	// terminal.
+	if railWidth < 4 {
+		target := railWidth + 1 // the normal border consumes this extra column
+		if target < 1 {
+			target = 1
+		}
+		line := strings.Split(strings.TrimRight(content, "\n"), "\n")[0]
+		return ansi.Truncate(line, target, "")
+	}
 	if maxHeight >= 0 {
 		trimmed := strings.TrimRight(content, "\n")
 		lines := strings.Split(trimmed, "\n")

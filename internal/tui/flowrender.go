@@ -152,6 +152,7 @@ func (r flowRenderer) fold(events []TimelineEvent, msg message) []flowItem {
 	reasoningEmitted := false
 	reasoningFragIdx := 0
 	anyStreamedAnswer := false
+	answerFragIdx := 0
 	emittedAnswerBeforeTail := false
 	snapshotAnswerEmitted := false
 	emittedAnswerLen := 0 // answer text already flushed as delta fragments this turn
@@ -280,7 +281,8 @@ func (r flowRenderer) fold(events []TimelineEvent, msg message) []flowItem {
 		if txt == "" {
 			return
 		}
-		items = append(items, flowItem{kind: flowBlockAnswer, text: txt, final: final})
+		items = append(items, flowItem{kind: flowBlockAnswer, text: txt, fragIdx: answerFragIdx, final: final})
+		answerFragIdx++
 		// Advance the snapshot-output window only when this fragment is a true
 		// prefix of the not-yet-emitted committed content. Narration deltas that
 		// are not part of the snapshot (earlier provider cycles) are rendered as
@@ -370,7 +372,7 @@ func (r flowRenderer) render(items []flowItem, msg message, msgIdx int, isFocuse
 				rows = append(rows, toolRowRange{start: start, end: start + n - 1, idx: it.tool.logIdx})
 			}
 		case flowBlockAnswer:
-			emit(r.answerBlock(msg, it))
+			emit(r.answerBlock(msg, msgIdx, it))
 		}
 	}
 	return b.String(), rows
@@ -433,7 +435,7 @@ func renderReasoningBlockCached(cache *liveMarkdownCache, theme Theme, config st
 		paneID = mdPaneStreamingThinking
 	}
 	body, windowed := liveStreamingText(msg, text)
-	body = cache.renderPaneBody(body, width-2, config, paneID, theme, windowed)
+	body = cache.renderPaneBody(body, width-2, config, paneID, theme, windowed, fmt.Sprintf("reasoning:%d:%d", msgIdx, fragIdx))
 	b.WriteString(fmt.Sprintf("%s\n", body))
 	return b.String()
 }
@@ -441,8 +443,8 @@ func renderReasoningBlockCached(cache *liveMarkdownCache, theme Theme, config st
 // answerBlock renders one answer fragment through the single shared emitter:
 // the pane chosen from the message's flags, and the stopped marker when it is
 // the turn's final block.
-func (r flowRenderer) answerBlock(msg message, it flowItem) string {
-	return renderAnswerBlockCached(r.markdownCache, r.theme, r.config, r.width, msg, it.text, it.final)
+func (r flowRenderer) answerBlock(msg message, msgIdx int, it flowItem) string {
+	return renderAnswerBlockCached(r.markdownCache, r.theme, r.config, r.width, msg, it.text, it.final, fmt.Sprintf("answer:%d:%d", msgIdx, it.fragIdx))
 }
 
 // renderAnswerBlock renders one answer fragment with the pane chosen from the
@@ -452,10 +454,10 @@ func (r flowRenderer) answerBlock(msg message, it flowItem) string {
 // renderHistory route through this one emitter, so the answer pane/stopped
 // rendering cannot drift between them.
 func renderAnswerBlock(theme Theme, config string, width int, msg message, text string, final bool) string {
-	return renderAnswerBlockCached(nil, theme, config, width, msg, text, final)
+	return renderAnswerBlockCached(nil, theme, config, width, msg, text, final, "")
 }
 
-func renderAnswerBlockCached(cache *liveMarkdownCache, theme Theme, config string, width int, msg message, text string, final bool) string {
+func renderAnswerBlockCached(cache *liveMarkdownCache, theme Theme, config string, width int, msg message, text string, final bool, streamKey string) string {
 	if text == "" {
 		return ""
 	}
@@ -473,7 +475,7 @@ func renderAnswerBlockCached(cache *liveMarkdownCache, theme Theme, config strin
 		paneID = mdPaneStreaming
 	}
 	body, windowed := liveStreamingText(msg, text)
-	body = cache.renderPaneBody(body, width-2, config, paneID, theme, windowed)
+	body = cache.renderPaneBody(body, width-2, config, paneID, theme, windowed, streamKey)
 	s := fmt.Sprintf("%s\n", body)
 	if final && msg.stopped {
 		s += theme.statusStyle.Render(stoppedMarker()) + "\n"

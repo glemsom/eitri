@@ -7,8 +7,10 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/glemsom/eitri/internal/config"
+	"github.com/glemsom/eitri/internal/provider"
 )
 
 // focusOverlayField steps the settings overlay forward with Enter until the
@@ -198,6 +200,27 @@ func TestSettingsOverlay_ViewRendersSurface(t *testing.T) {
 	}
 	if !strings.Contains(content, "deepseek-v4-flash") {
 		t.Fatalf("view %q missing model row", content)
+	}
+}
+
+func TestSettingsOverlay_ViewFitsResizeWidthBeforeClippingHeight(t *testing.T) {
+	cfg := cfgFixture()
+	cfg.Provider = string(provider.ProviderCustomOpenAI)
+	cfg.CustomOpenAI.BaseURL = "https://example.test/a-very-long-base-url-that-must-wrap"
+	cfg.ExtraWritablePaths = []string{"/a/very/long/writable/path/that-must-wrap"}
+	o, _ := openSettingsOverlay(cfg, []string{"a-very-long-model-name-that-must-wrap"}, defaultTheme, nil, nil, Dependencies{})
+
+	for _, size := range []tea.WindowSizeMsg{{Width: 28, Height: 10}, {Width: 12, Height: 6}} {
+		o.Handle(size)
+		lines := strings.Split(o.View(), "\n")
+		if len(lines) > size.Height {
+			t.Fatalf("%dx%d view has %d lines, want at most %d:\n%s", size.Width, size.Height, len(lines), size.Height, o.View())
+		}
+		for _, line := range lines {
+			if width := lipgloss.Width(line); width > size.Width {
+				t.Fatalf("%dx%d row width = %d, want at most %d: %q", size.Width, size.Height, width, size.Width, line)
+			}
+		}
 	}
 }
 

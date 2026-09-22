@@ -21,7 +21,8 @@ const liveMarkdownMinRenderInterval = 100 * time.Millisecond
 
 // liveMarkdownCache caches the glamour markdown render AND its final pane-wrapped
 // body for a streaming block, keyed on the rendered windowed text plus an explicit
-// pane identifier. Reasoning/answer streams grow with every delta, and a frame
+// pane identifier. The throttle also records the streaming block identity, so a
+// key miss cannot borrow output from another block. Reasoning/answer streams grow with every delta, and a frame
 // re-renders the live tail; caching only the glamour output still left the pane
 // border+padding re-wrap (a full width+width-measure pass over the window)
 // running on every frame even when the window did not change, which dominates
@@ -29,12 +30,13 @@ const liveMarkdownMinRenderInterval = 100 * time.Millisecond
 // spinner/face ticks between batches). Caching the finished pane body makes
 // unchanged-window frames a single slot hit.
 type liveMarkdownCache struct {
-	key       liveMarkdownCacheKey
-	out       string
-	valid     bool
-	hits      int
-	misses    int
-	lastFresh time.Time
+	key         liveMarkdownCacheKey
+	out         string
+	valid       bool
+	hits        int
+	misses      int
+	lastFresh   time.Time
+	throttleKey string
 	// clock, when non-nil, overrides time.Now so tests exercise the throttle
 	// deterministically without wall-clock sleeps.
 	clock func() time.Time
@@ -125,7 +127,7 @@ func (c *liveMarkdownCache) now() time.Time {
 // still advances) and the whole change batch is absorbed into the next allowed
 // render. This bounds goldmark+glamour cost during a fast stream while keeping
 // the visible tail live — the window slides, never drops bytes.
-func (c *liveMarkdownCache) renderPaneBody(text string, width int, theme string, paneID liveMarkdownPaneID, th Theme, throttle bool) string {
+func (c *liveMarkdownCache) renderPaneBody(text string, width int, theme string, paneID liveMarkdownPaneID, th Theme, throttle bool, throttleKey string) string {
 	if c == nil {
 		return renderPaneBodyFresh(text, width, theme, paneID, th)
 	}
@@ -135,7 +137,7 @@ func (c *liveMarkdownCache) renderPaneBody(text string, width int, theme string,
 		return c.out
 	}
 	// Throttle: hold the previous render when the expensive re-render would run
-	// too soon after the last one. Only throttled streaming windows are held:
+	// too soon after the last one for the same streaming block. Only throttled streaming windows are held:
 	// small blocks render so cheaply that live per-frame updates are worth it,
 	// and model tests and routine short reasoning depend on seeing each delta
 	// immediately. Once a block crosses the window, rendering it from scratch
@@ -143,7 +145,7 @@ func (c *liveMarkdownCache) renderPaneBody(text string, width int, theme string,
 	// served between intervals. The stream briefly lags at most
 	// liveMarkdownMinRenderInterval behind; it is never dropped, and coalescing
 	// turns a burst of deltas into one render.
-	if c.valid && liveMarkdownMinRenderInterval > 0 && throttle &&
+	if c.valid && liveMarkdownMinRenderInterval > 0 && throttle && c.throttleKey == throttleKey &&
 		c.now().Sub(c.lastFresh) < liveMarkdownMinRenderInterval {
 		c.hits++ // a cheap slot hit: the bytes drawn are slightly stale, but no re-parse
 		return c.out
@@ -153,6 +155,7 @@ func (c *liveMarkdownCache) renderPaneBody(text string, width int, theme string,
 	c.out = body
 	c.valid = true
 	c.lastFresh = c.now()
+	c.throttleKey = throttleKey
 	c.misses++
 	return body
 }

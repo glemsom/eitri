@@ -72,3 +72,41 @@ func TestDragMotionViewUsesCachedHistory(t *testing.T) {
 		t.Fatalf("drag motion re-rendered full history: builds %d -> %d", initialBuilds, got)
 	}
 }
+
+func TestModalOverlaysIgnoreMouseInput(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		open func(*testing.T, Model) Model
+	}{
+		{
+			name: "help",
+			open: func(t *testing.T, m Model) Model {
+				t.Helper()
+				next, _ := m.startHelp()
+				return asModel(t, next)
+			},
+		},
+		{name: "settings", open: openSettingsForTest},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := heavyMouseHistoryModel(t)
+			m = tc.open(t, m)
+			if m.settings == nil && m.help == nil {
+				t.Fatal("test precondition: modal overlay should be open")
+			}
+			beforeOffset := scrollOffset(m)
+			beforeFollow := m.tx.histFollow
+			m = mustUpdate(t, m, dragMsg("press", 0, 0))
+			m = mustUpdate(t, m, wheelMsg(true))
+			if m.tx.weaver.active || m.tx.pendingToolClick {
+				t.Errorf("click under %s mutated hidden transcript selection", tc.name)
+			}
+			if got := scrollOffset(m); got != beforeOffset {
+				t.Errorf("wheel under %s changed hidden transcript offset: %d -> %d", tc.name, beforeOffset, got)
+			}
+			if m.tx.histFollow != beforeFollow {
+				t.Errorf("wheel under %s changed hidden transcript follow: %v -> %v", tc.name, beforeFollow, m.tx.histFollow)
+			}
+		})
+	}
+}

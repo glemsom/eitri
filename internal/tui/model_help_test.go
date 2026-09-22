@@ -2,10 +2,12 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 func TestModel_slashHelpOpensOverlay(t *testing.T) {
@@ -104,6 +106,44 @@ func TestModel_helpOverlayScrolls(t *testing.T) {
 	}
 	if v := m.help.View(); !strings.Contains(v, "scroll") {
 		t.Fatalf("help footer missing scroll hint, got: %q", v)
+	}
+}
+
+func TestHelpOverlayViewFitsNarrowTerminal(t *testing.T) {
+	for _, tc := range []struct {
+		width, height int
+	}{
+		{0, 1},
+		{0, 3},
+		{1, 1},
+		{1, 3},
+		{12, 1},
+		{12, 3},
+		{20, 1},
+		{20, 3},
+	} {
+		t.Run(fmt.Sprintf("%dx%d", tc.width, tc.height), func(t *testing.T) {
+			h := &HelpOverlay{
+				width:  tc.width,
+				height: tc.height,
+				lines:  []string{strings.Repeat("x", 40), "second", "third"},
+			}
+			got := h.View()
+			if tc.width == 0 {
+				if got != "" {
+					t.Fatalf("zero-width View() = %q, want empty", got)
+				}
+				return
+			}
+			if rows := lineCount(got); rows != tc.height {
+				t.Fatalf("View() occupies %d rows, want height budget %d: %q", rows, tc.height, got)
+			}
+			for _, row := range strings.Split(strings.TrimSuffix(got, "\n"), "\n") {
+				if width := lipgloss.Width(row); width > tc.width {
+					t.Errorf("row width %d exceeds terminal width %d: %q", width, tc.width, row)
+				}
+			}
+		})
 	}
 }
 

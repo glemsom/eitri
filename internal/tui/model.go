@@ -536,6 +536,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case tea.MouseMsg:
+		if m.settings != nil || m.help != nil {
+			return m, nil
+		}
 		m.updateMouse(msgi)
 		return m, nil
 

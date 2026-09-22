@@ -247,8 +247,8 @@ func TestModelRailTranscriptFloor(t *testing.T) {
 	if !m.tx.railVisible() {
 		t.Fatal("rail must stay visible on an extreme-minimum terminal")
 	}
-	if tw := m.tx.transcriptWidth(); tw < 20 {
-		t.Errorf("transcriptWidth = %d on a 40-col window, want the hard floor >= 20", tw)
+	if tw := m.tx.transcriptWidth(); tw != 7 {
+		t.Errorf("transcriptWidth = %d on a 40-col window, want the width remaining beside the rail (7)", tw)
 	}
 }
 

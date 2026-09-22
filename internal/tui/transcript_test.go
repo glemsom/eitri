@@ -219,6 +219,27 @@ func TestTranscript_dynamicRailWidth(t *testing.T) {
 	}
 }
 
+func TestTranscript_narrowRailSurfaceFitsTerminal(t *testing.T) {
+	th := themeFor(config.DefaultTheme)
+	for _, width := range []int{1, 2, 3, 4, 10, 20, 32, 40} {
+		t.Run(fmt.Sprintf("width/%d", width), func(t *testing.T) {
+			tx := Transcript{
+				theme:       th,
+				configTheme: config.DefaultTheme,
+				rail:        NewRail("opencode-go", "deepseek-v4-flash", "low", true, "eitri-1", "/tmp/eitri-1"),
+				width:       width,
+				height:      10,
+			}
+
+			for i, row := range strings.Split(tx.viewWithRail("transcript", 1), "\n") {
+				if got := lipgloss.Width(row); got > width {
+					t.Errorf("row %d is %d columns wide on a %d-column terminal: %q", i, got, width, row)
+				}
+			}
+		})
+	}
+}
+
 func TestTranscript_matchesModelRender(t *testing.T) {
 	th := themeFor(config.DefaultTheme)
 	msgs := []message{{role: "you", content: "hello"}, {role: "eitri", content: "**plain** answer"}}

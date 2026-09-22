@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // HelpOverlay owns the open help surface: the rendered reference split into
@@ -47,13 +48,7 @@ func (h *HelpOverlay) render() {
 
 // viewRows returns how many reference lines fit above the footer hint row.
 func (h *HelpOverlay) viewRows() int {
-	if h.height <= 0 {
-		return len(h.lines)
-	}
-	if rows := h.height - 1; rows >= 1 {
-		return rows
-	}
-	return 1
+	return max(0, h.height-1)
 }
 
 // maxOffset is the largest valid scroll offset: the first line index whose
@@ -112,16 +107,17 @@ func (h *HelpOverlay) Handle(msg tea.Msg) (closed bool, handled bool) {
 
 // View renders the visible window of the reference plus the footer hint row.
 func (h *HelpOverlay) View() string {
-	start := h.offset
-	if start > len(h.lines) {
-		start = len(h.lines)
+	if h.width <= 0 || h.height <= 0 {
+		return ""
 	}
-	end := start + h.viewRows()
-	if end > len(h.lines) {
-		end = len(h.lines)
+	start := min(h.offset, len(h.lines))
+	end := min(start+h.viewRows(), len(h.lines))
+	rows := make([]string, 0, h.height)
+	for _, line := range h.lines[start:end] {
+		rows = append(rows, ansi.Truncate(line, h.width, ""))
 	}
-	body := strings.Join(h.lines[start:end], "\n")
-	return body + "\n" + h.footer() + "\n"
+	rows = append(rows, h.footer())
+	return strings.Join(rows, "\n") + "\n"
 }
 
 // footer renders the scroll/close hint with a position readout, shown only when
@@ -133,7 +129,7 @@ func (h *HelpOverlay) footer() string {
 		last := min(h.offset+rows, len(h.lines))
 		hint += fmt.Sprintf("   %d–%d/%d", h.offset+1, last, len(h.lines))
 	}
-	return h.theme.statusStyle.Render(hint)
+	return h.theme.statusStyle.Render(truncateWidth(hint, h.width))
 }
 
 // startHelp opens the `/help` reference as a dedicated scrollable overlay.

@@ -120,10 +120,10 @@ func TestPaneVariantReRender(t *testing.T) {
 	}
 	text := strings.Repeat("md inline `code` and **bold** here. ", 40)
 
-	s1 := c.renderPaneBody(text, 118, config.DefaultTheme, mdPaneStreamingThinking, th, false)
+	s1 := c.renderPaneBody(text, 118, config.DefaultTheme, mdPaneStreamingThinking, th, false, "")
 	mAfterStream := c.misses
 	// Stable frames under the same pane must be cache hits (no re-render).
-	s2 := c.renderPaneBody(text, 118, config.DefaultTheme, mdPaneStreamingThinking, th, false)
+	s2 := c.renderPaneBody(text, 118, config.DefaultTheme, mdPaneStreamingThinking, th, false, "")
 	if c.misses != mAfterStream {
 		t.Fatalf("same-pane stable frame re-rendered markdown")
 	}
@@ -133,7 +133,7 @@ func TestPaneVariantReRender(t *testing.T) {
 
 	// Different pane variant must re-render exactly once (stale body must not
 	// leak under the new pane's border).
-	s3 := c.renderPaneBody(text, 118, config.DefaultTheme, mdPaneThinking, th, false)
+	s3 := c.renderPaneBody(text, 118, config.DefaultTheme, mdPaneThinking, th, false, "")
 	if c.misses != mAfterStream+1 {
 		t.Fatalf("pane-variant change should render exactly once more, got %d (after %d)", c.misses, mAfterStream)
 	}
@@ -149,6 +149,24 @@ func TestPaneVariantReRender(t *testing.T) {
 // elapses. This is the regression guard for the live-stream CPU fix. Only
 // throttled streaming windows (windowed=true) are held; small live blocks still
 // update every delta.
+func TestLiveMarkdownThrottleNeverServesAnotherBlock(t *testing.T) {
+	th := themeFor(config.DefaultTheme)
+	c := &liveMarkdownCache{}
+	now := time.Time{}
+	c.clock = func() time.Time { return now }
+
+	first := c.renderPaneBody("first streaming block", 118, "dark", mdPaneStreamingThinking, th, true, "first")
+	now = now.Add(time.Millisecond)
+	second := c.renderPaneBody("second streaming block", 118, "dark", mdPaneStreamingThinking, th, true, "second")
+
+	if first == second || !strings.Contains(plain(second), "second streaming block") {
+		t.Fatalf("throttled key miss served another block's output: %q", plain(second))
+	}
+	if c.misses != 2 {
+		t.Fatalf("different streaming blocks must both render, got %d misses", c.misses)
+	}
+}
+
 func TestLiveMarkdownThrottleBoundsFastStream(t *testing.T) {
 	th := themeFor(config.DefaultTheme)
 	c := &liveMarkdownCache{}
@@ -159,7 +177,7 @@ func TestLiveMarkdownThrottleBoundsFastStream(t *testing.T) {
 	// Distinct windows large enough to cross the streaming window bound.
 	base := strings.Repeat("streaming reasoning token mix of prose and markdown \n", 900)
 	for i := 0; i < 5; i++ {
-		c.renderPaneBody(base+string(rune('a'+i)), 118, "dark", mdPaneStreamingThinking, th, true)
+		c.renderPaneBody(base+string(rune('a'+i)), 118, "dark", mdPaneStreamingThinking, th, true, "reasoning:0:0")
 	}
 	if len(base) < liveStreamingMarkdownWindow {
 		t.Fatalf("test window too small: got %d, want >= %d", len(base), liveStreamingMarkdownWindow)
@@ -175,7 +193,7 @@ func TestLiveMarkdownThrottleBoundsFastStream(t *testing.T) {
 
 	// Let the interval elapse; the next distinct window must re-render once.
 	now = now.Add(liveMarkdownMinRenderInterval)
-	c.renderPaneBody(base+"z", 118, "dark", mdPaneStreamingThinking, th, true)
+	c.renderPaneBody(base+"z", 118, "dark", mdPaneStreamingThinking, th, true, "reasoning:0:0")
 	if c.misses != 2 {
 		t.Fatalf("after the interval a changed window should re-render, got %d misses", c.misses)
 	}
