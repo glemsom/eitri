@@ -125,7 +125,7 @@ func tokenEstimate(s string) int {
 // hints.
 func idleWelcome(th Theme, width, emberFrame int) string {
 	return th.gradientRule(width) + "\n" +
-		brandWordmark(th, emberFrame) + th.statusStyle.Render(" — your terminal coding agent") + "\n" +
+		brandWordmark(th, emberFrame) + th.statusStyle.Render(" — your terminal AI assistant") + "\n" +
 		th.gradientRule(width) + "\n" +
 		th.statusStyle.Render("  "+keyHint()+" /settings · /help for commands & keybindings") + "\n"
 }
