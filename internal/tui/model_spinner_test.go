@@ -334,7 +334,7 @@ func TestIdleWelcome_showsOnEmptyHidesAfterTurn(t *testing.T) {
 	m = resize(t, m)
 
 	content := view(m)
-	if !strings.Contains(content, "your terminal AI assistant") {
+	if !strings.Contains(content, "the smith of your shell") {
 		t.Fatalf("empty transcript must show the welcome, got: %q", content)
 	}
 	if !strings.Contains(content, "/settings") {
@@ -343,7 +343,7 @@ func TestIdleWelcome_showsOnEmptyHidesAfterTurn(t *testing.T) {
 
 	m = typeText(t, m, "hi")
 	m = submitAndWait(t, m)
-	if strings.Contains(view(m), "your terminal AI assistant") {
+	if strings.Contains(view(m), "the smith of your shell") {
 		t.Errorf("welcome must disappear after the first turn, got: %q", view(m))
 	}
 }

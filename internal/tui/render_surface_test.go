@@ -30,7 +30,7 @@ func TestRender_idleWelcome(t *testing.T) {
 			name:  "brand-and-hints-default",
 			width: 2,
 			want: "──\n" +
-				"⚒️ Eitri — your terminal AI assistant\n" +
+				"⚒️ Eitri — the smith of your shell\n" +
 				"──\n" +
 				"  ⌨ /settings · /help for commands & keybindings\n",
 		},
@@ -38,7 +38,7 @@ func TestRender_idleWelcome(t *testing.T) {
 			name:  "width-40",
 			width: 40,
 			want: strings.Repeat("─", 40) + "\n" +
-				"⚒️ Eitri — your terminal AI assistant\n" +
+				"⚒️ Eitri — the smith of your shell\n" +
 				strings.Repeat("─", 40) + "\n" +
 				"  ⌨ /settings · /help for commands & keybindings\n",
 		},

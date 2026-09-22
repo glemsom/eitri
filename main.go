@@ -10,7 +10,7 @@ import (
 	"github.com/glemsom/eitri/internal/app"
 )
 
-const usage = `eitri - AI Assistant for Linux.
+const usage = `eitri - the smith of your shell.
 
 Usage:
 
