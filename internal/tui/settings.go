@@ -334,7 +334,7 @@ func settingsHelp(f settingsForm) string {
 	case fieldContextOverflowRecovery:
 		return "If the provider rejects an oversized request, summarize older history and retry once."
 	case fieldTheme:
-		return "Color palette for Eitri’s interface."
+		return "Color palette for Eitri’s interface, previewed on the Markdown sample below."
 	case fieldCoTCollapsed:
 		return "Show thinking blocks as compact one-liners until expanded."
 	case fieldToolResultsCollapsed:
@@ -430,6 +430,59 @@ func writePathList(b *strings.Builder, f settingsForm, th Theme) {
 	}
 	b.WriteString(th.statusStyle.Render("     [ + Add folder ] [ Delete: remove selected ]"))
 	b.WriteString("\n")
+}
+
+// markdownPreviewWidth is the wrap width of the Settings Markdown preview: a
+// document-width column that shows a table and wrapped prose intact once the
+// block's left margin is added, without turning the settings panel into a
+// full-width transcript.
+const markdownPreviewWidth = 60
+
+// markdownPreviewSample exercises every block and inline style the transcript's
+// Markdown renderer can produce — headings, emphasis, strikethrough, inline
+// code, links, unordered and ordered lists, a blockquote, a fenced code block,
+// a table, and a rule — so a theme preview covers what answers actually show.
+const markdownPreviewSample = "" +
+	"# Heading 1\n\n" +
+	"## Heading 2\n\n" +
+	"**Bold**, *italic*, ~~strikethrough~~, `inline code`, and a [link](https://eitri.dev).\n\n" +
+	"- bullet item\n" +
+	"  - nested bullet\n\n" +
+	"1. ordered item\n\n" +
+	"> a blockquote\n\n" +
+	"```go\n" +
+	"func main() {}\n" +
+	"```\n\n" +
+	"| Column | Value |\n" +
+	"| --- | --- |\n" +
+	"| cell | 42 |\n\n" +
+	"---\n"
+
+// writeMarkdownPreview renders the draft theme's Markdown look under the Theme
+// row: the transcript body is where a theme lands, so the sample runs through
+// the same renderer the transcript uses instead of previewing the chrome palette
+// alone. The title row keeps the block legible as a preview rather than a knob.
+//
+// The caller gates this on Theme focus because the block is tall (one line per
+// Markdown construct); glamour's own leading and trailing padding and per-line
+// fill are trimmed so the block stays inside the panel's left margin.
+func writeMarkdownPreview(b *strings.Builder, f settingsForm, th Theme) {
+	rendered, err := RenderMarkdown(markdownPreviewSample, markdownPreviewWidth, f.cfg.Theme)
+	if err != nil {
+		b.WriteString(th.statusStyle.Render("       markdown preview unavailable: " + err.Error()))
+		b.WriteString("\n")
+		return
+	}
+	b.WriteString(th.statusStyle.Render("       " + hr() + " markdown preview " + hr()))
+	b.WriteString("\n")
+	lines := strings.Split(strings.TrimLeft(rendered, "\n"), "\n")
+	for len(lines) > 0 && strings.TrimSpace(ansi.Strip(lines[len(lines)-1])) == "" {
+		lines = lines[:len(lines)-1]
+	}
+	for _, line := range lines {
+		b.WriteString("       " + strings.TrimRight(line, " "))
+		b.WriteString("\n")
+	}
 }
 
 // SettingsOverlay owns the open Settings surface: the draft form, its
@@ -825,6 +878,9 @@ func settingsView(f settingsForm) string {
 		}
 		if r.field == fieldTheme {
 			writePalette()
+			if f.field == fieldTheme {
+				writeMarkdownPreview(&b, f, th)
+			}
 		}
 		if r.field == fieldThinking && !f.cfg.ThinkingEnabled && f.thinkingSuppression != nil && !f.thinkingSuppression() {
 			b.WriteString(th.statusStyle.Render("   " + lookup("warning") + " This provider always uses reasoning"))

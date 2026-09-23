@@ -709,3 +709,44 @@ func TestSettingsOverlay_FilePickerSelectClosesPickerBeforeTab(t *testing.T) {
 		t.Fatalf("picker active after selection, want closed")
 	}
 }
+
+func TestSettingsView_MarkdownPreviewAppearsOnThemeFocus(t *testing.T) {
+	t.Parallel()
+	f := newSettingsForm(cfgFixture(), []string{}) // seeded "dark"
+
+	if view := settingsView(f); strings.Contains(view, "markdown preview") {
+		t.Fatalf("settings view %q rendered the preview with the Theme row unfocused, want it hidden", view)
+	}
+
+	f.field = fieldTheme
+	view := ansiStrip(settingsView(f))
+	for _, want := range []string{"markdown preview", "Heading 1", "Heading 2", "Bold", "italic", "strikethrough", "inline code", "https://eitri.dev", "bullet item", "ordered item", "blockquote", "func main()", "Column", "cell"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("theme preview %q missing Markdown construct %q", view, want)
+		}
+	}
+}
+
+func TestSettingsView_MarkdownPreviewTracksDraftTheme(t *testing.T) {
+	t.Parallel()
+	f := newSettingsForm(cfgFixture(), []string{})
+	f.field = fieldTheme
+
+	// The preview renders through the transcript's Markdown renderer, so body
+	// text carries the active palette's text hue rather than glamour's own.
+	// th.text is not a palette swatch, so its SGR cannot come from the swatch row.
+	darkText := "\x1b[38;2;192;202;245m" // default theme text #C0CAF5
+	lightText := "\x1b[38;2;28;28;28m"   // light theme text #1C1C1C
+	if view := settingsView(f); !strings.Contains(view, darkText) {
+		t.Fatalf("dark preview missing the dark body-text hue %q", darkText)
+	}
+
+	f.adjust(1) // dark -> light
+	view := settingsView(f)
+	if !strings.Contains(view, lightText) {
+		t.Fatalf("light preview missing the light body-text hue %q", lightText)
+	}
+	if strings.Contains(view, darkText) {
+		t.Fatalf("light preview still carries the dark body-text hue %q", darkText)
+	}
+}
