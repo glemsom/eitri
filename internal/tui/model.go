@@ -123,6 +123,7 @@ type Dependencies struct {
 	Rail                *Rail
 	ThinkingSuppression func() bool
 	Clipboard           func(text string) error
+	OpenURL             func(context.Context, string) error
 	OSC52Out            io.Writer
 	// HistoryPath is the path of the prompt-history file submitted prompts
 	// persist to (a sibling of config.json in the data directory); empty leaves
@@ -539,8 +540,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.settings != nil || m.help != nil {
 			return m, nil
 		}
-		m.updateMouse(msgi)
-		return m, nil
+		return m, m.updateMouse(msgi)
 
 	case mentionWalkMsg:
 		m.mention.setManifest(msgi.paths)

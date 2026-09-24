@@ -848,3 +848,38 @@ func TestDragSelect_emojiSurvivesCopyFidelity(t *testing.T) {
 		t.Errorf("emoji drag copy = %q, want %q", copied, answer)
 	}
 }
+
+func TestCtrlClickOpensTranscriptHyperlink(t *testing.T) {
+	t.Parallel()
+	var opened string
+	m := NewModelCfg(Dependencies{
+		Turn: func(context.Context, string, string) (TurnResult, error) {
+			return TurnResult{Answer: "[Example](https://example.com/path)"}, nil
+		},
+		OpenURL: func(_ context.Context, target string) error {
+			opened = target
+			return nil
+		},
+	})
+	m = resize(t, m)
+	m = typeText(t, m, "show a link")
+	m = submitAndWait(t, m)
+	view(m)
+
+	rows, top := historyContentRows(m)
+	for y, row := range rows {
+		if x := strings.Index(row, "Example"); x >= 0 {
+			nm, cmd := m.Update(tea.MouseClickMsg{Button: tea.MouseLeft, Mod: tea.ModCtrl, X: lipgloss.Width(row[:x]), Y: top + y})
+			m = asModel(t, nm)
+			if cmd == nil {
+				t.Fatal("Ctrl+click on hyperlink returned no open command")
+			}
+			m = runSubmitted(t, m, cmd)
+			if opened != "https://example.com/path" {
+				t.Fatalf("opened URL = %q, want https://example.com/path", opened)
+			}
+			return
+		}
+	}
+	t.Fatalf("rendered link label missing from rows: %q", rows)
+}

@@ -103,10 +103,14 @@ func runTUI(e *engine.Engine, logged *provider.LoggingProvider, cfg config.Confi
 		Events:              events, // merged arrival-ordered feed: stream deltas and tool observations land in step
 		Rail:                rail,
 		ThinkingSuppression: thinkingSuppression(p),
-		Skills:              skillSurface(reg, skills),
-		HistoryPath:         tui.PromptHistoryPath(dataDir),
-		LiveKey:             live,
-		NeedsSetup:          needsSetup,
+		OpenURL: func(ctx context.Context, target string) error {
+			_, err := reg.Run(ctx, "open_in_browser", map[string]any{"path": target})
+			return err
+		},
+		Skills:      skillSurface(reg, skills),
+		HistoryPath: tui.PromptHistoryPath(dataDir),
+		LiveKey:     live,
+		NeedsSetup:  needsSetup,
 		SessionCleared: func(oldKey string) {
 			e.ClearSessionHistory(oldKey)
 		},
