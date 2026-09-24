@@ -5,13 +5,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 
+	"github.com/glemsom/eitri/internal/config"
 	"github.com/glemsom/eitri/internal/engine/skillspack"
 	"github.com/glemsom/eitri/internal/provider"
 	"github.com/glemsom/eitri/internal/tui"
@@ -158,6 +161,80 @@ func TestBootLoadsConfigAndCreatesSession(t *testing.T) {
 	}
 	if !entries[0].IsDir() {
 		t.Fatalf("sessions/%s is not a directory", entries[0].Name())
+	}
+}
+
+func TestDiscoveredModelsWritesHTTPTraces(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/models" {
+			t.Fatalf("path = %q, want /models", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"data":[{"id":"traced-model"}]}`)
+	}))
+	defer srv.Close()
+
+	trace := &traceRecorder{}
+	cfg := config.Default()
+	cfg.Provider = string(provider.ProviderCustomOpenAI)
+	cfg.CustomOpenAI = config.OpenAIConfig{BaseURL: srv.URL, Key: "secret"}
+	models, err := discoveredModels("", func() provider.HTTPTraceSink { return trace })(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("discover models: %v", err)
+	}
+	if len(models) != 1 || models[0] != "traced-model" {
+		t.Fatalf("models = %v, want [traced-model]", models)
+	}
+	if !strings.Contains(trace.response, "traced-model") {
+		t.Fatalf("trace response = %q, want discovered model response", trace.response)
+	}
+}
+
+type traceRecorder struct{ request, response string }
+
+func (t *traceRecorder) TraceRequest(body []byte)  { t.request += string(body) }
+func (t *traceRecorder) TraceResponse(body []byte) { t.response += string(body) }
+
+func TestRunDebugWritesProviderHTTPTraces(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, err := io.ReadAll(r.Body); err != nil {
+			t.Fatalf("read request: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	dataDir := filepath.Join(dir, ".eitri")
+	cfgPath := filepath.Join(dir, "config.json")
+	if err := config.Save(config.Config{Provider: string(provider.ProviderCustomOpenAI), Model: "test", CustomOpenAI: config.OpenAIConfig{BaseURL: srv.URL, Key: "secret"}}, cfgPath); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+	if err := Run(Options{DataDir: dataDir, ConfigPath: cfgPath, Debug: true, Prompt: "hello", LookPath: okLookPath, Stdout: io.Discard}); err != nil {
+		t.Fatalf("Run(debug) error = %v", err)
+	}
+
+	entries, err := os.ReadDir(filepath.Join(dataDir, "sessions"))
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("session entries = %v, %v; want one session", entries, err)
+	}
+	sessionDir := filepath.Join(dataDir, "sessions", entries[0].Name())
+	request, err := os.ReadFile(filepath.Join(sessionDir, "trace-request.http"))
+	if err != nil {
+		t.Fatalf("read request trace: %v", err)
+	}
+	if !strings.Contains(string(request), "hello") {
+		t.Fatalf("request trace = %q, want raw prompt", request)
+	}
+	response, err := os.ReadFile(filepath.Join(sessionDir, "trace-response.http"))
+	if err != nil {
+		t.Fatalf("read response trace: %v", err)
+	}
+	if string(response) != "data: [DONE]\n\n\n" {
+		t.Fatalf("response trace = %q, want raw response body", response)
 	}
 }
 

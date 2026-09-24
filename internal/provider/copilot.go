@@ -84,6 +84,9 @@ func (cp *CopilotProvider) bearer(ctx context.Context) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("copilot: refresh token renewal failed: %w", err)
 		}
+		if fresh.RefreshToken == "" {
+			fresh.RefreshToken = cfg.RefreshToken
+		}
 		if cp.persist != nil {
 			_ = cp.persist(fresh)
 		}

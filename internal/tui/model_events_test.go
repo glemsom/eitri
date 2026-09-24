@@ -98,6 +98,39 @@ func TestModel_eventFeedIgnoresStaleRunEvents(t *testing.T) {
 	}
 }
 
+// Completion must wait for an event already removed by the feed waiter. Bubble
+// Tea may deliver the completion before that queued event message, despite the
+// feed having observed the event first.
+func TestModel_eventFeedProjectsRemovedEventBeforeCompletion(t *testing.T) {
+	feed := NewEventFeed()
+	m := NewModelCfg(Dependencies{Turn: streamingTurn, Events: feed, Config: cfgFixture()})
+	m = resize(t, m)
+	m = typeText(t, m, "hi")
+	m, _ = submitBusy(t, m)
+
+	feed.UpdateChan() <- Event{Stream: &StreamUpdate{Kind: AnswerStream, Delta: "queued"}}
+	removed := eventWait(feed)()
+	if _, ok := removed.(eventMsg); !ok {
+		t.Fatalf("feed waiter message = %T, want eventMsg", removed)
+	}
+
+	nm, _ := m.Update(turnDoneMsg{prompt: "hi", answer: "final"})
+	m = asModel(t, nm)
+	if !m.tx.busy {
+		t.Fatal("completion committed before the removed feed event was projected")
+	}
+
+	nm, _ = m.Update(removed)
+	m = asModel(t, nm)
+	if m.tx.busy {
+		t.Fatal("completion did not commit after the removed feed event was projected")
+	}
+	got := m.tx.messages[len(m.tx.messages)-1].events
+	if len(got) != 1 || got[0].Delta != "queued" {
+		t.Fatalf("committed events = %+v, want queued event", got)
+	}
+}
+
 func TestModel_eventFeedDropsStreamDeltaWhenIdle(t *testing.T) {
 	t.Parallel()
 	m := NewModelCfg(Dependencies{

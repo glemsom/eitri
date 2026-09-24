@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/glemsom/eitri/internal/config"
 )
@@ -29,6 +30,22 @@ func TestModel_OpenSettingsRendersSurface(t *testing.T) {
 	}
 	if !strings.Contains(content, "deepseek-v4-flash") && !strings.Contains(content, "grok-2") {
 		t.Fatalf("settings content %q missing the model row", content)
+	}
+}
+
+func TestModel_OpeningSettingsInheritsTerminalSize(t *testing.T) {
+	t.Parallel()
+	m := NewModelCfg(Dependencies{Config: cfgFixture()})
+	m = asModel(t, mustUpdate(t, m, tea.WindowSizeMsg{Width: 12, Height: 6}))
+	m = openSettingsForTest(t, m)
+
+	for _, line := range strings.Split(m.settings.View(), "\n") {
+		if width := lipgloss.Width(line); width > 12 {
+			t.Fatalf("settings row width = %d, want at most 12: %q", width, line)
+		}
+	}
+	if lines := len(strings.Split(m.settings.View(), "\n")); lines > 6 {
+		t.Fatalf("settings view has %d lines, want at most 6", lines)
 	}
 }
 

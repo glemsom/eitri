@@ -152,12 +152,13 @@ func anthropicMessages(messages []Message) (system []anthropicContent, conv []an
 	return system, conv
 }
 
-// anthropicAssistantContent folds an assistant message's reasoning, reply text,
-// and tool calls into ordered Anthropic content blocks (thinking, text, tool_use).
+// anthropicAssistantContent folds an assistant message's replayable reply text
+// and tool calls into ordered Anthropic content blocks. Extended thinking is
+// replayable only when its opaque Anthropic signature was retained with it.
 func anthropicAssistantContent(m Message) []anthropicContent {
 	var content []anthropicContent
-	if m.ReasoningContent != "" {
-		content = append(content, anthropicContent{Type: "thinking", Thinking: m.ReasoningContent})
+	if m.ReasoningContent != "" && m.ThinkingSignature != "" {
+		content = append(content, anthropicContent{Type: "thinking", Thinking: m.ReasoningContent, Signature: m.ThinkingSignature})
 	}
 	if m.Content != "" {
 		content = append(content, anthropicContent{Type: "text", Text: m.Content})
@@ -237,10 +238,11 @@ func anthropicToolChoice(tc any) any {
 // anthropicStream adapts Anthropic Messages SSE events into the Stream seam,
 // accumulating text / thinking deltas and tool_use fragments across blocks.
 type anthropicStream struct {
-	ev         *sse
-	acc        *anthropicToolAccumulator
-	stopReason string
-	usage      *anthropicUsage
+	ev                *sse
+	acc               *anthropicToolAccumulator
+	stopReason        string
+	thinkingSignature string
+	usage             *anthropicUsage
 }
 
 func (as *anthropicStream) Next() (Chunk, error) {
@@ -326,6 +328,7 @@ type anthropicSSEDelta struct {
 	Type        string `json:"type"`
 	Text        string `json:"text"`
 	Thinking    string `json:"thinking"`
+	Signature   string `json:"signature"`
 	PartialJSON string `json:"partial_json"`
 	StopReason  string `json:"stop_reason"`
 }
@@ -350,8 +353,13 @@ func parseAnthropicEvent(data string, as *anthropicStream) (Chunk, error) {
 		return Chunk{}, nil
 
 	case "content_block_start":
-		if cb := ev.ContentBlock; cb != nil && cb.Type == "tool_use" {
-			as.acc.start(ev.Index, cb.ID, cb.Name)
+		if cb := ev.ContentBlock; cb != nil {
+			switch cb.Type {
+			case "thinking":
+				as.thinkingSignature = cb.Signature
+			case "tool_use":
+				as.acc.start(ev.Index, cb.ID, cb.Name)
+			}
 		}
 		return Chunk{}, nil
 
@@ -363,6 +371,8 @@ func parseAnthropicEvent(data string, as *anthropicStream) (Chunk, error) {
 			return Chunk{Content: d.Text}, nil
 		case d.Type == "thinking_delta":
 			return Chunk{ReasoningContent: d.Thinking}, nil
+		case d.Type == "signature_delta":
+			as.thinkingSignature = d.Signature
 		case d.Type == "input_json_delta":
 			as.acc.addArgs(ev.Index, d.PartialJSON)
 		}
@@ -392,7 +402,7 @@ func parseAnthropicEvent(data string, as *anthropicStream) (Chunk, error) {
 		if len(toolCalls) > 0 {
 			reason = "tool_calls"
 		}
-		chunk := Chunk{Done: true, ToolCalls: toolCalls, FinishReason: reason}
+		chunk := Chunk{Done: true, ToolCalls: toolCalls, FinishReason: reason, ThinkingSignature: as.thinkingSignature}
 		if as.usage != nil {
 			hit := as.usage.CacheReadInputTokens
 			miss := as.usage.InputTokens - as.usage.CacheReadInputTokens

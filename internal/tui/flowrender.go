@@ -511,11 +511,11 @@ func toolArgsHint(argsJSON string) string {
 		if s == "{}" {
 			return ""
 		}
-		return s
+		return sanitizeTerminalText(s)
 	}
 	for _, key := range []string{"path", "command", "url"} {
 		if s, ok := args[key].(string); ok && s != "" {
-			return s
+			return sanitizeTerminalText(s)
 		}
 	}
 	return ""
@@ -523,6 +523,9 @@ func toolArgsHint(argsJSON string) string {
 
 // renderToolEntry renders one tool-call entry as a compact, glanceable line — icon+tool args — with the result collapsed by default to a summary, never a raw dump into the scroll. focused marks the entry as the currently focused block for the per-block expand interaction.
 func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width int, pulse bool, focused bool) string {
+	te.name = sanitizeTerminalText(te.name)
+	te.args = sanitizeTerminalText(te.args)
+	te.result = sanitizeTerminalText(te.result)
 	var b strings.Builder
 	outcome := ""
 	if te.complete {

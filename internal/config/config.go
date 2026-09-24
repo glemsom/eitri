@@ -87,33 +87,12 @@ func Load(path string) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("read config %s: %w", path, err)
 	}
-	var cfg Config
+	// Start from current defaults so legacy files inherit fields added after
+	// they were written. Unmarshal overwrites only keys present in the file,
+	// preserving explicit false and zero choices.
+	cfg := Default()
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("parse config %s: %w", path, err)
-	}
-	if cfg.Theme == "" {
-		cfg.Theme = DefaultTheme
-	}
-	if cfg.ReasoningEffort == "" {
-		cfg.ReasoningEffort = DefaultReasoningEffort
-	}
-	// The collapse flags shipped defaulting to on; a config file written
-	// before they existed lacks the keys, so an absent key means the default.
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err == nil {
-		if _, ok := raw["cot_collapsed_by_default"]; !ok {
-			cfg.CoTCollapsedByDefault = true
-		}
-		if _, ok := raw["tool_results_collapsed_by_default"]; !ok {
-			cfg.ToolResultsCollapsedByDefault = true
-		}
-		if _, ok := raw["context_overflow_recovery"]; !ok {
-			cfg.ContextOverflowRecovery = true
-		}
-	} else {
-		cfg.CoTCollapsedByDefault = true
-		cfg.ToolResultsCollapsedByDefault = true
-		cfg.ContextOverflowRecovery = true
 	}
 	return cfg, nil
 }

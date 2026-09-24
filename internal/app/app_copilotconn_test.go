@@ -36,7 +36,7 @@ func TestCopilotConnectPersistsFreshToken(t *testing.T) {
 	cfgPath := filepath.Join(dir, "config.json")
 	var sawCode string
 
-	cfg, err := CopilotConnect(context.Background(), cfgPath, srv.Client(), func(cd provider.DeviceCode) { sawCode = cd.UserCode })
+	cfg, err := CopilotConnect(context.Background(), cfgPath, srv.Client(), nil, func(cd provider.DeviceCode) { sawCode = cd.UserCode })
 	if err != nil {
 		t.Fatalf("CopilotConnect() error = %v, want nil", err)
 	}
@@ -87,7 +87,7 @@ func TestCopilotConnectRetriesAuthorizationPending(t *testing.T) {
 
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "config.json")
-	cfg, err := CopilotConnect(context.Background(), cfgPath, srv.Client(), nil)
+	cfg, err := CopilotConnect(context.Background(), cfgPath, srv.Client(), nil, nil)
 	if err != nil {
 		t.Fatalf("CopilotConnect() error = %v, want nil after pending->success", err)
 	}
@@ -96,5 +96,35 @@ func TestCopilotConnectRetriesAuthorizationPending(t *testing.T) {
 	}
 	if cfg.Copilot.AccessToken != "tui-fresh-access" {
 		t.Fatalf("copilot access token = %q, want tui-fresh-access", cfg.Copilot.AccessToken)
+	}
+}
+
+func TestCopilotConnectWritesDeviceFlowHTTPTraceWhenConfigured(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/login/device/code" {
+			_, _ = w.Write([]byte(`{"device_code":"dev-x","user_code":"ZZ-AA","verification_uri":"https://github.com/login/device","expires_in":900}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"access_token":"tui-fresh-access","refresh_token":"tui-fresh-refresh"}`))
+	}))
+	defer srv.Close()
+
+	orig := newDeviceFlow
+	newDeviceFlow = func(h *http.Client, _ map[string]string) *provider.DeviceFlow {
+		return provider.NewDeviceFlow(h, map[string]string{"code": srv.URL + "/login/device/code", "token": srv.URL + "/login/oauth/access_token"})
+	}
+	defer func() { newDeviceFlow = orig }()
+
+	trace := &traceRecorder{}
+	_, err := CopilotConnect(context.Background(), filepath.Join(t.TempDir(), "config.json"), srv.Client(), trace, nil)
+	if err != nil {
+		t.Fatalf("CopilotConnect() error = %v, want nil", err)
+	}
+	if !strings.Contains(trace.request, "dev-x") {
+		t.Fatalf("request trace = %q, want device-flow requests", trace.request)
+	}
+	if !strings.Contains(trace.response, "tui-fresh-access") {
+		t.Fatalf("response trace = %q, want device-flow responses", trace.response)
 	}
 }

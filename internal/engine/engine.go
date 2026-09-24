@@ -275,9 +275,23 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		}
 		if opts.MaxTurns > 0 && turn >= opts.MaxTurns {
 			if opts.CanContinue == nil || !opts.CanContinue() {
+				if ctx.Err() != nil {
+					stopped = true
+					final.Answer = stopContent
+					final.Reasoning = stopReasoning
+					e.finishStopped(final, req.Prompt, runID, turn)
+					return final, ErrStopped
+				}
 				return final, ErrMaxTurns
 			}
 			turn = 0 // a granted continuation resets the turn budget
+			if ctx.Err() != nil {
+				stopped = true
+				final.Answer = stopContent
+				final.Reasoning = stopReasoning
+				e.finishStopped(final, req.Prompt, runID, turn)
+				return final, ErrStopped
+			}
 		}
 
 		s, err := e.provider.Stream(ctx, provider.Request{
@@ -293,6 +307,13 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 			ProviderID:            req.ProviderID,
 		})
 		if err != nil {
+			if e.stopped(ctx) {
+				stopped = true
+				final.Answer = stopContent
+				final.Reasoning = stopReasoning
+				e.finishStopped(final, req.Prompt, runID, turn)
+				return final, ErrStopped
+			}
 			if provider.IsContextOverflow(err) {
 				if opts.Compaction == nil {
 					err = errors.New("Provider rejected the request because the context is too large. Context overflow recovery is disabled; enable it or start a new session.")
@@ -370,9 +391,10 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		e.emit(TurnEvent{RunID: runID, Turn: turn, EndReason: done.FinishReason})
 
 		assistant := provider.Message{
-			Role:             provider.RoleAssistant,
-			Content:          content.String(),
-			ReasoningContent: reasoning.String(),
+			Role:              provider.RoleAssistant,
+			Content:           content.String(),
+			ReasoningContent:  reasoning.String(),
+			ThinkingSignature: done.ThinkingSignature,
 		}
 
 		if len(done.ToolCalls) == 0 {

@@ -14,6 +14,46 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
+func TestFromConfigTracesProviderTrafficWhenConfigured(t *testing.T) {
+	t.Parallel()
+	var requestBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read request: %v", err)
+		}
+		requestBody = string(body)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	trace := &traceRecorder{}
+	p, err := FromConfig(config.Config{Provider: string(ProviderCustomOpenAI), CustomOpenAI: config.OpenAIConfig{BaseURL: srv.URL, Key: "k"}}, ProviderEnv{TraceSink: trace})
+	if err != nil {
+		t.Fatalf("FromConfig() error = %v", err)
+	}
+	stream, err := p.Stream(context.Background(), Request{Model: "test", Messages: []Message{{Role: RoleUser, Content: "secret"}}})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	for {
+		_, err = stream.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatalf("Next() error = %v", err)
+		}
+	}
+	if !strings.Contains(requestBody, "secret") || !strings.Contains(string(trace.requests[0]), "secret") {
+		t.Fatalf("trace request = %q, want raw provider request", trace.requests)
+	}
+	if got := string(trace.responses[0]); got != "data: [DONE]\n\n" {
+		t.Fatalf("trace response = %q, want raw provider response", got)
+	}
+}
+
 func TestFromConfigRoutesOpenCodeGo(t *testing.T) {
 	t.Parallel()
 	p, err := FromConfig(config.Config{Provider: "opencode-go", Model: "deepseek-v4-flash"}, ProviderEnv{OpenCodeKey: "k"})
@@ -266,8 +306,8 @@ func TestFromConfigOpenCodeMissingCredentialFails(t *testing.T) {
 func TestFromConfigOpenCodeReadsKeyFromConfig(t *testing.T) {
 	t.Parallel()
 	cfg := config.Config{
-		Provider:     string(ProviderOpenCodeGo),
-		OpenCodeGo:   config.OpenCodeGoConfig{Key: "cfg-key"},
+		Provider:   string(ProviderOpenCodeGo),
+		OpenCodeGo: config.OpenCodeGoConfig{Key: "cfg-key"},
 	}
 	p, err := FromConfig(cfg, ProviderEnv{})
 	if err != nil {

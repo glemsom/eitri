@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"sync/atomic"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -63,7 +64,8 @@ type Event struct {
 // EventFeed bridges the engine's live event stream into the TUI's rendering
 // loop on one FIFO channel shared by stream deltas and tool observations.
 type EventFeed struct {
-	updates chan Event
+	updates     chan Event
+	outstanding atomic.Int32
 }
 
 // NewEventFeed builds a live merged feed ready to be handed to a Model via
@@ -90,6 +92,15 @@ func (f *EventFeed) UpdateChan() chan<- Event { return f.updates }
 // Updates exposes the same feed for reading (tests/observation).
 func (f *EventFeed) Updates() <-chan Event { return f.updates }
 
+// Outstanding reports events removed by an event waiter but not yet projected
+// by the model. A turn completion waits for these observations so it cannot
+// commit ahead of a Bubble Tea message that was already removed from the feed.
+func (f *EventFeed) Outstanding() bool { return f.outstanding.Load() != 0 }
+
+// projected acknowledges a waiter-delivered event after the model has handled
+// it. Direct and batch-drained events never become outstanding.
+func (f *EventFeed) projected() { f.outstanding.Add(-1) }
+
 // TryNext returns the next already-queued event without blocking, and false
 // when the feed is empty right now: the batch-drain path (TurnRuntime.DrainReady)
 // uses this to apply a burst of backlogged deltas in one Update call instead of
@@ -109,6 +120,7 @@ func (f *EventFeed) TryNext() (Event, bool) {
 // eventMsg carries one merged event from the engine seam into the UI loop.
 type eventMsg struct {
 	update Event
+	feed   *EventFeed
 }
 
 // eventWait returns a command that blocks until the next merged event arrives
@@ -119,6 +131,7 @@ func eventWait(f *EventFeed) tea.Cmd {
 		if !ok {
 			return nil
 		}
-		return eventMsg{update: u}
+		f.outstanding.Add(1)
+		return eventMsg{update: u, feed: f}
 	}
 }

@@ -161,3 +161,43 @@ func codeEndpoints(srv *httptest.Server) map[string]string {
 		"token": srv.URL + "/login/oauth/access_token",
 	}
 }
+
+func TestDeviceFlowRejectsNon2xxJSONResponses(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name string
+		call func(*DeviceFlow) error
+	}{
+		{
+			name: "Start",
+			call: func(d *DeviceFlow) error {
+				_, err := d.Start(context.Background())
+				return err
+			},
+		},
+		{
+			name: "Poll",
+			call: func(d *DeviceFlow) error {
+				_, err := d.Poll(context.Background(), "device-code")
+				return err
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte(`{"access_token":"must-not-be-accepted"}`))
+			}))
+			defer srv.Close()
+
+			err := tt.call(NewDeviceFlow(srv.Client(), codeEndpoints(srv)))
+			if err == nil {
+				t.Fatal("OAuth response error = nil, want non-2xx rejection")
+			}
+			var httpErr *HTTPError
+			if !errors.As(err, &httpErr) || httpErr.Code != http.StatusUnauthorized {
+				t.Fatalf("OAuth response error = %v, want HTTP 401 error", err)
+			}
+		})
+	}
+}

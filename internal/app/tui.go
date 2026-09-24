@@ -54,22 +54,41 @@ func runEngineTurn(e *engine.Engine, cfg func() config.Config, reg *tools.Regist
 	}
 }
 
-func runTUI(e *engine.Engine, logged *provider.LoggingProvider, cfg config.Config, reg *tools.Registry, sessionKey string, p provider.Provider, cfgPath string, dataDir string, skills *tools.Catalog, workspace string, sessionTemp string, needsSetup bool, yolo bool) error {
+func runTUI(e *engine.Engine, logged *provider.LoggingProvider, cfg config.Config, reg *tools.Registry, sessionKey string, p provider.Provider, cfgPath string, dataDir string, skills *tools.Catalog, workspace string, sessionTemp string, needsSetup bool, yolo bool, debug bool, traceSink provider.HTTPTraceSink, sess *session.Session, rebuildProviderOnNew bool) error {
 	// The Kitty face upload is lazily written to a scratch PNG on first render;
 	// own it for the program's lifetime so shutdown never leaks it in /tmp.
 	defer tui.CleanupKittyFace()
 	activeSessionKey := sessionKey
+	activeSession := sess
+	defer activeSession.Close()
+	currentCfg := cfg
 	bindSession := func(key string) error {
 		if key == activeSessionKey {
 			return nil
 		}
-		sess, err := session.NewWithGUID(dataDir, key, false)
+		next, err := session.NewWithGUID(dataDir, key, debug)
 		if err != nil {
 			return err
 		}
-		if err := bindSessionArtifacts(e, logged, reg, sess); err != nil {
+		nextTraceSink := next.TraceSink()
+		var nextProvider provider.Provider
+		if rebuildProviderOnNew {
+			nextProvider, err = buildProvider(currentCfg, cfgPath, nextTraceSink)
+			if err != nil {
+				_ = next.Close()
+				return err
+			}
+		}
+		if err := bindSessionArtifacts(e, logged, reg, next); err != nil {
+			_ = next.Close()
 			return err
 		}
+		if nextProvider != nil {
+			p.(*hotProvider).Set(nextProvider)
+		}
+		traceSink = nextTraceSink
+		_ = activeSession.Close()
+		activeSession = next
 		activeSessionKey = key
 		return nil
 	}
@@ -85,15 +104,14 @@ func runTUI(e *engine.Engine, logged *provider.LoggingProvider, cfg config.Confi
 	rail.SetBranch(tui.GitBranch(workspace))
 	events := tui.NewEventFeed()
 	feedEngineEvents(e, te, events)
-	currentCfg := cfg
 	m := tui.NewModelCfg(tui.Dependencies{
-		DiscoverModels: discoveredModels(cfgPath),
+		DiscoverModels: discoveredModels(cfgPath, func() provider.HTTPTraceSink { return traceSink }),
 		WorkspacePath:  workspace,
 		Config:         cfg,
 		Save:           func(c config.Config) error { return config.Save(c, cfgPath) },
 		SaveBack: func(c config.Config) {
 			currentCfg = c
-			if np, err := buildProvider(c, cfgPath); err == nil {
+			if np, err := buildProvider(c, cfgPath, traceSink); err == nil {
 				if hp, ok := p.(*hotProvider); ok {
 					hp.Set(np)
 				}
@@ -118,7 +136,7 @@ func runTUI(e *engine.Engine, logged *provider.LoggingProvider, cfg config.Confi
 			if currentCfg.Provider != string(provider.ProviderCopilot) {
 				return config.Config{}, fmt.Errorf("login is only available for provider %q", provider.ProviderCopilot)
 			}
-			return CopilotConnect(ctx, cfgPath, http.DefaultClient, func(cd provider.DeviceCode) {
+			return CopilotConnect(ctx, cfgPath, http.DefaultClient, traceSink, func(cd provider.DeviceCode) {
 				if onCode != nil {
 					onCode(tui.LoginCode{UserCode: cd.UserCode, VerificationURI: cd.VerificationURI})
 				}
@@ -231,9 +249,9 @@ func skillSurface(reg *tools.Registry, c *tools.Catalog) *tui.SkillsSurface {
 }
 
 // discoveredModels surfaces the draft config's provider model ids via the optional ModelLister capability, as an on-demand seam for the Settings panel.
-func discoveredModels(cfgPath string) func(ctx context.Context, cfg config.Config) ([]string, error) {
+func discoveredModels(cfgPath string, traceSink func() provider.HTTPTraceSink) func(ctx context.Context, cfg config.Config) ([]string, error) {
 	return func(ctx context.Context, cfg config.Config) ([]string, error) {
-		p, err := buildProvider(cfg, cfgPath)
+		p, err := buildProvider(cfg, cfgPath, traceSink())
 		if err != nil {
 			return nil, err
 		}

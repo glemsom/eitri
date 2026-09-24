@@ -52,10 +52,11 @@ func (rt *TurnRuntime) Begin(prompt, payload string) tea.Cmd {
 	return cmd
 }
 
-// OnTurnStart records the run ID for a turn's engine-reported start; only
-// events matching this run ID are accepted until the next Begin/OnTurnStart.
+// OnTurnStart records the first engine-reported run ID for a turn; only
+// events matching it are accepted until the next Begin. A later mismatched
+// start belongs to a stale run and cannot replace the active run ID.
 func (rt *TurnRuntime) OnTurnStart(runID int) {
-	if runID != 0 {
+	if runID != 0 && (rt.liveRunID == -1 || rt.liveRunID == runID) {
 		rt.liveRunID = runID
 	}
 }
@@ -96,6 +97,7 @@ func (rt *TurnRuntime) Handle(u Event) tea.Cmd {
 
 // Commit reconciles one turn completion into the transcript for the live Run.
 func (rt *TurnRuntime) Commit(msg turnDoneMsg) (stopped bool, err error) {
+	rt.drainReady()
 	return rt.session.Commit(rt.transcript, msg)
 }
 

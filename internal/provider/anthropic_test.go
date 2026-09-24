@@ -68,16 +68,13 @@ func TestAnthropicBuildShapesMessagesBody(t *testing.T) {
 		t.Errorf("assistant role = %v", assistant["role"])
 	}
 	content := assistant["content"].([]any)
-	if len(content) != 3 {
-		t.Fatalf("assistant content len = %d, want 3", len(content))
+	if len(content) != 2 {
+		t.Fatalf("assistant content len = %d, want 2", len(content))
 	}
-	if c := content[0].(map[string]any); c["type"] != "thinking" || c["thinking"] != "ponder" {
+	if c := content[0].(map[string]any); c["type"] != "text" || c["text"] != "hi" {
 		t.Errorf("assistant block[0] = %v", c)
 	}
-	if c := content[1].(map[string]any); c["type"] != "text" || c["text"] != "hi" {
-		t.Errorf("assistant block[1] = %v", c)
-	}
-	tu := content[2].(map[string]any)
+	tu := content[1].(map[string]any)
 	if tu["type"] != "tool_use" || tu["id"] != "toolu_1" || tu["name"] != "read" {
 		t.Errorf("assistant tool_use = %v", tu)
 	}
@@ -101,6 +98,60 @@ func TestAnthropicBuildShapesMessagesBody(t *testing.T) {
 	tool := tools[0].(map[string]any)
 	if tool["name"] != "read" || tool["input_schema"].(map[string]any)["type"] != "object" {
 		t.Errorf("tool = %v", tool)
+	}
+}
+
+func TestAnthropicBuildOmitsUnsignedThinkingFromCanonicalHistory(t *testing.T) {
+	t.Parallel()
+	data, err := NewAnthropicDialect().Build(Request{Messages: []Message{{
+		Role:             RoleAssistant,
+		ReasoningContent: "private reasoning emitted by an earlier stream",
+		Content:          "visible answer",
+	}}})
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatalf("unmarshal body: %v", err)
+	}
+	content := body["messages"].([]any)[0].(map[string]any)["content"].([]any)
+	if len(content) != 1 {
+		t.Fatalf("assistant content = %#v, want only replayable content", content)
+	}
+	block := content[0].(map[string]any)
+	if block["type"] != "text" || block["text"] != "visible answer" {
+		t.Errorf("assistant content = %#v, want text-only visible answer", content)
+	}
+}
+
+func TestAnthropicBuildReplaysSignedThinkingBeforeToolUse(t *testing.T) {
+	t.Parallel()
+	data, err := NewAnthropicDialect().Build(Request{Messages: []Message{{
+		Role:              RoleAssistant,
+		ReasoningContent:  "inspect the workspace",
+		ThinkingSignature: "opaque-anthropic-signature",
+		ToolCalls: []ToolCall{{
+			ID: "toolu_1", Type: "function", Name: "bash", Arguments: `{"command":"pwd"}`,
+		}},
+	}}})
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatalf("unmarshal body: %v", err)
+	}
+	content := body["messages"].([]any)[0].(map[string]any)["content"].([]any)
+	if len(content) != 2 {
+		t.Fatalf("assistant content = %#v, want signed thinking then tool_use", content)
+	}
+	thinking := content[0].(map[string]any)
+	if thinking["type"] != "thinking" || thinking["thinking"] != "inspect the workspace" || thinking["signature"] != "opaque-anthropic-signature" {
+		t.Errorf("thinking block = %#v, want preserved signed thinking", thinking)
+	}
+	if tool := content[1].(map[string]any); tool["type"] != "tool_use" || tool["id"] != "toolu_1" {
+		t.Errorf("tool block = %#v, want tool_use after thinking", tool)
 	}
 }
 
@@ -144,6 +195,9 @@ data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","
 event: content_block_delta
 data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" think"}}
 
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"sig_opaque"}}
+
 event: content_block_stop
 data: {"type":"content_block_stop","index":0}
 
@@ -184,6 +238,9 @@ data: {"type":"message_stop"}
 	}
 	if reasoning != "let me think" {
 		t.Errorf("reasoning = %q, want %q", reasoning, "let me think")
+	}
+	if done.ThinkingSignature != "sig_opaque" {
+		t.Errorf("thinking signature = %q, want opaque SSE signature", done.ThinkingSignature)
 	}
 	if done.FinishReason != "tool_calls" {
 		t.Errorf("finish_reason = %q, want tool_calls", done.FinishReason)

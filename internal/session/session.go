@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/glemsom/eitri/internal/provider"
 )
@@ -103,14 +104,20 @@ func (s *Session) Close() error {
 
 // fileTrace writes HTTP request/response bodies to sibling files in the session dir, one per direction.
 type fileTrace struct {
-	dir string
+	dir        string
+	requestMu  sync.Mutex
+	responseMu sync.Mutex
 }
 
 func (f *fileTrace) TraceRequest(body []byte) {
+	f.requestMu.Lock()
+	defer f.requestMu.Unlock()
 	appendFile(filepath.Join(f.dir, "trace-request.http"), body)
 }
 
 func (f *fileTrace) TraceResponse(body []byte) {
+	f.responseMu.Lock()
+	defer f.responseMu.Unlock()
 	appendFile(filepath.Join(f.dir, "trace-response.http"), body)
 }
 

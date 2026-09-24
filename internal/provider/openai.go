@@ -264,8 +264,13 @@ func (o *OpenAICompatible) streamAnthropic(ctx context.Context, req Request) (St
 	return closeBodyOnDone(anthropicDialect.Stream(streamBody), streamBody), nil
 }
 
-// SupportedGenerationControls delegates to the Chat-Completions dialect's declared capabilities.
+// SupportedGenerationControls reports only controls honored by every wire this
+// client can route to. A mixed OpenCode Go client may select the Anthropic wire
+// by model, which has no equivalent to Chat Completions' strict tool schema.
 func (o *OpenAICompatible) SupportedGenerationControls(context.Context) ([]GenerationControl, error) {
+	if o.anthropicURL != "" {
+		return anthropicDialect.Capabilities(), nil
+	}
 	return chatDialect.Capabilities(), nil
 }
 

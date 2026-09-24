@@ -153,6 +153,14 @@ var batchSignalContext = func() (context.Context, context.CancelFunc) {
 	return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 }
 
+// batchSecondSignal installs the hard-stop signal subscription before the
+// graceful cancellation path begins. Its stop function releases it.
+var batchSecondSignal = func() (<-chan os.Signal, func()) {
+	ch := make(chan os.Signal, 2)
+	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
+	return ch, func() { signal.Stop(ch) }
+}
+
 // Run performs the Eitri boot sequence and returns the first error it hits, so a caller can map it to an exit status.
 func Run(opts Options) error {
 	if opts.Version {
@@ -187,6 +195,7 @@ func Run(opts Options) error {
 	if err != nil {
 		return err
 	}
+	defer sess.Close()
 
 	lookPath := opts.LookPath
 	if lookPath == nil {
@@ -236,7 +245,7 @@ func Run(opts Options) error {
 	needsSetup := false
 	if p == nil {
 		var err error
-		p, err = buildProvider(cfg, cfgPath)
+		p, err = buildProvider(cfg, cfgPath, sess.TraceSink())
 		if err != nil {
 			if opts.Prompt == "" && errors.Is(err, provider.ErrMissingCredentials) {
 				needsSetup = true
@@ -258,7 +267,7 @@ func Run(opts Options) error {
 				return fmt.Errorf("configure context overflow recovery: %w", err)
 			}
 		}
-		return runTUI(e, logged, cfg, reg, key, liveProvider, cfgPath, dir, skills, workspace, tempHost, needsSetup, opts.Yolo)
+		return runTUI(e, logged, cfg, reg, key, liveProvider, cfgPath, dir, skills, workspace, tempHost, needsSetup, opts.Yolo, opts.Debug, sess.TraceSink(), sess, opts.Provider == nil)
 	}
 
 	prompt := opts.Prompt
@@ -274,13 +283,34 @@ func Run(opts Options) error {
 	// successful answer and from a genuine failure. A second signal hard-exits
 	// for a user who is not waiting on the graceful path.
 	ctx, stop := batchSignalContext()
-	defer stop()
+	secondSignal, stopSecondSignal := batchSecondSignal()
+	secondSignalDone := make(chan struct{})
+	secondSignalExited := make(chan struct{})
 	go func() {
-		<-ctx.Done() // the first signal is already being handled gracefully
-		ch := make(chan os.Signal, 1)
-		signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
-		<-ch // the next signal means graceful shutdown is not fast enough
-		os.Exit(1)
+		defer close(secondSignalExited)
+		select {
+		case <-ctx.Done(): // the first signal is already being handled gracefully
+		case <-secondSignalDone:
+			return
+		}
+		// Both subscriptions observe the first signal. Consume its notification
+		// before treating a later signal as the requested hard stop.
+		select {
+		case <-secondSignal:
+		case <-secondSignalDone:
+			return
+		}
+		select {
+		case <-secondSignal: // the next signal means graceful shutdown is not fast enough
+			os.Exit(1)
+		case <-secondSignalDone:
+		}
+	}()
+	defer func() {
+		close(secondSignalDone)
+		<-secondSignalExited
+		stopSecondSignal()
+		stop()
 	}()
 
 	res, err := runAgent(ctx, e, cfg, reg, key, prompt, skills, nil, nil)
@@ -463,11 +493,12 @@ const ProviderKeyEnv = "OPENCODE_API_KEY"
 const ProviderURLEnv = "EITRI_PROVIDER_URL"
 
 // buildProvider builds the provider the saved config selects via the shared factory (provider.FromConfig): it honors cfg.Provider across TUI and batch and wires the Copilot non-interactive refresh + token persistence into the config file so a renewed device-flow session is reused by later runs.
-func buildProvider(cfg config.Config, cfgPath string) (provider.Provider, error) {
+func buildProvider(cfg config.Config, cfgPath string, traceSink provider.HTTPTraceSink) (provider.Provider, error) {
 	return provider.FromConfig(cfg, provider.ProviderEnv{
 		OpenCodeKey:    os.Getenv(ProviderKeyEnv),
 		OpenCodeURL:    os.Getenv(ProviderURLEnv),
-		CopilotRefresh: copilotRefresh(http.DefaultClient),
+		TraceSink:      traceSink,
+		CopilotRefresh: copilotRefresh(http.DefaultClient, traceSink),
 		CopilotPersist: func(c config.CopilotConfig) error {
 			cfg.Copilot = c
 			return config.Save(cfg, cfgPath)

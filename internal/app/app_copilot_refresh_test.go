@@ -38,7 +38,7 @@ func TestCopilotRefreshRenewsTokens(t *testing.T) {
 	withCopilotTokenURL(t, srv.URL+"/login/oauth/access_token")
 
 	before := time.Now().Unix()
-	refresh := copilotRefresh(srv.Client())
+	refresh := copilotRefresh(srv.Client(), nil)
 	cfg, err := refresh(context.Background(), "old-refresh-token")
 	if err != nil {
 		t.Fatalf("refresh() error = %v, want nil", err)
@@ -82,7 +82,7 @@ func TestCopilotRefreshErrorResponses(t *testing.T) {
 		wantErrSubstring string
 		wantSyntaxErr    bool
 	}{
-		{"server error, no credential", http.StatusInternalServerError, `{}`, "no credential (HTTP 500)", false},
+		{"server error", http.StatusInternalServerError, `{}`, "HTTP 500", false},
 		{"malformed json body", http.StatusOK, `this is not json`, "", true},
 	}
 	for _, tt := range tests {
@@ -94,7 +94,7 @@ func TestCopilotRefreshErrorResponses(t *testing.T) {
 			defer srv.Close()
 			withCopilotTokenURL(t, srv.URL+"/login/oauth/access_token")
 
-			refresh := copilotRefresh(srv.Client())
+			refresh := copilotRefresh(srv.Client(), nil)
 			_, err := refresh(context.Background(), "old-refresh-token")
 			if err == nil {
 				t.Fatalf("%s: refresh() error = nil, want an error", tt.name)
@@ -116,7 +116,7 @@ func TestCopilotRefreshTransportErrorSurfaces(t *testing.T) {
 	boom := errors.New("connection refused")
 	client := &http.Client{Transport: failedTransport{err: boom}}
 
-	refresh := copilotRefresh(client)
+	refresh := copilotRefresh(client, nil)
 	_, err := refresh(context.Background(), "old-refresh-token")
 	if err == nil {
 		t.Fatal("refresh() error = nil, want the transport error")
@@ -130,4 +130,39 @@ type failedTransport struct{ err error }
 
 func (t failedTransport) RoundTrip(*http.Request) (*http.Response, error) {
 	return nil, t.err
+}
+
+func TestCopilotRefreshRejectsNon2xxCredentialResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"access_token":"must-not-be-accepted","refresh_token":"must-not-be-accepted"}`))
+	}))
+	defer srv.Close()
+	withCopilotTokenURL(t, srv.URL)
+
+	_, err := copilotRefresh(srv.Client(), nil)(context.Background(), "old-refresh-token")
+	if err == nil || !strings.Contains(err.Error(), "HTTP 401") {
+		t.Fatalf("refresh() error = %v, want HTTP 401 rejection", err)
+	}
+}
+
+func TestCopilotRefreshWritesHTTPTraceWhenConfigured(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"fresh-access","refresh_token":"fresh-refresh"}`))
+	}))
+	defer srv.Close()
+	withCopilotTokenURL(t, srv.URL)
+
+	trace := &traceRecorder{}
+	_, err := copilotRefresh(srv.Client(), trace)(context.Background(), "old-refresh")
+	if err != nil {
+		t.Fatalf("refresh() error = %v, want nil", err)
+	}
+	if !strings.Contains(trace.request, "old-refresh") {
+		t.Fatalf("request trace = %q, want refresh request", trace.request)
+	}
+	if !strings.Contains(trace.response, "fresh-access") {
+		t.Fatalf("response trace = %q, want refresh response", trace.response)
+	}
 }

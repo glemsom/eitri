@@ -2,11 +2,13 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/glemsom/eitri/internal/provider"
 )
@@ -207,4 +209,104 @@ func TestRunBatchWritesTranscript(t *testing.T) {
 	if !strings.Contains(string(messages), "Hello world") {
 		t.Fatalf("message-layer transcript %q missing the answer", messages)
 	}
+}
+
+// TestRunBatchSubscribesForSecondSignalBeforeGracefulCancellation guards the
+// batch lifecycle against losing a second interrupt during subscription handoff.
+func TestRunBatchSubscribesForSecondSignalBeforeGracefulCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	origContext := batchSignalContext
+	batchSignalContext = func() (context.Context, context.CancelFunc) { return ctx, cancel }
+	t.Cleanup(func() { batchSignalContext = origContext })
+
+	armed := make(chan struct{})
+	origSecond := batchSecondSignal
+	batchSecondSignal = func() (<-chan os.Signal, func()) {
+		close(armed)
+		return make(chan os.Signal), func() {}
+	}
+	t.Cleanup(func() { batchSecondSignal = origSecond })
+
+	result := make(chan error, 1)
+	go func() {
+		result <- Run(Options{
+			DataDir:  filepath.Join(t.TempDir(), ".eitri"),
+			LookPath: okLookPath,
+			Prompt:   "wait",
+			Provider: provider.NewScripted(func(ctx context.Context, _ provider.Request) (provider.Stream, error) {
+				<-ctx.Done()
+				return nil, ctx.Err()
+			}),
+		})
+	}()
+
+	select {
+	case <-armed:
+	case <-time.After(time.Second):
+		t.Fatal("second-signal subscription was not installed before cancellation")
+	}
+	cancel()
+	if err := <-result; !errors.Is(err, ErrBatchInterrupted) {
+		t.Fatalf("Run() error = %v, want ErrBatchInterrupted", err)
+	}
+}
+
+// TestRunBatchCompletionReleasesSecondSignalSubscription verifies normal completion
+// releases the pre-armed second-interrupt subscription.
+func TestRunBatchCompletionReleasesSecondSignalSubscription(t *testing.T) {
+	orig := batchSecondSignal
+	armed := 0
+	released := 0
+	batchSecondSignal = func() (<-chan os.Signal, func()) {
+		armed++
+		return make(chan os.Signal), func() { released++ }
+	}
+	t.Cleanup(func() { batchSecondSignal = orig })
+
+	err := Run(Options{
+		DataDir:  filepath.Join(t.TempDir(), ".eitri"),
+		LookPath: okLookPath,
+		Prompt:   "Say hello",
+		Provider: provider.NewFake("../provider/testdata/hello.sse"),
+	})
+	if err != nil {
+		t.Fatalf("Run(batch) error = %v, want nil", err)
+	}
+	if armed != 1 || released != 1 {
+		t.Fatalf("second-signal subscription armed/released = %d/%d, want 1/1", armed, released)
+	}
+}
+
+// TestRunBatchClosesSession verifies the batch Run releases its session files
+// before returning, so a completed run retains no open transcript or message log.
+func TestRunBatchClosesSession(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), ".eitri")
+	err := Run(Options{
+		DataDir:  dataDir,
+		LookPath: okLookPath,
+		Prompt:   "Say hello",
+		Provider: provider.NewFake("../provider/testdata/hello.sse"),
+	})
+	if err != nil {
+		t.Fatalf("Run(batch) error = %v, want nil", err)
+	}
+	if openSessionFile(t, dataDir) {
+		t.Fatal("batch Run retained an open session file")
+	}
+}
+
+func openSessionFile(t *testing.T, dataDir string) bool {
+	t.Helper()
+	entries, err := os.ReadDir("/proc/self/fd")
+	if err != nil {
+		t.Fatalf("read process file descriptors: %v", err)
+	}
+	for _, entry := range entries {
+		target, err := os.Readlink(filepath.Join("/proc/self/fd", entry.Name()))
+		if err == nil && strings.HasPrefix(target, dataDir+string(os.PathSeparator)) {
+			return true
+		}
+	}
+	return false
 }

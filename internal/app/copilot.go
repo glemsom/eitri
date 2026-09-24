@@ -18,7 +18,7 @@ import (
 var copilotTokenURL = "https://github.com/login/oauth/access_token"
 
 // copilotRefresh returns a provider.RefreshFunc that renews a Copilot credential from a refresh token via GitHub's OAuth token endpoint.
-func copilotRefresh(httpc *http.Client) func(ctx context.Context, refreshToken string) (config.CopilotConfig, error) {
+func copilotRefresh(httpc *http.Client, traceSink provider.HTTPTraceSink) func(ctx context.Context, refreshToken string) (config.CopilotConfig, error) {
 	return func(ctx context.Context, refreshToken string) (config.CopilotConfig, error) {
 		form := url.Values{}
 		form.Set("grant_type", "refresh_token")
@@ -32,15 +32,14 @@ func copilotRefresh(httpc *http.Client) func(ctx context.Context, refreshToken s
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set("Accept", "application/json")
 
-		client := httpc
-		if client == nil {
-			client = http.DefaultClient
-		}
-		resp, err := client.Do(req)
+		resp, err := tracedHTTPClient(httpc, traceSink).Do(req)
 		if err != nil {
 			return config.CopilotConfig{}, err
 		}
 		defer resp.Body.Close()
+		if resp.StatusCode/100 != 2 {
+			return config.CopilotConfig{}, fmt.Errorf("copilot token endpoint returned HTTP %d", resp.StatusCode)
+		}
 
 		var tok struct {
 			AccessToken  string `json:"access_token"`
@@ -67,8 +66,8 @@ func copilotRefresh(httpc *http.Client) func(ctx context.Context, refreshToken s
 // CopilotConnect runs the TUI-side GitHub device-flow handshake end to end: it starts the flow, presents the user code + verification URI to stdErr, polls to completion, and persists the fresh token set to config.
 var newDeviceFlow = provider.NewDeviceFlow
 
-func CopilotConnect(ctx context.Context, cfgPath string, httpc *http.Client, onCode func(provider.DeviceCode)) (config.Config, error) {
-	flow := newDeviceFlow(httpc, nil)
+func CopilotConnect(ctx context.Context, cfgPath string, httpc *http.Client, traceSink provider.HTTPTraceSink, onCode func(provider.DeviceCode)) (config.Config, error) {
+	flow := newDeviceFlow(tracedHTTPClient(httpc, traceSink), nil)
 	cd, err := flow.Start(ctx)
 	if err != nil {
 		return config.Config{}, err
@@ -108,4 +107,17 @@ func CopilotConnect(ctx context.Context, cfgPath string, httpc *http.Client, onC
 		return config.Config{}, err
 	}
 	return cfg, nil
+}
+
+// tracedHTTPClient returns httpc with raw HTTP body tracing when traceSink is enabled.
+func tracedHTTPClient(httpc *http.Client, traceSink provider.HTTPTraceSink) *http.Client {
+	if httpc == nil {
+		httpc = http.DefaultClient
+	}
+	if traceSink == nil {
+		return httpc
+	}
+	traced := *httpc
+	traced.Transport = provider.NewTraceTransport(httpc.Transport, traceSink)
+	return &traced
 }

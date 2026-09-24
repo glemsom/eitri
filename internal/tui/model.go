@@ -198,6 +198,10 @@ type Model struct {
 
 	runtime *TurnRuntime
 
+	// pendingDone is a completion held until feed events already removed by a
+	// waiter have been projected into the live turn.
+	pendingDone *turnDoneMsg
+
 	clipboard func(text string) error
 
 	// history is the Model-owned in-memory ring of submitted user prompts that
@@ -376,7 +380,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, telemetryWait(m.telemetry)
 
 	case eventMsg:
-		return m.applyEvent(msgi.update)
+		next, cmd := m.applyEvent(msgi.update)
+		m = next.(Model)
+		if msgi.feed != nil {
+			msgi.feed.projected()
+		}
+		if m.pendingDone != nil && !m.deps.Events.Outstanding() {
+			done := *m.pendingDone
+			m.pendingDone = nil
+			m.runtime.Commit(done)
+			m.syncComposerRail()
+			return m, tea.Batch(cmd, m.armIdleEmber())
+		}
+		return m, cmd
 
 	case tea.WindowSizeMsg:
 		m.tx.SetSize(msgi.Width, msgi.Height)
@@ -522,12 +538,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case tea.PasteMsg:
-		// A busy turn, modal overlay, or continuation prompt owns input instead
+		if m.settings != nil {
+			return m.updateSettings(msgi)
+		}
+		// A busy turn, help overlay, or continuation prompt owns input instead
 		// of the hidden composer, so discard bracketed paste just like key edits.
-		if m.tx.busy || m.settings != nil || m.help != nil || m.prompting {
+		if m.tx.busy || m.help != nil || m.prompting {
 			return m, nil
 		}
 		m.endRecall()
+		msgi.Content = sanitizeTerminalText(msgi.Content)
 		nm, cmd := m.composer.Update(msgi)
 		m.composer = nm
 		cmds = append(cmds, cmd)
@@ -547,6 +567,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case turnDoneMsg:
+		if m.runtime.HasEvents() && m.deps.Events.Outstanding() {
+			m.pendingDone = &msgi
+			return m, nil
+		}
 		m.runtime.Commit(msgi)
 		m.syncComposerRail()
 		return m, m.armIdleEmber()

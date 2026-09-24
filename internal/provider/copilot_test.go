@@ -193,6 +193,31 @@ func TestCopilotBatchRefreshesExpiredToken(t *testing.T) {
 	}
 }
 
+func TestCopilotRefreshRetainsOriginalRefreshTokenWhenResponseOmitsIt(t *testing.T) {
+	t.Parallel()
+	var persisted config.CopilotConfig
+	cp := NewCopilot(config.CopilotConfig{RefreshToken: "original-refresh"}, "http://example.invalid/chat/completions", nil,
+		func(_ context.Context, got string) (config.CopilotConfig, error) {
+			if got != "original-refresh" {
+				t.Fatalf("refresh token = %q, want original-refresh", got)
+			}
+			return config.CopilotConfig{AccessToken: "renewed-access", ExpiresAt: time.Now().Add(time.Hour).Unix()}, nil
+		},
+		func(got config.CopilotConfig) error { persisted = got; return nil },
+	)
+
+	token, err := cp.bearer(context.Background())
+	if err != nil {
+		t.Fatalf("bearer() error = %v", err)
+	}
+	if token != "renewed-access" {
+		t.Fatalf("bearer() = %q, want renewed-access", token)
+	}
+	if persisted.RefreshToken != "original-refresh" {
+		t.Fatalf("persisted refresh token = %q, want original-refresh", persisted.RefreshToken)
+	}
+}
+
 func TestCopilotBatchNoTokenErrorsReauth(t *testing.T) {
 	t.Parallel()
 	reqs := 0

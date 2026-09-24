@@ -414,6 +414,24 @@ func TestOpenAIDeclaresGenerationControlCapabilities(t *testing.T) {
 	}
 }
 
+func TestOpenAIAnthropicRoutingDeclaresOnlySharedGenerationControls(t *testing.T) {
+	t.Parallel()
+	cl := NewOpenCodeGo("k", "http://example.invalid/v1/chat/completions")
+	supp, err := cl.SupportedGenerationControls(context.Background())
+	if err != nil {
+		t.Fatalf("SupportedGenerationControls() error = %v, want nil", err)
+	}
+	want := []GenerationControl{GenerationControlGenerationBudget, GenerationControlThinkingSuppression}
+	if len(supp) != len(want) {
+		t.Fatalf("SupportedGenerationControls() = %v, want %v", supp, want)
+	}
+	for i := range want {
+		if supp[i] != want[i] {
+			t.Fatalf("SupportedGenerationControls() = %v, want %v", supp, want)
+		}
+	}
+}
+
 func TestOpenAIEmitsThinkingAndReasoningEffort(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

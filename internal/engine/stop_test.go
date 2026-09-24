@@ -88,6 +88,37 @@ func TestRunAgentCanceledBeforeStreamRefusesResubmit(t *testing.T) {
 	}
 }
 
+func TestRunAgentCanceledBeforeStreamConstructionIsStopped(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	tr := &mockTranscript{}
+	var events []Event
+	e := New(provider.NewScripted(func(streamCtx context.Context, _ provider.Request) (provider.Stream, error) {
+		cancel()
+		return nil, streamCtx.Err()
+	}), tr)
+	e.SetListener(func(event Event) { events = append(events, event) })
+
+	res, err := e.RunAgent(ctx, RunRequest{Model: "m", Prompt: "stopme"}, AgentOptions{})
+
+	if err != ErrStopped {
+		t.Fatalf("RunAgent error = %v, want ErrStopped", err)
+	}
+	if !res.Stopped {
+		t.Fatal("Stopped = false, want true")
+	}
+	if len(tr.lines) != 1 || !contains(tr.lines[0], "[stopped]") {
+		t.Fatalf("transcript writes = %v, want one stopped record", tr.lines)
+	}
+	if len(events) != 1 {
+		t.Fatalf("events = %v, want one stopped finalization event", events)
+	}
+	if event, ok := events[0].(TurnEvent); !ok || event.EndReason != "stopped" {
+		t.Errorf("event = %#v, want TurnEvent ending stopped", events[0])
+	}
+}
+
 func TestRunAgentCanceledDuringToolExecutionKillsToolLive(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())

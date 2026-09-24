@@ -177,10 +177,55 @@ func TestRunAgentPersistsReasoningOnToolTurns(t *testing.T) {
 	}
 }
 
+func TestRunAgentReplaysSignedThinkingBeforeToolContinuation(t *testing.T) {
+	t.Parallel()
+	var continuation provider.Request
+	requests := 0
+	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
+		requests++
+		if requests == 2 {
+			continuation = req
+			return provider.StreamFunc(provider.Chunk{Content: "done", FinishReason: "stop", Done: true}), nil
+		}
+		return provider.StreamFunc(
+			provider.Chunk{ReasoningContent: "inspect"},
+			provider.Chunk{ThinkingSignature: "opaque-signature", ToolCalls: []provider.ToolCall{{
+				ID: "toolu_1", Type: "function", Name: "bash", Arguments: `{"command":"pwd"}`,
+			}}, FinishReason: "tool_calls", Done: true},
+		), nil
+	}), &mockTranscript{})
+
+	_, err := e.RunAgent(context.Background(), RunRequest{Model: "claude", Prompt: "go"}, AgentOptions{
+		Tools: []provider.Tool{{
+			Type: "function", Function: provider.ToolFunction{Name: "bash", Parameters: map[string]any{
+				"type": "object", "properties": map[string]any{"command": map[string]any{"type": "string"}}, "required": []any{"command"},
+			}},
+		}},
+		Executor: &mockToolRecorder{},
+	})
+	if err != nil {
+		t.Fatalf("RunAgent() error = %v", err)
+	}
+	if requests != 2 {
+		t.Fatalf("provider requests = %d, want 2", requests)
+	}
+	for _, m := range continuation.Messages {
+		if m.Role == provider.RoleAssistant && len(m.ToolCalls) == 1 {
+			if m.ReasoningContent != "inspect" || m.ThinkingSignature != "opaque-signature" {
+				t.Fatalf("tool-turn assistant = %+v, want signed thinking retained", m)
+			}
+			return
+		}
+	}
+	t.Fatal("continuation omitted the tool-turn assistant message")
+}
+
 func TestRunAgentWritesStoppedTranscriptBetweenToolCalls(t *testing.T) {
 	t.Parallel()
 	tr := &mockTranscript{}
+	requests := 0
 	e := New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
+		requests++
 		return provider.StreamFunc(
 			provider.Chunk{Content: "partial", FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{
 				{ID: "call_1", Type: "function", Name: "bash", Arguments: `{"command":"ls"}`},
@@ -195,10 +240,13 @@ func TestRunAgentWritesStoppedTranscriptBetweenToolCalls(t *testing.T) {
 			"type": "object", "properties": map[string]any{"command": map[string]any{"type": "string"}}, "required": []any{"command"},
 		}}}},
 		Executor: ExecutorFunc(func(_ context.Context, _, _ string) (ToolExecResult, error) {
-			cancel() // cancel after tool exec so the between-turns boundary sees stopped
 			return ToolExecResult{Text: "ok"}, nil
 		}),
-		MaxTurns: 5,
+		MaxTurns: 1,
+		CanContinue: func() bool {
+			cancel() // cancellation can arrive while the completed tool turn is preparing to continue
+			return true
+		},
 	})
 
 	if !errors.Is(err, ErrStopped) {
@@ -212,6 +260,9 @@ func TestRunAgentWritesStoppedTranscriptBetweenToolCalls(t *testing.T) {
 	}
 	if !contains(tr.lines[0], "partial") {
 		t.Errorf("transcript = %q, want partial content", tr.lines[0])
+	}
+	if requests != 1 {
+		t.Fatalf("provider requests = %d, want 1; cancellation after a tool must prevent the next turn", requests)
 	}
 }
 

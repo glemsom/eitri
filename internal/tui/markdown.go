@@ -34,6 +34,7 @@ var markdownRendererCache sync.Map
 
 // RenderMarkdown converts Markdown source to ANSI-styled terminal output at the given width, using the given theme.
 func RenderMarkdown(md string, width int, theme string) (string, error) {
+	md = sanitizeTerminalText(md)
 	if width <= 0 {
 		width = 100
 	}
@@ -304,7 +305,7 @@ func reattachBubbleBackground(s string, th Theme) string {
 
 // RenderPromptMarkdown returns a user-entered prompt for the prompt card while preserving the literal text the user submitted. Assistant text renders as Markdown, but the prompt echo is a record of input; rendering it through glamour would turn Markdown-looking input such as "- [ ] task" into a list item and drop the leading dash.
 func RenderPromptMarkdown(prompt string, width int, theme string) (string, error) {
-	return lipgloss.NewStyle().Width(width).Render(prompt), nil
+	return lipgloss.NewStyle().Width(width).Render(sanitizeTerminalText(prompt)), nil
 }
 
 // renderUserPromptCard renders a user prompt as the carded bubble. glamour's per-token SGR resets would clear the card's Background, so reattachBubbleBackground re-asserts the bubble tint after every reset. glamour also pre-pads rows and lipgloss's Width() alignment then emits a couple of unstyled trailing cells at the right edge, so every glamour row is padded to the content width (w-4) with the bubble background and Width() is not used — lipgloss's 2-col padding closes the box with no extra width-fill left to trip on (benchmark §4.1).

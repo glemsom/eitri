@@ -47,6 +47,8 @@ const presizeTerminalWidth = constants.PresizeTerminalWidth
 
 // line appends one indented rail entry, truncating an over-long row with a trailing ellipsis so the rail stays single-line.
 func (r *Rail) line(b *strings.Builder, key, val string, railWidth int) {
+	key = sanitizeTerminalText(key)
+	val = sanitizeTerminalText(val)
 	s := railIndent + key
 	if val != "" {
 		s += " " + val
@@ -108,6 +110,8 @@ const railIndent = "   "
 
 // lineAligned appends one indented rail entry with the key padded to keyWidth columns, aligning values at a consistent column for readability at wider widths.
 func (r *Rail) lineAligned(b *strings.Builder, key, val string, keyWidth, railWidth int) {
+	key = sanitizeTerminalText(key)
+	val = sanitizeTerminalText(val)
 	if keyWidth == 0 {
 		r.line(b, key, val, railWidth)
 		return

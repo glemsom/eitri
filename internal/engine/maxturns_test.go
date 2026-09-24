@@ -87,3 +87,44 @@ func TestRunAgentMaxTurnsRefusesAfterGrantedBudgets(t *testing.T) {
 		t.Fatalf("RunAgent() error = %v, want ErrMaxTurns once user declines continuation", err)
 	}
 }
+
+func TestRunAgentCancellationWhileContinuationRejectsStops(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	tr := &mockTranscript{}
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	e := New(toolForever(100), tr)
+
+	done := make(chan struct{})
+	var res Result
+	var err error
+	go func() {
+		defer close(done)
+		res, err = e.RunAgent(ctx, RunRequest{Model: "m", Prompt: "loop"}, AgentOptions{
+			Tools:    []provider.Tool{{Type: "function", Function: provider.ToolFunction{Name: "bash"}}},
+			Executor: &mockToolRecorder{},
+			MaxTurns: 1,
+			CanContinue: func() bool {
+				close(entered)
+				<-release
+				return false
+			},
+		})
+	}()
+	<-entered
+	cancel()
+	close(release)
+	<-done
+
+	if !errors.Is(err, ErrStopped) {
+		t.Fatalf("RunAgent() error = %v, want ErrStopped", err)
+	}
+	if !res.Stopped {
+		t.Fatal("Result.Stopped = false, want true")
+	}
+	if len(tr.lines) != 1 || !contains(tr.lines[0], "[stopped]") {
+		t.Fatalf("transcript writes = %v, want one stopped record", tr.lines)
+	}
+}

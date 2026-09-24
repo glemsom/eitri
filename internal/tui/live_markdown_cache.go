@@ -173,12 +173,12 @@ func renderPaneBodyFresh(text string, width int, theme string, paneID liveMarkdo
 		// run's `\x1b[0m` would reset the pane's italic mid-line and leave the
 		// rest of the thought at full brightness — the bug the cheap emphasis path
 		// kept tripping.
-		return pane.Render(renderLiveThoughtBody(text, width))
+		return pane.Render(renderLiveThoughtBody(sanitizeTerminalText(text), width))
 	case mdPaneStreaming:
 		// The live answer keeps the cheap ANSI emphasis: it must still read as the
 		// answer while streaming, and only snaps to the full glamour render once
 		// committed (scratch issue 02).
-		return pane.Render(restorePaneForeground(renderCheapLiveBody(text, width), pane))
+		return pane.Render(restorePaneForeground(renderCheapLiveBody(sanitizeTerminalText(text), width), pane))
 	}
 	// Committed, error, and stopped panes keep the full glamour render so committed
 	// output does not diverge.

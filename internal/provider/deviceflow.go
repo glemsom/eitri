@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"maps"
 	"net/http"
 	"net/url"
@@ -128,6 +129,10 @@ func (d *DeviceFlow) doJSON(req *http.Request, out any) error {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		return &HTTPError{Code: resp.StatusCode, Body: string(body)}
+	}
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 

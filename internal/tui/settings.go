@@ -261,7 +261,7 @@ func (f *settingsForm) beginTextInput() tea.Cmd {
 	f.textInputField = f.field
 	f.textInput = textinput.New()
 	f.textInput.Focus()
-	f.textInput.SetValue(f.currentTextValue())
+	f.textInput.SetValue(sanitizeTerminalText(f.currentTextValue()))
 	if f.field == fieldOpenCodeKey || f.field == fieldCustomOpenAIKey {
 		f.textInput.EchoMode = textinput.EchoPassword
 		f.textInput.EchoCharacter = '•'
@@ -421,7 +421,7 @@ func writePathList(b *strings.Builder, f settingsForm, th Theme) {
 		if f.field == fieldPaths && i == f.selectedPath && !f.pickerActive {
 			marker = "› "
 		}
-		fmt.Fprintf(b, "     %s%s\n", marker, p)
+		fmt.Fprintf(b, "     %s%s\n", marker, sanitizeTerminalText(p))
 	}
 	if f.pickerActive {
 		b.WriteString(th.statusStyle.Render("     Folder picker — Enter opens, Left/Backspace/u parent, Ctrl+O selects, Esc cancels"))
@@ -687,6 +687,14 @@ func (o *SettingsOverlay) Handle(msg tea.Msg) settingsResult {
 			res.saved, res.status, res.applied = &cfg, status, applied
 		}
 		return res
+	case tea.PasteMsg:
+		if o.textInputActive {
+			msgi.Content = sanitizeTerminalText(msgi.Content)
+			var cmd tea.Cmd
+			o.textInput, cmd = o.textInput.Update(msgi)
+			return settingsResult{outcome: outcomeContinue, handled: true, cmd: cmd}
+		}
+		return settingsResult{outcome: outcomeContinue}
 	case discoverDoneMsg:
 		if o.cfg.Provider != msgi.provider {
 			return settingsResult{outcome: outcomeContinue}
@@ -707,7 +715,7 @@ func (o *SettingsOverlay) Handle(msg tea.Msg) settingsResult {
 func (o *SettingsOverlay) View() string {
 	view := settingsView(o.settingsForm)
 	if o.status != "" {
-		view += "\n" + o.theme.statusStyle.Render("   "+o.status)
+		view += "\n" + o.theme.statusStyle.Render("   "+sanitizeTerminalText(o.status))
 	}
 	if o.width > 0 {
 		view = ansi.Wrap(view, o.width, "")
@@ -872,7 +880,7 @@ func settingsView(f settingsForm) string {
 		if f.field == r.field {
 			marker = "▸"
 		}
-		fmt.Fprintf(&b, "%-2s%s %-20s %s\n", "", marker, r.name, r.val)
+		fmt.Fprintf(&b, "%-2s%s %-20s %s\n", "", marker, r.name, sanitizeTerminalText(r.val))
 		if r.field == fieldPaths {
 			writePathList(&b, f, th)
 		}
@@ -897,7 +905,7 @@ func settingsView(f settingsForm) string {
 		b.WriteString(th.statusStyle.Render("   discovering models…"))
 		b.WriteString("\n")
 	case discoverError:
-		b.WriteString(th.statusStyle.Render("   model discovery failed: " + f.discoverErr))
+		b.WriteString(th.statusStyle.Render("   model discovery failed: " + sanitizeTerminalText(f.discoverErr)))
 		b.WriteString("\n")
 	default:
 	}
@@ -930,6 +938,7 @@ func settingsView(f settingsForm) string {
 // startSettings opens the Settings surface and returns the command to run.
 func (m Model) startSettings() (tea.Model, tea.Cmd) {
 	o, cmd := openSettingsOverlay(m.deps.Config, m.deps.Models, m.tx.theme, m.deps.ThinkingSuppression, m.deps)
+	o.width = m.tx.width
 	o.height = m.tx.height
 	m.settings = o
 	return m, cmd

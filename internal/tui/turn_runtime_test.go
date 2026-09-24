@@ -219,6 +219,33 @@ func TestTurnRuntimeCommitSuccessStreaming(t *testing.T) {
 	}
 }
 
+// Commit drains queued observations before completion. It projects only the
+// active run: a delayed prior-run TurnStart must not replace the active run ID
+// and make the active event look stale.
+func TestTurnRuntimeCommitDrainsQueuedActiveEventsWithoutPriorRunEvents(t *testing.T) {
+	feed := NewEventFeed()
+	rt := NewTurnRuntime(NewTurnSession(stubTurn("answer", nil)), feed)
+	tx := newTestTx()
+	rt.SetTranscript(&tx)
+	rt.Begin("q", "")
+	rt.OnTurnStart(2)
+
+	feed.UpdateChan() <- Event{RunID: 1, TurnStart: true}
+	feed.UpdateChan() <- Event{RunID: 1, Tool: &ToolUpdate{Result: &ToolResult{Name: "stale", Result: "old"}}}
+	feed.UpdateChan() <- Event{RunID: 2, Tool: &ToolUpdate{Result: &ToolResult{Name: "active", Result: "new"}}}
+
+	if _, err := rt.Commit(turnDoneMsg{answer: "answer"}); err != nil {
+		t.Fatal(err)
+	}
+	got := tx.messages[len(tx.messages)-1].events
+	if len(got) != 1 || got[0].Result == nil || got[0].Result.Name != "active" {
+		t.Fatalf("committed events = %+v, want only the queued active-run result", got)
+	}
+	if _, ok := feed.TryNext(); ok {
+		t.Fatal("Commit left queued events behind")
+	}
+}
+
 // Commit synthesizes the event log for a non-streamed success, so the
 // committed message still carries an arrival-ordered record.
 func TestTurnRuntimeCommitSuccessNoStreaming(t *testing.T) {

@@ -1,9 +1,12 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/glemsom/eitri/internal/config"
 )
 
 func TestModel_pasteDroppedWhenComposerDoesNotOwnInput(t *testing.T) {
@@ -54,6 +57,48 @@ func TestModel_pasteDroppedWhenComposerDoesNotOwnInput(t *testing.T) {
 				t.Errorf("paste changed composer while another surface owned input: %q -> %q", before, got)
 			}
 		})
+	}
+}
+
+func TestModel_SettingsRoutesPasteToActiveTextInput(t *testing.T) {
+	t.Parallel()
+	cfg := cfgFixture()
+	cfg.Provider = "custom-openai"
+	var saved config.Config
+	m := resize(t, NewModelCfg(Dependencies{
+		Config: cfg,
+		Save:   func(c config.Config) error { saved = c; return nil },
+	}))
+	m = openSettingsForTest(t, m)
+	m = focusField(t, m, fieldCustomOpenAIBaseURL)
+	m = keypress(t, m, "enter")
+	m = mustUpdate(t, m, tea.PasteMsg{Content: "https://paste.example/v1"})
+	m = keypress(t, m, "enter")
+	m = focusField(t, m, fieldSave)
+	m = keypress(t, m, "enter")
+
+	if got := saved.CustomOpenAI.BaseURL; got != "https://paste.example/v1" {
+		t.Fatalf("saved pasted base URL = %q", got)
+	}
+}
+
+func TestModel_visibleComposerPasteSanitizesTerminalControls(t *testing.T) {
+	t.Parallel()
+	m := resize(t, NewModelCfg(Dependencies{Config: cfgFixture()}))
+	paste := "first line\nsecond\tcolumn\x1b]52;c;clipboard\a\x1b[2J"
+
+	m = asModel(t, mustUpdate(t, m, tea.PasteMsg{Content: paste}))
+	out := view(m)
+	plain := ansiStrip(out)
+	for _, want := range []string{"first line", "second", "column"} {
+		if !strings.Contains(plain, want) {
+			t.Errorf("View() omitted ordinary pasted text %q: %q", want, plain)
+		}
+	}
+	for _, unsafe := range []string{"clipboard", "]52;", "[2J"} {
+		if strings.Contains(plain, unsafe) {
+			t.Errorf("View() retained pasted terminal-control content %q in %q", unsafe, plain)
+		}
 	}
 }
 

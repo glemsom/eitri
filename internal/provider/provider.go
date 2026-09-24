@@ -74,7 +74,9 @@ type Message struct {
 	ToolCallID       string
 	ToolCalls        []ToolCall
 	ReasoningContent string
-	CacheControl     *CacheControl
+	// ThinkingSignature is an opaque Anthropic value required to replay this reasoning before a tool continuation.
+	ThinkingSignature string
+	CacheControl      *CacheControl
 }
 
 // MarshalJSON serializes a Message with role-aware reasoning handling: the `reasoning_content` field is emitted unconditionally on assistant messages (even when empty — DeepSeek's hard 400-avoidance) and omitted on every other role. `content` is emitted for tool messages even when empty, because the Chat Completions API requires it there.
@@ -183,10 +185,12 @@ func NormalizeReasoningEffort(effort string) string {
 type Chunk struct {
 	Content          string
 	ReasoningContent string
-	Done             bool
-	Usage            *Usage
-	FinishReason     string
-	ToolCalls        []ToolCall
+	// ThinkingSignature accompanies Anthropic extended thinking and is carried on the completed chunk.
+	ThinkingSignature string
+	Done              bool
+	Usage             *Usage
+	FinishReason      string
+	ToolCalls         []ToolCall
 }
 
 // Usage is per-turn token telemetry, parsed at the provider seam.

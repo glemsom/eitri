@@ -413,3 +413,22 @@ func TestSaveFailurePreservesExistingConfig(t *testing.T) {
 		t.Fatalf("failed Save() changed config:\n got %s\nwant %s", after, before)
 	}
 }
+
+func TestLoadLegacyConfigDefaultsOmittedFieldsWithoutOverridingExplicitZeroValues(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"thinking_enabled":false,"max_turns":0,"context_overflow_recovery":false,"cot_collapsed_by_default":false,"tool_results_collapsed_by_default":false}`), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if got.Provider != DefaultProvider || got.Model != DefaultModel {
+		t.Fatalf("Load() provider/model = %q/%q, want defaults %q/%q", got.Provider, got.Model, DefaultProvider, DefaultModel)
+	}
+	if got.ThinkingEnabled || got.MaxTurns != 0 || got.ContextOverflowRecovery || got.CoTCollapsedByDefault || got.ToolResultsCollapsedByDefault {
+		t.Fatalf("Load() explicit zero values = %+v, want all preserved", got)
+	}
+}
