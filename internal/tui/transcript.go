@@ -41,10 +41,10 @@ type Transcript struct {
 	// focus owns the block-focus cursor (the per-block Tab/Enter interaction):
 	// whether the cursor is active and which collapsible block it points at.
 	// A bare Transcript's zero value means no block is focused.
-	focus collapseFocus
-	// live is the TurnSession owning the in-progress turn, wired at Begin so
-	// render paths can read the live event log; a bare Transcript has none.
-	live              *TurnSession
+	focus             collapseFocus
+	flow              TurnFlow
+	curStream         int
+	thinkingEnabled   bool
 	layout            transcriptLayout
 	telemetry         *telemetry.Telemetry
 	weaver            selectionWeaver
@@ -157,14 +157,158 @@ const (
 	viewCollapseAll
 )
 
-// Reset clears all turn material — committed messages, the tool log, the live
-// session, and the focused block — so the transcript returns to the empty
+// TranscriptOutcome is one typed live Run observation projected onto the transcript.
+type TranscriptOutcome struct {
+	Start    *TranscriptStart
+	Stream   *StreamUpdate
+	Tool     *ToolUpdate
+	Complete *TranscriptCompletion
+}
+
+type TranscriptStart struct {
+	Prompt          string
+	ThinkingEnabled bool
+}
+type TranscriptCompletion struct {
+	Answer    string
+	Reasoning string
+	Err       error
+	Stopped   bool
+}
+
+// Project applies one typed Run observation to the transcript.
+func (t *Transcript) Project(outcome TranscriptOutcome) (bool, error) {
+	if start := outcome.Start; start != nil {
+		t.flow.Reset()
+		t.curStream = -1
+		t.thinkingEnabled = start.ThinkingEnabled
+		t.appendUserMsg(start.Prompt)
+		t.busy = true
+		t.busyStartedAt = time.Now()
+		t.log.SetAnchor(len(t.messages) - 1)
+		return false, nil
+	}
+	if complete := outcome.Complete; complete != nil {
+		return t.projectCompletion(*complete)
+	}
+	if stream := outcome.Stream; stream != nil && t.busy {
+		t.projectStream(*stream)
+	}
+	if tool := outcome.Tool; tool != nil {
+		t.projectTool(*tool)
+	}
+	return false, nil
+}
+
+func (t *Transcript) projectCompletion(c TranscriptCompletion) (bool, error) {
+	t.endTurn()
+	wasStreaming := t.curStream >= 0 && t.curStream < len(t.messages)
+	content, reasoning := t.flow.Finalize(c.Answer, c.Reasoning, c.Stopped)
+	if c.Stopped {
+		if wasStreaming {
+			t.settleStreaming(content, reasoning, true)
+		} else if content != "" || reasoning != "" {
+			t.messages = append(t.messages, message{role: "eitri", content: content, reasoning: reasoning, stopped: true, thinkingRequested: t.thinkingEnabled})
+			t.commitNewAssistant()
+		}
+		return true, nil
+	}
+	if c.Err != nil {
+		if wasStreaming {
+			t.messages[t.curStream].streaming = false
+			t.commitTimeline(t.curStream)
+		}
+		t.curStream = -1
+		t.messages = append(t.messages, message{role: "eitri", content: failurePrefix() + c.Err.Error(), thinkingRequested: t.thinkingEnabled})
+		t.commitNewAssistant()
+		return false, c.Err
+	}
+	if wasStreaming {
+		i := t.settleStreaming(content, reasoning, false)
+		if !t.expandAll {
+			t.clearReasoningExpandForce(i)
+		}
+	} else {
+		t.messages = append(t.messages, message{role: "eitri", content: content, reasoning: reasoning, thinkingRequested: t.thinkingEnabled})
+		t.commitNewAssistant()
+	}
+	return false, nil
+}
+
+func (t *Transcript) settleStreaming(content, reasoning string, stopped bool) int {
+	i := t.curStream
+	t.messages[i].content = content
+	t.messages[i].reasoning = reasoning
+	t.messages[i].streaming = false
+	t.messages[i].stopped = stopped
+	t.clearReasoningFragments(i)
+	t.commitTimeline(i)
+	t.curStream = -1
+	return i
+}
+
+func (t *Transcript) commitTimeline(i int) {
+	if i >= 0 && i < len(t.messages) {
+		t.messages[i].events = t.LiveTimeline()
+	}
+	t.flow.Reset()
+}
+func (t *Transcript) commitNewAssistant() {
+	i := len(t.messages) - 1
+	events := t.LiveTimeline()
+	if len(events) == 0 {
+		events = synthAnswerLog(t.messages[i].content)
+	}
+	t.messages[i].events = events
+	t.flow.Reset()
+}
+func (t *Transcript) projectStream(stream StreamUpdate) {
+	if !t.flow.Observe(stream.Kind, stream.Delta) {
+		return
+	}
+	if t.curStream >= 0 && t.curStream < len(t.messages) && t.messages[t.curStream].streaming {
+		t.syncStreamSnapshots(t.curStream, t.flow.Content(), t.flow.Reasoning())
+		return
+	}
+	t.messages = append(t.messages, message{role: "eitri", streaming: true, thinkingRequested: t.thinkingEnabled})
+	t.curStream = len(t.messages) - 1
+	t.syncStreamSnapshots(t.curStream, t.flow.Content(), t.flow.Reasoning())
+	t.busyPulse = 3
+}
+func (t *Transcript) projectTool(u ToolUpdate) {
+	t.applyTool(u)
+	if kind, ok := toolEventKind(u); ok {
+		ev := TimelineEvent{Kind: kind, Start: u.Start, Result: u.Result}
+		if t.busy {
+			t.flow.ObserveTool(ev)
+		} else {
+			t.attachToolToLastAssistant(ev)
+		}
+	}
+	if u.Start != nil && !t.thinkingEnabled && motionEnabled() {
+		t.busyPulse = 3
+	}
+}
+func (t *Transcript) attachToolToLastAssistant(ev TimelineEvent) {
+	for i := len(t.messages) - 1; i >= 0; i-- {
+		if t.messages[i].role == "eitri" {
+			ev.Seq = len(t.messages[i].events)
+			t.messages[i].events = append(t.messages[i].events, ev)
+			t.invalidateCommittedUnit(i)
+			return
+		}
+	}
+}
+
+// Reset clears all turn material — committed messages, the tool log, and the
+// focused block — so the transcript returns to the empty
 // state. Configuration, the prompt-history ring, and the settings overlay live
 // outside the transcript and are untouched.
 func (t *Transcript) Reset() {
 	t.messages = nil
 	t.log = toolLog{}
-	t.live = nil
+	t.flow.Reset()
+	t.curStream = -1
 	t.focus = collapseFocus{}
 	t.layout = transcriptLayout{dirty: true}
 	t.busyPrefix = ""
@@ -177,15 +321,8 @@ func (t *Transcript) Reset() {
 	t.busy = false
 }
 
-// LiveTimeline returns the in-progress turn's event log through the wired
-// session — read-only; the session alone writes it. A transcript with no wired
-// session reads empty.
-func (t Transcript) LiveTimeline() []TimelineEvent {
-	if t.live == nil {
-		return nil
-	}
-	return t.live.LiveTimeline()
-}
+// LiveTimeline returns the in-progress turn's arrival-ordered event log.
+func (t Transcript) LiveTimeline() []TimelineEvent { return t.flow.Events() }
 
 // viewMode returns the effective expansion mode from the mutually exclusive
 // expand-all / collapse-all flags.
@@ -674,7 +811,7 @@ func (t *Transcript) unitsText(lo, hi int) string {
 
 // renderBusyPrefix renders and caches the committed prefix. It is served as a
 // concatenation of the per-settled-message memo units (see ensureCommittedUnits)
-// so a new turn's Begin concatenates the prior committed units without
+// so a new turn's start projection concatenates the prior committed units without
 // re-rendering them; committed tool entries use doneAt so the live clock does
 // not invalidate the cache.
 func (t *Transcript) renderBusyPrefix() {

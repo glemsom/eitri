@@ -256,9 +256,7 @@ func TestPostTurnToolObservationScopedToCommittedUnits(t *testing.T) {
 	tx := scopedMemoTx()
 	tx.ensureLayout()
 	base := tx.committedUnitRenders
-
-	f := NewFold(NewTurnSession(nil))
-	f.Tool(tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"true"}`}})
+	projectTool(tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"true"}`}})
 	tx.ensureLayout()
 
 	if got := tx.committedUnitRenders - base; got != 1 {

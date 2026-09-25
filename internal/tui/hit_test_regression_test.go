@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// a full turn driven through the TurnSession verbs and Fold, followed by
+// a full turn projected onto the transcript, followed by
 // non-turn message appends and a resize, must leave the row->tool-entry /
 // row->message hit-test correct — rebuilt lazily by ensureLayout alone, with
 // no test or caller code writing the dirty flag anywhere in the path.
@@ -38,35 +38,33 @@ func TestMutationsKeepHitTestCorrectWithoutCallerInvalidation(t *testing.T) {
 		return -1
 	}
 
-	// Phase 1: Begin appends the user prompt.
-	cmd := s.Begin(&tx, "run the thing", "")
-	plain := rebuild("after Begin")
+	// Phase 1: start projection appends the user prompt.
+	cmd := beginTurn(s, &tx, "run the thing", "")
+	plain := rebuild("after start projection")
 	userLine := findLine(plain, "run the thing")
 	if idx, ok := tx.messageAtLine(userLine); !ok || idx != 0 {
-		t.Errorf("after Begin: messageAtLine(%d) = (%d,%v), want message 0", userLine, idx, ok)
+		t.Errorf("after start projection: messageAtLine(%d) = (%d,%v), want message 0", userLine, idx, ok)
 	}
 
-	// Phase 2: Fold streams the answer and lands a tool observation while
-	// the turn runs.
-	f := NewFold(s)
-	f.Stream(&tx, AnswerStream, "final answer")
-	f.Tool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
-	f.Tool(&tx, ToolUpdate{Result: &ToolResult{Name: "bash", Result: "a.go\nb.go", Lines: 2}})
-	plain = rebuild("after Fold")
+	// Phase 2: projections stream the answer and record tool observations.
+	projectStream(&tx, AnswerStream, "final answer")
+	projectTool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
+	projectTool(&tx, ToolUpdate{Result: &ToolResult{Name: "bash", Result: "a.go\nb.go", Lines: 2}})
+	plain = rebuild("after projections")
 	answerLine := findLine(plain, "final")
 	if idx, ok := tx.messageAtLine(answerLine); !ok || idx != 1 {
-		t.Errorf("after Fold: messageAtLine(%d) = (%d,%v), want streaming message 1", answerLine, idx, ok)
+		t.Errorf("after projections: messageAtLine(%d) = (%d,%v), want streaming message 1", answerLine, idx, ok)
 	}
 
-	// Phase 3: Commit finalizes the streamed assistant message.
+	// Phase 3: completion projection finalizes the streamed assistant message.
 	msg := cmd().(turnDoneMsg)
-	if _, err := s.Commit(&tx, msg); err != nil {
-		t.Fatalf("Commit returned err %v", err)
+	if _, err := projectDone(&tx, msg); err != nil {
+		t.Fatalf("completion projection returned err %v", err)
 	}
-	plain = rebuild("after Commit")
+	plain = rebuild("after completion projection")
 	answerLine = findLine(plain, "final answer")
 	if idx, ok := tx.messageAtLine(answerLine); !ok || idx != 1 {
-		t.Errorf("after Commit: messageAtLine(%d) = (%d,%v), want assistant message 1", answerLine, idx, ok)
+		t.Errorf("after completion projection: messageAtLine(%d) = (%d,%v), want assistant message 1", answerLine, idx, ok)
 	}
 	// Phase 4: mutate outside any turn — two appends plus a resize — and
 	// check the whole mapping survives with indexes shifted by the appends.

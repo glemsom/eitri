@@ -3,11 +3,10 @@ package tui
 import tea "charm.land/bubbletea/v2"
 
 // TurnRuntime is the sole TUI-facing owner of one live Run: lifecycle, event
-// acceptance, event projection, and completion. TurnSession and Fold remain
-// implementation collaborators behind this seam.
+// acceptance, event projection, and completion. TurnSession only executes
+// the cancellable provider call behind this seam.
 type TurnRuntime struct {
 	session    *TurnSession
-	fold       *Fold
 	events     *EventFeed
 	transcript *Transcript
 	liveRunID  int
@@ -17,12 +16,12 @@ type TurnRuntime struct {
 // merged event feed (nil when no engine event stream is wired). The transcript
 // projection helper is internal to the runtime seam.
 func NewTurnRuntime(session *TurnSession, events *EventFeed) *TurnRuntime {
-	return &TurnRuntime{session: session, fold: NewFold(session), events: events, liveRunID: -1}
+	return &TurnRuntime{session: session, events: events, liveRunID: -1}
 }
 
 // SetTranscript binds the live transcript context owned by this runtime.
 // Callers configure the runtime once; lifecycle and projection operations then
-// use the bound transcript rather than coordinating TurnSession or Fold.
+// use the bound transcript rather than coordinating projection state.
 func (rt *TurnRuntime) SetTranscript(tx *Transcript) { rt.transcript = tx }
 
 // HasEvents reports whether a live merged event feed is wired.
@@ -32,7 +31,6 @@ func (rt *TurnRuntime) HasEvents() bool { return rt.events != nil }
 // and its event feed.
 func (rt *TurnRuntime) SetSession(session *TurnSession) {
 	rt.session = session
-	rt.fold = NewFold(session)
 	rt.liveRunID = -1
 }
 
@@ -45,7 +43,8 @@ func (rt *TurnRuntime) Begin(prompt, payload string) tea.Cmd {
 	if rt.events != nil {
 		rt.events.Drain()
 	}
-	cmd := rt.session.Begin(tx, prompt, payload)
+	tx.Project(TranscriptOutcome{Start: &TranscriptStart{Prompt: prompt, ThinkingEnabled: rt.session.ThinkingEnabled()}})
+	cmd := rt.session.Dispatch(prompt, payload)
 	if rt.events != nil {
 		return tea.Batch(cmd, spinnerTick())
 	}
@@ -98,7 +97,8 @@ func (rt *TurnRuntime) Handle(u Event) tea.Cmd {
 // Commit reconciles one turn completion into the transcript for the live Run.
 func (rt *TurnRuntime) Commit(msg turnDoneMsg) (stopped bool, err error) {
 	rt.drainReady()
-	return rt.session.Commit(rt.transcript, msg)
+	rt.session.End()
+	return rt.transcript.Project(TranscriptOutcome{Complete: &TranscriptCompletion{Answer: msg.answer, Reasoning: msg.reasoning, Err: msg.err, Stopped: msg.stopped}})
 }
 
 // Stop cancels the in-flight Run.
@@ -120,7 +120,7 @@ func (rt *TurnRuntime) ThinkingEnabled() bool { return rt.session.ThinkingEnable
 
 // LiveTimeline exposes the in-progress turn's arrival-ordered event log for
 // read-only rendering.
-func (rt *TurnRuntime) LiveTimeline() []TimelineEvent { return rt.session.LiveTimeline() }
+func (rt *TurnRuntime) LiveTimeline() []TimelineEvent { return rt.transcript.LiveTimeline() }
 
 // DrainReady applies every additional live event already queued on the feed
 // (non-blocking), so a fast-arriving burst of small deltas (a real reasoning
@@ -151,25 +151,17 @@ func (rt *TurnRuntime) drainReady() {
 	}
 }
 
-// Observe projects one live event onto the transcript through the Fold:
+// project projects one live event onto the transcript.
+//
 // stream deltas grow the streaming assistant message, and tool observations
 // land in the tool log and transcript event log. Stream deltas arriving
 // while no turn runs are dropped, matching the pre-timeline stream
 // behavior. Tool starts arm the busy pulse when thinking is off and motion
 // is enabled, so a thinking-off turn still shows visible progress. Observe
 // never returns a command today; the return type matches the turn runtime's
-// external shape so callers do not need to change if projection later needs
+// runtime shape so callers do not need to change if projection later needs
 // to trigger one.
 func (rt *TurnRuntime) project(u Event) tea.Cmd {
-	tx := rt.transcript
-	if u.Stream != nil && tx.busy {
-		rt.fold.Stream(tx, u.Stream.Kind, u.Stream.Delta)
-	}
-	if u.Tool != nil {
-		rt.fold.Tool(tx, *u.Tool)
-		if u.Tool.Start != nil && !rt.session.ThinkingEnabled() && motionEnabled() {
-			tx.busyPulse = 3
-		}
-	}
+	rt.transcript.Project(TranscriptOutcome{Stream: u.Stream, Tool: u.Tool})
 	return nil
 }

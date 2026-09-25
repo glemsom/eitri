@@ -1,4 +1,6 @@
 bin/
 .pi-glla
 .auto/
-.scratch
+.scratch/*
+!.scratch/issues/
+!.scratch/issues/*.md

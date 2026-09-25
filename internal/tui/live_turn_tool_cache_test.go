@@ -21,19 +21,16 @@ func BenchmarkLiveTurnTimeline(b *testing.B) {
 	for _, events := range []int{200, 8000} {
 		b.Run("events_"+strconv.Itoa(events), func(b *testing.B) {
 			th := themeFor(config.DefaultTheme)
-			f := &Fold{}
-			f.session = NewTurnSession(nil)
 			tx := &Transcript{theme: th, configTheme: config.DefaultTheme, width: 120, height: 40,
 				histFollow: true, histViewport: newHistoryViewport(), busy: true}
-			f.session.flow.Reset()
+			tx.flow.Reset()
 			tx.messages = append(tx.messages, message{role: "you", content: "research task", events: synthAnswerLog("research task")})
-			f.session.curStream = -1
-			tx.live = f.session
+			tx.curStream = -1
 			for i := 0; i < events; i++ {
 				tx.log.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"run cmd"}`}})
 				tx.log.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "ok", Lines: 1}})
-				f.session.flow.ObserveTool(TimelineEvent{Kind: EventToolStart, Seq: i * 2, Start: &ToolStart{Name: "bash", Args: `{"command":"cmd"}`}})
-				f.session.flow.ObserveTool(TimelineEvent{Kind: EventToolResult, Seq: i*2 + 1, Result: &ToolResult{Name: "bash", Result: "ok"}})
+				tx.flow.ObserveTool(TimelineEvent{Kind: EventToolStart, Seq: i * 2, Start: &ToolStart{Name: "bash", Args: `{"command":"cmd"}`}})
+				tx.flow.ObserveTool(TimelineEvent{Kind: EventToolResult, Seq: i*2 + 1, Result: &ToolResult{Name: "bash", Result: "ok"}})
 			}
 			tx.renderPaneContent()
 			tx.busyPrefixDirty = false

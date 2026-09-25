@@ -10,6 +10,7 @@ import (
 // busyCacheTranscript builds a busy transcript with a committed history followed
 // by a running live turn: committed turns plus one in-progress streaming turn.
 func busyCacheTranscript(delta string) (*Transcript, *TurnSession) {
+	s := NewTurnSession(nil)
 	th := themeFor(config.DefaultTheme)
 	tx := &Transcript{
 		theme:           th,
@@ -42,11 +43,9 @@ func busyCacheTranscript(delta string) (*Transcript, *TurnSession) {
 	)
 	tx.log = log
 
-	s := NewTurnSession(nil)
 	if delta != "" {
-		s.flow.Observe(ReasoningStream, delta)
+		tx.flow.Observe(ReasoningStream, delta)
 	}
-	tx.live = s
 	return tx, s
 }
 
@@ -61,7 +60,7 @@ func TestBusyRender_concatenatedMatchesFullRender(t *testing.T) {
 		// Grow the live turn by one reasoning delta, as a stream would.
 		reasoning := tx.messages[4].reasoning + string(rune('a'+i))
 		tx.syncStreamSnapshots(4, "", reasoning)
-		s.flow.Observe(ReasoningStream, string(rune('a'+i)))
+		tx.flow.Observe(ReasoningStream, string(rune('a'+i)))
 
 		got := tx.renderPaneContent()
 		var full strings.Builder

@@ -30,10 +30,9 @@ func memoTestTx() *Transcript {
 func commitTurn(t testing.TB, tx *Transcript, prompt, answer string) {
 	t.Helper()
 	s := NewTurnSession(stubTurn(answer, nil))
-	cmd := s.Begin(tx, prompt, "")
-	f := NewFold(s)
-	f.Stream(tx, AnswerStream, answer)
-	s.Commit(tx, cmd().(turnDoneMsg))
+	cmd := beginTurn(s, tx, prompt, "")
+	projectStream(tx, AnswerStream, answer)
+	projectDone(tx, cmd().(turnDoneMsg))
 	tx.ensureLayout()
 }
 
@@ -210,8 +209,8 @@ func TestIncrementalMatchesFullRenderAfterCommits(t *testing.T) {
 
 	// an error turn committed through the real TurnSession path
 	es := NewTurnSession(stubTurn("", &errBoom{}))
-	cmd := es.Begin(tx, "boom", "")
-	es.Commit(tx, cmd().(turnDoneMsg))
+	cmd := beginTurn(es, tx, "boom", "")
+	projectDone(tx, cmd().(turnDoneMsg))
 	tx.ensureLayout()
 	assertLayoutMatchesFreshFullRender(t, tx)
 }

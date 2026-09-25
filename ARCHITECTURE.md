@@ -61,7 +61,7 @@ Stores GUID-named, append-only session directories under the data directory. Mes
 
 ### `internal/tui`
 
-Bubble Tea terminal UI. It owns the composer, rendered transcript, right rail, settings, login, help, slash commands, and turn lifecycle. `TurnRuntime` is the sole caller-facing seam for a live Run; `TurnSession` and `Fold` are internal collaborators. The engine is the only provider caller. Run IDs reject stale events from prior runs.
+Bubble Tea terminal UI. It owns the composer, rendered transcript, right rail, settings, login, help, slash commands, and turn lifecycle. `TurnRuntime` is the sole caller-facing seam for a live Run: it dispatches and cancels the Run, drains the FIFO event feed, preserves event order, and rejects stale Run IDs. `Transcript` is the sole owner of transcript projection state; it receives typed start, stream, tool, and completion outcomes. `TurnSession` supplies cancellable execution only. The engine is the only provider caller.
 
 ### Small packages
 

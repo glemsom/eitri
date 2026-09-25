@@ -74,9 +74,7 @@ func benchStreamingLiveReason(reasonKB int) *Transcript {
 	tx.messages = append(tx.messages, message{role: "you", content: "live prompt"})
 	tx.messages = append(tx.messages, message{role: "eitri", streaming: true, thinkingRequested: true,
 		reasoning: reason, content: "", expansion: ExpansionState{}})
-	s := NewTurnSession(nil)
-	s.flow.Observe(ReasoningStream, reason)
-	tx.live = s
+	tx.flow.Observe(ReasoningStream, reason)
 	tx.busy = true
 	return tx
 }
@@ -121,20 +119,18 @@ func BenchmarkBusyRender_LiveTailGrows(b *testing.B) {
 			tx.messages = append(tx.messages, message{role: "you", content: "live prompt"})
 			tx.messages = append(tx.messages, message{role: "eitri", streaming: true, thinkingRequested: true,
 				reasoning: "", content: "", expansion: ExpansionState{}})
-			s := NewTurnSession(nil)
-			tx.live = s
 			tx.busy = true
 			// Pre-fill to the target size one delta at a time, mirroring a real
 			// stream where each Observe adds one arrival-ordered event.
 			for len(tx.messages[1].reasoning) < total {
-				tx.live.flow.Observe(ReasoningStream, delta)
+				tx.flow.Observe(ReasoningStream, delta)
 				tx.messages[1].reasoning += delta
 				tx.syncStreamSnapshots(1, "", tx.messages[1].reasoning)
 			}
 			_ = tx.renderPaneContent() // warm the markdown cache
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				tx.live.flow.Observe(ReasoningStream, delta)
+				tx.flow.Observe(ReasoningStream, delta)
 				tx.messages[1].reasoning += delta
 				tx.syncStreamSnapshots(1, "", tx.messages[1].reasoning)
 				_ = tx.renderPaneContent()
@@ -204,7 +200,5 @@ func benchBusyLive(tx *Transcript, cotLen int) {
 		reasoning:         strings.Repeat("chain of thought reasoning tokens and analysis  ", 4*(cotLen/50))[:cotLen],
 		expansion:         ExpansionState{},
 	})
-	s := NewTurnSession(nil)
-	s.flow.Observe(ReasoningStream, strings.Repeat("chain of thought reasoning tokens and analysis  ", 4*(cotLen/50))[:cotLen])
-	tx.live = s
+	tx.flow.Observe(ReasoningStream, strings.Repeat("chain of thought reasoning tokens and analysis  ", 4*(cotLen/50))[:cotLen])
 }

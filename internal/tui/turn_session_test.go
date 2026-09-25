@@ -8,8 +8,8 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// A fresh session owns no live turn until Begin arms it; Stop before Begin is a no-op.
-func TestTurnSessionStopBeforeBeginNoop(t *testing.T) {
+// A fresh session owns no live execution until Dispatch arms it; Stop before Dispatch is a no-op.
+func TestTurnSessionStopBeforeDispatchNoop(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	s.Stop() // must not panic
 	if s.ctx != nil {
@@ -17,16 +17,16 @@ func TestTurnSessionStopBeforeBeginNoop(t *testing.T) {
 	}
 }
 
-// Begin installs a fresh cancelable context and Begin's command cancels it when the turn completes.
-func TestTurnSessionBeginArmsCancelableContext(t *testing.T) {
+// Dispatch installs a fresh cancelable context and its command cancels it when the turn completes.
+func TestTurnSessionDispatchArmsCancelableContext(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	tx := newTestTx()
-	cmd := s.Begin(&tx, "hello", "")
+	cmd := beginTurn(s, &tx, "hello", "")
 	if s.ctx == nil || s.ctx == context.Background() {
-		t.Fatalf("Begin should arm a cancelable context")
+		t.Fatalf("Dispatch should arm a cancelable context")
 	}
 	if cmd == nil {
-		t.Fatal("Begin should return the dispatch command")
+		t.Fatal("Dispatch should return the execution command")
 	}
 	msg := cmd()
 	tdm := msg.(turnDoneMsg)
@@ -44,7 +44,7 @@ func TestTurnSessionBeginArmsCancelableContext(t *testing.T) {
 func TestTurnSessionStopCancelsArmedTurn(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	tx := newTestTx()
-	s.Begin(&tx, "hello", "")
+	beginTurn(s, &tx, "hello", "")
 	ctx := s.Context()
 	s.Stop()
 	select {
@@ -58,7 +58,7 @@ func TestTurnSessionStopCancelsArmedTurn(t *testing.T) {
 func TestTurnSessionEndDisarms(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	tx := newTestTx()
-	s.Begin(&tx, "hello", "")
+	beginTurn(s, &tx, "hello", "")
 	ctx := s.Context()
 	s.End()
 	s.Stop()
@@ -81,12 +81,12 @@ func TestTurnSessionThinkingFlag(t *testing.T) {
 	}
 }
 
-// Prompt submission appends the user message to the transcript.
-func TestTurnSessionBeginAppendsUserMessage(t *testing.T) {
+// Start projection appends the user message to the transcript.
+func TestTranscriptProjectStartAppendsUserMessage(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	tx := newTestTx()
 
-	s.Begin(&tx, "hello", "")
+	beginTurn(s, &tx, "hello", "")
 
 	if len(tx.messages) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(tx.messages))
@@ -99,43 +99,43 @@ func TestTurnSessionBeginAppendsUserMessage(t *testing.T) {
 	}
 }
 
-// Prompt submission marks the transcript busy and lays it out dirty.
-func TestTurnSessionBeginSetsBusyAndDirty(t *testing.T) {
+// Start projection marks the transcript busy and lays it out dirty.
+func TestTranscriptProjectStartSetsBusyAndDirty(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	tx := newTestTx()
 
-	s.Begin(&tx, "hello", "")
+	beginTurn(s, &tx, "hello", "")
 
 	if !tx.busy {
-		t.Error("Begin did not set busy")
+		t.Error("start projection did not set busy")
 	}
 	if !tx.layout.dirty {
-		t.Error("Begin did not mark layout dirty")
+		t.Error("start projection did not mark layout dirty")
 	}
 }
 
-// Prompt submission resets the live-turn state: stream cursor, per-turn timeline, and arrival counter.
-func TestTurnSessionBeginResetsLiveTurnState(t *testing.T) {
+// Start projection resets the live-turn state: stream cursor, per-turn timeline, and arrival counter.
+func TestTranscriptProjectStartResetsLiveTurnState(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	tx := newTestTx()
-	s.flow.ObserveTool(TimelineEvent{Kind: EventAnswer, Delta: "stale"})
+	tx.flow.ObserveTool(TimelineEvent{Kind: EventAnswer, Delta: "stale"})
 
-	s.Begin(&tx, "hello", "")
+	beginTurn(s, &tx, "hello", "")
 
-	if s.curStream != -1 {
-		t.Errorf("stream cursor = %d, want -1", s.curStream)
+	if tx.curStream != -1 {
+		t.Errorf("stream cursor = %d, want -1", tx.curStream)
 	}
-	if s.LiveTimeline() != nil {
-		t.Error("Begin did not reset the per-turn timeline")
+	if tx.LiveTimeline() != nil {
+		t.Error("start projection did not reset the per-turn timeline")
 	}
 }
 
-// Prompt submission anchors the tool log to the newly appended user message.
-func TestTurnSessionBeginSetsAnchor(t *testing.T) {
+// Start projection anchors the tool log to the newly appended user message.
+func TestTranscriptProjectStartSetsAnchor(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	tx := newTestTx()
 
-	s.Begin(&tx, "hello", "")
+	beginTurn(s, &tx, "hello", "")
 
 	if tx.log.curAnchor != len(tx.messages)-1 {
 		t.Errorf("tool log anchor = %d, want %d", tx.log.curAnchor, len(tx.messages)-1)
@@ -148,7 +148,7 @@ func TestTurnSessionStoppedTurnKeepsPartialOutput(t *testing.T) {
 		return TurnResult{Answer: "partial"}, context.Canceled
 	})
 	tx := newTestTx()
-	cmd := s.Begin(&tx, "hi", "")
+	cmd := beginTurn(s, &tx, "hi", "")
 
 	s.Stop()
 	msg := cmd()
@@ -165,7 +165,7 @@ func TestTurnSessionStoppedTurnKeepsPartialOutput(t *testing.T) {
 func TestTurnSessionFailedTurnCarriesError(t *testing.T) {
 	s := NewTurnSession(stubTurn("", errors.New("boom")))
 	tx := newTestTx()
-	cmd := s.Begin(&tx, "hi", "")
+	cmd := beginTurn(s, &tx, "hi", "")
 
 	msg := cmd()
 	tdm := msg.(turnDoneMsg)

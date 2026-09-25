@@ -9,12 +9,12 @@ func TestRunCommit_successStreaming(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))
 	tx := newTestTx()
-	s.Begin(&tx, "q", "")
+	beginTurn(s, &tx, "q", "")
 
 	tx.messages = append(tx.messages, message{role: "eitri", content: "partial", streaming: true})
-	s.curStream = 0
+	tx.curStream = 0
 
-	stopped, err := s.Commit(&tx, turnDoneMsg{answer: "final answer", reasoning: "reasoned"})
+	stopped, err := projectDone(&tx, turnDoneMsg{answer: "final answer", reasoning: "reasoned"})
 	if stopped || err != nil {
 		t.Fatalf("stopped=%v err=%v, want false/nil", stopped, err)
 	}
@@ -22,7 +22,7 @@ func TestRunCommit_successStreaming(t *testing.T) {
 	if msg.content != "final answer" || msg.reasoning != "reasoned" {
 		t.Errorf("content=%q reasoning=%q", msg.content, msg.reasoning)
 	}
-	if msg.streaming || s.curStream != -1 || tx.busy {
+	if msg.streaming || tx.curStream != -1 || tx.busy {
 		t.Error("streaming flag, cursor, and busy should clear")
 	}
 }
@@ -31,9 +31,9 @@ func TestRunCommit_successNoStreaming(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))
 	tx := newTestTx()
-	s.Begin(&tx, "q", "")
+	beginTurn(s, &tx, "q", "")
 
-	stopped, err := s.Commit(&tx, turnDoneMsg{answer: "the answer"})
+	stopped, err := projectDone(&tx, turnDoneMsg{answer: "the answer"})
 	if stopped || err != nil {
 		t.Fatalf("stopped=%v err=%v, want false/nil", stopped, err)
 	}
@@ -46,12 +46,12 @@ func TestRunCommit_stoppedStreaming(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))
 	tx := newTestTx()
-	s.Begin(&tx, "q", "")
+	beginTurn(s, &tx, "q", "")
 
 	tx.messages = append(tx.messages, message{role: "eitri", content: "partial", streaming: true})
-	s.curStream = 0
+	tx.curStream = 0
 
-	stopped, err := s.Commit(&tx, turnDoneMsg{stopped: true, answer: "final-partial", reasoning: "thought"})
+	stopped, err := projectDone(&tx, turnDoneMsg{stopped: true, answer: "final-partial", reasoning: "thought"})
 	if !stopped || err != nil {
 		t.Fatalf("stopped=%v err=%v", stopped, err)
 	}
@@ -65,9 +65,9 @@ func TestRunCommit_stoppedNoStreaming(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))
 	tx := newTestTx()
-	s.Begin(&tx, "q", "")
+	beginTurn(s, &tx, "q", "")
 
-	stopped, err := s.Commit(&tx, turnDoneMsg{stopped: true, answer: "partial"})
+	stopped, err := projectDone(&tx, turnDoneMsg{stopped: true, answer: "partial"})
 	if !stopped || err != nil {
 		t.Fatalf("stopped=%v err=%v", stopped, err)
 	}
@@ -79,13 +79,12 @@ func TestRunCommit_stoppedNoStreaming(t *testing.T) {
 func TestRunCommit_stoppedStreamingFallsBackToLivePartialWhenFinalEmpty(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))
-	f := NewFold(s)
 	tx := newTestTx()
-	s.Begin(&tx, "q", "")
+	beginTurn(s, &tx, "q", "")
 
-	f.Stream(&tx, AnswerStream, "partial")
+	projectStream(&tx, AnswerStream, "partial")
 
-	stopped, err := s.Commit(&tx, turnDoneMsg{stopped: true})
+	stopped, err := projectDone(&tx, turnDoneMsg{stopped: true})
 	if !stopped || err != nil {
 		t.Fatalf("stopped=%v err=%v", stopped, err)
 	}
@@ -99,35 +98,34 @@ func TestRunCommit_errorAppendsFailureMessage(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))
 	tx := newTestTx()
-	s.Begin(&tx, "q", "")
+	beginTurn(s, &tx, "q", "")
 
-	stopped, err := s.Commit(&tx, turnDoneMsg{err: errors.New("provider failed")})
+	stopped, err := projectDone(&tx, turnDoneMsg{err: errors.New("provider failed")})
 	if stopped || err == nil {
 		t.Fatalf("stopped=%v err=%v", stopped, err)
 	}
 	if len(tx.messages) != 2 || tx.messages[1].role != "eitri" {
 		t.Fatalf("messages = %+v", tx.messages)
 	}
-	if s.curStream != -1 {
-		t.Errorf("curStream = %d, want -1", s.curStream)
+	if tx.curStream != -1 {
+		t.Errorf("curStream = %d, want -1", tx.curStream)
 	}
 }
 
 func TestRunCommit_fullCycleThroughVerbsAlone(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("final", nil))
-	f := NewFold(s)
 	tx := newTestTx()
 
-	cmd := s.Begin(&tx, "go", "")
+	cmd := beginTurn(s, &tx, "go", "")
 	if cmd == nil || !tx.busy {
-		t.Fatal("Begin should arm the turn and set busy")
+		t.Fatal("start projection should mark the transcript busy")
 	}
-	f.Stream(&tx, AnswerStream, "par")
-	f.Stream(&tx, AnswerStream, "tial")
+	projectStream(&tx, AnswerStream, "par")
+	projectStream(&tx, AnswerStream, "tial")
 
 	tdm := cmd().(turnDoneMsg)
-	stopped, err := s.Commit(&tx, tdm)
+	stopped, err := projectDone(&tx, tdm)
 	if stopped || err != nil {
 		t.Fatalf("stopped=%v err=%v", stopped, err)
 	}

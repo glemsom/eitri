@@ -116,7 +116,7 @@ func TestTurnRuntimeObserveDropsStreamWhenIdle(t *testing.T) {
 }
 
 // Observe preserves stream/tool arrival order and exposes the resulting timeline
-// through TurnRuntime rather than requiring callers to coordinate Fold.
+// through TurnRuntime rather than requiring callers to coordinate projection.
 func TestTurnRuntimeObservePreservesMixedTimelineOrder(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	rt := NewTurnRuntime(s, nil)

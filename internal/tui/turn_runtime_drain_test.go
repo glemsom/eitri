@@ -14,15 +14,14 @@ import (
 // on the feed before the caller renders, so a backlog collapses into one
 // render instead of one per delta.
 func TestTurnRuntime_DrainReadyBatchesBacklog(t *testing.T) {
-	s := NewTurnSession(nil)
 	feed := NewEventFeed()
+	s := NewTurnSession(stubTurn("ok", nil))
 	rt := NewTurnRuntime(s, feed)
 	rt.OnTurnStart(0)
 
 	tx := newTestTx()
 	tx.busy = true
 	tx.messages = append(tx.messages, message{role: "you", content: "prompt"})
-	tx.live = s
 	rt.SetTranscript(&tx)
 
 	const n = 50
@@ -40,7 +39,7 @@ func TestTurnRuntime_DrainReadyBatchesBacklog(t *testing.T) {
 		rt.Handle(first)
 	}
 
-	if got := len(s.flow.Content()); got != n {
+	if got := len(tx.flow.Content()); got != n {
 		t.Fatalf("expected all %d queued deltas applied by DrainReady, got %d bytes", n, got)
 	}
 	if _, ok := feed.TryNext(); ok {
@@ -84,9 +83,8 @@ func TestQuadraticLiveTail_StaysBounded(t *testing.T) {
 	tx.messages = append(tx.messages, message{role: "you", content: "live prompt"})
 	tx.messages = append(tx.messages, message{role: "eitri", streaming: true, thinkingRequested: true})
 
-	s := NewTurnSession(nil)
-	tx.live = s
 	feed := NewEventFeed()
+	s := NewTurnSession(stubTurn("ok", nil))
 	rt := NewTurnRuntime(s, feed)
 	rt.SetTranscript(&tx)
 	rt.OnTurnStart(0)
@@ -102,7 +100,7 @@ func TestQuadraticLiveTail_StaysBounded(t *testing.T) {
 	}()
 
 	start := time.Now()
-	for len(s.flow.Reasoning()) < wantLen {
+	for len(tx.flow.Reasoning()) < wantLen {
 		u, ok := <-feed.updates
 		if !ok {
 			break

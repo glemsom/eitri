@@ -18,22 +18,21 @@ func timelineKinds(events []TimelineEvent) []EventKind {
 func TestTimeline_PreservesArrivalOrder(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))
-	f := NewFold(s)
 
 	tx := newTestTx()
-	s.Begin(&tx, "go", "")
+	beginTurn(s, &tx, "go", "")
 
 	// The interleaved stream from the acceptance criteria:
 	// reasoning -> tool start -> tool result -> reasoning -> answer.
-	f.Stream(&tx, ReasoningStream, "r1")
-	f.Tool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
-	f.Tool(&tx, ToolUpdate{Result: &ToolResult{Name: "bash", Result: "a\n", Lines: 1}})
-	f.Stream(&tx, ReasoningStream, "r2")
-	f.Stream(&tx, AnswerStream, "a1")
+	projectStream(&tx, ReasoningStream, "r1")
+	projectTool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
+	projectTool(&tx, ToolUpdate{Result: &ToolResult{Name: "bash", Result: "a\n", Lines: 1}})
+	projectStream(&tx, ReasoningStream, "r2")
+	projectStream(&tx, AnswerStream, "a1")
 
-	stopped, err := s.Commit(&tx, turnDoneMsg{answer: "a1", reasoning: "r1r2"})
+	stopped, err := projectDone(&tx, turnDoneMsg{answer: "a1", reasoning: "r1r2"})
 	if stopped || err != nil {
-		t.Fatalf("Commit = stopped %v, err %v", stopped, err)
+		t.Fatalf("completion = stopped %v, err %v", stopped, err)
 	}
 
 	msg := tx.messages[1]
@@ -54,20 +53,19 @@ func TestTimeline_PreservesArrivalOrder(t *testing.T) {
 func TestTimeline_SnapshotsDerivedFromLog(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))
-	f := NewFold(s)
 
 	tx := newTestTx()
-	s.Begin(&tx, "go", "")
+	beginTurn(s, &tx, "go", "")
 
-	f.Stream(&tx, ReasoningStream, "r1")
-	f.Tool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{}`}})
-	f.Tool(&tx, ToolUpdate{Result: &ToolResult{Name: "bash", Result: "a\n", Lines: 1}})
-	f.Stream(&tx, ReasoningStream, "r2")
-	f.Stream(&tx, AnswerStream, "a1")
-	f.Stream(&tx, AnswerStream, "a2")
+	projectStream(&tx, ReasoningStream, "r1")
+	projectTool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{}`}})
+	projectTool(&tx, ToolUpdate{Result: &ToolResult{Name: "bash", Result: "a\n", Lines: 1}})
+	projectStream(&tx, ReasoningStream, "r2")
+	projectStream(&tx, AnswerStream, "a1")
+	projectStream(&tx, AnswerStream, "a2")
 
-	if _, err := s.Commit(&tx, turnDoneMsg{answer: "a1a2", reasoning: "r1r2"}); err != nil {
-		t.Fatalf("Commit err = %v", err)
+	if _, err := projectDone(&tx, turnDoneMsg{answer: "a1a2", reasoning: "r1r2"}); err != nil {
+		t.Fatalf("completion err = %v", err)
 	}
 
 	msg := tx.messages[1]
@@ -86,19 +84,18 @@ func TestTimeline_SnapshotsDerivedFromLog(t *testing.T) {
 func TestTimeline_ToolBeforeFirstDelta(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))
-	f := NewFold(s)
 
 	tx := newTestTx()
-	s.Begin(&tx, "go", "")
+	beginTurn(s, &tx, "go", "")
 
 	// Tool activity can arrive before any stream delta creates the message;
 	// the event log must still record it first.
-	f.Tool(&tx, ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}})
-	f.Tool(&tx, ToolUpdate{Result: &ToolResult{Name: "read", Result: "x", Lines: 1}})
-	f.Stream(&tx, AnswerStream, "hi")
+	projectTool(&tx, ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}})
+	projectTool(&tx, ToolUpdate{Result: &ToolResult{Name: "read", Result: "x", Lines: 1}})
+	projectStream(&tx, AnswerStream, "hi")
 
-	if _, err := s.Commit(&tx, turnDoneMsg{answer: "hi"}); err != nil {
-		t.Fatalf("Commit err = %v", err)
+	if _, err := projectDone(&tx, turnDoneMsg{answer: "hi"}); err != nil {
+		t.Fatalf("completion err = %v", err)
 	}
 
 	msg := tx.messages[1]
@@ -116,16 +113,15 @@ func TestTimeline_ToolBeforeFirstDelta(t *testing.T) {
 func TestTimeline_CommitsOnStoppedTurn(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))
-	f := NewFold(s)
 
 	tx := newTestTx()
-	s.Begin(&tx, "go", "")
+	beginTurn(s, &tx, "go", "")
 
-	f.Tool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{}`}})
-	f.Stream(&tx, AnswerStream, "partial")
-	stopped, err := s.Commit(&tx, turnDoneMsg{stopped: true, answer: "partial"})
+	projectTool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{}`}})
+	projectStream(&tx, AnswerStream, "partial")
+	stopped, err := projectDone(&tx, turnDoneMsg{stopped: true, answer: "partial"})
 	if !stopped || err != nil {
-		t.Fatalf("Commit = stopped %v, err %v", stopped, err)
+		t.Fatalf("completion = stopped %v, err %v", stopped, err)
 	}
 
 	msg := tx.messages[1]
@@ -137,16 +133,15 @@ func TestTimeline_CommitsOnStoppedTurn(t *testing.T) {
 func TestTimeline_CommitsOnErrorTurn(t *testing.T) {
 	t.Parallel()
 	s := NewTurnSession(stubTurn("", nil))
-	f := NewFold(s)
 
 	tx := newTestTx()
-	s.Begin(&tx, "go", "")
+	beginTurn(s, &tx, "go", "")
 
-	f.Stream(&tx, ReasoningStream, "r")
-	f.Tool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{}`}})
-	stopped, err := s.Commit(&tx, turnDoneMsg{err: errors.New("provider failed")})
+	projectStream(&tx, ReasoningStream, "r")
+	projectTool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{}`}})
+	stopped, err := projectDone(&tx, turnDoneMsg{err: errors.New("provider failed")})
 	if stopped || err == nil {
-		t.Fatalf("Commit = stopped %v, err %v", stopped, err)
+		t.Fatalf("completion = stopped %v, err %v", stopped, err)
 	}
 
 	msg := tx.messages[1]

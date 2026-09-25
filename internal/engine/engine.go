@@ -150,7 +150,7 @@ func repoInstructionsDirective(content string) string {
 // request in the user layer, subject to higher-priority instructions.
 func bindSkillToPrompt(prompt, skill string) string {
 	var b strings.Builder
-	b.WriteString("The user explicitly selected this skill. Apply its instructions to the user request, subject to higher-priority instructions.\n\n")
+	b.WriteString("The user explicitly selected this skill. This binding applies its instructions to the user request, subject to higher-priority instructions.\n\n")
 	b.WriteString(skill)
 	b.WriteString("\n\nUser request:\n")
 	b.WriteString(prompt)

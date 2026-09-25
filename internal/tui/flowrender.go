@@ -163,7 +163,7 @@ func (r flowRenderer) fold(events []TimelineEvent, msg message) []flowItem {
 	// length and pinned a core on a long thinking passthrough. For a streaming
 	// turn the message already carries the authoritative snapshot —
 	// msg.reasoning and msg.content are exactly the concatenation of the
-	// observed deltas, kept incrementally by Fold and copied onto the message
+	// observed deltas, kept incrementally by Transcript.Project and copied onto the message
 	// each delta — so each flush slices the pending fragment by cumulative byte
 	// offset instead of rebuilding it from the events. The builders remain the
 	// fallback for a streaming message with an empty snapshot (a delta-driven
@@ -174,7 +174,7 @@ func (r flowRenderer) fold(events []TimelineEvent, msg message) []flowItem {
 	answerStart, answerEnd := 0, 0       // byte slice of msg.content owned by the pending answer fragment
 	// The snapshot-slice fast path is valid only when the message snapshot is
 	// byte-exactly the concatenation of the event deltas — production does this
-	// (TurnFlow accumulates f.reasoning/f.content with `+=`, Fold copies them
+	// (TurnFlow accumulates f.reasoning/f.content with `+=`, Transcript.Project copies them
 	// onto the message each delta) — so the pending fragment is the same bytes
 	// whether read as a slice of the snapshot or rebuilt from events. Curated
 	// fixtures sometimes carry a snapshot that differs from the delta

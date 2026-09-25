@@ -33,7 +33,7 @@ func TestBusyLiveTailReusesUnchangedRenderedMarkdown(t *testing.T) {
 		t.Fatalf("second live render should reuse rendered markdown")
 	}
 
-	tx.live.flow.Observe(ReasoningStream, "new token")
+	tx.flow.Observe(ReasoningStream, "new token")
 	tx.messages[len(tx.messages)-1].reasoning += "new token"
 	third := tx.renderPaneContent()
 	if third == second || !strings.Contains(plain(third), "new token") {
@@ -54,9 +54,7 @@ func TestStreamingWindowedReasoningRendersTail(t *testing.T) {
 	tx.messages = append(tx.messages, message{role: "you", content: "live prompt"})
 	tx.messages = append(tx.messages, message{role: "eitri", streaming: true, thinkingRequested: true,
 		reasoning: reason, content: "", expansion: ExpansionState{}})
-	s := NewTurnSession(nil)
-	s.flow.Observe(ReasoningStream, reason)
-	tx.live = s
+	tx.flow.Observe(ReasoningStream, reason)
 	tx.busy = true
 
 	nl := func(s string) int { return strings.Count(s, "\n") }
@@ -78,7 +76,7 @@ func TestStreamingWindowedReasoningRendersTail(t *testing.T) {
 	// Growing the streamed reasoning shifts the window but must keep the frame
 	// bounded: appending deltas stays within the window, not the full blob.
 	for i := 0; i < 50; i++ {
-		tx.live.flow.Observe(ReasoningStream, " more token ")
+		tx.flow.Observe(ReasoningStream, " more token ")
 		tx.messages[len(tx.messages)-1].reasoning += " more token "
 		nxt := tx.renderPaneContent()
 		if nl(nxt) > nl(prev)+200 {
@@ -220,9 +218,7 @@ func TestLiveLargeStreamingReasoningThrottlesThroughRenderPath(t *testing.T) {
 	tx.messages = append(tx.messages, message{role: "you", content: "live prompt"})
 	tx.messages = append(tx.messages, message{role: "eitri", streaming: true, thinkingRequested: true,
 		reasoning: big, content: "", expansion: ExpansionState{}})
-	s := NewTurnSession(nil)
-	s.flow.Observe(ReasoningStream, big)
-	tx.live = s
+	tx.flow.Observe(ReasoningStream, big)
 	tx.busy = true
 
 	// Prime the render; the first large frame renders once.
@@ -235,7 +231,7 @@ func TestLiveLargeStreamingReasoningThrottlesThroughRenderPath(t *testing.T) {
 	// A burst of deltas all arriving inside the render interval: each changes
 	// the window but the throttle must coalesce, so re-renders stay flat.
 	for i := 0; i < 5; i++ {
-		tx.live.flow.Observe(ReasoningStream, " more token ")
+		tx.flow.Observe(ReasoningStream, " more token ")
 		tx.messages[len(tx.messages)-1].reasoning += " more token "
 		tx.renderPaneContent()
 	}

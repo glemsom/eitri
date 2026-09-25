@@ -68,10 +68,10 @@ func TestTurnDone_withoutStream_carriesEventLog(t *testing.T) {
 	s := NewTurnSession(stubTurn("done", nil))
 
 	tx := newTestTx()
-	s.Begin(&tx, "go", "")
+	beginTurn(s, &tx, "go", "")
 
-	if _, err := s.Commit(&tx, turnDoneMsg{answer: "done"}); err != nil {
-		t.Fatalf("Commit err = %v", err)
+	if _, err := projectDone(&tx, turnDoneMsg{answer: "done"}); err != nil {
+		t.Fatalf("completion err = %v", err)
 	}
 
 	events := tx.messages[1].events

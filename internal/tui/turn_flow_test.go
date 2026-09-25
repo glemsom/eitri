@@ -174,18 +174,16 @@ func lineBorderColor(rendered, body string) string {
 }
 
 func wireLive(tx *Transcript, events []TimelineEvent) {
-	s := NewTurnSession(nil)
 	for _, ev := range events {
 		switch ev.Kind {
 		case EventReasoning:
-			s.flow.Observe(ReasoningStream, ev.Delta)
+			tx.flow.Observe(ReasoningStream, ev.Delta)
 		case EventAnswer:
-			s.flow.Observe(AnswerStream, ev.Delta)
+			tx.flow.Observe(AnswerStream, ev.Delta)
 		default:
-			s.flow.ObserveTool(ev)
+			tx.flow.ObserveTool(ev)
 		}
 	}
-	tx.live = s
 }
 
 // answerInterleaveTranscript builds a completed turn whose answer text streams
@@ -561,9 +559,9 @@ func TestTranscript_instantErrorTurnRendersFlow(t *testing.T) {
 	tx.height = 30
 	tx.histFollow = true
 	tx.histViewport = newHistoryViewport()
-	s.Begin(&tx, "go", "")
+	beginTurn(s, &tx, "go", "")
 
-	if _, err := s.Commit(&tx, turnDoneMsg{prompt: "go", err: errors.New("boom")}); err == nil {
+	if _, err := projectDone(&tx, turnDoneMsg{prompt: "go", err: errors.New("boom")}); err == nil {
 		t.Fatal("expected error")
 	}
 
