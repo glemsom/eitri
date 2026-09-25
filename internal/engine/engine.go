@@ -146,11 +146,11 @@ func repoInstructionsDirective(content string) string {
 	return "## Repository instructions (AGENTS.md)\n\n" + content
 }
 
-// bindSkillToPrompt keeps the skill adjacent to the prompt in the user layer,
-// where smaller models prioritize it over a conflicting persona instruction.
+// bindSkillToPrompt keeps an explicitly user-selected skill adjacent to the
+// request in the user layer, subject to higher-priority instructions.
 func bindSkillToPrompt(prompt, skill string) string {
 	var b strings.Builder
-	b.WriteString("The user invoked this skill by name; follow its instructions exactly. They are binding, not advisory, and a conflicting system persona does not override them.\n\n")
+	b.WriteString("The user explicitly selected this skill. Apply its instructions to the user request, subject to higher-priority instructions.\n\n")
 	b.WriteString(skill)
 	b.WriteString("\n\nUser request:\n")
 	b.WriteString(prompt)

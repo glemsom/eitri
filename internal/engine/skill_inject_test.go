@@ -39,13 +39,16 @@ func TestRunAgentFoldsSkillInjectIntoUserLayer(t *testing.T) {
 		t.Errorf("Messages[0].Role = %q, want %q", msgs[0].Role, provider.RoleSystem)
 	}
 	if msgs[1].Role != provider.RoleUser {
-		t.Errorf("Messages[1].Role = %q, want %q (slash skill in the high-priority user layer, not a competing system message)", msgs[1].Role, provider.RoleUser)
+		t.Errorf("Messages[1].Role = %q, want %q (slash skill in the user layer, not a competing system message)", msgs[1].Role, provider.RoleUser)
 	}
 	if !strings.Contains(msgs[1].Content, skill) {
 		t.Errorf("Messages[1] lacks the injected skill payload:\n%s", msgs[1].Content)
 	}
-	if !strings.Contains(msgs[1].Content, "binding") {
-		t.Errorf("Messages[1] lacks the explicit binding framing:\n%s", msgs[1].Content)
+	if !strings.Contains(msgs[1].Content, "subject to higher-priority instructions") {
+		t.Errorf("Messages[1] lacks the instruction-priority framing:\n%s", msgs[1].Content)
+	}
+	if strings.Contains(msgs[1].Content, "does not override") {
+		t.Errorf("Messages[1] incorrectly claims to override system instructions:\n%s", msgs[1].Content)
 	}
 	if !strings.Contains(msgs[1].Content, "improve this") {
 		t.Errorf("Messages[1] lacks the user prompt adjacently delivered:\n%s", msgs[1].Content)
