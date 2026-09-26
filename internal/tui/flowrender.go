@@ -253,11 +253,11 @@ func (r flowRenderer) fold(events []TimelineEvent, msg message) []flowItem {
 		//
 		// The emitted window only counts snapshot bytes actually rendered (a
 		// stream fragment that is a true prefix of the committed content).
-		// Interim narration deltas from earlier provider cycles are separate
+		// Interim narration deltas from earlier provider turns are separate
 		// blocks, not a prefix of the snapshot, so they must not shift the
 		// window: blind-slicing content[emittedAnswerLen:] would otherwise cut
 		// the start of the real answer (final.Answer holds only the final
-		// provider cycle's text, not a concatenation of every delta).
+		// provider turn's text, not a concatenation of every delta).
 		if final && !msg.streaming && msg.content != "" && emittedAnswerLen < len(msg.content) && len(txt) < len(msg.content[emittedAnswerLen:]) {
 			txt = msg.content[emittedAnswerLen:]
 		}
@@ -285,7 +285,7 @@ func (r flowRenderer) fold(events []TimelineEvent, msg message) []flowItem {
 		answerFragIdx++
 		// Advance the snapshot-output window only when this fragment is a true
 		// prefix of the not-yet-emitted committed content. Narration deltas that
-		// are not part of the snapshot (earlier provider cycles) are rendered as
+		// are not part of the snapshot (earlier provider turns) are rendered as
 		// their own block and must not consume the snapshot's budget, or the
 		// tail reconciliation above would slice into the real answer.
 		if !msg.streaming && msg.content != "" && emittedAnswerLen < len(msg.content) {

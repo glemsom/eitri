@@ -41,8 +41,7 @@ Response record:
 
 - `error` is present only when the turn failed (provider error or mid-stream failure).
 - Turns are implicitly numbered 1..N in file order, and that number is what
-  `--turn N` takes. (`session list` prints this count as `N cycles`, and the
-  `show`/`grep` flag help still calls it a "cycle" in both.)
+  `--turn N` takes. `session list` prints the total as `N turns`.
 
 ## Agent navigation workflow
 

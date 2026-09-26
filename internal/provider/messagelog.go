@@ -27,7 +27,7 @@ type ResponseLog struct {
 	Error            string     `json:"error,omitempty"`
 }
 
-// MessageLogSink receives one record per provider request/response cycle, in order.
+// MessageLogSink receives the request and response of every turn as two ordered records.
 type MessageLogSink interface {
 	LogRequest(rec RequestLog)
 	LogResponse(rec ResponseLog)
@@ -99,7 +99,7 @@ func (l *loggingStream) emit() {
 	}
 }
 
-// LoggingProvider decorates p so every request/response cycle is mirrored to sink.
+// LoggingProvider decorates p so every request and response is mirrored to sink.
 type LoggingProvider struct {
 	inner Provider
 	sink  MessageLogSink

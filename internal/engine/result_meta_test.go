@@ -8,7 +8,7 @@ import (
 )
 
 // TestRunAgentReportsTurnCount verifies the batch envelope's turn count: the
-// number of provider request/response cycles a run performed, not the loop
+// number of provider request/response turns a run performed, not the loop
 // counter that resets on a granted continuation.
 func TestRunAgentReportsTurnCount(t *testing.T) {
 	t.Parallel()

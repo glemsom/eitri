@@ -116,7 +116,7 @@ type Result struct {
 	Reasoning string
 	Usage     *provider.Usage
 
-	// Turns is the number of provider request/response cycles the run performed.
+	// Turns is how many provider request/response pairs the run performed, tool-calling turns included.
 	Turns int
 
 	// Stopped reports whether the run ended in a user stop (ErrStopped) rather
@@ -240,10 +240,10 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		stopContent   string
 		stopReasoning string
 	)
-	cycles := 0
+	totalTurns := 0
 	stopped := false
 	defer func() {
-		final.Turns = cycles
+		final.Turns = totalTurns
 		final.Stopped = stopped
 	}()
 
@@ -264,7 +264,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 
 	recoveredContextOverflow := false
 	for turn := 0; ; turn++ {
-		cycles++
+		totalTurns++
 		var content, reasoning strings.Builder
 		if ctx.Err() != nil {
 			stopped = true
@@ -381,10 +381,10 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 				break
 			}
 		}
-		// Report token usage once per provider cycle (the final/last usage chunk), matching the
+		// Report token usage once per turn (the final/last usage chunk), matching the
 		// message-layer transcript's last-wins record. Streaming gateways attach a cumulative
 		// usage object to every SSE chunk, so summing a UsageEvent per chunk would heavily
-		// over-count: telemetry must see one event per cycle, not one per chunk.
+		// over-count: telemetry must see one event per turn, not one per chunk.
 		if final.Usage != nil {
 			e.emit(UsageEvent{RunID: runID, Turn: turn, Usage: *final.Usage})
 		}

@@ -188,11 +188,11 @@ func TestFeedEngineEventsBridgesToolEvents(t *testing.T) {
 	}
 }
 
-// TestFeedTelemetryUsageOncePerCycle guards against over-counting when a streaming gateway
+// TestFeedTelemetryUsageOncePerTurn guards against over-counting when a streaming gateway
 // attaches a (cumulative) usage object to every SSE chunk: telemetry must receive exactly one
-// UsageEvent per provider cycle, carrying the final/last usage — not one per chunk (see engine
+// UsageEvent per provider turn, carrying the final/last usage — not one per chunk (see engine
 // RunAgent, which emits the UsageEvent once after the stream loop).
-func TestFeedTelemetryUsageOncePerCycle(t *testing.T) {
+func TestFeedTelemetryUsageOncePerTurn(t *testing.T) {
 	mkUsage := func(prompt, hit, miss, out int) *provider.Usage {
 		return &provider.Usage{
 			PromptTokens:          prompt,
@@ -201,8 +201,8 @@ func TestFeedTelemetryUsageOncePerCycle(t *testing.T) {
 			CompletionTokens:      out,
 		}
 	}
-	// Each cycle streams several chunks, every one carrying a growing cumulative usage (last
-	// chunk wins). cycle 1 is a tool call, cycle 2 the tool-result resubmission.
+	// Each turn streams several chunks, every one carrying a growing cumulative usage (last
+	// chunk wins). Turn 1 is a tool call, turn 2 the tool-result resubmission.
 	e := engine.New(provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
 		toolTurn := false
 		for _, m := range req.Messages {
@@ -258,7 +258,7 @@ func TestFeedTelemetryUsageOncePerCycle(t *testing.T) {
 		}
 	}
 	if len(usage) != 2 {
-		t.Fatalf("telemetry received %d UsageEvents, want exactly 2 (one per cycle); got: %+v", len(usage), usage)
+		t.Fatalf("telemetry received %d UsageEvents, want exactly 2 (one per turn); got: %+v", len(usage), usage)
 	}
 	for i, want := range []struct{ hit, miss, out, ctx int }{
 		{3072, 60, 92, 3132},

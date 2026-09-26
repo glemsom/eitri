@@ -388,9 +388,9 @@ func TestRenderFlow_committedSnapshotTailSurvivesDroppedDeltas(t *testing.T) {
 
 // TestRenderFlow_interimNarrationDoesNotCorruptCommittedTail locks the shape
 // behind the lost-answer bug in the TUI: interim narration deltas from earlier
-// provider cycles ("Let me review...", "Cleaning up.") are separate blocks and
+// provider turns ("Let me review...", "Cleaning up.") are separate blocks and
 // are NOT a prefix of the committed snapshot (final.Answer holds only the final
-// cycle's text). The tail-reconciliation window must advance only for fragments
+// turn's text). The tail-reconciliation window must advance only for fragments
 // that are a true prefix of the committed content, or blind-slicing
 // content[emittedAnswerLen:] cuts the start of the real answer.
 func TestRenderFlow_interimNarrationDoesNotCorruptCommittedTail(t *testing.T) {

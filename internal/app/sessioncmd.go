@@ -15,26 +15,26 @@ import (
 	"github.com/glemsom/eitri/internal/session"
 )
 
-type sessionCycle struct {
-	Turn int // 1-based cycle index
+type sessionTurn struct {
+	Turn int // 1-based turn index
 	Req  *provider.RequestLog
 	Resp *provider.ResponseLog
 }
 
-func readCycles(path string) ([]sessionCycle, error) {
+func readTurns(path string) ([]sessionTurn, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	var cycles []sessionCycle
+	var turns []sessionTurn
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 1024*1024), 16*1024*1024)
-	cur := sessionCycle{Turn: 1}
+	cur := sessionTurn{Turn: 1}
 	flush := func() {
 		if cur.Req != nil || cur.Resp != nil {
-			cycles = append(cycles, cur)
-			cur = sessionCycle{Turn: len(cycles) + 1}
+			turns = append(turns, cur)
+			cur = sessionTurn{Turn: len(turns) + 1}
 		}
 	}
 	lineNumber := 0
@@ -53,7 +53,7 @@ func readCycles(path string) ([]sessionCycle, error) {
 		switch probe.Dir {
 		case "req":
 			if cur.Req != nil {
-				return nil, fmt.Errorf("line %d: request record before previous cycle received a response", lineNumber)
+				return nil, fmt.Errorf("line %d: request record before previous turn received a response", lineNumber)
 			}
 			var r provider.RequestLog
 			if err := json.Unmarshal(line, &r); err != nil {
@@ -83,7 +83,7 @@ func readCycles(path string) ([]sessionCycle, error) {
 		return nil, fmt.Errorf("line %d: transcript ends before request received a response", lineNumber)
 	}
 	flush()
-	return cycles, nil
+	return turns, nil
 }
 
 func truncate(s string, n int) string {
@@ -94,7 +94,7 @@ func truncate(s string, n int) string {
 	return string(r[:n]) + "…"
 }
 
-// ListSessions prints one line per session dir: GUID, last activity, cycle count.
+// ListSessions prints one line per session dir: GUID, last activity, turn count.
 func ListSessions(dataDir string, out io.Writer) error {
 	var rendered strings.Builder
 	root := filepath.Join(dataDir, "sessions")
@@ -105,7 +105,7 @@ func ListSessions(dataDir string, out io.Writer) error {
 	type row struct {
 		guid    string
 		modTime time.Time
-		cycles  int
+		turns   int
 		model   string
 	}
 	var rows []row
@@ -121,47 +121,47 @@ func ListSessions(dataDir string, out io.Writer) error {
 			}
 			return fmt.Errorf("session %s unreadable: %w", e.Name(), err)
 		}
-		cycles, err := readCycles(path)
+		turns, err := readTurns(path)
 		if err != nil {
 			return fmt.Errorf("session %s unreadable: %w", e.Name(), err)
 		}
-		if len(cycles) == 0 {
+		if len(turns) == 0 {
 			continue
 		}
-		rows = append(rows, row{guid: e.Name(), modTime: fi.ModTime(), cycles: len(cycles), model: cycles[0].Req.Model})
+		rows = append(rows, row{guid: e.Name(), modTime: fi.ModTime(), turns: len(turns), model: turns[0].Req.Model})
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].modTime.After(rows[j].modTime) })
 	for _, r := range rows {
-		fmt.Fprintf(&rendered, "%s\t%s\t%d cycles\t%s\n", r.guid, r.modTime.Format(time.RFC3339), r.cycles, r.model)
+		fmt.Fprintf(&rendered, "%s\t%s\t%d turns\t%s\n", r.guid, r.modTime.Format(time.RFC3339), r.turns, r.model)
 	}
 	_, err = io.WriteString(out, rendered.String())
 	return err
 }
 
-// ShowSession prints a compact per-cycle summary of a session; with turn > 0 it prints only that cycle's full JSON records.
+// ShowSession prints a compact per-turn summary of a session; with turn > 0 it prints only that turn's full JSON records.
 func ShowSession(dataDir, guid string, turn int, noReasoning bool, out io.Writer) error {
 	if err := session.ValidateGUID(guid); err != nil {
 		return err
 	}
-	cycles, err := readCycles(filepath.Join(dataDir, "sessions", guid, "messages.jsonl"))
+	turns, err := readTurns(filepath.Join(dataDir, "sessions", guid, "messages.jsonl"))
 	if err != nil {
 		if !os.IsNotExist(err) {
 			return fmt.Errorf("session %s unreadable: %w", guid, err)
 		}
 	}
-	if len(cycles) == 0 {
+	if len(turns) == 0 {
 		fmt.Fprintf(out, "session %s has no records\n", guid)
 		return nil
 	}
 	if noReasoning {
-		stripReasoning(cycles)
+		stripReasoning(turns)
 	}
-	for _, c := range cycles {
+	for _, c := range turns {
 		if turn > 0 && c.Turn != turn {
 			continue
 		}
 		if turn > 0 {
-			writeCycleJSON(c, out)
+			writeTurnJSON(c, out)
 			continue
 		}
 		var b strings.Builder
@@ -198,13 +198,13 @@ func ShowSession(dataDir, guid string, turn int, noReasoning bool, out io.Writer
 	return nil
 }
 
-// stripReasoning drops chain-of-thought text in place: response reasoning_content and per-message reasoning_content on every cycle.
-func stripReasoning(cycles []sessionCycle) {
-	for i := range cycles {
-		if c := cycles[i].Resp; c != nil {
+// stripReasoning drops chain-of-thought text in place: response reasoning_content and per-message reasoning_content on every turn.
+func stripReasoning(turns []sessionTurn) {
+	for i := range turns {
+		if c := turns[i].Resp; c != nil {
 			c.ReasoningContent = ""
 		}
-		if r := cycles[i].Req; r != nil {
+		if r := turns[i].Req; r != nil {
 			for j := range r.Messages {
 				r.Messages[j].ReasoningContent = ""
 			}
@@ -212,7 +212,7 @@ func stripReasoning(cycles []sessionCycle) {
 	}
 }
 
-func writeCycleJSON(c sessionCycle, out io.Writer) {
+func writeTurnJSON(c sessionTurn, out io.Writer) {
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
 	if c.Req != nil {
@@ -226,28 +226,28 @@ func writeCycleJSON(c sessionCycle, out io.Writer) {
 // TalkOptions controls what TalkSession renders.
 type TalkOptions struct {
 	FromTurn  int    // 1-based; 0 = from the start
-	ToTurn    int    // inclusive; 0 = through the last cycle
+	ToTurn    int    // inclusive; 0 = through the last turn
 	Role      string // "", "user", "assistant", "tool", or "system"
 	Reasoning bool   // include chain-of-thought blocks
 }
 
-// TalkSession prints a session's conversation as plain text, one block per message: `[N] role:` followed by the full untruncated content. Request history shared with the previous cycle is skipped.
+// TalkSession prints a session's conversation as plain text, one block per message: `[N] role:` followed by the full untruncated content. Request history shared with the previous turn is skipped.
 func TalkSession(dataDir, guid string, opts TalkOptions, out io.Writer) error {
 	if err := session.ValidateGUID(guid); err != nil {
 		return err
 	}
-	cycles, err := readCycles(filepath.Join(dataDir, "sessions", guid, "messages.jsonl"))
+	turns, err := readTurns(filepath.Join(dataDir, "sessions", guid, "messages.jsonl"))
 	if err != nil {
 		return fmt.Errorf("session %s unreadable: %w", guid, err)
 	}
-	if len(cycles) == 0 {
+	if len(turns) == 0 {
 		return fmt.Errorf("session %s has no message records", guid)
 	}
 	if !opts.Reasoning {
-		stripReasoning(cycles)
+		stripReasoning(turns)
 	}
 	var prevReqs [][]provider.Message
-	for _, c := range cycles {
+	for _, c := range turns {
 		n := c.Turn
 		if opts.FromTurn > 0 && n < opts.FromTurn {
 			continue
@@ -324,7 +324,7 @@ func indent(s string) string {
 	return strings.Join(lines, "\n")
 }
 
-// GrepSession prints one compact line per cycle whose message-layer content matches substr — snippets around each hit, or full field text when full is set. Empty guid searches all sessions.
+// GrepSession prints one compact line per turn whose message-layer content matches substr — snippets around each hit, or full field text when full is set. Empty guid searches all sessions.
 func GrepSession(dataDir, pattern, guid string, full bool, out io.Writer) error {
 	all := guid == "" || guid == "all"
 	if !all {
@@ -350,7 +350,7 @@ func GrepSession(dataDir, pattern, guid string, full bool, out io.Writer) error 
 	}
 	for _, dir := range dirs {
 		tag := filepath.Base(dir)
-		cycles, err := readCycles(filepath.Join(dir, "messages.jsonl"))
+		turns, err := readTurns(filepath.Join(dir, "messages.jsonl"))
 		if err != nil {
 			return fmt.Errorf("session %s unreadable: %w", tag, err)
 		}
@@ -365,7 +365,7 @@ func GrepSession(dataDir, pattern, guid string, full bool, out io.Writer) error 
 				hits = append(hits, fmt.Sprintf("%s: %s", label, s))
 			}
 		}
-		for _, c := range cycles {
+		for _, c := range turns {
 			hits = hits[:0]
 			if c.Req != nil {
 				for i, m := range c.Req.Messages {

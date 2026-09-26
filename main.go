@@ -16,15 +16,15 @@ Usage:
 
   eitri [flags]          launch the interactive TUI
   eitri -b <prompt>      run once in batch mode and exit
-  eitri session list     list recorded sessions (GUID, time, cycles, model)
+  eitri session list     list recorded sessions (GUID, time, turns, model)
   eitri session show <guid> [--turn N] [--no-reasoning]
-                         compact per-cycle summary; --turn N dumps that cycle's full JSON records
+                         compact per-turn summary; --turn N dumps that turn's full JSON records
   eitri session talk <guid> [--turn N|N-M] [--from N] [--role user|assistant|tool|system]
                      [--reasoning]
                          full conversation as plain text; shared request history is deduped
                          reasoning is stripped unless --reasoning
   eitri session grep <pattern> [guid|all] [-full]
-                         find cycles whose messages match pattern, with snippets;
+                         find turns whose messages match pattern, with snippets;
                          -full prints the complete matching field text
 
 Flags:

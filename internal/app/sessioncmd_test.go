@@ -10,7 +10,7 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// writeMessagesFixture creates a session dir with a two-cycle messages.jsonl.
+// writeMessagesFixture creates a session dir with a two-turn messages.jsonl.
 func writeMessagesFixture(t *testing.T, dataDir, guid string) {
 	t.Helper()
 	dir := filepath.Join(dataDir, "sessions", guid)
@@ -41,7 +41,7 @@ func TestListSessions(t *testing.T) {
 		t.Fatalf("ListSessions() error = %v", err)
 	}
 	got := out.String()
-	if !strings.Contains(got, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1") || !strings.Contains(got, "2 cycles") || !strings.Contains(got, "m1") {
+	if !strings.Contains(got, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1") || !strings.Contains(got, "2 turns") || !strings.Contains(got, "m1") {
 		t.Errorf("unexpected list output: %q", got)
 	}
 }
@@ -112,7 +112,7 @@ func TestShowSessionSummaryAndTurn(t *testing.T) {
 	}
 	turnJSON := out.String()
 	if !strings.Contains(turnJSON, `"dir": "req"`) || strings.Contains(turnJSON, `there is one file`) {
-		t.Errorf("--turn 1 should dump only cycle 1's full records:\n%s", turnJSON)
+		t.Errorf("--turn 1 should dump only turn 1's full records:\n%s", turnJSON)
 	}
 }
 
@@ -125,7 +125,7 @@ func TestGrepSession(t *testing.T) {
 	}
 	got := out.String()
 	if !strings.Contains(got, "cccccccccccccccccccccccccccccccc:2") || !strings.Contains(got, "resp.content") {
-		t.Errorf("grep output missing cycle hit: %q", got)
+		t.Errorf("grep output missing turn hit: %q", got)
 	}
 
 	out.Reset()
