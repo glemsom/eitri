@@ -24,7 +24,7 @@ flowchart TB
 
 Arrows are imports, abridged: leaf-package edges (`constants`, `osc52`, `skillspack`, `livekey`, `telemetry`, `testutil`) and `tui --> config` are left out. The graph is acyclic and `app` is the only composition root: every other package is handed what it needs rather than constructing it. Note what is absent — the engine reaches the toolset through the injected `ToolExecutor` and takes it as a `[]provider.Tool` manifest, so `internal/tools` never enters the loop.
 
-Startup resolves paths, loads configuration, verifies the declared runtime toolset, materializes builtin skills, and constructs the provider, tools, engine, and session store. The app then starts batch mode or the TUI.
+Startup resolves paths, loads configuration, opens the session store, verifies the declared runtime toolset, materializes builtin skills, and constructs the tool registry, provider, and engine. The app then starts batch mode or the TUI.
 
 One run follows this path:
 
@@ -38,11 +38,11 @@ One run follows this path:
 
 ### `internal/app`
 
-Composition root. Resolves `EITRI_DIR`, loads config, verifies dependencies, materializes builtin skills, constructs providers/tools/engine/session, and starts batch or TUI mode. It also owns pprof setup, Copilot login, and session subcommands.
+Composition root. Resolves `EITRI_DIR`, loads config, opens the session store, verifies dependencies, materializes builtin skills, constructs the tool registry/provider/engine, and starts batch or TUI mode. It also owns pprof setup, Copilot login, and session subcommands.
 
 ### `internal/config`
 
-Reads and writes `<data directory>/config.json`. Defaults include provider `opencode-go`, model `deepseek-v4-flash`, low reasoning effort, thinking enabled, collapsed reasoning/tool results, context-overflow recovery, and 250 maximum turns.
+Reads and writes the config file it is handed — `<data directory>/config.json` unless `EITRI_CONFIG` overrides it. Defaults include provider `opencode-go`, model `deepseek-v4-flash`, low reasoning effort, thinking enabled, collapsed reasoning/tool results, context-overflow recovery, and 250 maximum turns.
 
 ### `internal/engine`
 
