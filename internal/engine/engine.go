@@ -87,6 +87,15 @@ type RunRequest struct {
 	// system-layer message next to the persona head. Empty omits it.
 	Workspace string
 
+	// WritablePaths names the paths this run may write, in the order the
+	// sandbox binds them: the workspace, the session temp, then each configured
+	// extra-writable path. Like Workspace it is per-run state, so it rides in
+	// the same system-layer directive rather than the byte-stable system prompt.
+	// Empty omits the write-permissions section entirely, which is what an
+	// unsandboxed (--yolo-unsafe) run reports: it has no boundary to state, and
+	// the bash tool description is what already declares the absent sandbox.
+	WritablePaths []string
+
 	// SkillIndex is an optional pre-rendered model-visible skill inventory. When
 	// set, it is carried to the provider as a dedicated system-layer message
 	// appended after the persona head so the model sees available skills without
@@ -131,11 +140,21 @@ func systemPromptHead() []provider.Message {
 }
 
 // workspaceDirective renders the per-run working-directory statement as its own
-// system-layer directive. It is dynamic state (unlike the byte-stable system
-// prompt), so it is generated at request-build time from the live workspace
-// path rather than baked into prompt.md.
-func workspaceDirective(workspace string) string {
-	return "## Working directory\nYou are operating in the workspace `" + workspace + "`. Resolve all relative paths against it."
+// system-layer directive, followed by the write-permissions statement when the
+// run is filesystem-confined. Both are dynamic state (unlike the byte-stable
+// system prompt), so they are generated at request-build time from the live
+// workspace and registry rather than baked into prompt.md.
+func workspaceDirective(workspace string, writable []string) string {
+	d := "## Working directory\nYou are operating in the workspace `" + workspace + "`. Resolve all relative paths against it."
+	if len(writable) == 0 {
+		return d
+	}
+	paths := make([]string, len(writable))
+	for i, p := range writable {
+		paths[i] = "`" + p + "`"
+	}
+	return d + "\n\n## Write permissions\nWrites are confined to " +
+		strings.Join(paths, ", ") + ". Every other path is read-only."
 }
 
 // repoInstructionsDirective renders the workspace-root AGENTS.md content as a
@@ -222,7 +241,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 	}
 	messages := systemPromptHead()
 	if req.Workspace != "" {
-		messages = append(messages, provider.Message{Role: provider.RoleSystem, Content: workspaceDirective(req.Workspace)})
+		messages = append(messages, provider.Message{Role: provider.RoleSystem, Content: workspaceDirective(req.Workspace, req.WritablePaths)})
 	}
 	if req.SkillIndex != nil {
 		messages = append(messages, provider.Message{Role: provider.RoleSystem, Content: *req.SkillIndex})

@@ -105,6 +105,21 @@ func (r *Registry) Names() []string {
 
 func (r *Registry) Workspace() string { return r.workspace }
 
+// WritablePaths reports the paths a sandboxed bash call may write, in the order
+// the sandbox binds them: the workspace, the session temp, then each configured
+// extra-writable path. It is the single source of truth for both the bwrap argv
+// and the write-permissions statement the model is given, so the two cannot
+// drift. An unsandboxed (--yolo-unsafe) registry has no writable subset to
+// report, so it reports nil rather than a list it does not enforce.
+func (r *Registry) WritablePaths() []string {
+	if r.yolo {
+		return nil
+	}
+	out := make([]string, 0, 2+len(r.sandbox.extraWritable))
+	out = append(out, r.workspace, r.sandbox.tempHost)
+	return append(out, r.sandbox.extraWritable...)
+}
+
 // SetTempHost rewires the per-session temp directory used by the bash backend
 // (the bwrap sandbox, or the direct runner in an unsandboxed --yolo-unsafe
 // session).

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -213,5 +214,64 @@ func TestRegistryRejectsInvalidSessionTempRewire(t *testing.T) {
 		if err := r.SetTempHost(path); err == nil || !strings.Contains(err.Error(), "session temp path") {
 			t.Fatalf("SetTempHost(%q) error = %v, want actionable error", path, err)
 		}
+	}
+}
+
+// TestWritablePathsNamesEveryBoundPath guards the contract the model is told:
+// the reported set is exactly what the bwrap argv binds read-write, so the
+// model never spends a turn discovering the boundary by hitting EROFS.
+func TestWritablePathsNamesEveryBoundPath(t *testing.T) {
+	t.Parallel()
+	top := t.TempDir()
+	workspace, tempHost, extra := filepath.Join(top, "ws"), filepath.Join(top, "tmp"), filepath.Join(top, "extra")
+	r, err := NewRegistry(Deps{
+		Workspace:     workspace,
+		TempHost:      tempHost,
+		ExtraWritable: []string{extra},
+		Runner:        &recordingRunner{out: &Output{}},
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry error = %v", err)
+	}
+	want := []string{workspace, tempHost, extra}
+	if got := r.WritablePaths(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("WritablePaths() = %v, want %v", got, want)
+	}
+}
+
+// TestWritablePathsIsNilWhenUnsandboxed guards the invariant that an
+// unsandboxed (--yolo-unsafe) session is never described as confined: it has no
+// writable subset to report, so the run must not claim one.
+func TestWritablePathsIsNilWhenUnsandboxed(t *testing.T) {
+	t.Parallel()
+	r, err := NewRegistry(Deps{
+		Workspace:     filepath.Join(t.TempDir(), "ws"),
+		TempHost:      filepath.Join(t.TempDir(), "tmp"),
+		ExtraWritable: []string{filepath.Join(t.TempDir(), "extra")},
+		Runner:        &recordingRunner{out: &Output{}},
+		Yolo:          true,
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry error = %v", err)
+	}
+	if got := r.WritablePaths(); got != nil {
+		t.Fatalf("WritablePaths() = %v, want nil for an unsandboxed registry", got)
+	}
+}
+
+// TestWritablePathsReturnsACopy guards the caller: runAgent hands the slice to
+// the engine, and a later SetTempHost rebind must not mutate a run's directive.
+func TestWritablePathsReturnsACopy(t *testing.T) {
+	t.Parallel()
+	r, _ := newTestRegistry(t, nil)
+	first := r.WritablePaths()
+	if err := r.SetTempHost(filepath.Join(t.TempDir(), "rebound")); err != nil {
+		t.Fatalf("SetTempHost error = %v", err)
+	}
+	if second := r.WritablePaths(); reflect.DeepEqual(first, second) {
+		t.Fatalf("WritablePaths() = %v, want the rebound session temp", second)
+	}
+	if got := first[1]; got == r.TempHost() {
+		t.Fatalf("earlier slice still reports the current session temp %q; it aliases registry state", got)
 	}
 }

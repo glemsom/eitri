@@ -429,6 +429,7 @@ func runAgent(ctx context.Context, e *engine.Engine, cfg config.Config, reg *too
 		Model:            cfg.Model,
 		Prompt:           prompt,
 		Workspace:        reg.Workspace(),
+		WritablePaths:    reg.WritablePaths(),
 		SkillIndex:       skillIndex,
 		RepoInstructions: repoInstructions,
 		SkillInject:      skillInject,
