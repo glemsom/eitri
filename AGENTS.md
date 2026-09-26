@@ -20,4 +20,4 @@ Only add comments in Go source if the comment will add information the code does
 
 ## Operational docs
 
-Contracts a change can break, each beside the code that owns it: [docs/batch-mode.md](docs/batch-mode.md) (piped stdin, the `--format json` envelope, exit codes), [docs/sessions.md](docs/sessions.md) (transcript layout, `session` subcommands), [docs/render-diagnostics.md](docs/render-diagnostics.md) (render contracts and their guards), [docs/tui-iconography.md](docs/tui-iconography.md) (glyph and icon tiers).
+Contracts a change can break, each beside the code that owns it: [docs/batch-mode.md](docs/batch-mode.md) (piped stdin, the `--format json` envelope, exit codes), [docs/sandbox.md](docs/sandbox.md) (the `bash` sandbox, the writable set, `extra_writable_paths`), [docs/sessions.md](docs/sessions.md) (transcript layout, `session` subcommands), [docs/render-diagnostics.md](docs/render-diagnostics.md) (render contracts and their guards), [docs/tui-iconography.md](docs/tui-iconography.md) (glyph and icon tiers).

@@ -48,6 +48,8 @@ The TUI's `/help` is the authoritative reference for keybindings and slash comma
 
 By default, every `bash` command runs in a bubblewrap sandbox with a read-only root, writable workspace and session temporary directory, and isolated PID, `/proc`, and `/dev` namespaces. `--yolo-unsafe` removes the sandbox and must only be used with trusted prompts and workloads.
 
+The whole host root is bound read-only, so `$HOME` is readable but not writable. Tools that keep state there — `helm`, `terraform`, `az`, `aws`, `docker` — need their paths added to `extra_writable_paths` in the config, or the **Writable paths** field in `/settings`. Eitri tells the model the resolved writable set, so it stops guessing where the boundary is. See [docs/sandbox.md](docs/sandbox.md) for the full boundary, the escape hatch, and its sharp edges.
+
 Commands are limited to 120 seconds by default; each call can request up to 3600 seconds.
 
 ## Providers and local data
