@@ -4,7 +4,7 @@ Guidance for AI coding agents working in this repository.
 
 ## Domain docs
 
-Single-context: one `CONTEXT.md` at the repo root holds the domain glossary. Structural maps (how code modules are wired) belong in `ARCHITECTURE.md`, which references `CONTEXT.md` for terminology rather than redefining it. Decisions live in `docs/adr/`. See `docs/agents/domain.md`.
+`CONTEXT.md` is the domain glossary; `ARCHITECTURE.md` maps how modules are wired and borrows that terminology rather than redefining it; decisions live in `docs/adr/`. Read `docs/agents/domain.md` before naming a domain concept.
 
 ## Issue tracker
 

@@ -28,7 +28,7 @@ Each remaining leaf is a seam-export redesign, not a file relocation. Do them on
 ## Remaining leaves, in order
 
 1. **`internal/tui/transcript`** — `Transcript` + `toolLog` + `collapseFocus`. Requires exporting the ~30 methods and fields the rest of the package pokes. Largest export surface, but mechanically the pattern above.
-2. **`internal/tui/render`** — `render.go` + `live_markdown_cache.go` + the `Phase`/caption console. Requires moving `Theme` (and its ~30 fields) and the i18n/motion/spinner accessors into the render package, or passing them as explicit params on an exported `Render` seam. The original ticket called this the "cheapest first win", but the shared `Theme`/`g()`/spinner surface makes it a larger change than the leaf-moves above.
+2. **`internal/tui/render`** — `render.go` + `markdown.go` + `cheap_live_render.go` + `live_markdown_cache.go` + the `Phase`/caption console. Requires moving `Theme` (and its ~30 fields) and the i18n/motion/spinner accessors into the render package, or passing them as explicit params on an exported `Render` seam. The original ticket called this the "cheapest first win", but the shared `Theme`/`g()`/spinner surface makes it a larger change than the leaf-moves above.
 3. **`internal/tui/composer`** — `composer.go` + `completion_menu.go` + `mention.go` + `prompt_history.go`. Deepest coupling into `Transcript`'s theme and height; do it after the transcript seam exists.
 
 Chrome (`styles.go`, `glyphs.go`, `spinner.go`, `face.go`) and the render dbx stay at the top of `internal/tui` until step 2; `theme` remains a package-`tui` type until then.

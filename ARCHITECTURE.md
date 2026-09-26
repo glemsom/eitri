@@ -21,7 +21,7 @@ flowchart TB
   tui --> session
 ```
 
-Arrows are imports. The graph is acyclic and `app` is the only composition root: every other package is handed what it needs rather than constructing it. Note what is absent — the engine reaches the toolset through the injected `ToolExecutor` and takes it as a `[]provider.Tool` manifest, so `internal/tools` never enters the loop.
+Arrows are imports, abridged: the `config` and leaf-package edges (`constants`, `osc52`, `skillspack`, `livekey`, `telemetry`, `memtmp`) are left out. The graph is acyclic and `app` is the only composition root: every other package is handed what it needs rather than constructing it. Note what is absent — the engine reaches the toolset through the injected `ToolExecutor` and takes it as a `[]provider.Tool` manifest, so `internal/tools` never enters the loop.
 
 Startup resolves paths, loads configuration, verifies the declared runtime toolset, materializes builtin skills, and constructs the provider, tools, engine, and session store. The app then starts batch mode or the TUI.
 
@@ -75,7 +75,7 @@ The TUI never calls a provider: it names provider kinds for the settings UI and 
 
 ### Small packages
 
-`internal/osc52` writes clipboard escape sequences; `internal/constants` holds cross-layer limits; `internal/testutil` contains shared test helpers; `internal/tools/memtmp` manages per-session temporary storage.
+`internal/osc52` writes clipboard escape sequences; `internal/constants` holds cross-layer limits; `internal/testutil` contains shared test helpers. The session temp is created by `internal/session` and owned by the tools registry as `TempHost`, which the bash backends and the rail read.
 
 ## Invariants
 

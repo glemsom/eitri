@@ -90,5 +90,8 @@ _Avoid_: verbose mode, `-v`.
 **Composer**: the TUI input surface for prompts, mentions, and slash commands.
 _Avoid_: input box, prompt bar.
 
-**Turn session**: the TUI owner of one run's context, cancellation, thinking state, and timeline.
+**Turn runtime**: the TUI surface that owns a live turn end to end — it starts the run, delivers its events in arrival order, and commits the finished turn. The TUI reaches a run only through the turn runtime.
+_Avoid_: run loop, turn manager.
+
+**Turn session**: the cancellable execution half of a live turn: the context the run runs under, and the means to stop it. It holds no view state.
 _Avoid_: turn state, session state.
