@@ -77,7 +77,7 @@ func TestDirectRunnerRealIntegration(t *testing.T) {
 	if !strings.Contains(o.Stdout, "tmp="+temp) || !strings.Contains(o.Stdout, "t="+temp) || !strings.Contains(o.Stdout, "u="+temp) {
 		t.Fatalf("stdout %q does not set session temp env to %q", o.Stdout, temp)
 	}
-	// The workspace must be writable directly (no cage): a write should land host-side.
+	// The workspace must be writable directly (no sandbox): a write should land host-side.
 	if _, err := dr.Run(context.Background(), "echo probe > probe.txt"); err != nil {
 		t.Fatalf("workspace write error = %v", err)
 	}

@@ -266,8 +266,8 @@ func (r *Rail) renderContext(th Theme, railWidth int) string {
 	return b.String() + th.railBody(railContext, strings.TrimRight(body.String(), "\n"))
 }
 
-// sandboxLabel renders the CONTEXT "sandbox" value: the bubblewrap cage when
-// sandboxed, or a warning-marked "unsafe (--yolo)" when the launch opted out.
+// sandboxLabel renders the CONTEXT "sandbox" value: the bubblewrap sandbox by
+// default, or a warning-marked "unsafe (--yolo)" when the launch opted out.
 func (r *Rail) sandboxLabel() string {
 	if r.unsafe {
 		return lookup("warning") + " unsafe (--yolo)"

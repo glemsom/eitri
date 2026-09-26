@@ -6,9 +6,9 @@ import (
 )
 
 // directRunner is the unsandboxed (--yolo-unsafe) bash backend: it executes a
-// shell command directly as the current user — no bubblewrap cage is
+// shell command directly as the current user — no bubblewrap sandbox is
 // constructed — with the workspace as the working directory and the session
-// temp as $TMPDIR, matching the sandboxed environment semantics minus the cage.
+// temp as $TMPDIR, matching the sandboxed environment semantics minus the sandbox.
 type directRunner struct {
 	workspace string
 	tempHost  string
@@ -17,7 +17,7 @@ type directRunner struct {
 
 // Run executes the shell command cmd directly as the current user and returns
 // its output. It mirrors the sandbox's environment contract (workspace cwd,
-// session temp as TMPDIR/TEMP/TMP) while skipping the cage entirely.
+// session temp as TMPDIR/TEMP/TMP) while skipping the sandbox entirely.
 func (d *directRunner) Run(ctx context.Context, cmd string) (*Output, error) {
 	if err := os.MkdirAll(d.tempHost, 0o700); err != nil {
 		return nil, err

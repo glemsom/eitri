@@ -50,7 +50,7 @@ func TestYoloBashDescriptionOmitsSandboxClaim(t *testing.T) {
 	t.Parallel()
 	desc := (&bashTool{unsandboxed: true}).Description()
 	folded := strings.ToLower(desc)
-	// The yolo description must not claim execution inside a sandbox/cage, and
+	// The yolo description must not claim execution inside a sandbox, and
 	// must be honest that the command runs directly with the user's host
 	// permissions.
 	if strings.Contains(folded, "in a sandbox") || strings.Contains(folded, "inside a sandbox") {

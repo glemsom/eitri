@@ -234,7 +234,7 @@ func TestSandboxRealBwrapIntegration(t *testing.T) {
 		switch {
 		case err == nil:
 		case strings.Contains(o.Stderr, "Bad owner or permissions"):
-			t.Fatalf("git ls-remote hit the ownership error inside the cage: %v\n%s", err, o.Stderr)
+			t.Fatalf("git ls-remote hit the ownership error inside the sandbox: %v\n%s", err, o.Stderr)
 		default:
 			t.Logf("git ls-remote not verifiable (no network/creds): %v", err)
 		}

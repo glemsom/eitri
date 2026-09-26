@@ -52,7 +52,7 @@ const bashOutputContract = "Returns the combined stream (stdout then stderr; ANS
 
 func (b *bashTool) Description() string {
 	if b.unsandboxed {
-		return "Execute a shell command directly as your user on the host — no sandbox or cage is constructed, so the command runs with your full host permissions. " + bashTimeoutContract + " " + bashOutputContract
+		return "Execute a shell command directly as your user on the host — no sandbox is constructed, so the command runs with your full host permissions. " + bashTimeoutContract + " " + bashOutputContract
 	}
 	return "Execute a shell command in a sandbox. " + bashTimeoutContract + " " + bashOutputContract
 }

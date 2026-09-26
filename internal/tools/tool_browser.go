@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// openInBrowserTool is the open_in_browser tool: host-side, outside the bwrap cage.
+// openInBrowserTool is the open_in_browser tool: host-side, outside the bwrap sandbox.
 type openInBrowserTool struct {
 	br BrowserLauncher
 }

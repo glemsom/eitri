@@ -95,9 +95,9 @@ func (b *boundedBuffer) Dropped() int {
 	return b.total - len(b.buf)
 }
 
-// Sandbox runs shell commands inside the bubblewrap cage.
 const sshConfigDirName = "etc-ssh-config.d"
 
+// Sandbox runs shell commands under a bubblewrap sandbox.
 type Sandbox struct {
 	workspace     string
 	tempHost      string
@@ -105,7 +105,7 @@ type Sandbox struct {
 	run           Runner
 }
 
-// NewSandbox builds a sandbox for workspace (host path, RW) with the session temp at tempHost (same absolute path inside and outside the cage). run is the command runner seam.
+// NewSandbox builds a sandbox for workspace (host path, RW) with the session temp at tempHost (same absolute path inside and outside the sandbox). run is the command runner seam.
 func NewSandbox(workspace, tempHost string, run Runner, extraWritable ...string) (*Sandbox, error) {
 	if workspace == "" {
 		return nil, errors.New("workspace path is empty")
@@ -125,7 +125,7 @@ func NewSandbox(workspace, tempHost string, run Runner, extraWritable ...string)
 	return &Sandbox{workspace: filepath.Clean(workspace), tempHost: filepath.Clean(tempHost), extraWritable: cleanPaths(extraWritable), run: run}, nil
 }
 
-// Run executes the shell command cmd inside the bwrap cage and returns its output. cmd is a shell string executed by /bin/bash -c.
+// Run executes the shell command cmd inside the bwrap sandbox and returns its output. cmd is a shell string executed by /bin/bash -c.
 func (s *Sandbox) Run(ctx context.Context, cmd string) (*Output, error) {
 	if err := os.MkdirAll(s.tempHost, 0o700); err != nil {
 		return nil, err
@@ -209,7 +209,7 @@ func (s *Sandbox) prepareSshConfig() error {
 	return nil
 }
 
-// resolveRegularFile resolves src to the path of the regular file to copy, dereferencing symlinks so a symlink target rooted in /usr/lib/systemd is copied as a real, caller-owned file rather than a pointer to a host-root, nobody-in-cage target. ok is false when src does not map to a regular file, in which case the caller should skip the entry.
+// resolveRegularFile resolves src to the path of the regular file to copy, dereferencing symlinks so a symlink target rooted in /usr/lib/systemd is copied as a real, caller-owned file rather than a pointer to a host-root, nobody-in-sandbox target. ok is false when src does not map to a regular file, in which case the caller should skip the entry.
 func resolveRegularFile(src string) (path string, ok bool, err error) {
 	info, err := os.Lstat(src)
 	if err != nil {
