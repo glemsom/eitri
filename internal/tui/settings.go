@@ -817,12 +817,24 @@ func settingsView(f settingsForm) string {
 		{fieldModel, "Model", f.Model()},
 	}
 	if f.cfg.Provider == string(provider.ProviderOpenCodeGo) {
-		rows = append(rows, struct{ field int; name string; val string }{fieldOpenCodeKey, "OpenCode API key", maskKey(f.cfg.OpenCodeGo.Key)})
+		rows = append(rows, struct {
+			field int
+			name  string
+			val   string
+		}{fieldOpenCodeKey, "OpenCode API key", maskKey(f.cfg.OpenCodeGo.Key)})
 	}
 	if f.cfg.Provider == string(provider.ProviderCustomOpenAI) {
 		rows = append(rows,
-			struct{ field int; name string; val string }{fieldCustomOpenAIBaseURL, "Base URL", f.cfg.CustomOpenAI.BaseURL},
-			struct{ field int; name string; val string }{fieldCustomOpenAIKey, "API key", maskKey(f.cfg.CustomOpenAI.Key)},
+			struct {
+				field int
+				name  string
+				val   string
+			}{fieldCustomOpenAIBaseURL, "Base URL", f.cfg.CustomOpenAI.BaseURL},
+			struct {
+				field int
+				name  string
+				val   string
+			}{fieldCustomOpenAIKey, "API key", maskKey(f.cfg.CustomOpenAI.Key)},
 		)
 	}
 	rows = append(rows, []struct {
@@ -847,9 +859,15 @@ func settingsView(f settingsForm) string {
 		{lookup("settingsModel") + " model", fieldProvider},
 	}
 	if f.cfg.Provider == string(provider.ProviderOpenCodeGo) {
-		sections = append(sections, struct{ label string; start int }{lookup("settingsCredentials") + " provider credentials", fieldOpenCodeKey})
+		sections = append(sections, struct {
+			label string
+			start int
+		}{lookup("settingsCredentials") + " provider credentials", fieldOpenCodeKey})
 	} else if f.cfg.Provider == string(provider.ProviderCustomOpenAI) {
-		sections = append(sections, struct{ label string; start int }{lookup("settingsCredentials") + " provider credentials", fieldCustomOpenAIBaseURL})
+		sections = append(sections, struct {
+			label string
+			start int
+		}{lookup("settingsCredentials") + " provider credentials", fieldCustomOpenAIBaseURL})
 	}
 	sections = append(sections, []struct {
 		label string

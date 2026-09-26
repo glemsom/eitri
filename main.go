@@ -36,7 +36,7 @@ Flags:
   -v             in batch mode, print the model's thinking/reasoning to stderr
   -d             enable debug mode (writes full HTTP traces to/from the provider)
   --yolo-unsafe  run unsandboxed: bash executes directly as your user, no
-                 bubblewrap cage
+                 bubblewrap sandbox
   --pprof <addr> enable localhost pprof diagnostics (example: 127.0.0.1:6060)
   --pprof-mutex  include mutex profile evidence when --pprof is enabled
   --pprof-block  include block profile evidence when --pprof is enabled
@@ -51,7 +51,7 @@ unconditionally. Install hints:
   Arch:          sudo pacman -S bubblewrap bash ripgrep curl lynx patch python3 git jq xdg-utils
 The base coreutils (grep, sed, awk, cat, nl, diff) are assumed present.
 By default Eitri never runs unsandboxed: every bash command is confined by the
-bubblewrap cage. With --yolo-unsafe that guarantee is dropped — bash runs
+bubblewrap sandbox. With --yolo-unsafe that guarantee is dropped — bash runs
 directly as your user with full host permissions.
 `
 
@@ -67,7 +67,7 @@ func main() {
 		prompt     = flag.String("b", "", "run once in batch mode with the given prompt and exit")
 		verbose    = flag.Bool("v", false, "print the model's thinking to stderr in batch mode")
 		debug      = flag.Bool("d", false, "enable debug mode")
-		yolo       = flag.Bool("yolo-unsafe", false, "run unsandboxed: bash executes directly, no bubblewrap cage")
+		yolo       = flag.Bool("yolo-unsafe", false, "run unsandboxed: bash executes directly, no bubblewrap sandbox")
 		pprofAddr  = flag.String("pprof", "", "enable localhost pprof diagnostics, optionally with an address")
 		pprofMutex = flag.Bool("pprof-mutex", false, "include mutex profile evidence when --pprof is enabled")
 		pprofBlock = flag.Bool("pprof-block", false, "include block profile evidence when --pprof is enabled")

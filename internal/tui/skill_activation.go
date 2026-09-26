@@ -52,7 +52,7 @@ func (s *SkillActivation) skipBadge(th Theme) string {
 		return ""
 	}
 	names := strings.Join(s.skipped, ", ")
-	return th.outcomeErrStyle.Render(lookup("warning")+" "+fmt.Sprintf("skipped %d unparseable skill(s): %s", len(s.skipped), names))
+	return th.outcomeErrStyle.Render(lookup("warning") + " " + fmt.Sprintf("skipped %d unparseable skill(s): %s", len(s.skipped), names))
 }
 
 // Command reports whether prompt is a `/skillname` activation command for a detected skill.
