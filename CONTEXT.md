@@ -25,7 +25,7 @@ _Avoid_: streaming turn, current turn.
 **Committed turn**: a finished run settled into the transcript, no longer re-projected.
 _Avoid_: past turn, history.
 
-**Session**: the append-only, GUID-named on-disk record of one run. It is not an editable conversation.
+**Session**: the append-only, GUID-named on-disk record of a sequence of turns — one per batch run, and in the TUI until `/new` re-mints it. It is not an editable conversation.
 _Avoid_: conversation, chat history.
 
 **Persisted transcript**: the message-layer JSONL record of provider requests and responses inside a session — the ground truth for debugging and performance work.

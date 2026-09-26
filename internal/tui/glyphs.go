@@ -51,7 +51,7 @@ var glyphInventory = map[string]glyph{
 	"cursor":              {"┃", "glyph"},
 }
 
-// lookup returns the glyph for the current locale. Panics if name is not in the inventory so a typo is caught immediately during development/testing.
+// lookup returns the mark's UTF-8 form. Panics if name is not in the inventory so a typo is caught immediately during development/testing.
 func lookup(name string) string {
 	ent, ok := glyphInventory[name]
 	if !ok {

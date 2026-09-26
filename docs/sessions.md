@@ -1,7 +1,8 @@
 # Session debug transcripts
 
-Every Eitri run writes a GUID-named directory under `sessions/` in the data
-directory (`~/.eitri` by default, override with `EITRI_DIR`). These transcripts
+Every Eitri session writes a GUID-named directory under `sessions/` in the data
+directory (`~/.eitri` by default, override with `EITRI_DIR`). A batch run is one
+session; the TUI reuses its session until `/new` re-mints it. These transcripts
 are the ground truth for analyzing Eitri's and the LLM's performance and
 functionality. They are designed so an AI agent can navigate them without
 loading whole sessions into its context window.
@@ -40,8 +41,8 @@ Response record:
 
 - `error` is present only when the turn failed (provider error or mid-stream failure).
 - Turns are implicitly numbered 1..N in file order, and that number is what
-  `--turn N` takes. (`session list` is the one place the CLI still prints the
-  word "cycles" for this count.)
+  `--turn N` takes. (`session list` prints this count as `N cycles`, and the
+  `show`/`grep` flag help still calls it a "cycle" in both.)
 
 ## Agent navigation workflow
 

@@ -19,6 +19,7 @@ flowchart TB
   session --> provider
   tui --> provider
   tui --> session
+  provider --> config
 ```
 
 Arrows are imports, abridged: leaf-package edges (`constants`, `osc52`, `skillspack`, `livekey`, `telemetry`, `testutil`) and `tui --> config` are left out. The graph is acyclic and `app` is the only composition root: every other package is handed what it needs rather than constructing it. Note what is absent — the engine reaches the toolset through the injected `ToolExecutor` and takes it as a `[]provider.Tool` manifest, so `internal/tools` never enters the loop.
@@ -75,7 +76,7 @@ The TUI never calls a provider: it names provider kinds for the settings UI and 
 
 ### Small packages
 
-`internal/osc52` writes clipboard escape sequences; `internal/constants` holds cross-layer limits; `internal/testutil` contains shared test helpers. The session temp is created by `internal/session` and owned by the tools registry as `TempHost`, which the bash backends and the rail read.
+`internal/osc52` writes clipboard escape sequences; `internal/constants` holds cross-layer limits; `internal/testutil` contains shared test helpers. The session temp is *named* by `internal/session` (`Session.TempDir`), *created* by the bash backends on first use, and owned by the tools registry as `TempHost`; the backends and the rail read it.
 
 `internal/tools/memtmp` is the one exception to the package map: it is a `package main` scratch program, not a library, and nothing imports it.
 
