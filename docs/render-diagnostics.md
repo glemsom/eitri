@@ -9,7 +9,7 @@ Use this workflow when the TUI feels slow, janky, or allocates too much memory. 
 - Switching models or sessions causes a visible freeze.
 - Memory climbs during long sessions without dropping.
 
-## Supported workflows
+## Workflows
 
 ### pprof alone
 
@@ -26,7 +26,7 @@ Start eitri with pprof enabled:
 eitri --pprof 127.0.0.1:6060
 ```
 
-### Benchmark comparison workflow
+### Benchmark comparison
 
 Eitri's render path touches several seams. When a change may affect responsiveness, measure before and after one focused change with benchmarks; measure, change one thing, and re-measure.
 
@@ -51,6 +51,10 @@ Use `benchstat` for statistical comparison rather than eyeballing raw nanosecond
 
 Existing render benchmarks remain the starting point. Add a new benchmark only when the existing ones cannot express the seam you changed.
 
+## Render contracts
+
+These are standing properties of the render path, not workarounds. Each names the guard that fails if the property regresses.
+
 ### Live streaming bodies render cheaply and converge to glamour at commit
 
 A streaming block re-renders its tail on every delta, so rendering the full glamour+goldmark pipeline per frame is super-linear in stream length. The live path therefore renders cheaply and lets the committed turn re-render the authoritative full block through glamour exactly once (so committed bytes never depend on the live path).
@@ -72,7 +76,7 @@ go test ./internal/tui -run 'TestFaceUploadsOnceAtBootThenIdles|TestResizeReuplo
 
 `TestFaceUploadsOnceAtBootThenIdles` proves an idle model answers a stray face-draw tick with no command at all (no upload, no re-arm); the other three prove each damage class (terminal resize, rail-width tweak, theme save) re-uploads on the next face draw.
 
-### Committed-history render-cost guard
+### Committed-history render cost is flat in history size
 
 A long conversation must not cost more per turn just because history is long. The committed render memo (`Transcript.units`) makes committing a new turn render only that turn and serve the prior units from the memo, so per-turn commit cost stays flat in prior-history length instead of re-rendering (and re-wrapping) the whole transcript each commit — the quadratic crawl this memo exists to remove.
 
@@ -88,7 +92,7 @@ go test ./internal/tui -run xxx -bench BenchmarkCommittedCommitCost -benchmem -b
 
 The size-sweep builds N committed turns for N in {10, 100, 1000} and measures the marginal cost of committing one more. "Flat" means the marginal commit re-renders exactly the new turn's two committed units (its prompt + its answer) and nothing else, at every N — never the prior history. If a change re-derives prior units on commit, the marginal cost exceeds 2 and the excess grows with N, so the 1000-turn case flags the regression where a small fixture would not. The benchmark's alloc count should stay near zero and flat across N; growth with N is the same regression surfacing empirically.
 
-### Input-scoped memo invalidation
+### Memo invalidation is input-scoped
 
 Invalidation of the committed render memo is scoped to the inputs that actually feed it, so an in-place committed change never re-renders the whole history. An expansion toggle, a committed tool observation, or a block-focus marker move marks only the unit(s) whose flow draws the affected block (`invalidateCommittedUnit`); a width, theme, or expand/collapse-all change re-wraps everything and drops the whole memo (`invalidateCommittedMemo`). After every invalidation the memo must serve bytes a fresh full render would produce.
 

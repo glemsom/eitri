@@ -12,12 +12,16 @@ flowchart TB
   app --> session[internal/session]
   app --> engine[internal/engine]
   app --> tui[internal/tui]
+  app --> tools[internal/tools]
   engine --> provider
-  engine --> tools[internal/tools]
-  engine --> session
-  tools --> session
-  tools --> compress[internal/compress]
+  engine --> compress[internal/compress]
+  tools --> compress
+  session --> provider
+  tui --> provider
+  tui --> session
 ```
+
+Arrows are imports. The graph is acyclic and `app` is the only composition root: every other package is handed what it needs rather than constructing it. Note what is absent — the engine reaches the toolset through the injected `ToolExecutor` and takes it as a `[]provider.Tool` manifest, so `internal/tools` never enters the loop.
 
 Startup resolves paths, loads configuration, verifies the declared runtime toolset, materializes builtin skills, and constructs the provider, tools, engine, and session store. The app then starts batch mode or the TUI.
 
@@ -41,7 +45,7 @@ Reads and writes `<data directory>/config.json`. Defaults include provider `open
 
 ### `internal/engine`
 
-Runs the bounded agent loop. It assembles prompts, streams provider responses, dispatches tool calls, emits typed events, enforces the turn cap, exposes `ErrStopped`, and retries once after context-overflow compaction. `prompt.md` is embedded at build time; `skillspack/` embeds builtin skills and materializes them under `$EITRI_DIR/skills-builtin`.
+Runs the bounded agent loop. It assembles prompts, streams provider responses, dispatches tool calls through the injected `ToolExecutor`, emits typed events, enforces the turn cap, exposes `ErrStopped`, and retries once after context-overflow compaction. `prompt.md` is embedded at build time; `skillspack/` embeds builtin skills and materializes them under `$EITRI_DIR/skills-builtin`.
 
 ### `internal/provider`
 
@@ -61,7 +65,13 @@ Stores GUID-named, append-only session directories under the data directory. Mes
 
 ### `internal/tui`
 
-Bubble Tea terminal UI. It owns the composer, rendered transcript, right rail, settings, login, help, slash commands, and turn lifecycle. `TurnRuntime` is the sole caller-facing seam for a live Run: it dispatches and cancels the Run, drains the FIFO event feed, preserves event order, and rejects stale Run IDs. `Transcript` is the sole owner of transcript projection state; it receives typed start, stream, tool, and completion outcomes. `TurnSession` supplies cancellable execution only. The engine is the only provider caller.
+Bubble Tea terminal UI. It owns the composer, transcript view, right rail, settings, login, help, slash commands, and turn lifecycle. Three seams carry the turn:
+
+- `TurnRuntime` is the only caller-facing seam for a live Run. It dispatches and cancels the Run, drains the FIFO event feed, preserves event order, and rejects stale Run IDs.
+- `Transcript` is the sole owner of transcript projection state, receiving typed start, stream, tool, and completion outcomes.
+- `TurnSession` supplies cancellable execution only.
+
+The TUI never calls a provider: it names provider kinds for the settings UI and receives every turn through the runtime seam. `livekey` and `telemetry` are already extracted sub-packages; the remaining leaves are tracked in [docs/agents/de-monolith-tui.md](docs/agents/de-monolith-tui.md).
 
 ### Small packages
 
@@ -76,6 +86,7 @@ Bubble Tea terminal UI. It owns the composer, rendered transcript, right rail, s
 5. Sessions and transcripts are append-only.
 6. Default bash is bubblewrap-confined; `--yolo-unsafe` executes directly and is not represented as sandboxed.
 7. TUI rendering uses typed engine events and rejects stale run IDs.
+8. The import graph is acyclic and `app` is the only composition root; the engine reaches the toolset through `ToolExecutor`, never through an import.
 
 ## Where to start
 
@@ -87,8 +98,10 @@ Bubble Tea terminal UI. It owns the composer, rendered transcript, right rail, s
 | Bash execution | `internal/tools/sandbox.go`, `direct.go`, `tool_bash.go` |
 | Tool output limits | `internal/compress/compress.go` |
 | Sessions/transcripts | `internal/session`, `internal/provider/messagelog.go` |
-| TUI turn lifecycle | `internal/tui/turn_runtime.go` (caller seam), `turn_session.go` and `fold.go` (implementation), `internal/engine/events.go` |
+| TUI turn lifecycle | `internal/tui/turn_runtime.go` (caller seam), `turn_session.go` and `flowrender.go` (implementation), `internal/engine/events.go` |
+| Transcript projection | `internal/tui/transcript.go`, `flowrender.go` |
 | Skills | `internal/tools/skills.go`, `internal/engine/skillspack` |
 | Batch contract | `docs/batch-mode.md` |
 | Session commands | `docs/sessions.md` |
 | Render diagnostics | `docs/render-diagnostics.md` |
+| TUI marks and icons | `docs/tui-iconography.md`, `docs/adr/` |

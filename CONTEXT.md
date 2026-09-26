@@ -4,70 +4,91 @@ Eitri is a self-hosted, single-binary AI coding agent for GNU/Linux. It reads, w
 
 ## Principles
 
-- **Unix composition:** Prefer existing GNU/Linux programs with inspectable inputs and outputs over bespoke capabilities.
-- **Throwaway script:** Short-lived Bash or Python glue for task-local state, branching, or coordination; not a permanent product surface.
+- **Unix composition:** prefer existing GNU/Linux programs with inspectable inputs and outputs over bespoke capabilities.
+- **Throwaway script:** short-lived Bash or Python glue for task-local state, branching, or coordination; not a permanent product surface.
 - **Linux-only boundary:** GNU/Linux conventions and programs are supported; portability is not a design goal.
-
-## Terminology at a glance
-
-| Term | Meaning |
-| --- | --- |
-| Turn | One provider request/response cycle. |
-| Run | One bounded execution of the turn loop. |
-| Session | The append-only, GUID-named on-disk record of a run. |
-| Persisted transcript | JSONL message-layer record of provider requests and responses. |
-| TUI transcript view | The rendered conversation in the terminal. |
-| Provider | An adapter for a model endpoint, including authentication and streaming. |
-| Toolset | The fixed tools promised to the model: `bash` and `open_in_browser`. |
-| Workspace | The declared host directory the run may operate in. |
-| Sandbox | The default bubblewrap boundary around `bash`. |
-| Skill | A discovered and validated pack of agent instructions and resources. |
-| Batch mode | One-shot execution that runs one `Run` and exits. |
 
 ## Runs and sessions
 
-**Turn** is one provider request/response cycle, including any streamed tool calls. Avoid “cycle” and “iteration.”
+**Turn**: one provider request/response cycle, including any tool calls it streams.
+_Avoid_: cycle, iteration.
 
-**Run** is one bounded turn-loop execution: a batch invocation or one TUI submission. It ends with a final answer, the maximum-turn cap, or user stop. Avoid “invocation” and “request.”
+**Run**: one bounded turn-loop execution, ending in a final answer, the turn cap, or a user stop.
+_Avoid_: invocation, request.
 
-**Session** is the append-only on-disk trail of one run, identified by a GUID. It is not an editable conversation or chat history.
+**Stop**: the user's cancellation of a live run, distinct from a provider or tool failure.
+_Avoid_: cancel, abort, interrupt.
 
-**Persisted transcript** is the message-layer JSONL record inside a session: the ground truth for debugging and performance work. **TUI transcript view** is its rendered terminal counterpart; use the qualifier when referring to the UI.
+**Live turn**: the run in flight in the TUI transcript view, re-projected on every stream delta.
+_Avoid_: streaming turn, current turn.
+
+**Committed turn**: a finished run settled into the transcript, no longer re-projected.
+_Avoid_: past turn, history.
+
+**Session**: the append-only, GUID-named on-disk record of one run. It is not an editable conversation.
+_Avoid_: conversation, chat history.
+
+**Persisted transcript**: the message-layer JSONL record of provider requests and responses inside a session — the ground truth for debugging and performance work.
+_Avoid_: message log, trace.
+
+**TUI transcript view**: the rendered conversation in the terminal. Qualify "transcript" when the UI is meant.
+_Avoid_: transcript (bare).
 
 ## Providers and context
 
-**Provider** is a model endpoint behind one adapter: model discovery, streaming, generation control, and authentication. “Dialect” is the provider-agnostic shape translated at the provider seam into a wire format.
+**Provider**: a model endpoint behind one adapter, owning authentication, streaming, and generation control.
+_Avoid_: backend, service.
 
-**Compaction** is model-based summarization of older turns when context is near or beyond the provider limit. **Compression** is deterministic, zero-LLM bounding of tool output by stripping ANSI and applying line and byte caps. Do not use these terms interchangeably.
+**Dialect**: the provider-agnostic request/response shape, translated at the provider seam into a wire format.
+_Avoid_: provider, adapter.
 
-**Context overflow** is a provider refusal that the request exceeds its context window; it triggers emergency compaction.
+**Compaction**: model-based summarization of older turns when a request nears the provider's context window.
+_Avoid_: compression, trimming.
 
-## Tools and sandbox
+**Compression**: deterministic, zero-LLM bounding of tool output by stripping ANSI and applying line and byte caps. Never interchangeable with compaction.
+_Avoid_: compaction, truncation, clipping.
 
-**Toolset** is the fixed set of tools and backing commands unconditionally promised to the model. Eitri verifies them at launch.
+**Context overflow**: a provider refusal that a request exceeds its context window. It triggers emergency compaction.
+_Avoid_: too many tokens, limit reached.
 
-**Workspace** is the session's declared scope and is writable by design. The current working directory is only the incidental process location.
+## Tools and workspace
 
-**Sandbox** is the default bubblewrap boundary: read-only root, writable workspace and session temporary directory, and isolated PID, `/proc`, and `/dev` namespaces. `--yolo-unsafe` drops this boundary and runs bash directly as the user.
+**Toolset**: the fixed set of tools promised to the model. Eitri verifies the backing commands before launch.
+_Avoid_: plugin set, tool bundle.
 
-**Session temp** is the per-session writable directory for ephemeral artifacts. It is distinct from the system-wide `/tmp`.
+**Workspace**: the session's declared scope, writable by design. The current working directory is only the incidental process location.
+_Avoid_: cwd, repo root.
+
+**Sandbox**: the default boundary around `bash` — read-only system, writable workspace and session temp, isolated process namespace.
+_Avoid_: cage, jail, container.
+
+**Session temp**: the per-session writable directory for ephemeral artifacts, distinct from the system-wide `/tmp`.
+_Avoid_: scratch space, tmpdir.
 
 ## Skills
 
-**Skill** is a discovered, validated pack of instructions and resources. Skills are resolved project > user > builtin; exact-name collisions are shadowed by the stronger scope. A skill may be human-invocable through `/skillname`, model-invocable through the rendered index, or both.
+**Skill**: a discovered, validated pack of instructions and resources. A skill may be human-invocable, model-invocable, or both.
+_Avoid_: plugin, prompt pack, command.
 
-**Builtin skills root** is the materialized builtin-skill directory under `$EITRI_DIR`. Builtins are authored in the repository's skillpack source and overridden by same-named project or user skills.
+**Skill activation**: the slash-command path that resolves a skill and injects its body into the next turn.
+_Avoid_: invocation, execution.
 
-**Skill activation** is the slash-command path that resolves a skill, records the invocation, and injects its body into the next turn.
+**Subagent**: a batch-mode Eitri process the agent launches in an isolated execution directory. Its result is the batch envelope's `answer` field, not parsed prose.
+_Avoid_: worker, child agent, task.
 
-**Subagent** is a batch-mode Eitri process launched by the agent in an isolated execution directory. Its machine-readable result is the `answer` field of the JSON batch envelope, not parsed prose.
+## Modes and surfaces
 
-## Modes and TUI
+**Batch mode**: one `Run` from a prompt on the command line, then exit. Piped non-TTY stdin is appended after the prompt as fenced context — input, never instructions.
+_Avoid_: non-interactive, CLI mode.
 
-**Batch mode** runs one `Run` from `eitri -b <prompt>` and exits. Piped non-TTY stdin is appended after the prompt as fenced context; it is input, not instructions. `--format json` emits the machine-readable batch envelope.
+**Batch envelope**: the single machine-readable object a batch run emits at end: answer, session, turns, stopped.
+_Avoid_: result JSON, output object.
 
-**Debug mode** (`-d`) records raw HTTP request and response bodies in the session.
+**Debug mode**: records raw provider HTTP request and response bodies in the session.
+_Avoid_: verbose mode, `-v`.
 
-**Composer** is the TUI input surface for prompts, mentions, and slash commands. **Turn session** is the TUI owner of one run's context, cancellation, thinking state, and timeline.
+**Composer**: the TUI input surface for prompts, mentions, and slash commands.
+_Avoid_: input box, prompt bar.
 
-**Stop** is the user's cancellation of a live run, represented by the dedicated `ErrStopped` sentinel. It is distinct from a provider or tool failure.
+**Turn session**: the TUI owner of one run's context, cancellation, thinking state, and timeline.
+_Avoid_: turn state, session state.
