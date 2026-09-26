@@ -46,7 +46,7 @@ The TUI's `/help` is the authoritative reference for keybindings and slash comma
 
 ## Safety
 
-By default, every `bash` command runs in a bubblewrap cage with a read-only root, writable workspace and session temporary directory, and isolated PID, `/proc`, and `/dev` namespaces. `--yolo-unsafe` removes this cage and must only be used with trusted prompts and workloads.
+By default, every `bash` command runs in a bubblewrap sandbox with a read-only root, writable workspace and session temporary directory, and isolated PID, `/proc`, and `/dev` namespaces. `--yolo-unsafe` removes the sandbox and must only be used with trusted prompts and workloads.
 
 Commands are limited to 120 seconds by default; each call can request up to 3600 seconds.
 

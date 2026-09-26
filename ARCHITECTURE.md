@@ -21,7 +21,7 @@ flowchart TB
   tui --> session
 ```
 
-Arrows are imports, abridged: the `config` and leaf-package edges (`constants`, `osc52`, `skillspack`, `livekey`, `telemetry`, `memtmp`) are left out. The graph is acyclic and `app` is the only composition root: every other package is handed what it needs rather than constructing it. Note what is absent — the engine reaches the toolset through the injected `ToolExecutor` and takes it as a `[]provider.Tool` manifest, so `internal/tools` never enters the loop.
+Arrows are imports, abridged: leaf-package edges (`constants`, `osc52`, `skillspack`, `livekey`, `telemetry`, `testutil`) and `tui --> config` are left out. The graph is acyclic and `app` is the only composition root: every other package is handed what it needs rather than constructing it. Note what is absent — the engine reaches the toolset through the injected `ToolExecutor` and takes it as a `[]provider.Tool` manifest, so `internal/tools` never enters the loop.
 
 Startup resolves paths, loads configuration, verifies the declared runtime toolset, materializes builtin skills, and constructs the provider, tools, engine, and session store. The app then starts batch mode or the TUI.
 
@@ -77,6 +77,8 @@ The TUI never calls a provider: it names provider kinds for the settings UI and 
 
 `internal/osc52` writes clipboard escape sequences; `internal/constants` holds cross-layer limits; `internal/testutil` contains shared test helpers. The session temp is created by `internal/session` and owned by the tools registry as `TempHost`, which the bash backends and the rail read.
 
+`internal/tools/memtmp` is the one exception to the package map: it is a `package main` scratch program, not a library, and nothing imports it.
+
 ## Invariants
 
 1. Boot verifies every declared runtime tool, so the prompt does not promise unavailable commands.
@@ -101,7 +103,7 @@ The TUI never calls a provider: it names provider kinds for the settings UI and 
 | TUI turn lifecycle | `internal/tui/turn_runtime.go` (caller seam), `turn_session.go` and `flowrender.go` (implementation), `internal/engine/events.go` |
 | Transcript projection | `internal/tui/transcript.go`, `flowrender.go` |
 | Skills | `internal/tools/skills.go`, `internal/engine/skillspack` |
-| Batch contract | `docs/batch-mode.md` |
-| Session commands | `docs/sessions.md` |
-| Render diagnostics | `docs/render-diagnostics.md` |
-| TUI marks and icons | `docs/tui-iconography.md`, `docs/adr/` |
+| Batch contract | [docs/batch-mode.md](docs/batch-mode.md) |
+| Session commands | [docs/sessions.md](docs/sessions.md) |
+| Render diagnostics | [docs/render-diagnostics.md](docs/render-diagnostics.md) |
+| TUI marks and icons | [docs/tui-iconography.md](docs/tui-iconography.md), [docs/adr/](docs/adr/) |

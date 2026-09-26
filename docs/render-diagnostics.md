@@ -78,7 +78,7 @@ go test ./internal/tui -run 'TestFaceUploadsOnceAtBootThenIdles|TestResizeReuplo
 
 ### Committed-history render cost is flat in history size
 
-A long conversation must not cost more per turn just because history is long. The committed render memo (`Transcript.units`) makes committing a new turn render only that turn and serve the prior units from the memo, so per-turn commit cost stays flat in prior-history length instead of re-rendering (and re-wrapping) the whole transcript each commit — the quadratic crawl this memo exists to remove.
+A long session must not cost more per turn just because history is long. The committed render memo (`Transcript.units`) makes committing a new turn render only that turn and serve the prior units from the memo, so per-turn commit cost stays flat in prior-history length instead of re-rendering (and re-wrapping) the whole transcript each commit — the quadratic crawl this memo exists to remove.
 
 The regression guard for that property is the size-sweep in `internal/tui/committed_render_cost_test.go`:
 
@@ -87,7 +87,7 @@ The regression guard for that property is the size-sweep in `internal/tui/commit
 go test ./internal/tui -run TestCommittedCommitCostFlatInHistorySize
 
 # empirical wall-clock / allocation surface
-go test ./internal/tui -run xxx -bench BenchmarkCommittedCommitCost -benchmem -benchtime 30x
+go test ./internal/tui -run xxx -bench BenchmarkCommittedCommitCost_FlatInHistory -benchmem -benchtime 30x
 ```
 
 The size-sweep builds N committed turns for N in {10, 100, 1000} and measures the marginal cost of committing one more. "Flat" means the marginal commit re-renders exactly the new turn's two committed units (its prompt + its answer) and nothing else, at every N — never the prior history. If a change re-derives prior units on commit, the marginal cost exceeds 2 and the excess grows with N, so the 1000-turn case flags the regression where a small fixture would not. The benchmark's alloc count should stay near zero and flat across N; growth with N is the same regression surfacing empirically.
