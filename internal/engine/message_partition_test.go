@@ -15,10 +15,10 @@ func TestPartitionMessagesSharesStableHeadAcrossCompactionAndPersistence(t *test
 	repo := provider.Message{Role: provider.RoleSystem, Content: "## Repository instructions (AGENTS.md)\nfollow them"}
 	activation := provider.Message{Role: provider.RoleUser, Content: "<skill_content name=\"tdd\">test first</skill_content>\n\nrequest"}
 	conversation := []provider.Message{{Role: provider.RoleAssistant, Content: "answer"}, {Role: provider.RoleUser, Content: "next"}}
-	messages := append([]provider.Message{persona, workspace, skills, repo, activation}, conversation...)
+	messages := append([]provider.Message{persona, skills, repo, workspace, activation}, conversation...)
 
 	got := partitionMessages(messages)
-	if want := []provider.Message{persona, workspace, skills, repo}; !reflect.DeepEqual(got.StableHead, want) {
+	if want := []provider.Message{persona, skills, repo, workspace}; !reflect.DeepEqual(got.StableHead, want) {
 		t.Fatalf("StableHead = %#v, want %#v", got.StableHead, want)
 	}
 	if want := []provider.Message{activation}; !reflect.DeepEqual(got.Transient, want) {
@@ -69,7 +69,7 @@ func TestStoreSessionHistoryUsesSharedPartitionAndPreservesOrder(t *testing.T) {
 	activation := provider.Message{Role: provider.RoleUser, Content: "<skill_content name=\"tdd\">test first</skill_content>\n\nrequest"}
 	conversation := []provider.Message{{Role: provider.RoleAssistant, Content: "answer"}, {Role: provider.RoleUser, Content: "next"}}
 
-	e.storeSessionHistory(t.Name(), append([]provider.Message{persona, workspace, skills, repo, activation}, conversation...))
+	e.storeSessionHistory(t.Name(), append([]provider.Message{persona, skills, repo, workspace, activation}, conversation...))
 	want := append([]provider.Message{activation}, conversation...)
 	if got := e.sessionHistory(t.Name()); !reflect.DeepEqual(got, want) {
 		t.Fatalf("sessionHistory = %#v, want %#v", got, want)

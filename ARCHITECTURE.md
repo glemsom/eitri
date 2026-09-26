@@ -28,7 +28,7 @@ Startup resolves paths, loads configuration, opens the session store, verifies t
 
 One run follows this path:
 
-1. The engine assembles the stable prompt head, workspace directives, skills, repository instructions, persisted history, and user prompt.
+1. The engine assembles the stable prompt head, skills, repository instructions, the per-run workspace directive, persisted history, and user prompt — static messages first, per-run state last, so the static prefix stays cacheable.
 2. The provider translates canonical messages and tools into its wire dialect and streams the response.
 3. Tool calls go through the fixed tool registry. Bash uses bubblewrap by default or the direct backend with `--yolo-unsafe`.
 4. Tool output is deterministically compressed before returning to the engine. Older history is compacted with an LLM when context requires it.
@@ -83,7 +83,7 @@ The TUI never calls a provider: it names provider kinds for the settings UI and 
 ## Invariants
 
 1. Boot verifies every declared runtime tool, so the prompt does not promise unavailable commands.
-2. The stable system-prompt head is byte-identical across turns; variable workspace directives are separate messages for provider cacheability.
+2. The stable system-prompt head is byte-identical across turns, and the variable workspace directive is a separate message placed after every static system message, so a provider cache breakpoint at the end of the static prefix keeps hitting.
 3. Compression bounds tool output deterministically; compaction summarizes older history with a model.
 4. User stop is represented by `ErrStopped`, distinct from provider or tool failure.
 5. Sessions and transcripts are append-only.

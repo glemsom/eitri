@@ -1,8 +1,11 @@
 package engine
 
 import (
+	"context"
 	"strings"
 	"testing"
+
+	"github.com/glemsom/eitri/internal/provider"
 )
 
 // TestWorkspaceDirectiveNamesWritablePaths guards the per-run statement of what
@@ -43,5 +46,57 @@ func TestWorkspaceDirectiveOmitsWriteSectionWhenUnconfined(t *testing.T) {
 	}
 	if !strings.Contains(got, "## Working directory") {
 		t.Fatalf("directive lost the working-directory statement: %q", got)
+	}
+}
+
+// TestRunAgentOrdersPerRunDirectiveAfterTheStaticSystemLayer guards the cache
+// layout: a provider cache write covers everything up to its breakpoint, so the
+// per-run directive — whose text carries the session temp path and the resolved
+// writable set — must follow the byte-stable messages, never precede them. The
+// declared StaticPrefixLen is what the dialect puts the breakpoint on, so a
+// mis-ordered system layer would silently widen every cache hash with
+// per-session state.
+func TestRunAgentOrdersPerRunDirectiveAfterTheStaticSystemLayer(t *testing.T) {
+	t.Parallel()
+	c := &skillIndexCaptureHandler{}
+	e := New(provider.NewScripted(c.stream), nil)
+
+	idx := "<available_skills><skill><name>review</name></skill></available_skills>"
+	repo := "# AGENTS.md\n\nfollow them\n"
+	if _, err := e.RunAgent(context.Background(), RunRequest{
+		Model:            "deepseek-v4-flash",
+		Prompt:           "hi",
+		SessionKey:       "sess-abc",
+		Workspace:        "/srv/work",
+		WritablePaths:    []string{"/srv/work"},
+		SkillIndex:       &idx,
+		RepoInstructions: &repo,
+	}, AgentOptions{MaxTurns: 1}); err != nil {
+		t.Fatalf("RunAgent error = %v, want nil", err)
+	}
+	if len(c.requests) != 1 {
+		t.Fatalf("captured %d requests, want 1", len(c.requests))
+	}
+	msgs := c.requests[0].Messages
+	if len(msgs) != 5 {
+		t.Fatalf("got %d messages, want 5 (head, skill index, repo instructions, workspace directive, user)", len(msgs))
+	}
+	if msgs[0].Content != SystemPromptContent() {
+		t.Errorf("messages[0] is not the persona head: %.40q", msgs[0].Content)
+	}
+	if msgs[1].Content != idx {
+		t.Errorf("messages[1] is not the skill index: %.40q", msgs[1].Content)
+	}
+	if !strings.Contains(msgs[2].Content, "## Repository instructions (AGENTS.md)") {
+		t.Errorf("messages[2] is not the repo instructions: %.40q", msgs[2].Content)
+	}
+	if !strings.Contains(msgs[3].Content, "## Working directory") {
+		t.Errorf("messages[3] is not the per-run workspace directive: %.40q", msgs[3].Content)
+	}
+	if msgs[4].Role != provider.RoleUser || msgs[4].Content != "hi" {
+		t.Errorf("messages[4] not the user prompt: role=%s content=%q", msgs[4].Role, msgs[4].Content)
+	}
+	if got, want := c.requests[0].StaticPrefixLen, 3; got != want {
+		t.Errorf("StaticPrefixLen = %d, want %d (the workspace directive is per-run state)", got, want)
 	}
 }

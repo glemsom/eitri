@@ -24,13 +24,15 @@ func partitionMessages(messages []provider.Message) messagePartition {
 	if len(messages) > 0 && messages[0].Role == provider.RoleSystem && isSystemPromptHead(messages[0].Content) {
 		start++
 	}
-	for start < len(messages) && isWorkspaceMessage(messages[start]) {
-		start++
-	}
+	// The order mirrors RunAgent's assembly: persona head, skill index, repo
+	// instructions, then the per-run workspace directive.
 	for start < len(messages) && isSkillIndexMessage(messages[start]) {
 		start++
 	}
 	for start < len(messages) && isRepoInstructionMessage(messages[start]) {
+		start++
+	}
+	for start < len(messages) && isWorkspaceMessage(messages[start]) {
 		start++
 	}
 

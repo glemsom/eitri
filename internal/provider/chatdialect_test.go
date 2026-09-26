@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -217,15 +218,38 @@ func jsonEqual(a, b any) bool {
 	return aerr == nil && berr == nil && string(ab) == string(bb)
 }
 
-func TestChatCompletionsDialectBuildStampsBreakpointsForOpenCodeGo(t *testing.T) {
+// stampedBreakpoints reports the indexes of the messages a built body marks.
+func stampedBreakpoints(t *testing.T, body []byte) []int {
+	t.Helper()
+	var parsed struct {
+		Messages []map[string]any `json:"messages"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		t.Fatalf("body not JSON: %v", err)
+	}
+	var out []int
+	for i, m := range parsed.Messages {
+		if _, ok := m["cache_control"]; ok {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
+// A declared static prefix is what the caller says is byte-identical across runs,
+// so the breakpoint belongs on its last message; the volatile system message that
+// follows it must stay unmarked, or its per-run content lands in every cache hash.
+func TestChatCompletionsDialectBuildStampsStaticPrefixEndAndTail(t *testing.T) {
 	t.Parallel()
 	body, err := NewChatCompletionsDialect().Build(Request{
-		Model:      "deepseek-v4-flash",
-		ProviderID: ProviderOpenCodeGo,
+		Model:           "deepseek-v4-flash",
+		ProviderID:      ProviderOpenCodeGo,
+		StaticPrefixLen: 3,
 		Messages: []Message{
-			{Role: RoleSystem, Content: "s1"},
-			{Role: RoleSystem, Content: "s2"},
-			{Role: RoleSystem, Content: "s3"},
+			{Role: RoleSystem, Content: "persona head"},
+			{Role: RoleSystem, Content: "skill index"},
+			{Role: RoleSystem, Content: "repo instructions"},
+			{Role: RoleSystem, Content: "per-run workspace directive"},
 			{Role: RoleUser, Content: "u1"},
 			{Role: RoleAssistant, Content: "a1"},
 			{Role: RoleTool, ToolCallID: "t1", Content: "tool result"},
@@ -236,35 +260,69 @@ func TestChatCompletionsDialectBuildStampsBreakpointsForOpenCodeGo(t *testing.T)
 	if err != nil {
 		t.Fatalf("Build() error = %v, want nil", err)
 	}
-	var parsed struct {
-		Messages []map[string]any `json:"messages"`
+	got := stampedBreakpoints(t, body)
+	if want := []int{2, 8}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("breakpoints = %v, want %v (static prefix end, then the moving tail)", got, want)
 	}
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		t.Fatalf("body not JSON: %v", err)
+}
+
+// Without a declared prefix the leading run of system messages stands in for it.
+func TestChatCompletionsDialectBuildFallsBackToLeadingSystemMessages(t *testing.T) {
+	t.Parallel()
+	body, err := NewChatCompletionsDialect().Build(Request{
+		Model:      "deepseek-v4-flash",
+		ProviderID: ProviderOpenCodeGo,
+		Messages: []Message{
+			{Role: RoleSystem, Content: "s1"},
+			{Role: RoleSystem, Content: "s2"},
+			{Role: RoleUser, Content: "u1"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Build() error = %v, want nil", err)
 	}
-	if len(parsed.Messages) != 8 {
-		t.Fatalf("got %d messages, want 8", len(parsed.Messages))
+	if got, want := stampedBreakpoints(t, body), []int{1, 2}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("breakpoints = %v, want %v", got, want)
 	}
-	// up to two leading system messages get breakpoints, the third does not
-	for _, idx := range []int{0, 1} {
-		if _, ok := parsed.Messages[idx]["cache_control"]; !ok {
-			t.Errorf("leading system message[%d] missing cache_control", idx)
-		}
+}
+
+// A prefix covering the whole request leaves one breakpoint, not two on one message.
+func TestChatCompletionsDialectBuildStampsOnceWhenTailIsThePrefixEnd(t *testing.T) {
+	t.Parallel()
+	body, err := NewChatCompletionsDialect().Build(Request{
+		Model:           "deepseek-v4-flash",
+		ProviderID:      ProviderOpenCodeGo,
+		StaticPrefixLen: 1,
+		Messages: []Message{
+			{Role: RoleSystem, Content: "s1"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Build() error = %v, want nil", err)
 	}
-	if _, ok := parsed.Messages[2]["cache_control"]; ok {
-		t.Errorf("third system message[2] should not carry cache_control")
+	if got, want := stampedBreakpoints(t, body), []int{0}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("breakpoints = %v, want %v", got, want)
 	}
-	// the last tool message and the last two user/assistant messages get breakpoints
-	for _, idx := range []int{5, 6, 7} {
-		if _, ok := parsed.Messages[idx]["cache_control"]; !ok {
-			t.Errorf("moving-tail message[%d] missing cache_control", idx)
-		}
+}
+
+// A declared prefix longer than the message list is a caller bug, not a crash:
+// stamp nothing rather than index past the end.
+func TestChatCompletionsDialectBuildIgnoresOutOfRangeStaticPrefix(t *testing.T) {
+	t.Parallel()
+	body, err := NewChatCompletionsDialect().Build(Request{
+		Model:           "deepseek-v4-flash",
+		ProviderID:      ProviderOpenCodeGo,
+		StaticPrefixLen: 9,
+		Messages: []Message{
+			{Role: RoleSystem, Content: "s1"},
+			{Role: RoleUser, Content: "u1"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Build() error = %v, want nil", err)
 	}
-	// earlier user/assistant messages do not
-	for _, idx := range []int{3, 4} {
-		if _, ok := parsed.Messages[idx]["cache_control"]; ok {
-			t.Errorf("earlier message[%d] should not carry cache_control", idx)
-		}
+	if strings.Contains(string(body), "cache_control") {
+		t.Errorf("out-of-range static prefix still stamped a breakpoint: %s", body)
 	}
 }
 

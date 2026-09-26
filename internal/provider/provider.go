@@ -160,13 +160,19 @@ const (
 )
 
 type Request struct {
-	Model       string
-	Messages    []Message
-	Tools       []Tool
-	ToolChoice  any
-	SetCacheKey bool
-	SessionKey  string
-	ProviderID  ProviderID
+	Model    string
+	Messages []Message
+	// StaticPrefixLen is the number of leading messages that are byte-identical
+	// across runs and sessions. A prompt-cache breakpoint belongs at its last
+	// message: cache writes happen only at breakpoints and their hash is
+	// cumulative, so anything volatile at or before the breakpoint is re-read
+	// from scratch. Zero leaves placement to the dialect.
+	StaticPrefixLen int
+	Tools           []Tool
+	ToolChoice      any
+	SetCacheKey     bool
+	SessionKey      string
+	ProviderID      ProviderID
 
 	ThinkingEnabled bool
 	ReasoningEffort string

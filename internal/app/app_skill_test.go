@@ -388,13 +388,13 @@ func TestTUISlashArgsPutsSkillInProviderContext(t *testing.T) {
 	}
 	msgs := cap.reqs[0].Messages
 	if len(msgs) != 4 {
-		t.Fatalf("provider Messages = %d, want 4 (system head + workspace + skill index + user); got %v", len(msgs), msgs)
+		t.Fatalf("provider Messages = %d, want 4 (system head + skill index + workspace directive + user); got %v", len(msgs), msgs)
 	}
-	if msgs[1].Role != provider.RoleSystem || !strings.Contains(msgs[1].Content, "## Working directory") {
-		t.Errorf("Messages[1] should be the working-directory directive: %v", msgs[1])
+	if msgs[1].Role != provider.RoleSystem || !strings.Contains(msgs[1].Content, "<available_skills>") {
+		t.Errorf("Messages[1] should be the skill index: %v", msgs[1])
 	}
-	if msgs[2].Role != provider.RoleSystem || !strings.Contains(msgs[2].Content, "<available_skills>") {
-		t.Errorf("Messages[2] should be the skill index: %v", msgs[2])
+	if msgs[2].Role != provider.RoleSystem || !strings.Contains(msgs[2].Content, "## Working directory") {
+		t.Errorf("Messages[2] should be the working-directory directive: %v", msgs[2])
 	}
 
 	if msgs[3].Role != provider.RoleUser {
@@ -469,10 +469,13 @@ func TestTUISlashBarePutsSkillInProviderContext(t *testing.T) {
 	}
 	msgs := cap.reqs[0].Messages
 	if len(msgs) != 4 {
-		t.Fatalf("provider Messages = %d, want 4 (system head + workspace + skill index + user); got %v", len(msgs), msgs)
+		t.Fatalf("provider Messages = %d, want 4 (system head + skill index + workspace directive + user); got %v", len(msgs), msgs)
 	}
-	if msgs[1].Role != provider.RoleSystem || !strings.Contains(msgs[1].Content, "## Working directory") {
-		t.Errorf("Messages[1] should be the working-directory directive: %v", msgs[1])
+	if msgs[1].Role != provider.RoleSystem || !strings.Contains(msgs[1].Content, "<available_skills>") {
+		t.Errorf("Messages[1] should be the skill index: %v", msgs[1])
+	}
+	if msgs[2].Role != provider.RoleSystem || !strings.Contains(msgs[2].Content, "## Working directory") {
+		t.Errorf("Messages[2] should be the working-directory directive: %v", msgs[2])
 	}
 	if msgs[3].Role != provider.RoleUser {
 		t.Errorf("Messages[3].Role = %q, want %q (slash skill in the high-priority user layer, not a second system message)", msgs[3].Role, provider.RoleUser)

@@ -196,15 +196,28 @@ func promptCacheKey(req Request) string {
 }
 
 // cacheMarker is the Anthropic-style breakpoint stamped on OpenCode Go turns so
-// long sessions stay cheap: the stable system prefix and earlier turns keep
-// hitting the cache while the newest message changes every turn.
+// long sessions stay cheap: the static prefix and earlier turns keep hitting the
+// cache while the newest message changes every turn.
 var cacheMarker = &CacheControl{Type: "ephemeral", TTL: promptCacheRetention24h}
 
-// stampCacheBreakpoints returns req.Messages with OpenCode Go cache breakpoints
-// stamped on up to two leading system messages, the last two user/assistant
-// messages, and the last tool message, on a fresh copy so the caller's slice is
-// untouched. It returns the slice unchanged when OpenCode Go stamping does not
-// apply: custom-openai turns, GLM/Zhipu models (whose API rejects Anthropic-style
+// stampCacheBreakpoints returns req.Messages with two OpenCode Go cache
+// breakpoints — Anthropic's wire allows four, and two leaves room for a gateway
+// that counts its own markers alongside ours — on a fresh copy so the caller's
+// slice is untouched: one at the end of the static prefix (req.StaticPrefixLen)
+// and one on the last message. Without a declared static prefix it falls back to
+// the leading system messages.
+//
+// Two is the whole policy because a write happens only at a breakpoint and its
+// hash is cumulative over everything up to it. The static-prefix breakpoint is
+// what a later request reads to skip re-prefilling the persona head, the skill
+// index and the repo instructions; a breakpoint on or before a per-run
+// directive would instead write an entry nothing ever reads. The tail
+// breakpoint is what seeds the next one: a turn appends far fewer messages
+// than the provider's lookback window reaches back, so the following request
+// finds this write and the growing conversation is cached incrementally.
+//
+// It returns the slice unchanged when OpenCode Go stamping does not apply:
+// custom-openai turns, GLM/Zhipu models (whose API rejects Anthropic-style
 // markers), or a request that already carries a marker anywhere (no double-stamp).
 func stampCacheBreakpoints(req Request) []Message {
 	if req.ProviderID != ProviderOpenCodeGo || isGLMModel(req.Model) || carriesCacheMarker(req) {
@@ -213,37 +226,34 @@ func stampCacheBreakpoints(req Request) []Message {
 	out := make([]Message, len(req.Messages))
 	copy(out, req.Messages)
 
-	systems := 0
-	for i := range out {
-		if out[i].Role != RoleSystem || systems >= 2 {
-			break
-		}
-		out[i].CacheControl = cacheMarker
-		systems++
+	head := staticPrefixEnd(out, req.StaticPrefixLen)
+	tail := len(out) - 1
+	if head < 0 || tail < 0 {
+		return out
 	}
-
-	// moving tail: last tool message plus the last two user/assistant messages
-	lastTool := -1
-	lastTwoTurns := []int{}
-	for i := len(out) - 1; i >= 0; i-- {
-		switch out[i].Role {
-		case RoleTool:
-			if lastTool < 0 {
-				lastTool = i
-			}
-		case RoleUser, RoleAssistant:
-			if len(lastTwoTurns) < 2 {
-				lastTwoTurns = append([]int{i}, lastTwoTurns...)
-			}
-		}
-	}
-	if lastTool >= 0 {
-		out[lastTool].CacheControl = cacheMarker
-	}
-	for _, i := range lastTwoTurns {
-		out[i].CacheControl = cacheMarker
+	out[head].CacheControl = cacheMarker
+	if tail != head {
+		out[tail].CacheControl = cacheMarker
 	}
 	return out
+}
+
+// staticPrefixEnd reports the index of the last message forming the run's static
+// prefix, or -1 when there is none to mark. A declared length wins when it lands
+// inside the message list; otherwise the leading run of system messages stands in
+// for it, since those are the messages a caller builds unconditionally per run.
+func staticPrefixEnd(messages []Message, declared int) int {
+	if declared > 0 {
+		if declared > len(messages) {
+			return -1
+		}
+		return declared - 1
+	}
+	n := 0
+	for n < len(messages) && messages[n].Role == RoleSystem {
+		n++
+	}
+	return n - 1
 }
 
 // isGLMModel reports whether req.Model is a Zhipu GLM variant, whose downstream

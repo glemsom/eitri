@@ -84,7 +84,11 @@ type RunRequest struct {
 
 	// Workspace states the host-absolute cwd the session operates in. Unlike the
 	// byte-stable system prompt, it is per-run state, so it rides as its own
-	// system-layer message next to the persona head. Empty omits it.
+	// system-layer message. It is appended after every static system message
+	// (persona head, skill index, repo instructions) so the request's static
+	// prefix stays byte-identical across runs and sessions: a provider cache
+	// breakpoint placed at the end of that prefix then keeps hitting, which a
+	// directive wedged between static blocks would break. Empty omits it.
 	Workspace string
 
 	// WritablePaths names the paths this run may write, in the order the
@@ -105,10 +109,11 @@ type RunRequest struct {
 
 	// RepoInstructions is the optional content of the workspace-root AGENTS.md.
 	// When set, it is carried to the provider as a dedicated system-layer message
-	// appended after the persona head (and any workspace directive / skill index)
-	// so repository-authored instructions reach the model without perturbing the
-	// byte-stable system prompt. Nil omits the message entirely, keeping the
-	// outgoing request byte-identical to the pre-feature case.
+	// appended after the persona head and any skill index — and before the
+	// workspace directive, which is per-run state — so repository-authored
+	// instructions reach the model without perturbing the byte-stable system
+	// prompt. Nil omits the message entirely, keeping the outgoing request
+	// byte-identical to the pre-feature case.
 	RepoInstructions *string
 
 	ThinkingEnabled bool
@@ -239,15 +244,20 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		defer func() { final.Stopped = stopped }()
 		return final, ErrStopped
 	}
+	// Static system layer first, per-run state last: every message before the
+	// workspace directive is byte-identical across runs, so a provider cache
+	// breakpoint at the end of that block keeps reading across turns and
+	// sessions. staticPrefixLen carries that boundary to the provider seam.
 	messages := systemPromptHead()
-	if req.Workspace != "" {
-		messages = append(messages, provider.Message{Role: provider.RoleSystem, Content: workspaceDirective(req.Workspace, req.WritablePaths)})
-	}
 	if req.SkillIndex != nil {
 		messages = append(messages, provider.Message{Role: provider.RoleSystem, Content: *req.SkillIndex})
 	}
 	if req.RepoInstructions != nil {
 		messages = append(messages, provider.Message{Role: provider.RoleSystem, Content: repoInstructionsDirective(*req.RepoInstructions)})
+	}
+	staticPrefixLen := len(messages)
+	if req.Workspace != "" {
+		messages = append(messages, provider.Message{Role: provider.RoleSystem, Content: workspaceDirective(req.Workspace, req.WritablePaths)})
 	}
 	messages = append(messages, e.sessionHistory(req.SessionKey)...)
 	userContent := req.Prompt
@@ -316,6 +326,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		s, err := e.provider.Stream(ctx, provider.Request{
 			Model:                 req.Model,
 			Messages:              messages,
+			StaticPrefixLen:       staticPrefixLen,
 			Tools:                 opts.Tools,
 			ToolChoice:            opts.ToolChoice,
 			ToolSchemaEnforcement: enforceSchema,
