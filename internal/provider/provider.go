@@ -159,6 +159,25 @@ const (
 	ProviderCustomOpenAI ProviderID = "custom-openai"
 )
 
+// ProviderCapability is an extension a Provider explicitly supports on one or more dialects.
+type ProviderCapability uint8
+
+const (
+	ProviderCapabilityPromptCacheKey ProviderCapability = 1 << iota
+	ProviderCapabilityPromptCacheRetention
+	ProviderCapabilityCacheControl
+	ProviderCapabilityOpenCodeSessionHeader
+	ProviderCapabilityPromptCacheOptions
+	ProviderCapabilityPromptCacheBreakpoint
+)
+
+// ProviderCapabilities declares the extensions a Provider permits Eitri to emit.
+type ProviderCapabilities uint8
+
+func (c ProviderCapabilities) Supports(capability ProviderCapability) bool {
+	return c&ProviderCapabilities(capability) != 0
+}
+
 type Request struct {
 	Model    string
 	Messages []Message
@@ -173,6 +192,7 @@ type Request struct {
 	SetCacheKey     bool
 	SessionKey      string
 	ProviderID      ProviderID
+	Capabilities    ProviderCapabilities
 
 	ThinkingEnabled bool
 	ReasoningEffort string
@@ -201,10 +221,11 @@ type Chunk struct {
 
 // Usage is per-turn token telemetry, parsed at the provider seam.
 type Usage struct {
-	PromptTokens          int `json:"prompt_tokens"`
-	CompletionTokens      int `json:"completion_tokens"`
-	PromptCacheHitTokens  int `json:"prompt_cache_hit_tokens,omitempty"`
-	PromptCacheMissTokens int `json:"prompt_cache_miss_tokens,omitempty"`
+	PromptTokens           int `json:"prompt_tokens"`
+	CompletionTokens       int `json:"completion_tokens"`
+	PromptCacheHitTokens   int `json:"prompt_cache_hit_tokens,omitempty"`
+	PromptCacheMissTokens  int `json:"prompt_cache_miss_tokens,omitempty"`
+	PromptCacheWriteTokens int `json:"prompt_cache_write_tokens,omitempty"`
 
 	cacheHitAssigned  bool
 	cacheMissAssigned bool
@@ -248,7 +269,7 @@ func (u *Usage) finalize() {
 		return
 	}
 	if u.cacheHitAssigned || u.cacheMissAssigned {
-		if u.PromptCacheHitTokens > 0 && u.PromptCacheHitTokens < u.PromptTokens && !u.cacheMissAssigned {
+		if !u.cacheMissAssigned && u.PromptCacheHitTokens <= u.PromptTokens {
 			u.PromptCacheMissTokens = u.PromptTokens - u.PromptCacheHitTokens
 		}
 		return
@@ -271,6 +292,7 @@ type EndpointKind string
 const (
 	EndpointUnknown         EndpointKind = "unknown"
 	EndpointChatCompletions EndpointKind = "chat_completions"
+	EndpointMessages        EndpointKind = "messages"
 	EndpointResponses       EndpointKind = "responses"
 )
 

@@ -14,6 +14,8 @@ import (
 // compile-time proof that the Chat-Completions dialect implements the Dialect seam.
 var _ Dialect = (*ChatCompletionsDialect)(nil)
 
+var cacheExtensions = ProviderCapabilities(ProviderCapabilityPromptCacheKey | ProviderCapabilityPromptCacheRetention | ProviderCapabilityCacheControl)
+
 func TestChatCompletionsDialectCapabilities(t *testing.T) {
 	t.Parallel()
 	cl := NewOpenAICompatible("test-key", "https://example.test/v1/chat/completions")
@@ -45,6 +47,7 @@ func TestChatCompletionsDialectBuildShapesAllControls(t *testing.T) {
 		ToolChoice:            "auto",
 		SetCacheKey:           true,
 		SessionKey:            "sess-123",
+		Capabilities:          cacheExtensions,
 		ThinkingEnabled:       true,
 		ReasoningEffort:       "high",
 		MaxOutputTokens:       256,
@@ -72,6 +75,48 @@ func TestChatCompletionsDialectBuildShapesAllControls(t *testing.T) {
 	}
 }
 
+func TestChatCompletionsDialectBuildsNativePromptCacheControls(t *testing.T) {
+	t.Parallel()
+	capabilities := ProviderCapabilities(ProviderCapabilityPromptCacheKey | ProviderCapabilityPromptCacheOptions | ProviderCapabilityPromptCacheBreakpoint)
+	body, err := NewChatCompletionsDialect().Build(Request{
+		Model:           "gpt-5.6",
+		Messages:        []Message{{Role: RoleSystem, Content: "stable instructions"}, {Role: RoleUser, Content: "question"}},
+		StaticPrefixLen: 1,
+		SetCacheKey:     true,
+		SessionKey:      "session-1",
+		Capabilities:    capabilities,
+	})
+	if err != nil {
+		t.Fatalf("Build() error = %v, want nil", err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		t.Fatalf("body not JSON: %v", err)
+	}
+	if got := parsed["prompt_cache_key"]; got != "session-1" {
+		t.Errorf("prompt_cache_key = %#v, want session-1", got)
+	}
+	if got := parsed["prompt_cache_options"]; !jsonEqual(got, map[string]any{"mode": "explicit"}) {
+		t.Errorf("prompt_cache_options = %#v, want explicit mode", got)
+	}
+	messages, ok := parsed["messages"].([]any)
+	if !ok {
+		t.Fatalf("messages = %#v, want content blocks", parsed["messages"])
+	}
+	for _, index := range []int{0, 1} {
+		message := messages[index].(map[string]any)
+		parts, ok := message["content"].([]any)
+		if !ok || len(parts) != 1 {
+			t.Errorf("messages[%d].content = %#v, want one content block", index, message["content"])
+			continue
+		}
+		part := parts[0].(map[string]any)
+		if got := part["prompt_cache_breakpoint"]; !jsonEqual(got, map[string]any{"mode": "explicit"}) {
+			t.Errorf("messages[%d] breakpoint = %#v, want explicit", index, got)
+		}
+	}
+}
+
 func TestChatCompletionsDialectBuildOmitsUnsetControls(t *testing.T) {
 	t.Parallel()
 	body, err := NewChatCompletionsDialect().Build(Request{
@@ -91,9 +136,10 @@ func TestChatCompletionsDialectBuildOmitsUnsetControls(t *testing.T) {
 func TestChatCompletionsDialectBuildSetsRetentionForOpenCodeGo(t *testing.T) {
 	t.Parallel()
 	body, err := NewChatCompletionsDialect().Build(Request{
-		Model:      "deepseek-v4-flash",
-		Messages:   []Message{{Role: RoleUser, Content: "hi"}},
-		ProviderID: ProviderOpenCodeGo,
+		Model:        "deepseek-v4-flash",
+		Messages:     []Message{{Role: RoleUser, Content: "hi"}},
+		ProviderID:   ProviderOpenCodeGo,
+		Capabilities: cacheExtensions,
 	})
 	if err != nil {
 		t.Fatalf("Build() error = %v, want nil", err)
@@ -126,9 +172,10 @@ func TestChatCompletionsDialectBuildSetsCacheControlOnMessageAndTool(t *testing.
 	t.Parallel()
 	marker := &CacheControl{Type: "ephemeral", TTL: "1h"}
 	body, err := NewChatCompletionsDialect().Build(Request{
-		Model:    "deepseek-v4-flash",
-		Messages: []Message{{Role: RoleSystem, Content: "prefix", CacheControl: marker}},
-		Tools:    []Tool{{Type: "function", Function: ToolFunction{Name: "bash"}, CacheControl: marker}},
+		Model:        "deepseek-v4-flash",
+		Messages:     []Message{{Role: RoleSystem, Content: "prefix", CacheControl: marker}},
+		Tools:        []Tool{{Type: "function", Function: ToolFunction{Name: "bash"}, CacheControl: marker}},
+		Capabilities: cacheExtensions,
 	})
 	if err != nil {
 		t.Fatalf("Build() error = %v, want nil", err)
@@ -244,6 +291,7 @@ func TestChatCompletionsDialectBuildStampsStaticPrefixEndAndTail(t *testing.T) {
 	body, err := NewChatCompletionsDialect().Build(Request{
 		Model:           "deepseek-v4-flash",
 		ProviderID:      ProviderOpenCodeGo,
+		Capabilities:    cacheExtensions,
 		StaticPrefixLen: 3,
 		Messages: []Message{
 			{Role: RoleSystem, Content: "persona head"},
@@ -270,8 +318,9 @@ func TestChatCompletionsDialectBuildStampsStaticPrefixEndAndTail(t *testing.T) {
 func TestChatCompletionsDialectBuildFallsBackToLeadingSystemMessages(t *testing.T) {
 	t.Parallel()
 	body, err := NewChatCompletionsDialect().Build(Request{
-		Model:      "deepseek-v4-flash",
-		ProviderID: ProviderOpenCodeGo,
+		Model:        "deepseek-v4-flash",
+		ProviderID:   ProviderOpenCodeGo,
+		Capabilities: cacheExtensions,
 		Messages: []Message{
 			{Role: RoleSystem, Content: "s1"},
 			{Role: RoleSystem, Content: "s2"},
@@ -292,6 +341,7 @@ func TestChatCompletionsDialectBuildStampsOnceWhenTailIsThePrefixEnd(t *testing.
 	body, err := NewChatCompletionsDialect().Build(Request{
 		Model:           "deepseek-v4-flash",
 		ProviderID:      ProviderOpenCodeGo,
+		Capabilities:    cacheExtensions,
 		StaticPrefixLen: 1,
 		Messages: []Message{
 			{Role: RoleSystem, Content: "s1"},
@@ -312,6 +362,7 @@ func TestChatCompletionsDialectBuildIgnoresOutOfRangeStaticPrefix(t *testing.T) 
 	body, err := NewChatCompletionsDialect().Build(Request{
 		Model:           "deepseek-v4-flash",
 		ProviderID:      ProviderOpenCodeGo,
+		Capabilities:    cacheExtensions,
 		StaticPrefixLen: 9,
 		Messages: []Message{
 			{Role: RoleSystem, Content: "s1"},
@@ -351,8 +402,9 @@ func TestChatCompletionsDialectBuildSkipsBreakpointsForGLM(t *testing.T) {
 	t.Parallel()
 	for _, model := range []string{"glm-4.5", "zhipu-glm-4.6", "glm-4.5-flash"} {
 		body, err := NewChatCompletionsDialect().Build(Request{
-			Model:      model,
-			ProviderID: ProviderOpenCodeGo,
+			Model:        model,
+			ProviderID:   ProviderOpenCodeGo,
+			Capabilities: cacheExtensions,
 			Messages: []Message{
 				{Role: RoleSystem, Content: "s1"},
 				{Role: RoleSystem, Content: "s2"},
@@ -375,8 +427,9 @@ func TestChatCompletionsDialectBuildNoDoubleStamp(t *testing.T) {
 	marker := &CacheControl{Type: "ephemeral", TTL: "1h"}
 	// user message pre-stamped; the dialect must not add markers anywhere
 	body, err := NewChatCompletionsDialect().Build(Request{
-		Model:      "deepseek-v4-flash",
-		ProviderID: ProviderOpenCodeGo,
+		Model:        "deepseek-v4-flash",
+		ProviderID:   ProviderOpenCodeGo,
+		Capabilities: cacheExtensions,
 		Messages: []Message{
 			{Role: RoleSystem, Content: "prefix", CacheControl: marker},
 			{Role: RoleUser, Content: "question"},

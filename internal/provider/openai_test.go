@@ -220,35 +220,32 @@ func TestOpenAIOmitsToolSchemaEnforcementByDefault(t *testing.T) {
 	}
 }
 
-func TestOpenAIOptsDeepseekSessionCache(t *testing.T) {
+func TestOpenAICompatibleOmitsPromptCacheKey(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		if !strings.Contains(string(body), `"prompt_cache_key":"sess-123"`) {
-			t.Errorf("request body missing prompt_cache_key: %s", body)
+		if strings.Contains(string(body), "prompt_cache_key") {
+			t.Errorf("custom compatible request leaked prompt_cache_key: %s", body)
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
 		fixture, _ := os.ReadFile("testdata/usage-final.sse")
 		_, _ = w.Write(fixture)
 	}))
 	defer srv.Close()
 
-	cl := NewOpenAICompatible("test-key", srv.URL+"/v1/chat/completions")
-	s, err := cl.Stream(context.Background(), Request{
+	s, err := NewOpenAICompatible("test-key", srv.URL+"/v1/chat/completions").Stream(context.Background(), Request{
 		Model:       "deepseek-v4-flash",
 		Messages:    []Message{{Role: RoleUser, Content: "hi"}},
 		SetCacheKey: true,
 		SessionKey:  "sess-123",
 	})
 	if err != nil {
-		t.Fatalf("OpenAI.Stream() error = %v, want nil", err)
+		t.Fatalf("Stream() error = %v", err)
 	}
 	if _, _, err := consume(s); err != nil {
-		t.Fatalf("consume error = %v, want nil", err)
+		t.Fatalf("consume() error = %v", err)
 	}
 }
-
 func TestOpenAIStreamsPromptCacheUsage(t *testing.T) {
 	t.Parallel()
 	fixture, err := os.ReadFile("testdata/usage-cache.sse")
@@ -525,6 +522,54 @@ func TestNormalizeReasoningEffort(t *testing.T) {
 	}
 }
 
+func TestCompatibleAdaptersScopeOpenCodeSessionIdentity(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		url  func(string) string
+	}{
+		{name: "chat", url: func(base string) string { return base + "/v1/chat/completions" }},
+		{name: "messages", url: func(base string) string { return base + "/v1/messages" }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var session, body string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				session = r.Header.Get("X-Opencode-Session")
+				payload, _ := io.ReadAll(r.Body)
+				body = string(payload)
+				w.Header().Set("Content-Type", "text/event-stream")
+				if strings.HasSuffix(r.URL.Path, "/messages") {
+					_, _ = w.Write([]byte(anthropicHelloSSE))
+					return
+				}
+				_, _ = w.Write([]byte("data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"))
+			}))
+			defer srv.Close()
+
+			s, err := NewOpenAICompatible("test-key", tc.url(srv.URL)).Stream(context.Background(), Request{
+				Model:       "model",
+				Messages:    []Message{{Role: RoleUser, Content: "hi"}},
+				SetCacheKey: true,
+				SessionKey:  "sess-123",
+			})
+			if err != nil {
+				t.Fatalf("Stream() error = %v", err)
+			}
+			if _, _, err := consume(s); err != nil {
+				t.Fatalf("consume() error = %v", err)
+			}
+			if session != "" {
+				t.Errorf("X-Opencode-Session = %q, want absent", session)
+			}
+			for _, extension := range []string{"prompt_cache_key", "prompt_cache_retention", "cache_control"} {
+				if strings.Contains(body, extension) {
+					t.Errorf("custom compatible request leaked %s: %s", extension, body)
+				}
+			}
+		})
+	}
+}
+
 func TestOpenCodeGoSendsStableSessionHeader(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -665,6 +710,32 @@ func TestOpenCodeGoRoutesAnthropicModelToMessagesEndpoint(t *testing.T) {
 	}
 }
 
+func TestOpenCodeGoMessagesRouteRetainsSessionHeaderCapability(t *testing.T) {
+	t.Parallel()
+	var session string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		session = r.Header.Get("X-Opencode-Session")
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(anthropicHelloSSE))
+	}))
+	defer srv.Close()
+
+	stream, err := NewOpenCodeGo("test-key", srv.URL+"/v1/chat/completions").Stream(context.Background(), Request{
+		Model:      "qwen3.8-flash",
+		Messages:   []Message{{Role: RoleUser, Content: "hi"}},
+		SessionKey: "session-identity",
+	})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	if _, _, err := consume(stream); err != nil {
+		t.Fatalf("consume() error = %v", err)
+	}
+	if session != "session-identity" {
+		t.Errorf("X-Opencode-Session = %q, want %q", session, "session-identity")
+	}
+}
+
 func TestOpenCodeGoRoutesChatModelToChatEndpoint(t *testing.T) {
 	t.Parallel()
 	var path string
@@ -753,5 +824,68 @@ func TestAnthropicOnlyClientReportsNoDiscovery(t *testing.T) {
 	cl := NewOpenAICompatible("k", "https://example.com/v1/messages")
 	if _, err := cl.Models(context.Background()); !errors.Is(err, ErrNoDiscovery) {
 		t.Errorf("Models() error = %v, want ErrNoDiscovery", err)
+	}
+}
+
+func TestOpenCodeGoRoutesUndocumentedQwenToChatCompletions(t *testing.T) {
+	t.Parallel()
+	var path, session string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		session = r.Header.Get("X-Opencode-Session")
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n\n"))
+	}))
+	defer srv.Close()
+
+	stream, err := NewOpenCodeGo("test-key", srv.URL+"/v1/chat/completions").Stream(context.Background(), Request{
+		Model:      "qwen3.9-preview",
+		Messages:   []Message{{Role: RoleUser, Content: "hi"}},
+		SessionKey: "session-1",
+	})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	if _, _, err := consume(stream); err != nil {
+		t.Fatalf("consume stream: %v", err)
+	}
+	if path != "/v1/chat/completions" {
+		t.Errorf("path = %q, want /v1/chat/completions", path)
+	}
+	if session != "session-1" {
+		t.Errorf("X-Opencode-Session = %q, want session-1", session)
+	}
+}
+
+func TestOpenCodeGoRoutesDocumentedMessagesModelsAndKeepsSessionAffinity(t *testing.T) {
+	t.Parallel()
+	var paths, sessions []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		sessions = append(sessions, r.Header.Get("X-Opencode-Session"))
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(anthropicHelloSSE))
+	}))
+	defer srv.Close()
+
+	client := NewOpenCodeGo("test-key", srv.URL+"/v1/chat/completions")
+	for _, model := range []string{"qwen3.6-plus", "qwen3.7-max", "qwen3.7-plus", "qwen3.8-max", "qwen3.8-flash", "minimax-m3", "minimax-m2.7", "minimax-m2.5"} {
+		stream, err := client.Stream(context.Background(), Request{
+			Model: model, Messages: []Message{{Role: RoleUser, Content: "hi"}}, SessionKey: "session-1",
+		})
+		if err != nil {
+			t.Fatalf("Stream(%q) error = %v", model, err)
+		}
+		if _, _, err := consume(stream); err != nil {
+			t.Fatalf("consume stream for %q: %v", model, err)
+		}
+	}
+	for i, path := range paths {
+		if path != "/v1/messages" {
+			t.Errorf("request %d path = %q, want /v1/messages", i, path)
+		}
+		if sessions[i] != "session-1" {
+			t.Errorf("request %d X-Opencode-Session = %q, want session-1", i, sessions[i])
+		}
 	}
 }

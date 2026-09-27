@@ -122,6 +122,50 @@ func TestCopilotStreamSendsIntegrationIdentityHeaders(t *testing.T) {
 	}
 }
 
+func TestCopilotStreamScopesCacheExtensionsToProviderCapabilities(t *testing.T) {
+	t.Parallel()
+	var body string
+	var session string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		payload, _ := io.ReadAll(r.Body)
+		body = string(payload)
+		session = r.Header.Get("X-Opencode-Session")
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write(sseFixture(t))
+	}))
+	defer srv.Close()
+
+	stream, err := NewCopilot(config.CopilotConfig{AccessToken: "stored-access"}, srv.URL+"/chat/completions", srv.Client(), nil, nil).Stream(context.Background(), Request{
+		Model:       "gpt-4o",
+		Messages:    []Message{{Role: RoleUser, Content: "hi", CacheControl: &CacheControl{Type: "ephemeral"}}},
+		Tools:       []Tool{{Type: "function", Function: ToolFunction{Name: "tool"}, CacheControl: &CacheControl{Type: "ephemeral"}}},
+		SetCacheKey: true,
+		SessionKey:  "caller-session",
+		Capabilities: ProviderCapabilities(
+			ProviderCapabilityPromptCacheKey |
+				ProviderCapabilityPromptCacheRetention |
+				ProviderCapabilityCacheControl |
+				ProviderCapabilityOpenCodeSessionHeader |
+				ProviderCapabilityPromptCacheOptions |
+				ProviderCapabilityPromptCacheBreakpoint,
+		),
+	})
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	if _, _, err := consume(stream); err != nil {
+		t.Fatalf("consume() error = %v", err)
+	}
+	if session != "" {
+		t.Errorf("X-Opencode-Session = %q, want absent", session)
+	}
+	for _, extension := range []string{"prompt_cache_key", "prompt_cache_retention", "prompt_cache_options", "prompt_cache_breakpoint", "cache_control"} {
+		if strings.Contains(body, extension) {
+			t.Errorf("Copilot request leaked %s: %s", extension, body)
+		}
+	}
+}
+
 func TestCopilotBearerConcurrentRefreshIsRaceFree(t *testing.T) {
 	t.Parallel()
 	refresh := func(_ context.Context, refreshToken string) (config.CopilotConfig, error) {

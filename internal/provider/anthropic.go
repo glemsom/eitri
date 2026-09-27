@@ -93,6 +93,10 @@ type anthropicTool struct {
 
 // marshalAnthropicBody builds the Anthropic Messages request body from a turn.
 func marshalAnthropicBody(req Request) ([]byte, error) {
+	if !req.Capabilities.Supports(ProviderCapabilityCacheControl) {
+		req.Messages = messagesForWire(req)
+		req.Tools = toolsForWire(req)
+	}
 	system, messages := anthropicMessages(req.Messages)
 	body := anthropicBody{
 		Model:      req.Model,

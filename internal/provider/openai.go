@@ -15,11 +15,11 @@ import (
 // Messages endpoint. The dialect is chosen per model: a fixed Chat-Completions
 // endpoint by default, or the Anthropic wire when the model is routed there.
 type OpenAICompatible struct {
-	apiKey                string
-	url                   string // Chat-Completions endpoint ("" for an anthropic-only client)
-	anthropicURL          string // Anthropic Messages endpoint ("" when not wired)
-	http                  *http.Client
-	opencodeSessionHeader bool
+	apiKey       string
+	url          string // Chat-Completions endpoint ("" for an anthropic-only client)
+	anthropicURL string // Anthropic Messages endpoint ("" when not wired)
+	http         *http.Client
+	capabilities ProviderCapabilities
 }
 
 // eitriUserAgent identifies Eitri to OpenAI-compatible gateways. The OpenCode
@@ -40,15 +40,14 @@ func NewOpenAICompatible(apiKey, url string) *OpenAICompatible {
 	return &OpenAICompatible{apiKey: apiKey, url: normalizeChatCompletionsURL(u)}
 }
 
-// NewOpenCodeGo returns an OpenCode Go client that identifies each conversation
-// to the service and routes Anthropic-wire models (Minimax, Qwen, Union Alpha)
-// to the sibling /v1/messages endpoint.
+// NewOpenCodeGo returns an OpenCode Go client that identifies each Session to
+// the service and routes documented Messages models to the sibling /v1/messages endpoint.
 func NewOpenCodeGo(apiKey, url string) *OpenAICompatible {
 	chat := normalizeChatCompletionsURL(url)
 	client := NewOpenAICompatible(apiKey, chat)
 	client.url = chat
 	client.anthropicURL = strings.TrimSuffix(chat, "/chat/completions") + "/messages"
-	client.opencodeSessionHeader = true
+	client.capabilities = ProviderCapabilities(ProviderCapabilityOpenCodeSessionHeader)
 	return client
 }
 
@@ -66,15 +65,18 @@ func isAnthropicMessagesURL(u string) bool {
 	return strings.HasSuffix(u, "/messages")
 }
 
-// openCodeAnthropicModel reports whether an OpenCode Go model is served over the
-// Anthropic Messages wire. OpenCode Go's model-discovery response carries no
-// endpoint metadata, so this static classifier mirrors the documented endpoint
-// table (union/minimax/qwen run on /v1/messages; deepseek/glm/kimi/hy run on
-// Chat Completions). Unknown models default to the Chat-Completions wire.
+// openCodeAnthropicModel reports whether model is one of the OpenCode Go IDs
+// documented for the Anthropic Messages wire. IDs absent from that table use
+// Chat Completions, so a renamed or otherwise ambiguous model never silently
+// inherits an obsolete prefix rule.
 func openCodeAnthropicModel(model string) bool {
-	return strings.HasPrefix(model, "union-") ||
-		strings.HasPrefix(model, "minimax-") ||
-		strings.HasPrefix(model, "qwen")
+	switch model {
+	case "qwen3.6-plus", "qwen3.7-max", "qwen3.7-plus", "qwen3.8-max", "qwen3.8-flash",
+		"minimax-m3", "minimax-m2.7", "minimax-m2.5":
+		return true
+	default:
+		return false
+	}
 }
 
 // Models implements ModelLister: it GETs the provider's /models endpoint and returns the discovered model catalog. An anthropic-only endpoint (custom-openai Messages URL) has no OpenAI-style /models route, so discovery reports ErrNoDiscovery.
@@ -108,6 +110,9 @@ func (o *OpenAICompatible) Models(ctx context.Context) ([]ModelInfo, error) {
 	models := make([]ModelInfo, 0, len(out.Data))
 	for _, m := range out.Data {
 		kind := inferEndpointKind(m)
+		if o.capabilities.Supports(ProviderCapabilityOpenCodeSessionHeader) && kind == EndpointUnknown && openCodeAnthropicModel(m.ID) {
+			kind = EndpointMessages
+		}
 		if kind == EndpointUnknown {
 			kind = EndpointChatCompletions
 		}
@@ -169,6 +174,8 @@ func normalizeEndpoint(s string) EndpointKind {
 	switch s {
 	case "responses":
 		return EndpointResponses
+	case "messages":
+		return EndpointMessages
 	case "chat/completions", "chat_completions", "chat-completions":
 		return EndpointChatCompletions
 	default:
@@ -178,6 +185,7 @@ func normalizeEndpoint(s string) EndpointKind {
 
 // Stream implements Provider with an HTTP Chat-Completions request shaped and parsed by the Chat-Completions dialect.
 func (o *OpenAICompatible) Stream(ctx context.Context, req Request) (Stream, error) {
+	req.Capabilities = o.capabilities
 	if o.anthropicURL != "" && (o.url == "" || o.onAnthropicWire(req.Model)) {
 		return o.streamAnthropic(ctx, req)
 	}
@@ -209,7 +217,7 @@ func (o *OpenAICompatible) streamChat(ctx context.Context, req Request) (Stream,
 	if o.apiKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+o.apiKey)
 	}
-	if o.opencodeSessionHeader && req.SessionKey != "" {
+	if req.Capabilities.Supports(ProviderCapabilityOpenCodeSessionHeader) && req.SessionKey != "" {
 		httpReq.Header.Set("X-Opencode-Session", req.SessionKey)
 	}
 	httpReq.Header.Set("User-Agent", eitriUserAgent)
@@ -243,9 +251,7 @@ func (o *OpenAICompatible) streamAnthropic(ctx context.Context, req Request) (St
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("x-api-key", o.apiKey)
 	httpReq.Header.Set("anthropic-version", anthropicAPIVersion)
-	// The session header is an OpenCode Go routing optimization the gateway
-	// requires when a SessionKey exists; other Anthropic endpoints ignore it.
-	if req.SessionKey != "" {
+	if req.Capabilities.Supports(ProviderCapabilityOpenCodeSessionHeader) && req.SessionKey != "" {
 		httpReq.Header.Set("X-Opencode-Session", req.SessionKey)
 	}
 	httpReq.Header.Set("User-Agent", eitriUserAgent)

@@ -36,9 +36,10 @@ Request record:
 Response record:
 
 ```json
-{"ts":"…","dir":"resp","content":"…","reasoning_content":"…","tool_calls":[{"id":"…","type":"function","function":{"name":"…","arguments":"…"}}],"finish_reason":"stop|tool_calls|length|eof","usage":{"prompt_tokens":N,"completion_tokens":N,"prompt_cache_hit_tokens":N,"prompt_cache_miss_tokens":N},"error":"…"}
+{"ts":"…","dir":"resp","content":"…","reasoning_content":"…","tool_calls":[{"id":"…","type":"function","function":{"name":"…","arguments":"…"}}],"finish_reason":"stop|tool_calls|length|eof","usage":{"prompt_tokens":N,"completion_tokens":N,"prompt_cache_hit_tokens":N,"prompt_cache_miss_tokens":N,"prompt_cache_write_tokens":N},"error":"…"}
 ```
 
+- `usage.prompt_cache_write_tokens` is present when the provider reports cache-write tokens; it is distinct from cache hits and may be absent on dialects that do not report it.
 - `error` is present only when the turn failed (provider error or mid-stream failure).
 - Turns are implicitly numbered 1..N in file order, and that number is what
   `--turn N` takes. `session list` prints the total as `N turns`.

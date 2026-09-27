@@ -22,6 +22,22 @@ func TestTelemetryAggregatesUsage(t *testing.T) {
 	}
 }
 
+func TestTelemetryRecordKeepsColdAndUnspecifiedCacheInputInHitRate(t *testing.T) {
+	t.Parallel()
+	te := NewTelemetry("gpt-5.4-mini", "low", true, 10)
+	for _, update := range []TelemetryUpdate{
+		{Kind: TelemetryUsage, Hit: 80, Miss: 20, Output: 1, Ctx: 100},
+		{Kind: TelemetryUsage, Hit: 0, Miss: 100, Output: 1, Ctx: 100},
+		{Kind: TelemetryUsage, Hit: 0, Miss: 50, Output: 1, Ctx: 50},
+	} {
+		te.Apply(update)
+	}
+
+	if got := te.HitPercent(); got != 32 {
+		t.Fatalf("HitPercent() = %.2f, want 32", got)
+	}
+}
+
 func TestTelemetryTurnCounting(t *testing.T) {
 	t.Parallel()
 	te := NewTelemetry("deepseek-v4-flash", "low", true, 10)

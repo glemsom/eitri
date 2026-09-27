@@ -68,6 +68,40 @@ func TestResponsesDialectBuildShapesControls(t *testing.T) {
 	}
 }
 
+func TestResponsesDialectBuildsNativePromptCacheControls(t *testing.T) {
+	t.Parallel()
+	capabilities := ProviderCapabilities(ProviderCapabilityPromptCacheKey | ProviderCapabilityPromptCacheOptions | ProviderCapabilityPromptCacheBreakpoint)
+	body, err := NewResponsesDialect().Build(Request{
+		Model:           "gpt-5.6",
+		Messages:        []Message{{Role: RoleSystem, Content: "stable instructions"}, {Role: RoleUser, Content: "question"}},
+		StaticPrefixLen: 1,
+		SetCacheKey:     true,
+		SessionKey:      "session-1",
+		Capabilities:    capabilities,
+	})
+	if err != nil {
+		t.Fatalf("Build() error = %v, want nil", err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		t.Fatalf("body not JSON: %v", err)
+	}
+	if got := parsed["prompt_cache_key"]; got != "session-1" {
+		t.Errorf("prompt_cache_key = %#v, want session-1", got)
+	}
+	if got := parsed["prompt_cache_options"]; !jsonEqual(got, map[string]any{"mode": "explicit"}) {
+		t.Errorf("prompt_cache_options = %#v, want explicit mode", got)
+	}
+	input := parsed["input"].([]any)
+	for _, index := range []int{0, 1} {
+		item := input[index].(map[string]any)
+		part := item["content"].([]any)[0].(map[string]any)
+		if got := part["prompt_cache_breakpoint"]; !jsonEqual(got, map[string]any{"mode": "explicit"}) {
+			t.Errorf("input[%d] breakpoint = %#v, want explicit", index, got)
+		}
+	}
+}
+
 func TestResponsesDialectBuildOmitsUnsetControls(t *testing.T) {
 	t.Parallel()
 	body, err := NewResponsesDialect().Build(Request{
@@ -107,6 +141,40 @@ func TestResponsesDialectStreamCarriesReasoningTextDeltas(t *testing.T) {
 	}
 	if reasoning != "actual chain of thought" {
 		t.Fatalf("streamed reasoning = %q, want actual chain of thought", reasoning)
+	}
+}
+
+func TestResponsesDialectStreamCountsExplicitZeroCachedTokensAsColdInput(t *testing.T) {
+	t.Parallel()
+	stream := NewResponsesDialect().Stream(strings.NewReader(`data: {"type":"response.completed","response":{"usage":{"input_tokens":7,"output_tokens":2,"input_tokens_details":{"cached_tokens":0}}}}
+
+`))
+	_, usage, err := consume(stream)
+	if err != nil {
+		t.Fatalf("consume stream: %v", err)
+	}
+	if usage == nil {
+		t.Fatal("usage = nil, want normalized usage")
+	}
+	if usage.PromptCacheHitTokens != 0 || usage.PromptCacheMissTokens != 7 {
+		t.Fatalf("cache usage = hit=%d miss=%d, want hit=0 miss=7", usage.PromptCacheHitTokens, usage.PromptCacheMissTokens)
+	}
+}
+
+func TestResponsesDialectStreamKeepsCacheWritesSeparateFromReads(t *testing.T) {
+	t.Parallel()
+	stream := NewResponsesDialect().Stream(strings.NewReader(`data: {"type":"response.completed","response":{"usage":{"input_tokens":100,"output_tokens":2,"input_tokens_details":{"cached_tokens":80,"cache_write_tokens":15}}}}
+
+`))
+	_, usage, err := consume(stream)
+	if err != nil {
+		t.Fatalf("consume stream: %v", err)
+	}
+	if usage == nil {
+		t.Fatal("usage = nil, want normalized usage")
+	}
+	if usage.PromptCacheHitTokens != 80 || usage.PromptCacheMissTokens != 20 || usage.PromptCacheWriteTokens != 15 {
+		t.Fatalf("cache usage = hit=%d miss=%d write=%d, want hit=80 miss=20 write=15", usage.PromptCacheHitTokens, usage.PromptCacheMissTokens, usage.PromptCacheWriteTokens)
 	}
 }
 

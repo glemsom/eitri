@@ -101,6 +101,21 @@ func TestAnthropicBuildShapesMessagesBody(t *testing.T) {
 	}
 }
 
+func TestAnthropicDialectBuildOmitsCacheControlWithoutCapability(t *testing.T) {
+	t.Parallel()
+	marker := &CacheControl{Type: "ephemeral", TTL: "1h"}
+	body, err := NewAnthropicDialect().Build(Request{
+		Messages: []Message{{Role: RoleSystem, Content: "prefix", CacheControl: marker}},
+		Tools:    []Tool{{Type: "function", Function: ToolFunction{Name: "bash"}, CacheControl: marker}},
+	})
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	if strings.Contains(string(body), "cache_control") {
+		t.Errorf("request leaked cache_control without capability: %s", body)
+	}
+}
+
 func TestAnthropicBuildOmitsUnsignedThinkingFromCanonicalHistory(t *testing.T) {
 	t.Parallel()
 	data, err := NewAnthropicDialect().Build(Request{Messages: []Message{{
@@ -298,10 +313,16 @@ data: {"type":"message_stop"}
 func TestOpenCodeAnthropicModel(t *testing.T) {
 	t.Parallel()
 	cases := map[string]bool{
-		"union-alpha":       true,
-		"minimax-m3":        true,
-		"qwen3.8-flash":     true,
+		"qwen3.6-plus":      true,
 		"qwen3.7-max":       true,
+		"qwen3.7-plus":      true,
+		"qwen3.8-max":       true,
+		"qwen3.8-flash":     true,
+		"minimax-m3":        true,
+		"minimax-m2.7":      true,
+		"minimax-m2.5":      true,
+		"union-alpha":       false,
+		"qwen3.9-preview":   false,
 		"deepseek-v4-flash": false,
 		"glm-5.3":           false,
 		"kimi-k3":           false,

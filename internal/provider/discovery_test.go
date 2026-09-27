@@ -75,6 +75,23 @@ func TestOpenAIDiscoverModelsIgnoresStringCapabilityValues(t *testing.T) {
 	}
 }
 
+func TestOpenAIDiscoveryDoesNotAdvertiseMessagesRouting(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"messages-only","endpoints":["messages"]}]}`))
+	}))
+	defer srv.Close()
+
+	models, err := NewOpenAICompatible("k", srv.URL+"/v1/chat/completions").Models(context.Background())
+	if err != nil {
+		t.Fatalf("Models() error = %v", err)
+	}
+	if got := models[0].EndpointKind; got != EndpointChatCompletions {
+		t.Errorf("Models()[0].EndpointKind = %q, want %q", got, EndpointChatCompletions)
+	}
+}
+
 func TestFakeDiscoversModels(t *testing.T) {
 	t.Parallel()
 	models, err := NewFake("../provider/testdata/hello.sse").Models(context.Background())
@@ -101,5 +118,25 @@ func TestScriptedDoesNotListModels(t *testing.T) {
 	})
 	if _, ok := any(sp).(ModelLister); ok {
 		t.Fatal("Scripted should not implement ModelLister")
+	}
+}
+
+func TestOpenCodeGoDiscoveryReportsDocumentedEndpointKinds(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"qwen3.8-max"},{"id":"minimax-m3"},{"id":"deepseek-v3"},{"id":"union-alpha"}]}`))
+	}))
+	defer srv.Close()
+
+	models, err := NewOpenCodeGo("k", srv.URL+"/v1/chat/completions").Models(context.Background())
+	if err != nil {
+		t.Fatalf("Models() error = %v", err)
+	}
+	want := []EndpointKind{EndpointMessages, EndpointMessages, EndpointChatCompletions, EndpointChatCompletions}
+	for i := range want {
+		if models[i].EndpointKind != want[i] {
+			t.Errorf("Models()[%d].EndpointKind = %q, want %q", i, models[i].EndpointKind, want[i])
+		}
 	}
 }

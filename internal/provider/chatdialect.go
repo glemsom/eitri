@@ -45,22 +45,31 @@ func newCopilotChatCompletionsDialect() *ChatCompletionsDialect {
 var chatDialect = NewChatCompletionsDialect()
 
 func (d *ChatCompletionsDialect) Build(req Request) ([]byte, error) {
-	messages := req.Messages
+	messages := messagesForWire(req)
 	var promptKey, retention string
+	var options *promptCacheOptions
 	if !d.copilotRequestPolicy {
-		messages = stampCacheBreakpoints(req)
+		req.Messages = messages
 		promptKey = promptCacheKey(req)
 		retention = promptCacheRetention(req)
+		options = chatPromptCacheOptions(req)
+	}
+	wireMessages := any(messages)
+	if options != nil {
+		wireMessages = chatMessagesWithCacheBreakpoints(messages, req.StaticPrefixLen)
+	} else if !d.copilotRequestPolicy {
+		wireMessages = stampCacheBreakpoints(req)
 	}
 	body := chatCompletionBody{
 		Model:                req.Model,
-		Messages:             messages,
+		Messages:             wireMessages,
 		Tools:                toolsForWire(req),
 		ToolChoice:           req.ToolChoice,
 		Stream:               true,
 		StreamOptions:        &streamOptions{IncludeUsage: true},
 		PromptCacheKey:       promptKey,
 		PromptCacheRetention: retention,
+		PromptCacheOptions:   options,
 		Thinking:             d.thinkingControl(req),
 		ReasoningEffort:      reasoningEffortControl(req),
 		MaxOutputTokens:      maxOutputTokens(req),
@@ -92,17 +101,18 @@ func (d *ChatCompletionsDialect) Stream(r io.Reader) Stream {
 }
 
 type chatCompletionBody struct {
-	Model                string           `json:"model"`
-	Messages             []Message        `json:"messages"`
-	Tools                []Tool           `json:"tools,omitempty"`
-	ToolChoice           any              `json:"tool_choice,omitempty"`
-	Stream               bool             `json:"stream"`
-	StreamOptions        *streamOptions   `json:"stream_options,omitempty"`
-	PromptCacheKey       string           `json:"prompt_cache_key,omitempty"`
-	PromptCacheRetention string           `json:"prompt_cache_retention,omitempty"`
-	Thinking             *thinkingEnabler `json:"thinking,omitempty"`
-	ReasoningEffort      string           `json:"reasoning_effort,omitempty"`
-	MaxOutputTokens      int              `json:"max_completion_tokens,omitempty"`
+	Model                string              `json:"model"`
+	Messages             any                 `json:"messages"`
+	Tools                []Tool              `json:"tools,omitempty"`
+	ToolChoice           any                 `json:"tool_choice,omitempty"`
+	Stream               bool                `json:"stream"`
+	StreamOptions        *streamOptions      `json:"stream_options,omitempty"`
+	PromptCacheKey       string              `json:"prompt_cache_key,omitempty"`
+	PromptCacheRetention string              `json:"prompt_cache_retention,omitempty"`
+	PromptCacheOptions   *promptCacheOptions `json:"prompt_cache_options,omitempty"`
+	Thinking             *thinkingEnabler    `json:"thinking,omitempty"`
+	ReasoningEffort      string              `json:"reasoning_effort,omitempty"`
+	MaxOutputTokens      int                 `json:"max_completion_tokens,omitempty"`
 }
 
 // thinkingEnabler is DeepSeek's thinking-mode toggle; the enabled form keeps thinking default-on for agent loops.
@@ -164,32 +174,98 @@ func chatToolManifest(defs []DialectDefinition) []Tool {
 }
 
 func toolsForWire(req Request) []Tool {
-	if !req.ToolSchemaEnforcement || len(req.Tools) == 0 {
+	if len(req.Tools) == 0 {
 		return req.Tools
 	}
 	out := make([]Tool, 0, len(req.Tools))
 	for _, t := range req.Tools {
 		fn := t.Function
-		fn.Strict = true
+		if req.ToolSchemaEnforcement {
+			fn.Strict = true
+		}
+		if !req.Capabilities.Supports(ProviderCapabilityCacheControl) {
+			t.CacheControl = nil
+		}
 		out = append(out, Tool{Type: t.Type, Function: fn, CacheControl: t.CacheControl})
 	}
 	return out
 }
 
-// prompt-cache retention duration, otherwise empty so the field is omitted.
-// 24h keeps the OpenCode Go gateway's session cache alive for a day.
+func messagesForWire(req Request) []Message {
+	if req.Capabilities.Supports(ProviderCapabilityCacheControl) {
+		return req.Messages
+	}
+	out := make([]Message, len(req.Messages))
+	copy(out, req.Messages)
+	for i := range out {
+		out[i].CacheControl = nil
+	}
+	return out
+}
+
+// prompt-cache retention duration for a Provider that explicitly supports it.
 const promptCacheRetention24h = "24h"
 
 func promptCacheRetention(req Request) string {
-	if req.ProviderID != ProviderOpenCodeGo {
+	if !req.Capabilities.Supports(ProviderCapabilityPromptCacheRetention) {
 		return ""
 	}
 	return promptCacheRetention24h
 }
 
-// promptCacheKey returns the session-scoped prompt cache key for req when the caller opted into deepseek's session cache, else empty so the field is omitted from the body.
+func chatPromptCacheOptions(req Request) *promptCacheOptions {
+	if req.Capabilities.Supports(ProviderCapabilityPromptCacheOptions) && req.Capabilities.Supports(ProviderCapabilityPromptCacheBreakpoint) {
+		return &promptCacheOptions{Mode: "explicit"}
+	}
+	return nil
+}
+
+type chatCacheContentPart struct {
+	Type                  string                 `json:"type"`
+	Text                  string                 `json:"text"`
+	PromptCacheBreakpoint *promptCacheBreakpoint `json:"prompt_cache_breakpoint,omitempty"`
+}
+
+type chatCacheMessage struct {
+	Role             Role          `json:"role"`
+	Content          any           `json:"content,omitempty"`
+	ToolCallID       string        `json:"tool_call_id,omitempty"`
+	ToolCalls        []ToolCall    `json:"tool_calls,omitempty"`
+	ReasoningContent *string       `json:"reasoning_content,omitempty"`
+	CacheControl     *CacheControl `json:"cache_control,omitempty"`
+}
+
+func chatMessagesWithCacheBreakpoints(messages []Message, staticPrefixLen int) []chatCacheMessage {
+	head := staticPrefixEnd(messages, staticPrefixLen)
+	tail := len(messages) - 1
+	marked := map[int]bool{}
+	if head >= 0 && messages[head].Content != "" {
+		marked[head] = true
+	}
+	if tail >= 0 && messages[tail].Content != "" {
+		marked[tail] = true
+	}
+	out := make([]chatCacheMessage, 0, len(messages))
+	for i, m := range messages {
+		wire := chatCacheMessage{Role: m.Role, ToolCallID: m.ToolCallID, ToolCalls: m.ToolCalls, CacheControl: m.CacheControl}
+		if m.Content != "" || m.Role == RoleTool {
+			if marked[i] {
+				wire.Content = []chatCacheContentPart{{Type: "text", Text: m.Content, PromptCacheBreakpoint: &promptCacheBreakpoint{Mode: "explicit"}}}
+			} else {
+				wire.Content = m.Content
+			}
+		}
+		if m.Role == RoleAssistant {
+			reasoning := m.ReasoningContent
+			wire.ReasoningContent = &reasoning
+		}
+		out = append(out, wire)
+	}
+	return out
+}
+
 func promptCacheKey(req Request) string {
-	if req.SetCacheKey {
+	if req.SetCacheKey && req.Capabilities.Supports(ProviderCapabilityPromptCacheKey) {
 		return req.SessionKey
 	}
 	return ""
@@ -220,7 +296,7 @@ var cacheMarker = &CacheControl{Type: "ephemeral", TTL: promptCacheRetention24h}
 // custom-openai turns, GLM/Zhipu models (whose API rejects Anthropic-style
 // markers), or a request that already carries a marker anywhere (no double-stamp).
 func stampCacheBreakpoints(req Request) []Message {
-	if req.ProviderID != ProviderOpenCodeGo || isGLMModel(req.Model) || carriesCacheMarker(req) {
+	if !req.Capabilities.Supports(ProviderCapabilityCacheControl) || isGLMModel(req.Model) || carriesCacheMarker(req) {
 		return req.Messages
 	}
 	out := make([]Message, len(req.Messages))

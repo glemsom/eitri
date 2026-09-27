@@ -102,6 +102,7 @@ func (cp *CopilotProvider) bearer(ctx context.Context) (string, error) {
 
 // Stream implements Provider, authenticating with the resolved bearer token and streaming Copilot's chat endpoint by default, with an automatic retry on the Responses endpoint for models Copilot rejects as responses-only.
 func (cp *CopilotProvider) Stream(ctx context.Context, req Request) (Stream, error) {
+	req.Capabilities = 0
 	tok, err := cp.bearer(ctx)
 	if err != nil {
 		return nil, err
