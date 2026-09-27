@@ -1,0 +1,108 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Validate release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag=$GITHUB_REF_NAME
+          if [[ ! $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            printf 'release tag must be stable SemVer vX.Y.Z, got %s\n' "$tag" >&2
+            exit 1
+          fi
+          if [[ $(git cat-file -t "refs/tags/$tag") != tag ]]; then
+            printf 'release tag must be an annotated tag: %s\n' "$tag" >&2
+            exit 1
+          fi
+          tag_commit=$(git rev-parse "refs/tags/$tag^{commit}")
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$tag_commit" origin/main; then
+            printf 'tag commit %s is not reachable from origin/main\n' "$tag_commit" >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Install declared dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap bash ripgrep curl lynx patch python3 git jq xdg-utils shellcheck
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Race-enabled tests
+        run: go test ./... -race -count=1
+
+      - name: Coverage
+        run: |
+          go test ./... -coverprofile=cover.out
+          go tool cover -func=cover.out
+
+      - name: Bash script tests
+        run: |
+          bash -n install.sh scripts/extract-release-notes.sh tests/install.sh tests/extract-release-notes.sh
+          shellcheck install.sh scripts/extract-release-notes.sh tests/install.sh tests/extract-release-notes.sh
+          tests/install.sh
+          tests/extract-release-notes.sh
+
+      - name: Package and validate release binary
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=${GITHUB_REF_NAME#v}
+          archive="dist/eitri_${version}_linux_amd64.tar.gz"
+          make package VERSION="$GITHUB_REF_NAME"
+          scripts/validate-package.sh "$version"
+          scripts/extract-release-notes.sh "$version" > release-notes.md
+          printf 'archive=%s\n' "$archive" >> "$GITHUB_OUTPUT"
+
+      - name: Upload verified release files
+        uses: actions/upload-artifact@v4
+        with:
+          name: verified-release
+          path: |
+            ${{ steps.package.outputs.archive }}
+            release-notes.md
+          if-no-files-found: error
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified release files
+        uses: actions/download-artifact@v4
+        with:
+          name: verified-release
+
+      - name: Publish GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=$GITHUB_REF_NAME
+          version=${tag#v}
+          archive="eitri_${version}_linux_amd64.tar.gz"
+          gh release create "$tag" "$archive" --title "Eitri $version" --notes-file release-notes.md

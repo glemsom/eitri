@@ -110,6 +110,10 @@ sudo apt install bubblewrap bash ripgrep curl lynx patch python3 git jq xdg-util
 
 Fedora and Arch provide the same package names. Core utilities such as `sed`, `awk`, and `diff` are assumed.
 
+## Releases
+
+Release maintainers should follow the [release runbook](docs/releases.md).
+
 ## License
 
 Eitri is licensed under [GPL-3.0-or-later](LICENSE).
