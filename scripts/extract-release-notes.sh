@@ -20,8 +20,13 @@ fi
 
 heading="## [$version]"
 valid_heading="$heading - "
-matching_headings=$(grep -cF "$heading" "$changelog" || true)
-valid_headings=$(grep -cE "^## \\[$version\\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$" "$changelog" || true)
+read -r matching_headings valid_headings < <(
+	awk -v heading="$heading" -v valid_heading="$valid_heading" '
+	index($0, heading) == 1 { matching++ }
+	index($0, valid_heading) == 1 && substr($0, length(valid_heading) + 1) ~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/ { valid++ }
+	END { print matching + 0, valid + 0 }
+	' "$changelog"
+)
 
 if (( matching_headings == 0 )); then
 	printf 'release notes not found for version %s in CHANGELOG.md\n' "$version" >&2
@@ -36,8 +41,8 @@ if (( valid_headings > 1 )); then
 	exit 1
 fi
 
-awk -v heading="$heading" '
-index($0, heading " - ") == 1 { found = 1 }
-found && $0 ~ /^## / && index($0, heading " - ") != 1 { exit }
+awk -v valid_heading="$valid_heading" '
+index($0, valid_heading) == 1 && substr($0, length(valid_heading) + 1) ~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/ { found = 1 }
+found && $0 ~ /^## / && !(index($0, valid_heading) == 1 && substr($0, length(valid_heading) + 1) ~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/) { exit }
 found { print }
 ' "$changelog"

@@ -29,8 +29,11 @@ Tag signing and commit signing are not required. Repository administrators must
 configure GitHub tag protection for `v*` and authorize only release maintainers to
 create matching tags.
 
-Pushing the tag starts verification. It installs Eitri's declared runtime
-dependencies, reruns the complete quality gate, builds and validates the exact
+Pushing the tag starts verification. GitHub Actions tag globs cannot express an
+exact stable SemVer pattern, so the workflow uses the `v*` candidate trigger and
+its runtime stable `vX.Y.Z` gate prevents invalid candidates from publishing.
+It installs Eitri's declared runtime dependencies, reruns the complete quality
+gate, builds and validates the exact
 versioned release binary archive, and extracts the changelog section. Only after
 that succeeds does the publishing job create the normal GitHub Release titled
 `Eitri X.Y.Z`, with `eitri_X.Y.Z_linux_amd64.tar.gz` as its only asset and the

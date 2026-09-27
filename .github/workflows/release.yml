@@ -30,8 +30,8 @@ jobs:
             exit 1
           fi
           tag_commit=$(git rev-parse "refs/tags/$tag^{commit}")
-          git fetch origin main
-          if ! git merge-base --is-ancestor "$tag_commit" origin/main; then
+          git fetch origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$tag_commit" refs/remotes/origin/main; then
             printf 'tag commit %s is not reachable from origin/main\n' "$tag_commit" >&2
             exit 1
           fi
@@ -95,6 +95,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: verified-release
+          path: verified-release
 
       - name: Publish GitHub Release
         shell: bash
@@ -104,5 +105,6 @@ jobs:
           set -euo pipefail
           tag=$GITHUB_REF_NAME
           version=${tag#v}
-          archive="eitri_${version}_linux_amd64.tar.gz"
-          gh release create "$tag" "$archive" --title "Eitri $version" --notes-file release-notes.md
+          archive="verified-release/eitri_${version}_linux_amd64.tar.gz"
+          notes="verified-release/release-notes.md"
+          gh release create "$tag" "$archive" --title "Eitri $version" --notes-file "$notes"
