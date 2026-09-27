@@ -65,4 +65,10 @@ run_fixture fenced-matching-heading 1.2.3 $'## [1.2.3] - 2026-01-02\n\n```markdo
 printf '%s' $'## [1.2.3] - 2026-01-02\n\n```markdown\n## [1.2.3] - 2026-01-03\n```\n\n- Current.\n\n' >"$temp/expected-fenced-matching-heading"
 cmp -s "$temp/expected-fenced-matching-heading" "$temp/actual-fenced-matching-heading" || fail 'counted a matching release heading inside a fenced code block'
 
+run_fixture fenced-heading-before-release 1.2.3 $'```markdown\n## [1.2.3] - 2026-01-03\n```\n\n## [1.2.3] - 2026-01-02\n\n- Current.\n\n## [1.2.2] - 2026-01-01\n' >"$temp/actual-fenced-heading-before-release"
+printf '%s' $'## [1.2.3] - 2026-01-02\n\n- Current.\n\n' >"$temp/expected-fenced-heading-before-release"
+cmp -s "$temp/expected-fenced-heading-before-release" "$temp/actual-fenced-heading-before-release" || fail 'extracted a matching release heading inside a fenced code block'
+
+expect_failure 'malformed release heading' run_fixture invalid-calendar-date 1.2.3 $'## [1.2.3] - 2026-02-30\n'
+
 printf 'extract-release-notes tests passed\n'
