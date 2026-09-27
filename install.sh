@@ -59,8 +59,15 @@ if [[ -n $version ]]; then
 	archive="${binary}_${version}_linux_amd64.tar.gz"
 	url="$repo/releases/download/v${version}/${archive}"
 else
-	archive="${binary}_linux_amd64.tar.gz"
-	url="$repo/releases/latest/download/${archive}"
+	release=$(curl --fail --location --silent --show-error 'https://api.github.com/repos/glemsom/eitri/releases/latest') || fail 'failed to discover latest stable release'
+	asset_pattern='"name"[[:space:]]*:[[:space:]]*"eitri_([0-9]+\.[0-9]+\.[0-9]+)_linux_amd64\.tar\.gz"[^}]*"browser_download_url"[[:space:]]*:[[:space:]]*"([^"]+)"'
+	[[ $release =~ $asset_pattern ]] || fail 'latest stable release has no versioned Linux amd64 archive'
+	version=${BASH_REMATCH[1]}
+	archive="${binary}_${version}_linux_amd64.tar.gz"
+	url=${BASH_REMATCH[2]}
+	remaining_release=${release/"${BASH_REMATCH[0]}"/}
+	[[ ! $remaining_release =~ $asset_pattern ]] || fail 'latest stable release has multiple versioned Linux amd64 archives'
+	[[ $url == "$repo/releases/download/v${version}/${archive}" ]] || fail 'latest stable release archive URL does not match its version'
 fi
 
 mkdir -p "$install_dir" || fail "cannot create install directory: $install_dir"

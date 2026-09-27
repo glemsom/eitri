@@ -30,8 +30,17 @@ while (($#)); do
 		*) url=$1; shift ;;
 	esac
 done
-printf '%s\n' "$url" > "$FAKE_LOG/curl-url"
-printf 'archive\n' > "$output"
+printf '%s\n' "$url" >> "$FAKE_LOG/curl-urls"
+if [[ $url == 'https://api.github.com/repos/glemsom/eitri/releases/latest' ]]; then
+	response=${FAKE_RELEASE_JSON:-'{"assets":[{"name":"eitri_0.1.0_linux_amd64.tar.gz","browser_download_url":"https://github.com/glemsom/eitri/releases/download/v0.1.0/eitri_0.1.0_linux_amd64.tar.gz"}]}' }
+else
+	response='archive'
+fi
+if [[ -n $output ]]; then
+	printf '%s\n' "$response" > "$output"
+else
+	printf '%s\n' "$response"
+fi
 FAKE
 	cat <<'FAKE' > "$fake/tar"
 #!/usr/bin/env bash
@@ -71,15 +80,26 @@ write_fakes
 mkdir -p "$temp/log"
 
 output=$(run_installer "$temp/home-latest") || fail 'latest installation failed'
-[[ $(<"$temp/log/curl-url") == 'https://github.com/glemsom/eitri/releases/latest/download/eitri_linux_amd64.tar.gz' ]] || fail 'latest URL was not selected'
+mapfile -t curl_urls < "$temp/log/curl-urls"
+[[ ${#curl_urls[@]} == 2 ]] || fail 'latest installation did not make exactly two requests'
+[[ ${curl_urls[0]} == 'https://api.github.com/repos/glemsom/eitri/releases/latest' ]] || fail 'latest release API was not selected'
+[[ ${curl_urls[1]} == 'https://github.com/glemsom/eitri/releases/download/v0.1.0/eitri_0.1.0_linux_amd64.tar.gz' ]] || fail 'latest versioned archive was not selected'
 [[ -x "$temp/home-latest/.local/bin/eitri" ]] || fail 'latest install is not executable'
 expect_contains "$output" 'Installed Eitri 0.1.0 to '
 expect_contains "$output" "export PATH=\"$temp/home-latest/.local/bin:\$PATH\""
 
+if output=$(FAKE_RELEASE_JSON='{"assets":[{"name":"eitri_0.1.0_linux_amd64.tar.gz","browser_download_url":"https://github.com/glemsom/eitri/releases/download/v0.1.0/eitri_0.1.0_linux_amd64.tar.gz"},{"name":"eitri_0.1.1_linux_amd64.tar.gz","browser_download_url":"https://github.com/glemsom/eitri/releases/download/v0.1.1/eitri_0.1.1_linux_amd64.tar.gz"}]}' run_installer "$temp/home-ambiguous" 2>&1); then
+	fail 'ambiguous latest release succeeded'
+fi
+expect_contains "$output" 'latest stable release has multiple versioned Linux amd64 archives'
+
 mkdir -p "$temp/custom-bin"
 printf 'old binary\n' > "$temp/custom-bin/eitri"
+rm -f "$temp/log/curl-urls"
 output=$(run_installer "$temp/home-pinned" --version 0.1.0 --install-dir "$temp/custom-bin") || fail 'pinned installation failed'
-[[ $(<"$temp/log/curl-url") == 'https://github.com/glemsom/eitri/releases/download/v0.1.0/eitri_0.1.0_linux_amd64.tar.gz' ]] || fail 'pinned URL was not selected'
+mapfile -t curl_urls < "$temp/log/curl-urls"
+[[ ${#curl_urls[@]} == 1 ]] || fail 'pinned installation did not make exactly one request'
+[[ ${curl_urls[0]} == 'https://github.com/glemsom/eitri/releases/download/v0.1.0/eitri_0.1.0_linux_amd64.tar.gz' ]] || fail 'pinned URL was not selected'
 [[ -x "$temp/custom-bin/eitri" ]] || fail 'pinned install is not executable'
 [[ $("$temp/custom-bin/eitri" --version) == 0.1.0 ]] || fail 'pinned install did not overwrite existing target'
 expect_contains "$output" "Installed Eitri 0.1.0 to $temp/custom-bin/eitri"
