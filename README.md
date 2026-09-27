@@ -12,14 +12,28 @@ Your declared workspace is writable by design; the rest of the system stays read
 
 ## Install and run
 
-Requirements are GNU/Linux, Go to build Eitri, and the [runtime tools](#runtime-requirements).
+Install the latest stable release for GNU/Linux `amd64` into `~/.local/bin`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/glemsom/eitri/main/install.sh | bash
+```
+
+For a deterministic installation, pin both the installer source and release archive version:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/glemsom/eitri/v0.1.0/install.sh | bash -s -- --version 0.1.0
+```
+
+The installer prints the `PATH` export to run when `~/.local/bin` is not already on `PATH`; it never changes shell configuration, prompts, or uses `sudo`.
+
+To build from source, requirements are GNU/Linux, Go, and the [runtime tools](#runtime-requirements):
 
 ```sh
 make build
 ./bin/eitri
 ```
 
-The first launch opens settings for provider and credential configuration. Install the binary with:
+The first launch opens settings for provider and credential configuration. Install a source build with:
 
 ```sh
 make install                 # installs to ~/.local/bin/eitri

@@ -27,7 +27,7 @@ jobs:
       - name: Install declared dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bubblewrap bash ripgrep curl lynx patch python3 git jq xdg-utils
+          sudo apt-get install -y bubblewrap bash ripgrep curl lynx patch python3 git jq xdg-utils shellcheck
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
 
       - name: go vet
@@ -40,6 +40,12 @@ jobs:
         run: |
           go test ./... -coverprofile=cover.out
           go tool cover -func=cover.out
+
+      - name: Bash installer tests
+        run: |
+          bash -n install.sh tests/install.sh
+          shellcheck install.sh tests/install.sh
+          tests/install.sh
 
       - name: Release binary
         run: |
