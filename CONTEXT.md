@@ -8,6 +8,14 @@ Eitri is a self-hosted, single-binary AI coding agent for GNU/Linux. It reads, w
 - **Throwaway script:** short-lived Bash or Python glue for task-local state, branching, or coordination; not a permanent product surface.
 - **Linux-only boundary:** GNU/Linux conventions and programs are supported; portability is not a design goal.
 
+## Release and distribution
+
+**Release binary**: the static GNU/Linux `amd64` binary distributed for a release.
+
+**Release tag**: the publication boundary for a release.
+
+**Published release**: an immutable release made available at a release tag.
+
 ## Runs and sessions
 
 **Turn**: one provider request/response cycle, including any tool calls it streams.

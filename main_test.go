@@ -63,8 +63,8 @@ func TestCLISmoke(t *testing.T) {
 		if err != nil {
 			t.Fatalf("eitri --version exit error = %v, output:\n%s", err, out)
 		}
-		if len(strings.TrimSpace(string(out))) == 0 {
-			t.Fatalf("eitri --version printed no output")
+		if got := strings.TrimSpace(string(out)); got != "0.1.1-dev" {
+			t.Fatalf("eitri --version = %q, want %q", got, "0.1.1-dev")
 		}
 	})
 
