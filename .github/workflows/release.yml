@@ -74,15 +74,16 @@ jobs:
           make package VERSION="$GITHUB_REF_NAME"
           scripts/validate-package.sh "$version"
           scripts/extract-release-notes.sh "$version" > release-notes.md
-          printf 'archive=%s\n' "$archive" >> "$GITHUB_OUTPUT"
+          output_dir=verified-release
+          mkdir -p "$output_dir"
+          cp "$archive" "$output_dir/$(basename "$archive")"
+          cp release-notes.md "$output_dir/release-notes.md"
 
       - name: Upload verified release files
         uses: actions/upload-artifact@v4
         with:
           name: verified-release
-          path: |
-            ${{ steps.package.outputs.archive }}
-            release-notes.md
+          path: verified-release
           if-no-files-found: error
 
   publish:
@@ -107,4 +108,4 @@ jobs:
           version=${tag#v}
           archive="verified-release/eitri_${version}_linux_amd64.tar.gz"
           notes="verified-release/release-notes.md"
-          gh release create "$tag" "$archive" --title "Eitri $version" --notes-file "$notes"
+          gh release create "$tag" "$archive" --verify-tag --title "Eitri $version" --notes-file "$notes"
