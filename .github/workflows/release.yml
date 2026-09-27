@@ -17,6 +17,7 @@ jobs:
           fetch-depth: 0
 
       - name: Validate release tag
+        id: validate-tag
         shell: bash
         run: |
           set -euo pipefail
@@ -29,12 +30,14 @@ jobs:
             printf 'release tag must be an annotated tag: %s\n' "$tag" >&2
             exit 1
           fi
+          tag_object=$(git rev-parse "refs/tags/$tag")
           tag_commit=$(git rev-parse "refs/tags/$tag^{commit}")
           git fetch origin main:refs/remotes/origin/main
           if ! git merge-base --is-ancestor "$tag_commit" refs/remotes/origin/main; then
             printf 'tag commit %s is not reachable from origin/main\n' "$tag_commit" >&2
             exit 1
           fi
+          printf 'tag_object=%s\n' "$tag_object" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-go@v7
         with:
@@ -78,6 +81,7 @@ jobs:
           mkdir -p "$output_dir"
           cp "$archive" "$output_dir/$(basename "$archive")"
           cp release-notes.md "$output_dir/release-notes.md"
+          printf '%s\n' '${{ steps.validate-tag.outputs.tag_object }}' > "$output_dir/tag-object"
 
       - name: Upload verified release files
         uses: actions/upload-artifact@v4
@@ -101,6 +105,7 @@ jobs:
       - name: Publish GitHub Release
         shell: bash
         env:
+          GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -108,4 +113,10 @@ jobs:
           version=${tag#v}
           archive="verified-release/eitri_${version}_linux_amd64.tar.gz"
           notes="verified-release/release-notes.md"
+          verified_tag_object=$(<verified-release/tag-object)
+          current_tag_object=$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq .object.sha)
+          if [[ $current_tag_object != "$verified_tag_object" ]]; then
+            printf 'tag object changed after verification: expected %s, got %s\n' "$verified_tag_object" "$current_tag_object" >&2
+            exit 1
+          fi
           gh release create "$tag" "$archive" --verify-tag --title "Eitri $version" --notes-file "$notes"

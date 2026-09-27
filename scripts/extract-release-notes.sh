@@ -43,6 +43,19 @@ fi
 
 awk -v valid_heading="$valid_heading" '
 index($0, valid_heading) == 1 && substr($0, length(valid_heading) + 1) ~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/ { found = 1 }
+found && !in_fence && match($0, /^[[:space:]]{0,3}(```+|~~~+)/) {
+	fence_marker = substr($0, RSTART, RLENGTH)
+	fence_char = substr(fence_marker, 1, 1)
+	fence_length = length(fence_marker)
+	in_fence = 1
+	print
+	next
+}
+found && in_fence {
+	print
+	if ($0 ~ "^[[:space:]]{0,3}" fence_char "{" fence_length ",}[[:space:]]*$") { in_fence = 0 }
+	next
+}
 found && $0 ~ /^## / && !(index($0, valid_heading) == 1 && substr($0, length(valid_heading) + 1) ~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/) { exit }
 found { print }
 ' "$changelog"
