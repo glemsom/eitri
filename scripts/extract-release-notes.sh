@@ -22,6 +22,17 @@ heading="## [$version]"
 valid_heading="$heading - "
 read -r matching_headings valid_headings < <(
 	awk -v heading="$heading" -v valid_heading="$valid_heading" '
+	!in_fence && match($0, /^[[:space:]]{0,3}(```+|~~~+)/) {
+		fence_marker = substr($0, RSTART, RLENGTH)
+		fence_char = substr(fence_marker, 1, 1)
+		fence_length = length(fence_marker)
+		in_fence = 1
+		next
+	}
+	in_fence {
+		if ($0 ~ "^[[:space:]]{0,3}" fence_char "{" fence_length ",}[[:space:]]*$") { in_fence = 0 }
+		next
+	}
 	index($0, heading) == 1 { matching++ }
 	index($0, valid_heading) == 1 && substr($0, length(valid_heading) + 1) ~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/ { valid++ }
 	END { print matching + 0, valid + 0 }

@@ -61,4 +61,8 @@ run_fixture fenced-level-two 1.2.3 $'## [1.2.3] - 2026-01-02\n\n```markdown\n## 
 printf '%s' $'## [1.2.3] - 2026-01-02\n\n```markdown\n## This remains release notes\n```\n\n- Current.\n\n' >"$temp/expected-fenced-level-two"
 cmp -s "$temp/expected-fenced-level-two" "$temp/actual-fenced-level-two" || fail 'stopped at a level-2-looking line inside a fenced code block'
 
+run_fixture fenced-matching-heading 1.2.3 $'## [1.2.3] - 2026-01-02\n\n```markdown\n## [1.2.3] - 2026-01-03\n```\n\n- Current.\n\n## [1.2.2] - 2026-01-01\n' >"$temp/actual-fenced-matching-heading"
+printf '%s' $'## [1.2.3] - 2026-01-02\n\n```markdown\n## [1.2.3] - 2026-01-03\n```\n\n- Current.\n\n' >"$temp/expected-fenced-matching-heading"
+cmp -s "$temp/expected-fenced-matching-heading" "$temp/actual-fenced-matching-heading" || fail 'counted a matching release heading inside a fenced code block'
+
 printf 'extract-release-notes tests passed\n'
