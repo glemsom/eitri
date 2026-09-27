@@ -1,6 +1,14 @@
 # Eitri
 
-Eitri is a self-hosted AI coding agent for GNU/Linux. It runs as a single Go binary, uses natural-language prompts to read, edit, and run code in a workspace, and connects to local or hosted model providers.
+Eitri is the AI coding agent built for GNU/Linux. A self-hosted, single Go binary, it uses natural-language prompts to read, edit, and run code in a declared workspace, with local or hosted model providers.
+
+## Built for GNU/Linux
+
+Eitri works with the tools you already trust rather than hiding them behind proprietary abstractions. Its fixed toolset is a native GNU/Linux toolkit — `bash`, `git`, `rg`, `curl`, `jq`, `python3`, and more — so the agent can inspect real inputs, compose familiar commands, and leave work you can understand and reproduce at the terminal.
+
+When a task needs state, branching, or coordination, Eitri favors short-lived Bash or Python scripts over a new layer of product machinery. It is deliberately Linux-only: GNU/Linux conventions are the contract, not a portability compromise.
+
+Your declared workspace is writable by design; the rest of the system stays read-only by default inside a bubblewrap sandbox. That gives the agent the power of a real Linux environment while keeping its scope explicit. See [Safety](#safety) for the boundary and its escape hatch.
 
 ## Install and run
 
