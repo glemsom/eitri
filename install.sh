@@ -77,8 +77,8 @@ archive_path="$stage/$archive"
 
 curl --fail --location --silent --show-error --output "$archive_path" "$url" || fail "failed to download release archive: $url"
 archive_members=$(tar -tzf "$archive_path") || fail 'failed to inspect release archive'
-if [[ $archive_members != $'eitri\nLICENSE' ]]; then
-	fail 'release archive must contain exactly eitri and LICENSE at its root'
+if [[ $'\n'$archive_members$'\n' != *$'\n'$binary$'\n'* ]]; then
+	fail 'release archive does not contain eitri at its root'
 fi
 tar -xzf "$archive_path" -C "$stage" || fail 'failed to extract release archive'
 [[ -f "$stage/$binary" ]] || fail 'release archive does not contain eitri'

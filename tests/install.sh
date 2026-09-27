@@ -88,6 +88,9 @@ mapfile -t curl_urls < "$temp/log/curl-urls"
 expect_contains "$output" 'Installed Eitri 0.1.0 to '
 expect_contains "$output" "export PATH=\"$temp/home-latest/.local/bin:\$PATH\""
 
+output=$(FAKE_TAR_LIST=$'eitri\nLICENSE\nextra' run_installer "$temp/home-extra") || fail 'installation with extra archive member failed'
+[[ -x "$temp/home-extra/.local/bin/eitri" ]] || fail 'installation with extra archive member is not executable'
+
 if output=$(FAKE_RELEASE_JSON='{"assets":[{"name":"eitri_0.1.0_linux_amd64.tar.gz","browser_download_url":"https://github.com/glemsom/eitri/releases/download/v0.1.0/eitri_0.1.0_linux_amd64.tar.gz"},{"name":"eitri_0.1.1_linux_amd64.tar.gz","browser_download_url":"https://github.com/glemsom/eitri/releases/download/v0.1.1/eitri_0.1.1_linux_amd64.tar.gz"}]}' run_installer "$temp/home-ambiguous" 2>&1); then
 	fail 'ambiguous latest release succeeded'
 fi
