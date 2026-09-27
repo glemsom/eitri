@@ -20,11 +20,10 @@ func prependToFirstLine(s, prefix string) string {
 	if prefix == "" || s == "" {
 		return s
 	}
-	lines := strings.Split(s, "\n")
-	if len(lines) > 0 {
-		lines[0] = prefix + lines[0]
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return prefix + s[:i] + s[i:]
 	}
-	return strings.Join(lines, "\n")
+	return prefix + s
 }
 
 // flowInput is one turn's complete rendering context for the flow renderer:

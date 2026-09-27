@@ -75,15 +75,14 @@ func Default() Config {
 
 // Load reads the config file at path, creating it with defaults when absent.
 func Load(path string) (Config, error) {
-	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
 		cfg := Default()
 		if err := Save(cfg, path); err != nil {
 			return Config{}, err
 		}
 		return cfg, nil
 	}
-
-	data, err := os.ReadFile(path)
 	if err != nil {
 		return Config{}, fmt.Errorf("read config %s: %w", path, err)
 	}

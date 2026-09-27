@@ -1,6 +1,7 @@
 package compress
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -111,7 +112,7 @@ func TestCompressTruncatesTailWithExplicitMarker(t *testing.T) {
 	if kept := strings.Count(got, "entry."); kept != maxLines {
 		t.Fatalf("Compress kept %d entries, want %d", kept, maxLines)
 	}
-	wantMarker := "+" + itoa(n-maxLines) + " more"
+	wantMarker := "+" + strconv.Itoa(n-maxLines) + " more"
 	if !strings.Contains(got, wantMarker) {
 		t.Fatalf("Compress output = %q, want it to carry %q", got, wantMarker)
 	}
@@ -183,7 +184,7 @@ func buildLongListing(n int) string {
 	var b strings.Builder
 	for i := 0; i < n; i++ {
 		b.WriteString("entry.")
-		b.WriteString(itoa(i))
+		b.WriteString(strconv.Itoa(i))
 		b.WriteString("\n")
 	}
 	return b.String()

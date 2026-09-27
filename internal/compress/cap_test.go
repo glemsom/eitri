@@ -61,7 +61,7 @@ func TestCapBytesComposesWithLineMarker(t *testing.T) {
 	var b strings.Builder
 	for i := 0; i < 400; i++ {
 		b.WriteString("entry.")
-		b.WriteString(itoa(i))
+		b.WriteString(strconv.Itoa(i))
 		b.WriteString("\n")
 	}
 	b.WriteString("+300 more\n")
@@ -86,7 +86,7 @@ func TestCapBytesComposesWithLineMarker(t *testing.T) {
 
 func TestCapBytesDeterministic(t *testing.T) {
 	t.Parallel()
-	draft := strings.Repeat("entry."+itoa(42)+" payload\n", 20000)
+	draft := strings.Repeat("entry."+strconv.Itoa(42)+" payload\n", 20000)
 	a, da := CapBytes(draft, DefaultByteCap, 300, 0)
 	b, db := CapBytes(draft, DefaultByteCap, 300, 0)
 	if a != b || da != db {
@@ -97,7 +97,7 @@ func TestCapBytesDeterministic(t *testing.T) {
 
 func TestCapBytesIdempotent(t *testing.T) {
 	t.Parallel()
-	draft := strings.Repeat("entry."+itoa(7)+" payload\n", 20000)
+	draft := strings.Repeat("entry."+strconv.Itoa(7)+" payload\n", 20000)
 	capped, _ := CapBytes(draft, DefaultByteCap, 300, 0)
 
 	same, redropped := CapBytes(capped, DefaultByteCap, 300, 0)
@@ -197,7 +197,7 @@ func TestCapBytesMergesUpstreamWithLineMarker(t *testing.T) {
 	var b strings.Builder
 	for i := 0; i < 400; i++ {
 		b.WriteString("entry.")
-		b.WriteString(itoa(i))
+		b.WriteString(strconv.Itoa(i))
 		b.WriteString("\n")
 	}
 	b.WriteString("+300 more\n")
@@ -235,7 +235,7 @@ func TestCapBytesUnderBudgetWithLineMarkerAndUpstreamMerges(t *testing.T) {
 	var b strings.Builder
 	for i := 0; i < 200; i++ {
 		b.WriteString("entry.")
-		b.WriteString(itoa(i))
+		b.WriteString(strconv.Itoa(i))
 		b.WriteString("\n")
 	}
 	b.WriteString("+300 more\n")

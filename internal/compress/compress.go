@@ -2,6 +2,7 @@
 package compress
 
 import (
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -115,7 +116,7 @@ func CompressResult(raw string) (text string, compressed bool, dropped int) {
 	more := dropped
 	if more > 0 {
 		b.WriteByte('+')
-		b.WriteString(itoa(more))
+		b.WriteString(strconv.Itoa(more))
 		b.WriteString(" more\n")
 	}
 
@@ -123,17 +124,6 @@ func CompressResult(raw string) (text string, compressed bool, dropped int) {
 		return raw, false, 0
 	}
 	return b.String(), true, more
-}
-
-func itoa(i int) string {
-	if i == 0 {
-		return "0"
-	}
-	digits := []byte{}
-	for n := i; n > 0; n /= 10 {
-		digits = append([]byte{byte('0' + n%10)}, digits...)
-	}
-	return string(digits)
 }
 
 // CapBytes deterministically caps a tool-result draft to a byte budget at the tool-result boundary: over-budget drafts are head-truncated to the budget and an explicit marker line announcing how many bytes were dropped is appended — never silent. upstreamDropped is the count of bytes an earlier memory bound (the sandbox buffer) already rejected; it folds into the one authoritative marker so the final count is never clipped, under-reported, or doubled.
@@ -144,7 +134,7 @@ func CapBytes(draft string, budget int, linesDropped int, upstreamDropped int) (
 
 	merger := ""
 	if linesDropped > 0 {
-		lineMarker := "+" + itoa(linesDropped) + " more\n"
+		lineMarker := "+" + strconv.Itoa(linesDropped) + " more\n"
 		if strings.HasSuffix(draft, lineMarker) {
 			draft = strings.TrimSuffix(draft, lineMarker)
 			merger = strings.TrimSuffix(lineMarker, "\n") + ", "
@@ -153,7 +143,7 @@ func CapBytes(draft string, budget int, linesDropped int, upstreamDropped int) (
 
 	// Reserve marker space for the worst case (every draft byte plus the upstream
 	// drop), then keep as much of the head as fits the budget.
-	markerReserve := len(merger) + len("+"+itoa(upstreamDropped+len(draft))+" bytes truncated\n")
+	markerReserve := len(merger) + len("+"+strconv.Itoa(upstreamDropped+len(draft))+" bytes truncated\n")
 	keep := budget - markerReserve
 	if keep < 0 {
 		keep = 0
@@ -174,7 +164,7 @@ func CapBytes(draft string, budget int, linesDropped int, upstreamDropped int) (
 	b.WriteString(head)
 	b.WriteString(merger)
 	b.WriteByte('+')
-	b.WriteString(itoa(dropped))
+	b.WriteString(strconv.Itoa(dropped))
 	b.WriteString(" bytes truncated\n")
 	return b.String(), dropped
 }

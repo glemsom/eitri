@@ -38,6 +38,24 @@ func bashTool() flowTool {
 	}
 }
 
+func TestPrependToFirstLine(t *testing.T) {
+	for _, tc := range []struct {
+		name, text, prefix, want string
+	}{
+		{name: "empty text", prefix: "> ", want: ""},
+		{name: "empty prefix", text: "first\nsecond", want: "first\nsecond"},
+		{name: "single line", text: "first", prefix: "> ", want: "> first"},
+		{name: "multiple lines", text: "first\nsecond\nthird", prefix: "> ", want: "> first\nsecond\nthird"},
+		{name: "leading newline", text: "\nsecond", prefix: "> ", want: "> \nsecond"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := prependToFirstLine(tc.text, tc.prefix); got != tc.want {
+				t.Errorf("prependToFirstLine(%q, %q) = %q, want %q", tc.text, tc.prefix, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestRenderFlow_committedRendersReasoningOnceAtFirstToolBoundary(t *testing.T) {
 	in := renderFlowInput(
 		[]TimelineEvent{

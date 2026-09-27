@@ -8,8 +8,6 @@ import (
 
 type messagePartition struct {
 	StableHead []provider.Message
-	Transient  []provider.Message
-	History    []provider.Message
 	persisted  []provider.Message
 }
 
@@ -36,18 +34,10 @@ func partitionMessages(messages []provider.Message) messagePartition {
 		start++
 	}
 
-	p := messagePartition{StableHead: messages[:start], persisted: messages[start:]}
-	for _, message := range p.persisted {
-		if p.IsTransient(message) {
-			p.Transient = append(p.Transient, message)
-		} else {
-			p.History = append(p.History, message)
-		}
-	}
-	return p
+	return messagePartition{StableHead: messages[:start], persisted: messages[start:]}
 }
 
-func (messagePartition) IsTransient(message provider.Message) bool {
+func isTransientMessage(message provider.Message) bool {
 	return message.Role == provider.RoleUser && strings.Contains(message.Content, "<skill_content")
 }
 

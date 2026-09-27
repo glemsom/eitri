@@ -21,12 +21,6 @@ func TestPartitionMessagesSharesStableHeadAcrossCompactionAndPersistence(t *test
 	if want := []provider.Message{persona, skills, repo, workspace}; !reflect.DeepEqual(got.StableHead, want) {
 		t.Fatalf("StableHead = %#v, want %#v", got.StableHead, want)
 	}
-	if want := []provider.Message{activation}; !reflect.DeepEqual(got.Transient, want) {
-		t.Fatalf("Transient = %#v, want %#v", got.Transient, want)
-	}
-	if !reflect.DeepEqual(got.History, conversation) {
-		t.Fatalf("History = %#v, want %#v", got.History, conversation)
-	}
 	if want := append([]provider.Message{activation}, conversation...); !reflect.DeepEqual(got.PersistedHistory(), want) {
 		t.Fatalf("PersistedHistory = %#v, want %#v", got.PersistedHistory(), want)
 	}

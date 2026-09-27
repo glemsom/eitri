@@ -470,19 +470,13 @@ func parseEvent(data string, acc *toolAccumulator) (Chunk, error) {
 		if wc.Choices[0].FinishReason != nil {
 			chunk.FinishReason = *wc.Choices[0].FinishReason
 		}
-		chunk.ToolCalls = accTouls(acc)
+		if acc != nil {
+			chunk.ToolCalls = acc.finish()
+		}
 	}
 	chunk.Usage = wc.Usage
 	if chunk.Usage != nil {
 		chunk.Usage.finalize()
 	}
 	return chunk, nil
-}
-
-// accTouls returns the accumulator's current finished ToolCalls (reflects the running reassembly on each non-terminal chunk).
-func accTouls(acc *toolAccumulator) []ToolCall {
-	if acc == nil {
-		return nil
-	}
-	return acc.finish()
 }

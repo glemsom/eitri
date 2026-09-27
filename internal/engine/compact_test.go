@@ -69,11 +69,11 @@ func TestIsSkillMessageRecognizesSkillContentInUserLayer(t *testing.T) {
 	t.Parallel()
 	// The slash-injected <skill_content> directive in the user layer is what the
 	// compact ring-fence protects; the model has no `skill` tool.
-	if !(messagePartition{}).IsTransient(provider.Message{Role: provider.RoleUser,
+	if !isTransientMessage(provider.Message{Role: provider.RoleUser,
 		Content: "<skill_content name=\"go\">follow the guidelines</skill_content>"}) {
 		t.Fatal("isSkillMessage must recognize the slash-injected <skill_content> directive in the user layer")
 	}
-	if (messagePartition{}).IsTransient(provider.Message{Role: provider.RoleAssistant,
+	if isTransientMessage(provider.Message{Role: provider.RoleAssistant,
 		ToolCalls: []provider.ToolCall{{Name: "skill"}}}) {
 		t.Fatal("isSkillMessage must not recognize a skill tool call (no such model tool)")
 	}
@@ -98,7 +98,7 @@ func TestEvictPruneRingFenceProtectsSkillContent(t *testing.T) {
 	}
 	var sawSkill bool
 	for _, m := range tail {
-		if (messagePartition{}).IsTransient(m) {
+		if isTransientMessage(m) {
 			sawSkill = true
 		}
 	}

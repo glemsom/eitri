@@ -62,7 +62,7 @@ func (e *Engine) maybeCompact(ctx context.Context, req RunRequest, opts AgentOpt
 	partition := partitionMessages(messages)
 	stableHead := append([]provider.Message(nil), partition.StableHead...)
 	messages = partition.PersistedHistory()
-	for len(messages) > 0 && partition.IsTransient(messages[0]) {
+	for len(messages) > 0 && isTransientMessage(messages[0]) {
 		stableHead = append(stableHead, messages[0])
 		messages = messages[1:]
 	}
@@ -122,9 +122,8 @@ func evict(cfg *CompactionConfig, messages []provider.Message) (body, tail []pro
 		keepStart = i
 	}
 	if cfg.Prune {
-		partition := partitionMessages(messages)
 		for i := range messages {
-			if partition.IsTransient(messages[i]) {
+			if isTransientMessage(messages[i]) {
 				if i < keepStart {
 					keepStart = i
 				}
