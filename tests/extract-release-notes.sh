@@ -57,6 +57,10 @@ run_fixture stop-at-level-two 1.2.3 $'## [1.2.3] - 2026-01-02\n\n- Current.\n\n#
 printf '%s' $'## [1.2.3] - 2026-01-02\n\n- Current.\n\n' >"$temp/expected-stop-at-level-two"
 cmp -s "$temp/expected-stop-at-level-two" "$temp/actual-stop-at-level-two" || fail 'did not stop at the following level-2 heading'
 
+run_fixture stop-at-tab-level-two 1.2.3 $'## [1.2.3] - 2026-01-02\n\n- Current.\n\n##\tNotes\n\n- Not release notes.\n' >"$temp/actual-stop-at-tab-level-two"
+printf '%s' $'## [1.2.3] - 2026-01-02\n\n- Current.\n\n' >"$temp/expected-stop-at-tab-level-two"
+cmp -s "$temp/expected-stop-at-tab-level-two" "$temp/actual-stop-at-tab-level-two" || fail 'did not stop at the following tab-separated level-2 heading'
+
 run_fixture fenced-level-two 1.2.3 $'## [1.2.3] - 2026-01-02\n\n```markdown\n## This remains release notes\n```\n\n- Current.\n\n## [1.2.2] - 2026-01-01\n' >"$temp/actual-fenced-level-two"
 printf '%s' $'## [1.2.3] - 2026-01-02\n\n```markdown\n## This remains release notes\n```\n\n- Current.\n\n' >"$temp/expected-fenced-level-two"
 cmp -s "$temp/expected-fenced-level-two" "$temp/actual-fenced-level-two" || fail 'stopped at a level-2-looking line inside a fenced code block'
