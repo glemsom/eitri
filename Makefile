@@ -1,4 +1,4 @@
-.PHONY: build install debug debug-install test clean
+.PHONY: build install debug debug-install package test clean
 
 BINARY := eitri
 BIN_DIR := bin
@@ -9,10 +9,23 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 # symbols so pprof/delve can map samples and stack frames to source. Set
 # STRIP=0 to keep symbols in the normal build too.
 LDFLAGS := $(if $(filter 0,$(STRIP)),,-s -w) -X github.com/glemsom/eitri/internal/app.Version=$(VERSION)
+PACKAGE_VERSION := $(patsubst v%,%,$(VERSION))
+PACKAGE_NAME := $(BINARY)_$(PACKAGE_VERSION)_linux_amd64
+PACKAGE_DIR := dist/$(PACKAGE_NAME)
+PACKAGE_ARCHIVE := dist/$(PACKAGE_NAME).tar.gz
+PACKAGE_LDFLAGS := $(if $(filter 0,$(STRIP)),,-s -w) -X github.com/glemsom/eitri/internal/app.Version=$(PACKAGE_VERSION)
 
 build:
 	mkdir -p $(BIN_DIR)
 	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(BINARY) .
+
+package:
+	rm -rf $(PACKAGE_DIR) $(PACKAGE_ARCHIVE)
+	mkdir -p $(PACKAGE_DIR)
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildvcs=false -trimpath -ldflags "$(PACKAGE_LDFLAGS)" -o $(PACKAGE_DIR)/$(BINARY) .
+	cp LICENSE $(PACKAGE_DIR)/LICENSE
+	tar -C $(PACKAGE_DIR) --mtime=@0 --owner=0 --group=0 --numeric-owner -czf $(PACKAGE_ARCHIVE) $(BINARY) LICENSE
+	rm -rf $(PACKAGE_DIR)
 
 install: build
 	install -d $(INSTALL_DIR)
@@ -37,4 +50,4 @@ test:
 	go test ./...
 
 clean:
-	rm -rf $(BIN_DIR)
+	rm -rf $(BIN_DIR) dist

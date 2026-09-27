@@ -40,3 +40,8 @@ jobs:
         run: |
           go test ./... -coverprofile=cover.out
           go tool cover -func=cover.out
+
+      - name: Production release artifact
+        run: |
+          make package VERSION=v0.1.0
+          scripts/validate-package.sh v0.1.0
