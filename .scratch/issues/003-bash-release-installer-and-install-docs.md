@@ -1,5 +1,7 @@
 # Add the Bash release installer and public installation guidance
 
+**Status:** Resolved
+
 ## Goal
 Let GNU/Linux amd64 users install the latest stable Eitri release, or a pinned release, into `~/.local/bin` with one Bash command.
 
