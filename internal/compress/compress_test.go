@@ -91,13 +91,52 @@ func TestCompressStripsUTF8C1Controls(t *testing.T) {
 	}
 }
 
-func TestCompressDedupesConsecutiveLines(t *testing.T) {
+// A collapse that would cost more to report than it saves is not performed:
+// the raw text is returned, so nothing was lost and nothing needs reporting.
+func TestCompressSkipsCollapseWhenItWouldInflate(t *testing.T) {
 	t.Parallel()
 	raw := "a\nb\nb\nb\nc\nc\n"
+	if got := Compress(raw); got != raw {
+		t.Fatalf("Compress(%q) = %q, want the raw text unchanged", raw, got)
+	}
+}
+
+// A collapse is a loss, so the Bash seam must report it: the model can only
+// recover from a loss it was told about.
+func TestCompressReportsCollapsedLines(t *testing.T) {
+	t.Parallel()
+	// 400 distinct entries, then 600 further copies of the last one.
+	raw := buildLongListing(400) + strings.Repeat("entry.399\n", 600)
 	got := Compress(raw)
-	want := "a\nb\nc\n"
-	if got != want {
-		t.Fatalf("Compress(%q) = %q, want %q", raw, got, want)
+
+	if want := "+600 repeated lines collapsed"; !strings.Contains(got, want) {
+		t.Fatalf("Compress(%d bytes) dropped 600 duplicate lines without reporting it:\n%s", len(raw), got)
+	}
+	if kept := strings.Count(got, "entry.399"); kept != 1 {
+		t.Fatalf("kept %d copies of entry.399, want 1", kept)
+	}
+}
+
+// CapBytes folds a trailing "+N more" into its byte marker, so the collapse
+// report has to land ahead of it or that fold stops matching.
+func TestCompressReportsCollapseBeforeTailMarker(t *testing.T) {
+	t.Parallel()
+	// 550 distinct entries, then 600 more copies of the last one: long enough
+	// to overflow maxLines once collapsed, so both markers must appear.
+	raw := buildLongListing(maxLines + 50) + strings.Repeat("entry.549\n", 600)
+	got := Compress(raw)
+
+	collapseAt := strings.Index(got, "+600 repeated lines collapsed")
+	tailAt := strings.Index(got, "+50 more")
+	if collapseAt < 0 || tailAt < 0 {
+		t.Fatalf("Compress missing a marker (collapse at %d, tail at %d): ...%q",
+			collapseAt, tailAt, got[max(0, len(got)-60):])
+	}
+	if collapseAt > tailAt {
+		t.Fatalf("collapse marker must precede the tail marker so CapBytes still folds it")
+	}
+	if !hasMarker(got) {
+		t.Fatalf("last line is no longer the tail marker, CapBytes folding is broken: ...%q", got[len(got)-40:])
 	}
 }
 

@@ -86,6 +86,22 @@ func TestBashToolReportsSandboxDroppedBytes(t *testing.T) {
 	}
 }
 
+// A collapse must reach the model through the tool result: the compressor
+// reporting it is worthless if the tool boundary drops it on the floor.
+func TestBashToolReportsCollapsedLines(t *testing.T) {
+	t.Parallel()
+	b := &bashTool{backend: fakeBackend{out: &Output{
+		Stdout: strings.Repeat("same line\n", 400),
+	}}}
+	res, err := b.Run(context.Background(), map[string]any{"command": "true"})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if !strings.Contains(res.Text, "+399 repeated lines collapsed") { // 400 identical lines keep 1
+		t.Fatalf("tool result lost the collapse report: %q", res.Text)
+	}
+}
+
 func TestYoloBashDescriptionKeepsOutputContract(t *testing.T) {
 	t.Parallel()
 	desc := (&bashTool{unsandboxed: true}).Description()
@@ -97,6 +113,9 @@ func TestYoloBashDescriptionKeepsOutputContract(t *testing.T) {
 	}
 	if !strings.Contains(desc, "+N more") {
 		t.Fatalf("yolo bash description missing %q: %s", "+N more", desc)
+	}
+	if !strings.Contains(desc, "+N repeated lines collapsed") {
+		t.Fatalf("yolo bash description missing %q: %s", "+N repeated lines collapsed", desc)
 	}
 }
 

@@ -48,7 +48,7 @@ var bashTimeoutContract = fmt.Sprintf("Every call is time-bounded: the default l
 // the bounded, ANSI-stripped, compressed output every bash run returns. It is
 // identical across the sandboxed and unsandboxed tool definitions so the model
 // sees the same recovery contract either way.
-const bashOutputContract = "Returns the combined stream (stdout then stderr; ANSI escape sequences stripped, repeated consecutive lines collapsed). Output passes through a deterministic line compressor: heavy listings are truncated with an explicit \"+N more\" marker — never silent — so re-running the command is the recovery path if you need the tail. Same command yields the same compressed form."
+const bashOutputContract = "Returns the combined stream (stdout then stderr; ANSI escape sequences stripped). Output passes through a deterministic line compressor: heavy listings are truncated with an explicit \"+N more\" marker, and repeated consecutive lines are collapsed and reported with \"+N repeated lines collapsed\" — never silent. Each loss has its own recovery: re-run or widen the range to get a truncated tail, but collapsed lines are gone, so change the command rather than repeating it. Same command yields the same compressed form."
 
 func (b *bashTool) Description() string {
 	if b.unsandboxed {

@@ -100,7 +100,7 @@ func CompressResult(raw string) (text string, compressed bool, dropped int) {
 	lines := splitLines(text)
 	lines = screenProgressFrames(lines)
 
-	lines = dedupeConsecutive(lines)
+	lines, collapsed := dedupeConsecutive(lines)
 
 	dropped = 0
 	if len(lines) > maxLines {
@@ -112,6 +112,14 @@ func CompressResult(raw string) (text string, compressed bool, dropped int) {
 	for _, ln := range lines {
 		b.WriteString(ln)
 		b.WriteByte('\n')
+	}
+	// Before the tail marker: CapBytes folds a trailing "+N more" into its byte
+	// marker, and collapse needs its own label because re-reading the tail will
+	// not bring the lines back.
+	if collapsed > 0 {
+		b.WriteByte('+')
+		b.WriteString(strconv.Itoa(collapsed))
+		b.WriteString(" repeated lines collapsed\n")
 	}
 	more := dropped
 	if more > 0 {
@@ -169,18 +177,21 @@ func CapBytes(draft string, budget int, linesDropped int, upstreamDropped int) (
 	return b.String(), dropped
 }
 
-func dedupeConsecutive(lines []string) []string {
+func dedupeConsecutive(lines []string) ([]string, int) {
 	if len(lines) == 0 {
-		return lines
+		return lines, 0
 	}
 	out := make([]string, 0, len(lines))
 	out = append(out, lines[0])
+	collapsed := 0
 	for i := 1; i < len(lines); i++ {
 		if lines[i] != lines[i-1] {
 			out = append(out, lines[i])
+		} else {
+			collapsed++
 		}
 	}
-	return out
+	return out, collapsed
 }
 
 func splitLines(s string) []string {
