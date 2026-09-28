@@ -25,11 +25,7 @@ git tag -a vX.Y.Z -m 'Release vX.Y.Z'
 git push origin vX.Y.Z
 ```
 
-Tag signing and commit signing are not required. Repository administrators must
-configure GitHub tag protection for `v*` to authorize only release maintainers to
-create matching tags and prevent moving, force-updating, or deleting published
-release tags. This protects immutable publication and prevents release workflow tag
-identity races.
+Tag signing and commit signing are not required.
 
 Pushing the tag starts verification. GitHub Actions tag globs cannot express an
 exact stable SemVer pattern, so the workflow uses the `v*` candidate trigger and
