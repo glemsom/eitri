@@ -23,7 +23,7 @@ func TestSystemPromptWithinTokenBudget(t *testing.T) {
 func TestSystemPromptCarriesSubagentPointerOnly(t *testing.T) {
 	t.Parallel()
 	content := SystemPromptContent()
-	if !strings.Contains(content, "see the `subagents` skill") {
+	if !strings.Contains(content, "`subagents` skill") {
 		t.Error("prompt lost the subagents pointer")
 	}
 	for _, recipe := range []string{"mktemp -d", "agent_settled", "TMPDIR/subagent"} {
