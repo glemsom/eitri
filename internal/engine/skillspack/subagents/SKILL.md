@@ -48,6 +48,11 @@ one path writable from both sides. Each subagent runs in an isolated sandbox
 with its own writable `$TMPDIR`, and the parent's `$TMPDIR` is read-only from
 inside the subagent, so a subagent cannot reach into the parent's scratch.
 
+The read-only half of that depends on the launching directory: a subagent
+takes it as its workspace, and the workspace is writable. Launch the batch
+from `$TMPDIR` and every subagent gets the parent's scratch read-write,
+silently, with no failed write to show for it. Launch from the workspace.
+
 The reverse does not hold: `mktemp -d "$TMPDIR/subagent.XXXXXX"` puts the agent
 directory under the parent's `$TMPDIR`, so the parent can read a subagent's
 transcript at `$agent_dir/sessions/<guid>/`. That is the subagent's private
