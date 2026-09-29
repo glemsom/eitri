@@ -62,7 +62,7 @@ JSON object** at run end:
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `answer` | string | The final answer text. |
-| `session` | string | The run's session GUID — names the session directory under `sessions/` in the data directory, usable with `eitri session show <guid>`. |
+| `session` | string | The run's session GUID — names the session directory under `sessions/` in the data directory, usable with `eitri session show <guid>`. A run that overrode `EITRI_DIR` needs the same override to replay: read against the default data directory it reports no records and still exits 0. |
 | `turns` | number | Provider request/response turns the run performed (tool-calling turns included). |
 | `stopped` | bool | Whether the run ended in a user stop rather than a normal completion. Batch binds no stop, so an envelope printed by a batch run always has `stopped: false`; an interrupted or failed run exits non-zero and prints no envelope. |
 
