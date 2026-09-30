@@ -1,10 +1,13 @@
 ---
 name: subagents
-description: Run parallel or background subagent tasks with isolated batch runs, waiting for each and reading settled results in the same Bash call.
+description: Run parallel or background subagent tasks with isolated batch runs, waiting for each and reading settled results in the same Bash call. Use whenever a prompt asks for a 'background agent', a sub-agent, a delegated or second agent, or independent tasks fanned out across several agents.
 model-invocable: true
 ---
 
 ## Subagents
+
+A 'background agent' is a subagent: a batch-mode `eitri -b` run with its own
+session and sandbox, launched from the parent's Bash tool call.
 
 For each batch-mode subagent, use an isolated execution directory and always
 wait for it before reading the result. The same pattern works for one or
