@@ -1,6 +1,6 @@
 ---
 name: subagents
-description: Run parallel or background subagent tasks with isolated batch runs, waiting for each and reading settled results in the same Bash call. Use whenever a prompt asks for a 'background agent', a sub-agent, a delegated or second agent, or independent tasks fanned out across several agents.
+description: "Subagents: hand a task to its own `eitri -b` agent. Use when a prompt asks for a 'background agent', a sub-agent, a second agent, or several independent tasks in parallel."
 model-invocable: true
 ---
 
@@ -9,9 +9,9 @@ model-invocable: true
 A 'background agent' is a subagent: a batch-mode `eitri -b` run with its own
 session and sandbox, launched from the parent's Bash tool call.
 
-For each batch-mode subagent, use an isolated execution directory and always
-wait for it before reading the result. The same pattern works for one or
-many subagents:
+**Launch** each subagent into its own execution directory, then **collect** it —
+wait, and read the answer — inside the same Bash tool call. The one script
+covers one or many:
 ```sh
 for task_number in 1 2; do
   task="<task $task_number>"
@@ -33,40 +33,34 @@ for task_number in 1 2; do
 done
 ```
 
-Each subagent run prints one `--format json` envelope; `jq -r .answer` extracts the answer field from it instead of parsing prose stdout.
-A run that fails prints **no** envelope and exits non-zero, so gate on both the exit code and
-`jq -e` before trusting an answer: bare `jq -r` on the resulting empty file prints nothing and
-exits 0, which makes a crashed subagent look like one that answered with nothing.
+One subagent is both ranges set to `1`. Collecting inside the same Bash tool call
+is what makes the results there. Uncollected subagents are lost: in sandboxed mode
+the sandbox terminates child processes when the tool call returns; elsewhere they
+merely keep running.
 
-Change both ranges to `1` for one subagent. Always launch, wait for every
-process, and read the results in the same Bash tool call: in sandboxed mode
-the sandbox terminates child processes when the tool call returns; elsewhere
-they merely keep running — waiting and reading within the same call is what
-guarantees the results are there to collect.
+The gate is load-bearing. Each run prints one `--format json` envelope whose
+`answer` field is the result; a failed run prints no envelope and exits
+non-zero, and bare `jq -r` on that empty file prints nothing while exiting 0 — a
+crash would read as an answer with nothing in it.
 
-## File handoff
+## Handoff
 
-Hand files between the parent and a subagent through the **workspace** — the
-one path writable from both sides. Each subagent runs in an isolated sandbox
-with its own writable `$TMPDIR`, and the parent's `$TMPDIR` is read-only from
-inside the subagent, so a subagent cannot reach into the parent's scratch.
+Piped stdin is the cheap channel — `git diff | eitri -b "Review this diff"` —
+and carries up to 1 MiB, refused (never truncated) past that. Reach for the
+workspace when the payload is larger, or when the subagent has to write a file
+back.
 
-The read-only half of that depends on the launching directory: a subagent
-takes it as its workspace, and the workspace is writable. Launch the batch
-from `$TMPDIR` and every subagent gets the parent's scratch read-write,
-silently, with no failed write to show for it. Launch from the workspace.
+For files, use the **workspace**: the one path writable from both sides. A
+subagent takes its launch directory as its workspace, so launch from the
+workspace and never from `$TMPDIR` — launching from `$TMPDIR` hands every
+subagent the parent's scratch read-write, silently, with no failed write to show
+for it. Pass workspace paths in the task prompt for anything crossing the
+boundary.
 
-The reverse does not hold: `mktemp -d "$TMPDIR/subagent.XXXXXX"` puts the agent
-directory under the parent's `$TMPDIR`, so the parent can read a subagent's
-transcript at `$agent_dir/sessions/<guid>/`. That is the subagent's private
-scratch rather than a handoff channel — the path is minted fresh per run and
-its layout is an implementation detail — so pass workspace paths in the task
-prompt for anything that has to cross the boundary. Those `subagent.*`
-directories also outlive the run, so remove them once the batch is collected.
-
-To replay a subagent, point `eitri session show` at the same data directory the
-run used, or it reports no records:
-
+Each run leaves its session trail at `$agent_dir` — the parent's to read, on a
+path minted per run, with an implementation-detail layout inside. Hand work
+across the boundary as workspace paths, not as locations in it, and replay a run
+by pointing `eitri session show` at the data directory that run used:
 ```sh
 EITRI_DIR="$agent_dir" eitri session show "$(jq -r .session "$TMPDIR/sa-1.json")"
 ```
