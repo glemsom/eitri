@@ -8,6 +8,7 @@ Done:
 
 - `internal/tui/livekey` — `LiveSessionKey`. Already atomic (own mutex-guarded state, exported ctor + `Get`/`Set`, stdlib-only); extraction was pure relocation.
 - `internal/tui/telemetry` — `Telemetry`. Already atomic. Extraction exported the `Apply`, `LiveContextSize`, `HitPercent`, and `Stats` seams, replacing the direct unexported-field reads that `rail.go` and tests used to make. Its unit test moved into the sub-package.
+- The transcript's live-turn pulse. `Status()` and the `TickBusy`, `TickEmber`, `ArmEmber`, and `EndTurn` commands make the busy flag, elapsed clock, spinner/forge frames, and idle ember a single owner inside package `tui` — step 1 of the transcript seam.
 - The turn-session seam. `TurnSession` no longer reaches into `Transcript` — it supplies cancellable execution only, and `TurnRuntime.Begin` projects through `Transcript.Project`. `TurnFlow` and `Phase` are already separate package-level owners.
 
 ## Why the hot modules are not extractable by file-move alone

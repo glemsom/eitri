@@ -371,7 +371,7 @@ func TestModel_shiftEnterInsertsNewline(t *testing.T) {
 	if got := m.composer.Value(); got != "line one\n" {
 		t.Errorf("Shift+Enter should insert a newline, composer = %q", got)
 	}
-	if m.tx.busy {
+	if m.tx.Status().Busy {
 		t.Errorf("Shift+Enter must not mark the model busy")
 	}
 }
@@ -417,7 +417,7 @@ func TestModel_shiftEnterThenSubmitSendsWholeMultiLine(t *testing.T) {
 	m = asModel(t, newlined)
 	m = typeText(t, m, "line two")
 
-	if m.tx.busy {
+	if m.tx.Status().Busy {
 		t.Fatalf("composing must keep the model idle until submit")
 	}
 

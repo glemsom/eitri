@@ -44,7 +44,7 @@ func newestNonBlank(render string) string {
 func TestModel_liveFollowKeepsNewestOutput(t *testing.T) {
 	t.Parallel()
 	m := busyStreamingModel(t)
-	if !m.tx.busy {
+	if !m.tx.Status().Busy {
 		t.Fatalf("test model must be mid-run (busy)")
 	}
 	got, histContent, vh := followRendered(m)
@@ -62,7 +62,7 @@ func TestModel_liveFollowKeepsNewestOutput(t *testing.T) {
 func TestModel_liveFollowPersistsThroughResize(t *testing.T) {
 	t.Parallel()
 	m := busyStreamingModel(t)
-	if !m.tx.busy {
+	if !m.tx.Status().Busy {
 		t.Fatalf("test model must be mid-run (busy)")
 	}
 	for _, h := range []int{6, 12, 14, 10} {

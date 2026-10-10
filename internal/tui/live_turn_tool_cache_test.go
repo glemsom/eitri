@@ -37,7 +37,7 @@ func BenchmarkLiveTurnTimeline(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				tx.spinner = (tx.spinner + 1) % 10
+				tx.TickBusy()
 				_ = tx.renderPaneContent()
 			}
 		})

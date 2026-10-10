@@ -57,7 +57,7 @@ func benchBusyTx() *Transcript {
 	tx.height = 30
 	tx.cotExpanded = true
 	tx.histViewport = newHistoryViewport()
-	tx.busy = true
+	tx.BeginBusy()
 	return tx
 }
 
@@ -75,7 +75,7 @@ func benchStreamingLiveReason(reasonKB int) *Transcript {
 	tx.messages = append(tx.messages, message{role: "eitri", streaming: true, thinkingRequested: true,
 		reasoning: reason, content: "", expansion: ExpansionState{}})
 	tx.flow.Observe(ReasoningStream, reason)
-	tx.busy = true
+	tx.BeginBusy()
 	return tx
 }
 
@@ -119,7 +119,7 @@ func BenchmarkBusyRender_LiveTailGrows(b *testing.B) {
 			tx.messages = append(tx.messages, message{role: "you", content: "live prompt"})
 			tx.messages = append(tx.messages, message{role: "eitri", streaming: true, thinkingRequested: true,
 				reasoning: "", content: "", expansion: ExpansionState{}})
-			tx.busy = true
+			tx.BeginBusy()
 			// Pre-fill to the target size one delta at a time, mirroring a real
 			// stream where each Observe adds one arrival-ordered event.
 			for len(tx.messages[1].reasoning) < total {

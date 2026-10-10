@@ -544,7 +544,7 @@ func TestTranscript_emptyTimelineGapRendersThroughFlowRenderer(t *testing.T) {
 	want += card + "\n"
 	flow, _ := tx.renderEventFlow(nil, 0, message{}, 0, time.Time{}, assistantRoleMark()+" ")
 	want += flow
-	want += tx.theme.statusStyle.Render(busyLine(tx.spinner, tx.phase())) + "\n"
+	want += tx.theme.statusStyle.Render(busyLine(tx.Status().Frame, tx.phase())) + "\n"
 
 	if hist.String() != want {
 		t.Errorf("empty-timeline gap must render prompt card + FlowRenderer output only:\n got %q\nwant %q", hist.String(), want)

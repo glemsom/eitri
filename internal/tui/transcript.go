@@ -231,7 +231,7 @@ func (t *Transcript) Project(outcome TranscriptOutcome) (bool, error) {
 }
 
 func (t *Transcript) projectCompletion(c TranscriptCompletion) (bool, error) {
-	t.endTurn()
+	t.EndTurn()
 	wasStreaming := t.curStream >= 0 && t.curStream < len(t.messages)
 	content, reasoning := t.flow.Finalize(c.Answer, c.Reasoning, c.Stopped)
 	if c.Stopped {
@@ -1373,13 +1373,98 @@ func (t Transcript) toolEntryIsCommitted(i int) bool {
 	return t.log.entries[i].anchor < t.busyTailIndex()
 }
 
-// endTurn clears the busy state after a completed turn and marks the shared layout cache dirty, so completion-time message finalization re-wraps without caller-side invalidation.
-func (t *Transcript) endTurn() {
+// Status is the live turn's readout as one value: the busy flag and its phase,
+// the elapsed clock, the tool pulse remaining, and the animation frames the
+// composer and rail draw.
+type Status struct {
+	Busy           bool
+	Phase          Phase
+	Elapsed        time.Duration
+	Pulse          int
+	Frame          int
+	ForgeFrame     int
+	EmberFrame     int
+	EmberRemaining int
+}
+
+// Status reports the live turn's status. It is the single read of the pulse
+// state; the composer, the rail, and the model reach the busy flag, the
+// frames, and the idle ember through it rather than the fields.
+func (t Transcript) Status() Status {
+	var elapsed time.Duration
+	if !t.busyStartedAt.IsZero() {
+		elapsed = time.Since(t.busyStartedAt)
+	}
+	return Status{
+		Busy:           t.busy,
+		Phase:          t.phase(),
+		Elapsed:        elapsed,
+		Pulse:          t.busyPulse,
+		Frame:          t.spinner,
+		ForgeFrame:     t.forgeFrame,
+		EmberFrame:     t.idleEmberFrame,
+		EmberRemaining: t.idleEmberRemaining,
+	}
+}
+
+// EndTurn clears the busy state after a completed turn and marks the shared layout cache dirty, so completion-time message finalization re-wraps without caller-side invalidation.
+func (t *Transcript) EndTurn() {
 	t.busy = false
 	t.spinner = 0
 	t.forgeFrame = 0
 	t.layout.dirty = true
 	t.busyPrefixDirty = true
+}
+
+// BeginBusy marks the live turn busy without starting the elapsed clock: the
+// skill-activation window shows the busy panel before the run itself starts the
+// clock through Project.
+func (t *Transcript) BeginBusy() {
+	t.busy = true
+}
+
+// TickBusy advances the busy animation one 80 ms cadence and reports the next
+// tick; it parks the frames and stops the tick once the turn ends or motion is
+// off.
+func (t *Transcript) TickBusy() tea.Cmd {
+	if !t.busy || !motionEnabled() {
+		t.spinner = 0
+		t.forgeFrame = 0
+		return nil
+	}
+	t.spinner = (t.spinner + 1) % len(busySpinnerFrames)
+	t.forgeFrame++
+	if t.busyPulse > 0 {
+		t.busyPulse--
+	}
+	return spinnerTick()
+}
+
+// ArmEmber restarts the idle-ember window at its leading frame, extending the
+// bounded shimmer on activity. A busy surface, an open overlay, or reduced
+// motion never arms, and an already-running ember only has its window extended
+// so no second timer starts.
+func (t *Transcript) ArmEmber(overlayOpen bool) tea.Cmd {
+	if t.busy || !motionEnabled() || overlayOpen {
+		return nil
+	}
+	running := t.idleEmberRemaining > 0
+	t.armIdleEmber()
+	if running {
+		return nil
+	}
+	return idleEmberTick()
+}
+
+// TickEmber advances the idle ember one 140 ms cadence and reports the next
+// tick, settling the ember and stopping the tick when the window closes or a
+// busy surface, an open overlay, or reduced motion pauses it.
+func (t *Transcript) TickEmber(overlayOpen bool) tea.Cmd {
+	if !t.busy && !overlayOpen && motionEnabled() && t.advanceIdleEmber() {
+		return idleEmberTick()
+	}
+	t.settleIdleEmber()
+	return nil
 }
 
 // armIdleEmber restarts the idle-ember window at its leading frame, extending

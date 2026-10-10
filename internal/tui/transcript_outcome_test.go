@@ -10,8 +10,8 @@ func TestTranscriptProjectProjectsLiveTurnOutcomes(t *testing.T) {
 
 	tx.Project(TranscriptOutcome{Start: &TranscriptStart{Prompt: "inspect", ThinkingEnabled: false}})
 
-	if !tx.busy || len(tx.messages) != 1 || tx.messages[0].content != "inspect" {
-		t.Fatalf("start projection = busy %v, messages %+v", tx.busy, tx.messages)
+	if !tx.Status().Busy || len(tx.messages) != 1 || tx.messages[0].content != "inspect" {
+		t.Fatalf("start projection = busy %v, messages %+v", tx.Status().Busy, tx.messages)
 	}
 	tx.Project(TranscriptOutcome{Stream: &StreamUpdate{Kind: ReasoningStream, Delta: "consider"}})
 	tx.Project(TranscriptOutcome{Tool: &ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"pwd"}`}}})
@@ -31,7 +31,7 @@ func TestTranscriptProjectProjectsLiveTurnOutcomes(t *testing.T) {
 	if len(events) != 3 || events[0].Kind != EventReasoning || events[1].Kind != EventToolStart || events[2].Kind != EventAnswer {
 		t.Fatalf("timeline = %+v", events)
 	}
-	if tx.busyPulse == 0 {
+	if tx.Status().Pulse == 0 {
 		t.Fatal("tool start did not arm the thinking-off busy pulse")
 	}
 	if !tx.layout.dirty {
@@ -50,7 +50,7 @@ func TestTranscriptProjectCompletesSuccessfulRun(t *testing.T) {
 	if stopped || err != nil {
 		t.Fatalf("completion = stopped %v, err %v; want false, nil", stopped, err)
 	}
-	if tx.busy {
+	if tx.Status().Busy {
 		t.Fatal("successful completion left transcript busy")
 	}
 	msg := tx.messages[len(tx.messages)-1]
@@ -75,7 +75,7 @@ func TestTranscriptProjectCompletesFailedAndStoppedRuns(t *testing.T) {
 		if stopped || err != errTranscriptOutcome {
 			t.Fatalf("completion = stopped %v, err %v", stopped, err)
 		}
-		if tx.busy || len(tx.messages) != 3 || tx.messages[1].content != "partial" || tx.messages[1].streaming {
+		if tx.Status().Busy || len(tx.messages) != 3 || tx.messages[1].content != "partial" || tx.messages[1].streaming {
 			t.Fatalf("failed projection messages = %+v", tx.messages)
 		}
 		if tx.messages[2].content != failurePrefix()+errTranscriptOutcome.Error() {
@@ -93,7 +93,7 @@ func TestTranscriptProjectCompletesFailedAndStoppedRuns(t *testing.T) {
 			t.Fatalf("completion = stopped %v, err %v", stopped, err)
 		}
 		msg := tx.messages[len(tx.messages)-1]
-		if tx.busy || msg.content != "partial answer" || msg.reasoning != "partial reasoning" || !msg.stopped || msg.streaming {
+		if tx.Status().Busy || msg.content != "partial answer" || msg.reasoning != "partial reasoning" || !msg.stopped || msg.streaming {
 			t.Fatalf("stopped message = %+v", msg)
 		}
 		if _, ok := msg.expansion.forceFor(blockReasoning, 0); ok {

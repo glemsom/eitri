@@ -164,11 +164,10 @@ func TestTurnRuntimeObserveArmsPulseOnToolStartWhenThinkingOff(t *testing.T) {
 	tx := newTestTx()
 	rt.SetTranscript(&tx)
 	rt.Begin("hi", "")
-	tx.busyPulse = 0
 
 	rt.Handle(Event{Tool: &ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}}})
 
-	if tx.busyPulse == 0 {
+	if tx.Status().Pulse == 0 {
 		t.Fatal("expected busy pulse to be armed on tool start when thinking is off")
 	}
 }
@@ -181,12 +180,11 @@ func TestTurnRuntimeObserveSkipsPulseOnToolStartWhenThinkingOn(t *testing.T) {
 	tx := newTestTx()
 	rt.SetTranscript(&tx)
 	rt.Begin("hi", "")
-	tx.busyPulse = 0
 
 	rt.Handle(Event{Tool: &ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"a.txt"}`}}})
 
-	if tx.busyPulse != 0 {
-		t.Fatalf("busy pulse = %d, want 0 when thinking is on", tx.busyPulse)
+	if tx.Status().Pulse != 0 {
+		t.Fatalf("busy pulse = %d, want 0 when thinking is on", tx.Status().Pulse)
 	}
 }
 
@@ -214,7 +212,7 @@ func TestTurnRuntimeCommitSuccessStreaming(t *testing.T) {
 	if msg.content != "final answer" || msg.reasoning != "reasoned" || msg.streaming {
 		t.Fatalf("message = %+v", msg)
 	}
-	if tx.busy || rt.LiveTimeline() != nil {
+	if tx.Status().Busy || rt.LiveTimeline() != nil {
 		t.Error("Commit did not clear busy/live-timeline state")
 	}
 }
@@ -440,7 +438,7 @@ func TestTurnRuntimeOwnsBoundTranscriptContext(t *testing.T) {
 	rt := NewTurnRuntime(NewTurnSession(stubTurn("ok", nil)), nil)
 	rt.SetTranscript(&tx)
 	rt.Begin("prompt", "")
-	if !tx.busy || len(tx.messages) != 1 || tx.messages[0].content != "prompt" {
-		t.Fatalf("runtime did not preserve prompt/live context: busy=%v messages=%+v", tx.busy, tx.messages)
+	if !tx.Status().Busy || len(tx.messages) != 1 || tx.messages[0].content != "prompt" {
+		t.Fatalf("runtime did not preserve prompt/live context: busy=%v messages=%+v", tx.Status().Busy, tx.messages)
 	}
 }

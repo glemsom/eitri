@@ -6,7 +6,7 @@ import "testing"
 // timeline events with sequence numbers.
 func TestTranscriptProjectStreamGrowsMessageAndTimeline(t *testing.T) {
 	tx := newTestTx()
-	tx.busy = true
+	tx.BeginBusy()
 
 	projectStream(&tx, ReasoningStream, "think")
 	projectStream(&tx, AnswerStream, "answer")
@@ -35,7 +35,7 @@ func TestTranscriptProjectStreamGrowsMessageAndTimeline(t *testing.T) {
 // An empty stream outcome changes nothing: no message appended, no timeline event.
 func TestTranscriptProjectEmptyStreamNoop(t *testing.T) {
 	tx := newTestTx()
-	tx.busy = true
+	tx.BeginBusy()
 
 	projectStream(&tx, AnswerStream, "")
 
@@ -48,7 +48,7 @@ func TestTranscriptProjectEmptyStreamNoop(t *testing.T) {
 // streaming message rather than growing the old one.
 func TestTranscriptProjectNewTurnAppendsFreshStreamingMessage(t *testing.T) {
 	tx := newTestTx()
-	tx.busy = true
+	tx.BeginBusy()
 
 	projectStream(&tx, AnswerStream, "first")
 	tx.messages[0].streaming = false
@@ -68,7 +68,7 @@ func TestTranscriptProjectNewTurnAppendsFreshStreamingMessage(t *testing.T) {
 // Tool outcomes update both the tool log and the live timeline in arrival order.
 func TestTranscriptProjectToolRoutesToLogAndTimeline(t *testing.T) {
 	tx := newTestTx()
-	tx.busy = true
+	tx.BeginBusy()
 
 	projectTool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: "ls"}})
 

@@ -141,7 +141,7 @@ func TestScrollFollow_newTurnResumesAfterPause(t *testing.T) {
 
 	// The turn finishes while the user is still reading up.
 	m = asModel(t, mustUpdate(t, m, turnDoneMsg{prompt: "hi", answer: "final answer"}))
-	if m.tx.busy {
+	if m.tx.Status().Busy {
 		t.Fatalf("precondition: the turn must complete")
 	}
 

@@ -116,13 +116,13 @@ func TestModel_eventFeedProjectsRemovedEventBeforeCompletion(t *testing.T) {
 
 	nm, _ := m.Update(turnDoneMsg{prompt: "hi", answer: "final"})
 	m = asModel(t, nm)
-	if !m.tx.busy {
+	if !m.tx.Status().Busy {
 		t.Fatal("completion committed before the removed feed event was projected")
 	}
 
 	nm, _ = m.Update(removed)
 	m = asModel(t, nm)
-	if m.tx.busy {
+	if m.tx.Status().Busy {
 		t.Fatal("completion did not commit after the removed feed event was projected")
 	}
 	got := m.tx.messages[len(m.tx.messages)-1].events

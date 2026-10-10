@@ -321,7 +321,7 @@ func TestModel_newCommandBlockedWhileBusy(t *testing.T) {
 		NewGUID: func() string { return "fresh" },
 	})
 	m = resize(t, m)
-	m.tx.busy = true
+	m.tx.BeginBusy()
 
 	m = typeText(t, m, "/new")
 	m = keypress(t, m, "enter")

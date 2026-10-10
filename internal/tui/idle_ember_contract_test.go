@@ -19,27 +19,27 @@ func TestIdleEmber_tickDistinctFromBusySpinner(t *testing.T) {
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 	m, _ = submitBusy(t, m)
-	m.tx.armIdleEmber()
-	m.tx.idleEmberFrame = 4
-	spinnerBefore, forgeBefore := m.tx.spinner, m.tx.forgeFrame
+	m.tx.ArmEmber(false)
+	m.tx.setIdleEmberFrame(4)
+	spinnerBefore, forgeBefore := m.tx.Status().Frame, m.tx.Status().ForgeFrame
 	m = upd(t, m, idleEmberTickMsg{})
-	if m.tx.spinner != spinnerBefore || m.tx.forgeFrame != forgeBefore {
+	if m.tx.Status().Frame != spinnerBefore || m.tx.Status().ForgeFrame != forgeBefore {
 		t.Fatalf("idle tick changed busy spinner state: spinner %d->%d forge %d->%d",
-			spinnerBefore, m.tx.spinner, forgeBefore, m.tx.forgeFrame)
+			spinnerBefore, m.tx.Status().Frame, forgeBefore, m.tx.Status().ForgeFrame)
 	}
-	if m.tx.idleEmberFrame != 0 || m.tx.idleEmberRemaining != 0 {
+	if m.tx.Status().EmberFrame != 0 || m.tx.Status().EmberRemaining != 0 {
 		t.Fatalf("busy surface must settle the ember on its tick, got frame=%d remaining=%d",
-			m.tx.idleEmberFrame, m.tx.idleEmberRemaining)
+			m.tx.Status().EmberFrame, m.tx.Status().EmberRemaining)
 	}
 
 	// Conversely, a busy spinner tick never advances an idle ember window.
 	idle := idleEmberModel(t)
-	idle.tx.armIdleEmber()
-	frame, remaining := idle.tx.idleEmberFrame, idle.tx.idleEmberRemaining
+	idle.tx.ArmEmber(false)
+	frame, remaining := idle.tx.Status().EmberFrame, idle.tx.Status().EmberRemaining
 	idle = upd(t, idle, spinnerTickMsg{})
-	if idle.tx.idleEmberFrame != frame || idle.tx.idleEmberRemaining != remaining {
+	if idle.tx.Status().EmberFrame != frame || idle.tx.Status().EmberRemaining != remaining {
 		t.Fatalf("spinner tick changed idle ember state: frame %d->%d remaining %d->%d",
-			frame, idle.tx.idleEmberFrame, remaining, idle.tx.idleEmberRemaining)
+			frame, idle.tx.Status().EmberFrame, remaining, idle.tx.Status().EmberRemaining)
 	}
 }
 
@@ -47,27 +47,27 @@ func TestIdleEmber_runBeginStopsImmediately(t *testing.T) {
 	m := newStreamingModel()
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
-	m.tx.armIdleEmber()
+	m.tx.ArmEmber(false)
 	for range 5 {
 		m = upd(t, m, idleEmberTickMsg{})
 	}
-	if m.tx.idleEmberFrame == 0 {
+	if m.tx.Status().EmberFrame == 0 {
 		t.Fatal("precondition: the ember should be mid-sweep before the run begins")
 	}
 
 	m, _ = submitBusy(t, m)
-	if m.tx.idleEmberFrame != 0 || m.tx.idleEmberRemaining != 0 {
+	if m.tx.Status().EmberFrame != 0 || m.tx.Status().EmberRemaining != 0 {
 		t.Fatalf("run begin must settle the ember before the next tick, got frame=%d remaining=%d",
-			m.tx.idleEmberFrame, m.tx.idleEmberRemaining)
+			m.tx.Status().EmberFrame, m.tx.Status().EmberRemaining)
 	}
 	nm, cmd := m.Update(idleEmberTickMsg{})
 	m = asModel(t, nm)
 	if cmd != nil {
 		t.Fatal("a busy surface must not re-arm the idle ember")
 	}
-	if m.tx.idleEmberFrame != 0 || m.tx.idleEmberRemaining != 0 {
+	if m.tx.Status().EmberFrame != 0 || m.tx.Status().EmberRemaining != 0 {
 		t.Fatalf("busy tick must leave the ember settled, got frame=%d remaining=%d",
-			m.tx.idleEmberFrame, m.tx.idleEmberRemaining)
+			m.tx.Status().EmberFrame, m.tx.Status().EmberRemaining)
 	}
 }
 
@@ -91,12 +91,12 @@ func TestIdleEmber_overlaysStopArming(t *testing.T) {
 			if cmd := m.armIdleEmber(); cmd != nil {
 				t.Fatalf("an open %s overlay must not arm the idle ember", name)
 			}
-			m.tx.armIdleEmber()
-			m.tx.idleEmberFrame = 3
+			m.tx.ArmEmber(false)
+			m.tx.setIdleEmberFrame(3)
 			m = upd(t, m, idleEmberTickMsg{})
-			if m.tx.idleEmberFrame != 0 || m.tx.idleEmberRemaining != 0 {
+			if m.tx.Status().EmberFrame != 0 || m.tx.Status().EmberRemaining != 0 {
 				t.Fatalf("an open %s overlay must settle the ember, got frame=%d remaining=%d",
-					name, m.tx.idleEmberFrame, m.tx.idleEmberRemaining)
+					name, m.tx.Status().EmberFrame, m.tx.Status().EmberRemaining)
 			}
 		})
 	}
@@ -108,16 +108,16 @@ func TestIdleEmber_turnDoneReArms(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m, _ = submitBusy(t, m)
 	m.tx.settleIdleEmber()
-	if m.tx.idleEmberRemaining != 0 {
+	if m.tx.Status().EmberRemaining != 0 {
 		t.Fatal("precondition: ember should be settled while busy")
 	}
 
 	m = upd(t, m, turnDoneMsg{prompt: "hi", answer: "done"})
-	if m.tx.busy {
+	if m.tx.Status().Busy {
 		t.Fatal("turn completion should clear busy")
 	}
-	if m.tx.idleEmberRemaining != idleEmberWindow {
-		t.Fatalf("turn completion must re-arm the bounded ember window, got remaining=%d", m.tx.idleEmberRemaining)
+	if m.tx.Status().EmberRemaining != idleEmberWindow {
+		t.Fatalf("turn completion must re-arm the bounded ember window, got remaining=%d", m.tx.Status().EmberRemaining)
 	}
 }
 
@@ -127,13 +127,12 @@ func TestIdleEmber_armExtendsWithoutSecondTimer(t *testing.T) {
 		t.Fatal("first activity must arm the ember tick")
 	}
 	m = upd(t, m, idleEmberTickMsg{})
-	m.tx.idleEmberRemaining = 3
 
 	if cmd := m.armIdleEmber(); cmd != nil {
 		t.Fatal("re-arming an already-running ember must not start a second timer")
 	}
-	if m.tx.idleEmberRemaining != idleEmberWindow {
-		t.Fatalf("re-arm must extend the bounded window to %d, got %d", idleEmberWindow, m.tx.idleEmberRemaining)
+	if m.tx.Status().EmberRemaining != idleEmberWindow {
+		t.Fatalf("re-arm must extend the bounded window to %d, got %d", idleEmberWindow, m.tx.Status().EmberRemaining)
 	}
 }
 

@@ -22,7 +22,7 @@ func TestRunCommit_successStreaming(t *testing.T) {
 	if msg.content != "final answer" || msg.reasoning != "reasoned" {
 		t.Errorf("content=%q reasoning=%q", msg.content, msg.reasoning)
 	}
-	if msg.streaming || tx.curStream != -1 || tx.busy {
+	if msg.streaming || tx.curStream != -1 || tx.Status().Busy {
 		t.Error("streaming flag, cursor, and busy should clear")
 	}
 }
@@ -118,7 +118,7 @@ func TestRunCommit_fullCycleThroughVerbsAlone(t *testing.T) {
 	tx := newTestTx()
 
 	cmd := beginTurn(s, &tx, "go", "")
-	if cmd == nil || !tx.busy {
+	if cmd == nil || !tx.Status().Busy {
 		t.Fatal("start projection should mark the transcript busy")
 	}
 	projectStream(&tx, AnswerStream, "par")
@@ -133,8 +133,8 @@ func TestRunCommit_fullCycleThroughVerbsAlone(t *testing.T) {
 		t.Fatalf("messages = %d, want 2", len(tx.messages))
 	}
 	msg := tx.messages[1]
-	if msg.content != "final" || msg.streaming || tx.busy {
-		t.Errorf("message = %+v busy = %v", msg, tx.busy)
+	if msg.content != "final" || msg.streaming || tx.Status().Busy {
+		t.Errorf("message = %+v busy = %v", msg, tx.Status().Busy)
 	}
 	if len(msg.events) == 0 {
 		t.Error("committed message should carry the turn's event log")

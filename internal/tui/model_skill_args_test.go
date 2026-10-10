@@ -130,7 +130,7 @@ func TestModel_slashSkillActivationBlocksConcurrentSubmit(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("skill activation command = nil, want pending command")
 	}
-	if !m.tx.busy {
+	if !m.tx.Status().Busy {
 		t.Fatal("skill activation must mark transcript busy while payload loads")
 	}
 

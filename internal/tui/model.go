@@ -418,7 +418,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		switch msgi.String() {
 		case "ctrl+c":
-			if m.tx.busy {
+			if m.tx.Status().Busy {
 				m.stopTurn()
 				return m, nil
 			}
@@ -433,7 +433,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.endRecall()
-			if m.tx.busy {
+			if m.tx.Status().Busy {
 				m.stopTurn()
 			}
 			return m, nil
@@ -475,7 +475,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tx.toggleExpandedMode()
 			return m, nil
 		case "ctrl+j", "shift+enter":
-			if m.tx.busy {
+			if m.tx.Status().Busy {
 				return m, nil
 			}
 			m.composer.InsertString("\n")
@@ -503,7 +503,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.tx.focusNext() // empty composer: Tab cycles the block focus
 				return m, nil
 			}
-			if m.tx.busy {
+			if m.tx.Status().Busy {
 				return m, nil // busy: no literal tab insert into the hidden draft
 			}
 			// Non-slash draft: fall through to the textarea, which handles the tab.
@@ -519,7 +519,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// While a turn streams the composer sits behind the forge panel with no
 		// caret, so editing it would type into an invisible draft that resurfaces
 		// once the turn commits — swallow composer-mutating keys.
-		if m.tx.busy {
+		if m.tx.Status().Busy {
 			return m, nil
 		}
 		// Any key not consumed above edits the composer directly, which ends an
@@ -539,7 +539,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// A busy turn, help overlay, or continuation prompt owns input instead
 		// of the hidden composer, so discard bracketed paste just like key edits.
-		if m.tx.busy || m.help != nil || m.prompting {
+		if m.tx.Status().Busy || m.help != nil || m.prompting {
 			return m, nil
 		}
 		m.endRecall()
@@ -578,24 +578,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case spinnerTickMsg:
-		if !m.tx.busy || !motionEnabled() {
-			m.tx.spinner = 0
-			m.tx.forgeFrame = 0
-			return m, nil
-		}
-		m.tx.spinner = (m.tx.spinner + 1) % len(busySpinnerFrames)
-		m.tx.forgeFrame++
-		if m.tx.busyPulse > 0 {
-			m.tx.busyPulse--
-		}
-		return m, spinnerTick()
+		return m, m.tx.TickBusy()
 
 	case idleEmberTickMsg:
-		if !m.tx.busy && !m.overlayOpen() && motionEnabled() && m.tx.advanceIdleEmber() {
-			return m, idleEmberTick()
-		}
-		m.tx.settleIdleEmber()
-		return m, nil
+		return m, m.tx.TickEmber(m.overlayOpen())
 
 	case discoverDoneMsg:
 		if m.settings == nil {
@@ -614,7 +600,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.skillPending = false
 		m.skillCancel = nil
 		if msgi.err != nil {
-			m.tx.endTurn()
+			m.tx.EndTurn()
 			if !errors.Is(msgi.err, context.Canceled) {
 				m.tx.appendMsg(failurePrefix() + fmt.Errorf("activate skill %q: %w", msgi.name, msgi.err).Error())
 			}
@@ -719,7 +705,7 @@ func (m Model) submitPrompt() (tea.Model, tea.Cmd) {
 		m.tx.toggleFocused() // empty composer: Enter toggles the focused block (works while busy too)
 		return m, nil
 	}
-	if m.tx.busy {
+	if m.tx.Status().Busy {
 		return m, nil
 	}
 	m.tx.histFollow = true
@@ -743,7 +729,7 @@ func (m Model) submitPrompt() (tea.Model, tea.Cmd) {
 		// transcript and the live stats — the point of `/new` is a clean
 		// session, so there is no confirmation. It is blocked while a turn
 		// streams, a skill is pending, or the settings overlay is open.
-		if m.tx.busy || m.skillPending || m.settings != nil {
+		if m.tx.Status().Busy || m.skillPending || m.settings != nil {
 			return m, nil
 		}
 		m.mintNewSession()
@@ -856,7 +842,7 @@ func (m Model) canRecall() bool {
 	if m.slash.isOpen() || m.mention.isOpen() {
 		return false
 	}
-	return !m.tx.busy
+	return !m.tx.Status().Busy
 }
 
 // endRecall drops any active arrow recall, forgetting the archived draft and
@@ -877,7 +863,7 @@ func (m Model) startSkillActivation(name, args string) (tea.Model, tea.Cmd) {
 	m.skillSeq++
 	m.skillPending = true
 	m.skillCancel = cancel
-	m.tx.busy = true
+	m.tx.BeginBusy()
 	m.syncComposerRail()
 	return m, skillCmdWithContext(ctx, m.deps.Skills.Activate, name, args, m.skillSeq)
 }
@@ -890,7 +876,7 @@ func (m *Model) stopTurn() {
 		}
 		m.skillPending = false
 		m.skillCancel = nil
-		m.tx.endTurn()
+		m.tx.EndTurn()
 		m.tx.appendMsg("[stopped]")
 		m.syncComposerRail()
 		return
@@ -1051,7 +1037,8 @@ func (m Model) canDrawFace() bool {
 	railWidth := m.tx.railWidthOrDefault()
 	_, faceRows := railFaceRows(railWidth)
 	railHeight := m.tx.railClampHeight(m.bandHeight())
-	content := m.tx.rail.renderLiveWithTools(m.tx.telemetry, m.tx.theme, railWidth, m.tx.phase(), m.tx.spinner, &m.tx.log)
+	st := m.tx.Status()
+	content := m.tx.rail.renderLiveWithTools(m.tx.telemetry, m.tx.theme, railWidth, st.Phase, st.Frame, &m.tx.log)
 	return faceRows > 0 && railHeight >= railContentRows(content)+railFaceTopGap+faceRows
 }
 
@@ -1077,17 +1064,7 @@ func (m Model) overlayOpen() bool {
 }
 
 // armIdleEmber re-opens the bounded ember window on activity and returns the
-// tick that drives it. A busy surface, reduced motion, or an open overlay never
-// arms; an already-running ember just has its window extended so no second
-// timer is started.
+// tick that drives it.
 func (m *Model) armIdleEmber() tea.Cmd {
-	if m.tx.busy || !motionEnabled() || m.overlayOpen() {
-		return nil
-	}
-	running := m.tx.idleEmberRemaining > 0
-	m.tx.armIdleEmber()
-	if running {
-		return nil
-	}
-	return idleEmberTick()
+	return m.tx.ArmEmber(m.overlayOpen())
 }

@@ -31,7 +31,7 @@ func TestModelCommandCenterNarrowMatrixDoesNotOverflow(t *testing.T) {
 			return m
 		},
 		"busy": func(m Model) Model {
-			m.tx.busy = true
+			m.tx.BeginBusy()
 			return m
 		},
 	}

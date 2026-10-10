@@ -66,7 +66,7 @@ func TestModel_composerFrozenWhileBusy(t *testing.T) {
 
 	// Commit the turn: no zombie draft may resurface in the now-visible composer.
 	m = asModel(t, mustUpdate(t, m, turnDoneMsg{prompt: "hello", answer: "final answer"}))
-	if m.tx.busy {
+	if m.tx.Status().Busy {
 		t.Fatal("turn commit must clear the busy state")
 	}
 	if v := m.composer.Value(); v != "" {

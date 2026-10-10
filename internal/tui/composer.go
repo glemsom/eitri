@@ -2,7 +2,6 @@ package tui
 
 import (
 	"strings"
-	"time"
 
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
@@ -187,7 +186,7 @@ func (m Model) renderPane() string {
 // syncComposerRail recolors the composer's prompt rail by editing state: the accent rail signals an editable composer, while a running turn makes the composer inert, so the rail dims to a muted accent (state-as-color — the mode-colored composer border pattern, benchmark §4.3).
 func (m *Model) syncComposerRail() {
 	c := m.tx.theme.accent
-	if m.tx.busy {
+	if m.tx.Status().Busy {
 		c = dimmed(m.tx.theme.accent, 0.45)
 	}
 	st := m.composer.Styles()
@@ -198,8 +197,9 @@ func (m *Model) syncComposerRail() {
 // renderBand renders the fixed bottom band: completion candidates above the composer panel, then contextual composer hints and transient feedback below it.
 func (m Model) renderBand(b *strings.Builder) {
 	var inner strings.Builder
-	if m.tx.busy {
-		body := forgeBusyLine(m.tx.spinner, m.tx.phase()) + " · " + m.tx.theme.statusStyle.Render("Hold steady — composer locked during forging")
+	st := m.tx.Status()
+	if st.Busy {
+		body := forgeBusyLine(st.Frame, st.Phase) + " · " + m.tx.theme.statusStyle.Render("Hold steady — composer locked during forging")
 		inner.WriteString(renderTitledPanel(m.tx.theme, m.forgeTitle(), m.tx.bandWidth(), lipgloss.NewStyle(), body))
 	} else {
 		if m.slash.isOpen() {
@@ -228,7 +228,7 @@ func (m Model) renderBand(b *strings.Builder) {
 
 // composerCursor returns the composer's hardware caret for the current frame, or nil when the composer is not the active editing surface .
 func (m Model) composerCursor(content string) *tea.Cursor {
-	if m.settings != nil || m.help != nil || m.prompting || m.tx.busy {
+	if m.settings != nil || m.help != nil || m.prompting || m.tx.Status().Busy {
 		return nil
 	}
 	cur := m.composer.Cursor()
@@ -329,16 +329,16 @@ func (m Model) composerPreRows() int {
 // forgeElapsed renders the busy timer suffix (" · 1m 05s elapsed") once the turn
 // is underway, empty before the first busy frame so a freshly forged title still
 // reads plainly.
-func forgeElapsed(m Model) string {
-	if m.tx.busyStartedAt.IsZero() {
+func forgeElapsed(st Status) string {
+	if st.Elapsed == 0 {
 		return ""
 	}
-	return " · " + formatElapsed(time.Since(m.tx.busyStartedAt)) + " elapsed"
+	return " · " + formatElapsed(st.Elapsed) + " elapsed"
 }
 
 func (m Model) composerHint() string {
 	sep := " · "
-	if m.tx.busy {
+	if m.tx.Status().Busy {
 		return "ctrl+c stop" + sep + "pgup read history" + sep + "end follow"
 	}
 	if m.slash.isOpen() || m.mention.isOpen() {
@@ -354,7 +354,8 @@ func (m Model) forgeTitle() string {
 	accent := m.tx.theme.accent
 	muted := lipgloss.NewStyle().Foreground(dimmed(accent, 0.65))
 	strong := lipgloss.NewStyle().Foreground(accent)
-	elapsed := forgeElapsed(m)
+	st := m.tx.Status()
+	elapsed := forgeElapsed(st)
 	prefix := "Eitri is "
 	if !motionEnabled() {
 		return muted.Render(prefix) + strong.Bold(true).Render("forging") + muted.Render(elapsed)
@@ -372,7 +373,7 @@ func (m Model) forgeTitle() string {
 		}
 	}
 	path := len(glyphs)*2 - 2
-	step := (m.tx.forgeFrame / 2) % path
+	step := (st.ForgeFrame / 2) % path
 	pos := step
 	forward := pos < len(glyphs)
 	if !forward {

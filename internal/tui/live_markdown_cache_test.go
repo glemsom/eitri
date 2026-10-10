@@ -55,7 +55,7 @@ func TestStreamingWindowedReasoningRendersTail(t *testing.T) {
 	tx.messages = append(tx.messages, message{role: "eitri", streaming: true, thinkingRequested: true,
 		reasoning: reason, content: "", expansion: ExpansionState{}})
 	tx.flow.Observe(ReasoningStream, reason)
-	tx.busy = true
+	tx.BeginBusy()
 
 	nl := func(s string) int { return strings.Count(s, "\n") }
 	// Advance a fast clock each read so the throttle never holds a stale body:
@@ -219,7 +219,7 @@ func TestLiveLargeStreamingReasoningThrottlesThroughRenderPath(t *testing.T) {
 	tx.messages = append(tx.messages, message{role: "eitri", streaming: true, thinkingRequested: true,
 		reasoning: big, content: "", expansion: ExpansionState{}})
 	tx.flow.Observe(ReasoningStream, big)
-	tx.busy = true
+	tx.BeginBusy()
 
 	// Prime the render; the first large frame renders once.
 	tx.renderPaneContent()

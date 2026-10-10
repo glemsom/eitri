@@ -26,24 +26,24 @@ func TestBusySpinner_animatesAndStops(t *testing.T) {
 	if cmd == nil {
 		t.Fatalf("spinner tick must re-issue while busy")
 	}
-	first := m.tx.spinner
+	first := m.tx.Status().Frame
 	nm, _ = m.Update(spinnerTickMsg{})
 	m = asModel(t, nm)
-	if m.tx.spinner != (first+1)%len(busySpinnerFrames) {
-		t.Fatalf("spinner frame did not advance: %d -> %d", first, m.tx.spinner)
+	if m.tx.Status().Frame != (first+1)%len(busySpinnerFrames) {
+		t.Fatalf("spinner frame did not advance: %d -> %d", first, m.tx.Status().Frame)
 	}
-	frame := string(busySpinnerFrames[m.tx.spinner])
+	frame := string(busySpinnerFrames[m.tx.Status().Frame])
 	if !strings.Contains(view(m), frame+" Working") {
 		t.Errorf("busy line must render frame %q, got: %q", frame, view(m))
 	}
 
 	nm, _ = m.Update(turnDoneMsg{prompt: "hi", answer: "final answer"})
 	m = asModel(t, nm)
-	if m.tx.busy {
+	if m.tx.Status().Busy {
 		t.Fatalf("turn completion must clear busy")
 	}
-	if m.tx.spinner != 0 {
-		t.Errorf("spinner must reset after completion, got %d", m.tx.spinner)
+	if m.tx.Status().Frame != 0 {
+		t.Errorf("spinner must reset after completion, got %d", m.tx.Status().Frame)
 	}
 }
 
@@ -62,8 +62,8 @@ func TestBusySpinner_reducedMotionFallsBack(t *testing.T) {
 	if cmd != nil {
 		t.Fatalf("spinner tick must not re-issue under reduced motion")
 	}
-	if m.tx.spinner != 0 {
-		t.Errorf("spinner frame must stay 0 under reduced motion, got %d", m.tx.spinner)
+	if m.tx.Status().Frame != 0 {
+		t.Errorf("spinner frame must stay 0 under reduced motion, got %d", m.tx.Status().Frame)
 	}
 	_ = time.Second // keep the import honest if assertions change
 }
@@ -130,12 +130,12 @@ func TestToolPulse_setOnStartThinkingOff(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m, _ = submitBusy(t, m)
 
-	if m.tx.busyPulse != 0 {
-		t.Fatalf("busyPulse before tool start = %d, want 0", m.tx.busyPulse)
+	if m.tx.Status().Pulse != 0 {
+		t.Fatalf("busyPulse before tool start = %d, want 0", m.tx.Status().Pulse)
 	}
 	m = toolStart(t, m, "bash", `{"command":"go test ./..."}`)
-	if m.tx.busyPulse != 3 {
-		t.Fatalf("tool start (thinking off) must arm the pulse to 3, got %d", m.tx.busyPulse)
+	if m.tx.Status().Pulse != 3 {
+		t.Fatalf("tool start (thinking off) must arm the pulse to 3, got %d", m.tx.Status().Pulse)
 	}
 }
 
@@ -150,8 +150,8 @@ func TestToolPulse_notSetWhenThinkingOn(t *testing.T) {
 	m, _ = submitBusy(t, m)
 
 	m = toolStart(t, m, "bash", `{"command":"go test ./..."}`)
-	if m.tx.busyPulse != 0 {
-		t.Fatalf("tool start with thinking on must not pulse, got %d", m.tx.busyPulse)
+	if m.tx.Status().Pulse != 0 {
+		t.Fatalf("tool start with thinking on must not pulse, got %d", m.tx.Status().Pulse)
 	}
 }
 
@@ -163,8 +163,8 @@ func TestToolPulse_reducedMotionStaysStatic(t *testing.T) {
 	m, _ = submitBusy(t, m)
 
 	m = toolStart(t, m, "bash", `{"command":"go test ./..."}`)
-	if m.tx.busyPulse != 0 {
-		t.Fatalf("tool start under reduced motion must not pulse, got %d", m.tx.busyPulse)
+	if m.tx.Status().Pulse != 0 {
+		t.Fatalf("tool start under reduced motion must not pulse, got %d", m.tx.Status().Pulse)
 	}
 	if got := newestBusyLine(m); got != "… thinking" {
 		t.Fatalf("reduced-motion busy line = %q, want static %q", got, "… thinking")
@@ -178,14 +178,14 @@ func TestToolPulse_decrementsOnTick(t *testing.T) {
 	m, _ = submitBusy(t, m)
 
 	m = toolStart(t, m, "bash", `{"command":"go test ./..."}`)
-	if m.tx.busyPulse != 3 {
-		t.Fatalf("tool start must arm the pulse to 3, got %d", m.tx.busyPulse)
+	if m.tx.Status().Pulse != 3 {
+		t.Fatalf("tool start must arm the pulse to 3, got %d", m.tx.Status().Pulse)
 	}
 	for _, want := range []int{2, 1, 0} {
 		nm, _ := m.Update(spinnerTickMsg{})
 		m = asModel(t, nm)
-		if m.tx.busyPulse != want {
-			t.Fatalf("pulse after tick = %d, want %d", m.tx.busyPulse, want)
+		if m.tx.Status().Pulse != want {
+			t.Fatalf("pulse after tick = %d, want %d", m.tx.Status().Pulse, want)
 		}
 	}
 }
@@ -200,7 +200,7 @@ func TestToolPulse_runningEntryRendersAccent(t *testing.T) {
 	m, _ = submitBusy(t, m)
 
 	m = toolStart(t, m, "bash", `{"command":"go test ./..."}`)
-	if m.tx.busyPulse == 0 {
+	if m.tx.Status().Pulse == 0 {
 		t.Fatal("pulse must be armed on tool start")
 	}
 
@@ -219,8 +219,8 @@ func TestToolPulse_runningEntryRendersAccent(t *testing.T) {
 		nm, _ := m.Update(spinnerTickMsg{})
 		m = asModel(t, nm)
 	}
-	if m.tx.busyPulse != 0 {
-		t.Fatalf("pulse must expire after 3 ticks, got %d", m.tx.busyPulse)
+	if m.tx.Status().Pulse != 0 {
+		t.Fatalf("pulse must expire after 3 ticks, got %d", m.tx.Status().Pulse)
 	}
 	line = lineContaining(view(m), "🐚️ bash")
 	if line == "" {
@@ -311,7 +311,7 @@ func TestComposerRail_modeColor(t *testing.T) {
 
 	nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = asModel(t, nm)
-	if !m.tx.busy {
+	if !m.tx.Status().Busy {
 		t.Fatalf("model must be busy after submit")
 	}
 	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail == m.tx.theme.accent {
@@ -354,37 +354,37 @@ func TestBusySpinner_pulseOnFirstDelta(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m, _ = submitBusy(t, m)
 
-	if m.tx.busyPulse != 0 {
-		t.Fatalf("busyPulse before delta = %d, want 0", m.tx.busyPulse)
+	if m.tx.Status().Pulse != 0 {
+		t.Fatalf("busyPulse before delta = %d, want 0", m.tx.Status().Pulse)
 	}
 
 	m = applyDelta(t, m, "hello")
-	if m.tx.busyPulse != 3 {
-		t.Fatalf("busyPulse after first delta = %d, want 3", m.tx.busyPulse)
+	if m.tx.Status().Pulse != 3 {
+		t.Fatalf("busyPulse after first delta = %d, want 3", m.tx.Status().Pulse)
 	}
 
 	nm, _ := m.Update(spinnerTickMsg{})
 	m = asModel(t, nm)
-	if m.tx.busyPulse != 2 {
-		t.Fatalf("busyPulse after 1st tick = %d, want 2", m.tx.busyPulse)
+	if m.tx.Status().Pulse != 2 {
+		t.Fatalf("busyPulse after 1st tick = %d, want 2", m.tx.Status().Pulse)
 	}
 
 	nm, _ = m.Update(spinnerTickMsg{})
 	m = asModel(t, nm)
-	if m.tx.busyPulse != 1 {
-		t.Fatalf("busyPulse after 2nd tick = %d, want 1", m.tx.busyPulse)
+	if m.tx.Status().Pulse != 1 {
+		t.Fatalf("busyPulse after 2nd tick = %d, want 1", m.tx.Status().Pulse)
 	}
 
 	nm, _ = m.Update(spinnerTickMsg{})
 	m = asModel(t, nm)
-	if m.tx.busyPulse != 0 {
-		t.Fatalf("busyPulse after 3rd tick = %d, want 0", m.tx.busyPulse)
+	if m.tx.Status().Pulse != 0 {
+		t.Fatalf("busyPulse after 3rd tick = %d, want 0", m.tx.Status().Pulse)
 	}
 
 	nm, _ = m.Update(spinnerTickMsg{})
 	m = asModel(t, nm)
-	if m.tx.busyPulse != 0 {
-		t.Fatalf("busyPulse after 4th tick = %d, want 0", m.tx.busyPulse)
+	if m.tx.Status().Pulse != 0 {
+		t.Fatalf("busyPulse after 4th tick = %d, want 0", m.tx.Status().Pulse)
 	}
 }
 
@@ -395,7 +395,7 @@ func TestBusySpinner_pulseRendersBright(t *testing.T) {
 	m, _ = submitBusy(t, m)
 
 	m = applyDelta(t, m, "hello")
-	if m.tx.busyPulse == 0 {
+	if m.tx.Status().Pulse == 0 {
 		t.Fatal("busyPulse must be non-zero after first delta")
 	}
 
@@ -408,8 +408,8 @@ func TestBusySpinner_pulseRendersBright(t *testing.T) {
 		nm, _ := m.Update(spinnerTickMsg{})
 		m = asModel(t, nm)
 	}
-	if m.tx.busyPulse != 0 {
-		t.Fatalf("busyPulse must be 0 after 3 ticks, got %d", m.tx.busyPulse)
+	if m.tx.Status().Pulse != 0 {
+		t.Fatalf("busyPulse must be 0 after 3 ticks, got %d", m.tx.Status().Pulse)
 	}
 
 	content = view(m)
@@ -421,10 +421,11 @@ func TestBusySpinner_pulseRendersBright(t *testing.T) {
 func TestForgeTitle_glintMovesAndPreservesText(t *testing.T) {
 	m := newStreamingModel()
 	m = resize(t, m)
-	m.tx.busy = true
-	m.tx.forgeFrame = 0
+	m.tx.BeginBusy()
 	first := m.forgeTitle()
-	m.tx.forgeFrame = 20
+	for range 20 {
+		m.tx.TickBusy()
+	}
 	second := m.forgeTitle()
 
 	if ansiStrip(first) != "Eitri is forging" {
@@ -453,7 +454,7 @@ func TestForgeTitle_reducedMotionIsStatic(t *testing.T) {
 
 func TestForgeTitle_carriesElapsedReadout(t *testing.T) {
 	m := newStreamingModel()
-	m.tx.busy = true
+	m.tx.BeginBusy()
 	m.tx.busyStartedAt = time.Now().Add(-time.Minute)
 	if got := ansiStrip(m.forgeTitle()); !strings.Contains(got, "elapsed") {
 		t.Fatalf("forge title must carry the elapsed readout, got: %q", got)

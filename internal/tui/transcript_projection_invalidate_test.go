@@ -24,7 +24,7 @@ func TestTranscriptProjectStreamMarksLayoutDirty(t *testing.T) {
 func TestTranscriptProjectToolMarksLayoutDirty(t *testing.T) {
 	s := NewTurnSession(stubTurn("answer", nil))
 	tx := newTestTx()
-	tx.busy = true
+	tx.BeginBusy()
 	beginTurn(s, &tx, "q", "")
 
 	tx.layout.dirty = false // isolate tool projection

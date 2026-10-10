@@ -20,7 +20,7 @@ func TestTurnRuntime_DrainReadyBatchesBacklog(t *testing.T) {
 	rt.OnTurnStart(0)
 
 	tx := newTestTx()
-	tx.busy = true
+	tx.BeginBusy()
 	tx.messages = append(tx.messages, message{role: "you", content: "prompt"})
 	rt.SetTranscript(&tx)
 
@@ -79,7 +79,7 @@ func TestEventFeed_TryNext(t *testing.T) {
 // under a second.
 func TestQuadraticLiveTail_StaysBounded(t *testing.T) {
 	tx := newTestTx()
-	tx.busy = true
+	tx.BeginBusy()
 	tx.messages = append(tx.messages, message{role: "you", content: "live prompt"})
 	tx.messages = append(tx.messages, message{role: "eitri", streaming: true, thinkingRequested: true})
 

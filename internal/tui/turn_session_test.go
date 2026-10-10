@@ -106,7 +106,7 @@ func TestTranscriptProjectStartSetsBusyAndDirty(t *testing.T) {
 
 	beginTurn(s, &tx, "hello", "")
 
-	if !tx.busy {
+	if !tx.Status().Busy {
 		t.Error("start projection did not set busy")
 	}
 	if !tx.layout.dirty {

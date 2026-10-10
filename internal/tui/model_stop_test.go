@@ -63,7 +63,7 @@ func TestModel_escWhileBusyCancelsTurnAndKeepsPartial(t *testing.T) {
 	if !strings.Contains(content, stoppedMarker()) {
 		t.Errorf("stopped turn must render the stopped marker, got: %q", content)
 	}
-	if m.tx.busy {
+	if m.tx.Status().Busy {
 		t.Error("busy state must clear after the stop")
 	}
 
@@ -99,7 +99,7 @@ func TestModel_escWhileBusyMarksStoppedNotError(t *testing.T) {
 	if !strings.Contains(content, stoppedMarker()) {
 		t.Errorf("stopped turn must render the stopped marker, got: %q", content)
 	}
-	if m.tx.busy {
+	if m.tx.Status().Busy {
 		t.Error("busy state must clear after the stop")
 	}
 }
@@ -125,7 +125,7 @@ func TestModel_escIdleStaysNoop(t *testing.T) {
 	if view(m) != before {
 		t.Error("idle esc must not change the rendered surface")
 	}
-	if m.tx.busy {
+	if m.tx.Status().Busy {
 		t.Error("idle esc must not make the model busy")
 	}
 }
@@ -188,7 +188,7 @@ func TestModel_stoppedThenNewTurnWorks(t *testing.T) {
 	m, cmd := submitBusy(t, m)
 	m = runSubmitted(t, m, cmd)
 
-	if m.tx.busy {
+	if m.tx.Status().Busy {
 		t.Fatal("busy must clear after the stopped turn")
 	}
 
@@ -225,7 +225,7 @@ func TestModel_turnCancelErrorSurfacesAsStopped(t *testing.T) {
 	if strings.Contains(view(m), failurePrefix()) {
 		t.Error("a stopped turn must not render an error prefix")
 	}
-	if m.tx.busy {
+	if m.tx.Status().Busy {
 		t.Error("busy must clear after the stop")
 	}
 }
@@ -273,7 +273,7 @@ func TestModel_ctrlCWhileBusyStopsTurnAndKeepsPartial(t *testing.T) {
 	if !m.tx.messages[len(m.tx.messages)-1].stopped {
 		t.Error("stopped turn message not marked stopped")
 	}
-	if m.tx.busy {
+	if m.tx.Status().Busy {
 		t.Error("busy state must clear after ctrl+c stop")
 	}
 	content := view(m)
@@ -313,7 +313,7 @@ func TestModel_ctrlCAfterStopQuits(t *testing.T) {
 	m, cmd := submitBusy(t, m)
 	m = runSubmitted(t, m, cmd)
 
-	if m.tx.busy {
+	if m.tx.Status().Busy {
 		t.Fatal("busy must clear after the stopped turn")
 	}
 

@@ -42,6 +42,9 @@ func derivePhase(busy, streaming, hasReasoning, hasAnswer bool) Phase {
 
 // phase returns the agent's current Phase, derived from the owned live turn state: the busy flag and the in-progress streaming assistant message (if any).
 func (t Transcript) phase() Phase {
+	if !t.busy {
+		return PhaseIdle
+	}
 	var streaming, hasReasoning, hasAnswer bool
 	for i := len(t.messages) - 1; i >= 0; i-- {
 		if m := t.messages[i]; m.streaming {

@@ -90,7 +90,7 @@ func TestSnapshot_frames(t *testing.T) {
 	emDeps, _ := snapshotDeps(cfg)
 	em := NewModelCfg(emDeps)
 	em = resizeTo(t, em, 120, 40)
-	em.tx.armIdleEmber()
+	em.tx.ArmEmber(false)
 	for range 6 {
 		em = upd(t, em, idleEmberTickMsg{})
 	}
@@ -174,7 +174,7 @@ func TestSnapshot_frames(t *testing.T) {
 		})
 		em := NewModelCfg(emDeps)
 		em = resizeTo(t, em, 130, 40)
-		em.tx.armIdleEmber()
+		em.tx.ArmEmber(false)
 		for range 6 {
 			em = upd(t, em, idleEmberTickMsg{})
 		}

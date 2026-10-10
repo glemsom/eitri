@@ -16,7 +16,7 @@ func streamingTurn(ctx context.Context, prompt string, _ string) (TurnResult, er
 
 func submitBusy(t *testing.T, m Model) (Model, tea.Cmd) {
 	t.Helper()
-	if m.tx.busy {
+	if m.tx.Status().Busy {
 		t.Fatalf("model already busy")
 	}
 	nm, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -24,7 +24,7 @@ func submitBusy(t *testing.T, m Model) (Model, tea.Cmd) {
 		t.Fatalf("expected a turn command on submit")
 	}
 	out := asModel(t, nm)
-	if !out.tx.busy {
+	if !out.tx.Status().Busy {
 		t.Fatalf("model should be busy after submit")
 	}
 	return out, cmd
@@ -88,7 +88,7 @@ func TestModel_streamFinalize(t *testing.T) {
 	if !hasSGRBold(content) {
 		t.Errorf("expected final markdown bold to render, got: %q", content)
 	}
-	if m.tx.busy {
+	if m.tx.Status().Busy {
 		t.Errorf("completion must clear the busy state")
 	}
 }

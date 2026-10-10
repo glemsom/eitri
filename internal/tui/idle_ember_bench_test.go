@@ -26,11 +26,11 @@ func BenchmarkIdleEmberRender(b *testing.B) {
 			m := NewModelCfg(Dependencies{})
 			nm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 			m = asModel(b, nm)
-			m.tx.armIdleEmber()
+			m.tx.ArmEmber(false)
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				if mode.ember && !m.tx.advanceIdleEmber() {
-					m.tx.armIdleEmber()
+					m.tx.ArmEmber(false)
 				}
 				_ = view(m)
 			}
