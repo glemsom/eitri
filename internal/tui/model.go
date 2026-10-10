@@ -250,19 +250,15 @@ func NewModelCfg(d Dependencies) Model {
 	st.Focused.Prompt = lipgloss.NewStyle().Foreground(th.accent)
 	comp.SetStyles(st)
 
-	transcript := &Transcript{
-		theme:               th,
-		configTheme:         d.Config.Theme,
-		reasoningEffort:     d.Config.ReasoningEffort,
-		telemetry:           d.Telemetry,
-		rail:                d.Rail,
-		railWidth:           d.Config.RailWidth,
-		histFollow:          true,
-		histViewport:        newHistoryViewport(),
-		layout:              transcriptLayout{dirty: true},
-		cotExpanded:         !d.Config.CoTCollapsedByDefault,
-		toolResultsExpanded: !d.Config.ToolResultsCollapsedByDefault,
-	}
+	transcript := NewTranscript(TranscriptConfig{
+		Theme:                         d.Config.Theme,
+		ReasoningEffort:               d.Config.ReasoningEffort,
+		Telemetry:                     d.Telemetry,
+		Rail:                          d.Rail,
+		RailWidth:                     d.Config.RailWidth,
+		CoTCollapsedByDefault:         d.Config.CoTCollapsedByDefault,
+		ToolResultsCollapsedByDefault: d.Config.ToolResultsCollapsedByDefault,
+	})
 
 	m := Model{
 		composer:     comp,

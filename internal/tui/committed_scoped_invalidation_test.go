@@ -163,7 +163,7 @@ func TestThemeChangeRerendersAllCommittedUnits(t *testing.T) {
 	tx.ensureLayout()
 	base := tx.committedUnitRenders
 
-	tx.applySettings(config.Config{Theme: "gruvbox"})
+	tx.ApplySettings(config.Config{Theme: "gruvbox"})
 	tx.ensureLayout()
 
 	if got := tx.committedUnitRenders - base; got != 6 {

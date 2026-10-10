@@ -990,8 +990,7 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			faceChanged := res.saved.Theme != m.tx.configTheme || savedRailWidth != m.tx.railWidthOrDefault()
 			m.deps.Config = *res.saved
-			m.tx.applySettings(*res.saved)
-			m.tx.reasoningEffort = res.saved.ReasoningEffort
+			m.tx.ApplySettings(*res.saved)
 			m.runtime.SetThinkingEnabled(res.saved.ThinkingEnabled)
 			if m.deps.Rail != nil {
 				m.deps.Rail.ApplyConfig(*res.saved)

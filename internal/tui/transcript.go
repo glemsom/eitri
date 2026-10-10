@@ -95,6 +95,36 @@ type Transcript struct {
 	railRenderWidth  int
 }
 
+// TranscriptConfig carries the inputs that vary at the construction seam; the
+// invariants a fresh transcript owns (follow on, an empty history viewport, a
+// dirty layout) are constructor defaults, not config fields.
+type TranscriptConfig struct {
+	Theme                         string
+	ReasoningEffort               string
+	Telemetry                     *telemetry.Telemetry
+	Rail                          *Rail
+	RailWidth                     int
+	CoTCollapsedByDefault         bool
+	ToolResultsCollapsedByDefault bool
+}
+
+// NewTranscript is the single construction seam for the transcript.
+func NewTranscript(cfg TranscriptConfig) *Transcript {
+	return &Transcript{
+		theme:               themeFor(cfg.Theme),
+		configTheme:         cfg.Theme,
+		reasoningEffort:     cfg.ReasoningEffort,
+		telemetry:           cfg.Telemetry,
+		rail:                cfg.Rail,
+		railWidth:           cfg.RailWidth,
+		histFollow:          true,
+		histViewport:        newHistoryViewport(),
+		layout:              transcriptLayout{dirty: true},
+		cotExpanded:         !cfg.CoTCollapsedByDefault,
+		toolResultsExpanded: !cfg.ToolResultsCollapsedByDefault,
+	}
+}
+
 type toolRowRange struct {
 	start, end, idx int
 }
@@ -448,9 +478,13 @@ func (t *Transcript) SetSize(width, height int) {
 	t.invalidateCommittedMemo()
 }
 
-func (t *Transcript) applySettings(cfg config.Config) {
+// ApplySettings applies a saved config to the transcript: the theme and the
+// collapse-by-default flags re-wrap the rendered history, and the reasoning
+// effort feeds the next live turn.
+func (t *Transcript) ApplySettings(cfg config.Config) {
 	t.theme = themeFor(cfg.Theme)
 	t.configTheme = cfg.Theme
+	t.reasoningEffort = cfg.ReasoningEffort
 	t.cotExpanded = !cfg.CoTCollapsedByDefault
 	t.toolResultsExpanded = !cfg.ToolResultsCollapsedByDefault
 	t.layout.dirty = true

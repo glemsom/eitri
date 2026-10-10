@@ -27,22 +27,22 @@ func TestSetSizeMarksLayoutDirty(t *testing.T) {
 }
 
 // TestApplySettingsMarksLayoutDirty drives a settings save through
-// Transcript.applySettings and asserts both the applied settings and the
+// Transcript.ApplySettings and asserts both the applied settings and the
 // self-invalidation.
 func TestApplySettingsMarksLayoutDirty(t *testing.T) {
 	tx := newTestTx()
-	tx.layout.dirty = false // isolate applySettings: only the method may re-mark it
+	tx.layout.dirty = false // isolate ApplySettings: only the method may re-mark it
 
 	cfg := config.Config{Theme: "gruvbox", CoTCollapsedByDefault: true, ToolResultsCollapsedByDefault: true}
-	tx.applySettings(cfg)
+	tx.ApplySettings(cfg)
 	if !tx.layout.dirty {
-		t.Error("applySettings must mark the transcript layout dirty: the flip can re-wrap the transcript")
+		t.Error("ApplySettings must mark the transcript layout dirty: the flip can re-wrap the transcript")
 	}
 	if tx.configTheme != "gruvbox" {
-		t.Errorf("applySettings stored configTheme %q, want gruvbox", tx.configTheme)
+		t.Errorf("ApplySettings stored configTheme %q, want gruvbox", tx.configTheme)
 	}
 	if tx.cotExpanded || tx.toolResultsExpanded {
-		t.Error("applySettings must apply the collapse-by-default flags")
+		t.Error("ApplySettings must apply the collapse-by-default flags")
 	}
 }
 
