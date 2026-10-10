@@ -1,0 +1,206 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Eitri read benchmark — read the unit, not the file</title><style>
+:root{--bg:#16171f;--panel:#1e2029;--panel2:#24262f;--ink:#f4f4f2;--mut:#9aa0b5;
+--opt:#50fa7b;--base:#f1fa8c;--cl:#ff7b8a;--accent:#bd93f9;--cyan:#8be9fd;--line:#2f3240;}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:radial-gradient(1200px 700px at 12% -8%,#2a2350 0%,transparent 60%),
+radial-gradient(1000px 600px at 100% 0%,#123b3a 0%,transparent 55%),var(--bg);
+color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+-webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto;padding:64px 28px 96px}
+code,.mono{font-family:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace}
+h1{font-size:clamp(38px,6vw,68px);line-height:1.02;margin:0 0 18px;letter-spacing:-.03em;font-weight:800}
+h2{font-size:26px;margin:72px 0 6px;letter-spacing:-.01em}
+h2 .n{color:var(--accent);font-weight:800;margin-right:10px;font-variant-numeric:tabular-nums}
+h3{font-size:17px;margin:30px 0 10px;color:#d7dae6}
+p.lede{font-size:19px;color:#c8ccdc;max-width:760px}
+.sub{color:var(--mut)}
+.hero{border-bottom:1px solid var(--line);padding-bottom:44px}
+.kicker{display:inline-flex;gap:9px;align-items:center;font-size:12.5px;letter-spacing:.16em;
+text-transform:uppercase;color:var(--cyan);border:1px solid #2d5b63;background:#12262a;
+padding:6px 13px;border-radius:999px;margin-bottom:26px;font-weight:600}
+.grad{background:linear-gradient(92deg,var(--opt),var(--cyan) 40%,var(--accent) 78%);
+-webkit-background-clip:text;background-clip:text;color:transparent}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin:34px 0 8px}
+.card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);
+border-radius:16px;padding:20px 20px 18px;position:relative;overflow:hidden}
+.card:before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:var(--c,var(--accent))}
+.card .k{font-size:12px;text-transform:uppercase;letter-spacing:.13em;color:var(--mut);font-weight:600}
+.card .v{font-size:34px;font-weight:800;margin:8px 0 2px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.card .d{font-size:13.5px;color:var(--mut)}
+.big{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:6px}
+.big .v{font-size:44px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:26px 26px 22px;margin:22px 0}
+.panel h3{margin-top:0}
+.legend{display:flex;gap:22px;flex-wrap:wrap;margin:4px 0 18px;font-size:13.5px;color:var(--mut)}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:7px;vertical-align:middle}
+svg{display:block;width:100%;height:auto}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line)}
+th{color:var(--mut);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;font-family:"SF Mono",ui-monospace,monospace}
+tr:hover td{background:#ffffff08}
+.mini{height:8px;border-radius:4px;display:inline-block;vertical-align:middle}
+.tag{font-size:11.5px;padding:2px 8px;border-radius:6px;border:1px solid var(--line);color:var(--mut)}
+pre{background:#0f1016;border:1px solid var(--line);border-radius:12px;padding:14px 16px;overflow:auto;
+font-size:12.8px;line-height:1.5;margin:8px 0}
+pre .cmd{color:#e8e8e6}
+pre.o{border-left:3px solid var(--opt)} pre.b{border-left:3px solid var(--base)} pre.c{border-left:3px solid var(--cl)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.note{background:#141821;border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:12px;
+padding:16px 18px;color:#c3c8da;font-size:14.5px;margin:16px 0}
+details{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:10px 0}
+summary{cursor:pointer;color:var(--cyan);font-weight:600}
+.win{color:var(--opt);font-weight:700}
+.foot{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);color:var(--mut);font-size:13.5px}
+.pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12.5px;font-weight:600}
+
+.striprow{display:flex;align-items:center;gap:14px;margin:6px 0}
+.striprow .lab{width:120px;font-size:13.5px;font-weight:600}
+.verdict{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+.vcard{border-radius:14px;padding:18px 20px;border:1px solid var(--line)}
+.vcard h4{margin:0 0 6px;font-size:15px}
+.pv{font-family:ui-monospace,monospace;font-size:13px}
+
+.striprow{display:flex;align-items:center;gap:14px;margin:6px 0}
+.striprow .lab{width:120px;font-size:13.5px;font-weight:600}
+.verdict{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+.vcard{border-radius:14px;padding:18px 20px;border:1px solid var(--line)}
+.vcard h4{margin:0 0 6px;font-size:15px}
+.pv{font-family:ui-monospace,monospace;font-size:13px}
+</style></head>
+<body><div class="wrap">
+
+<section class="hero">
+  <span class="kicker">read benchmark · 12 tasks · 72+72 live agent runs · equal n</span>
+  <h1>Eitri reads <span class="grad">less</span> than a<br>line-anchor reader.</h1>
+  <p class="lede">Eitri's <code>read</code> work — the read-shape menu in its system prompt — against the
+  traditional way an assistant reads files: the whole file, with line numbers, read end to end. Same model
+  (<code>deepseek-v4.1-flash</code>), same <code>bash</code> tool, same fixtures, same questions,
+  <b>72 runs each</b>. Eitri pulled <b>2.77×</b> fewer bytes into context and
+  <b>1.50×</b> fewer tokens — and answered every single question correctly, as did the
+  traditional reader. The win is economy, not accuracy.</p>
+  <div class="cards big">
+    <div class="card" style="--c:var(--opt)"><div class="k">Read bytes / answer</div>
+      <div class="v">2.77×</div><div class="d">less · median 530 B vs 3,807 B
+      · <span class="pv">p=0.0002</span></div></div>
+    <div class="card" style="--c:var(--cyan)"><div class="k">Tokens / answer</div>
+      <div class="v">1.50×</div><div class="d">less · 10,600 vs 15,922
+      · <span class="pv">p=0.0002</span></div></div>
+    <div class="card" style="--c:var(--accent)"><div class="k">Accuracy</div>
+      <div class="v">72/72</div><div class="d">both arms — no answer ever wrong</div></div>
+  </div>
+</section>
+<section class="panel" style="margin-top:26px">
+<div class="panel" style="border-color:#2f5b3f;background:linear-gradient(180deg,#16241d,#1a1d24)">
+<h3 style="color:var(--opt);font-size:20px">Verdict</h3>
+<p style="font-size:16.5px;margin:6px 0 0">Reading the unit beats reading the file. Across 72 runs per arm
+and the same 72/72 accuracy, Eitri turned the questions into
+<span class="win">3,006 B</span> of reading on average where the traditional line-anchor
+convention spent <span style="color:var(--cl);font-weight:700">8,323 B</span> — a
+<span class="win">2.77×</span> reduction, 1.50× fewer tokens, and a lower tail
+(3% of runs over 20 KB vs 15%).</p>
+</div></section>
+
+<h2><span class="n">01</span>The result</h2>
+<p class="sub">Means over 72 runs per arm. Token counts are summed from each run's own
+<code>usage</code> telemetry; "read bytes" is the tool output each run pulled into context. Both arms
+answered 72/72 correctly, so the whole difference is cost.</p>
+<div class="grid3">
+  <div class="panel"><h3>Read bytes / run</h3>
+    <svg viewBox="0 0 980 122"><text x="0" y="20" fill="#f4f4f2" font-size="13.5" font-weight="600">Eitri</text><text x="0" y="39" fill="#9aa0b5" font-size="11.5">median 530 B</text><rect x="196" y="8" width="720" height="30" rx="8" fill="#ffffff0d"/><rect x="196" y="8" width="255.0" height="30" rx="8" fill="#50fa7b" opacity="0.92"/><text x="928" y="29" fill="#50fa7b" font-size="14.5" font-weight="700" font-family="ui-monospace,monospace">3,006</text><text x="0" y="78" fill="#f4f4f2" font-size="13.5" font-weight="600">Traditional</text><text x="0" y="97" fill="#9aa0b5" font-size="11.5">median 3,807 B</text><rect x="196" y="66" width="720" height="30" rx="8" fill="#ffffff0d"/><rect x="196" y="66" width="705.9" height="30" rx="8" fill="#ff7b8a" opacity="0.92"/><text x="928" y="87" fill="#ff7b8a" font-size="14.5" font-weight="700" font-family="ui-monospace,monospace">8,323</text></svg></div>
+  <div class="panel"><h3>Tokens / run</h3>
+    <svg viewBox="0 0 980 122"><text x="0" y="20" fill="#f4f4f2" font-size="13.5" font-weight="600">Eitri</text><text x="0" y="39" fill="#9aa0b5" font-size="11.5">median 9,015</text><rect x="196" y="8" width="720" height="30" rx="8" fill="#ffffff0d"/><rect x="196" y="8" width="470.0" height="30" rx="8" fill="#50fa7b" opacity="0.92"/><text x="928" y="29" fill="#50fa7b" font-size="14.5" font-weight="700" font-family="ui-monospace,monospace">10,600</text><text x="0" y="78" fill="#f4f4f2" font-size="13.5" font-weight="600">Traditional</text><text x="0" y="97" fill="#9aa0b5" font-size="11.5">median 12,942</text><rect x="196" y="66" width="720" height="30" rx="8" fill="#ffffff0d"/><rect x="196" y="66" width="705.9" height="30" rx="8" fill="#ff7b8a" opacity="0.92"/><text x="928" y="87" fill="#ff7b8a" font-size="14.5" font-weight="700" font-family="ui-monospace,monospace">15,922</text></svg></div>
+  <div class="panel"><h3>Turns / run</h3>
+    <svg viewBox="0 0 980 122"><text x="0" y="20" fill="#f4f4f2" font-size="13.5" font-weight="600">Eitri</text><text x="0" y="39" fill="#9aa0b5" font-size="11.5"></text><rect x="196" y="8" width="720" height="30" rx="8" fill="#ffffff0d"/><rect x="196" y="8" width="604.6" height="30" rx="8" fill="#50fa7b" opacity="0.92"/><text x="928" y="29" fill="#50fa7b" font-size="14.5" font-weight="700" font-family="ui-monospace,monospace">2.82</text><text x="0" y="78" fill="#f4f4f2" font-size="13.5" font-weight="600">Traditional</text><text x="0" y="97" fill="#9aa0b5" font-size="11.5"></text><rect x="196" y="66" width="720" height="30" rx="8" fill="#ffffff0d"/><rect x="196" y="66" width="705.9" height="30" rx="8" fill="#ff7b8a" opacity="0.92"/><text x="928" y="87" fill="#ff7b8a" font-size="14.5" font-weight="700" font-family="ui-monospace,monospace">3.29</text></svg></div>
+</div>
+<div class="panel"><h3>Significance — two-sided permutation test, 40,000 resamples</h3>
+  <div style="margin:12px 0"><b>bytes</b>: 2.77× — <span class="pv">mean Δ=-5,317, p=0.0002</span> <span class="pill" style="border:1px solid var(--opt);color:var(--opt)">significant</span></div><div style="margin:12px 0"><b>tokens</b>: 1.50× — <span class="pv">mean Δ=-5,254, p=0.0002</span> <span class="pill" style="border:1px solid var(--opt);color:var(--opt)">significant</span></div><div style="margin:12px 0"><b>turns</b>: 1.17× — <span class="pv">mean Δ=-0, p=0.0044</span> <span class="pill" style="border:1px solid var(--opt);color:var(--opt)">significant</span></div>
+  <p class="sub" style="margin-top:10px">All three hold. Read <i>bytes</i> is where the gap is widest and
+  <i>turns</i> where it is narrowest: the traditional reader usually needs one extra look to find the line it
+  forgot. Per task, Eitri reads less on <b>10/12</b> tasks and needs no more turns on <b>10/12</b>.</p>
+</div>
+
+<h2><span class="n">02</span>Every run, plotted</h2>
+<p class="sub">Each dot is one run's read bytes (log axis); dashed cyan marks the median; large bright dots exceed
+20 KB. The traditional reader's cost is bimodal — 15% of its runs
+dump a whole numbered file (up to 51,851 B), the rest are lean like Eitri's.
+Eitri's distribution is tight: 3% of runs exceed 20 KB.</p>
+<div class="panel"><svg viewBox="0 0 980 190"><line x1="170.0" y1="16" x2="170.0" y2="160" stroke="#2f3240"/><text x="170.0" y="178" fill="#6b7288" font-size="10.5" text-anchor="middle">10</text><line x1="351.0" y1="16" x2="351.0" y2="160" stroke="#2f3240"/><text x="351.0" y="178" fill="#6b7288" font-size="10.5" text-anchor="middle">100</text><line x1="531.9" y1="16" x2="531.9" y2="160" stroke="#2f3240"/><text x="531.9" y="178" fill="#6b7288" font-size="10.5" text-anchor="middle">1,000</text><line x1="712.9" y1="16" x2="712.9" y2="160" stroke="#2f3240"/><text x="712.9" y="178" fill="#6b7288" font-size="10.5" text-anchor="middle">10,000</text><line x1="893.8" y1="16" x2="893.8" y2="160" stroke="#2f3240"/><text x="893.8" y="178" fill="#6b7288" font-size="10.5" text-anchor="middle">100,000</text><text x="936" y="178" fill="#6b7288" font-size="10.5">bytes read</text><text x="0" y="57" fill="#f4f4f2" font-size="13.5" font-weight="600">Eitri</text><text x="0" y="74" fill="#9aa0b5" font-size="11">n=72</text><circle cx="505.2" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="516.2" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="496.7" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="566.4" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="566.4" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="545.0" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="665.6" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="666.5" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="662.9" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="258.9" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="258.9" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="294.9" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="666.3" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="413.3" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="666.9" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="481.1" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="480.1" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="438.6" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="415.7" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="681.1" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="433.3" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="709.4" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="398.9" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="216.2" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="256.3" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="256.3" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="256.3" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="712.1" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="382.3" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="662.0" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="471.6" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="411.5" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="490.4" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="328.3" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="429.0" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="426.3" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="483.0" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="539.9" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="483.0" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="566.0" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="617.4" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="774.6" cy="52.0" r="4.6" fill="#50fa7b" opacity="1"/><circle cx="724.1" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="731.3" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="724.1" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="258.9" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="258.9" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="258.9" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="597.1" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="666.9" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="666.0" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="444.1" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="516.9" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="479.8" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="429.6" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="432.1" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="429.6" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="497.3" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="587.4" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="422.0" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="398.9" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="298.0" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="789.7" cy="52.0" r="4.6" fill="#50fa7b" opacity="1"/><circle cx="713.3" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="739.9" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="713.3" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="470.5" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="474.6" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="334.4" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="505.3" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="457.9" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><circle cx="436.5" cy="52.0" r="3.4" fill="#50fa7b" opacity="0.6"/><line x1="482.1" y1="37" x2="482.1" y2="67" stroke="#8be9fd" stroke-width="2" stroke-dasharray="3 3"/><text x="482.1" y="31" fill="#8be9fd" font-size="10.5" text-anchor="middle">median 530</text><text x="0" y="119" fill="#f4f4f2" font-size="13.5" font-weight="600">Traditional</text><text x="0" y="136" fill="#9aa0b5" font-size="11">n=72</text><circle cx="504.2" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="491.8" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="511.0" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="787.7" cy="114.0" r="4.6" fill="#ff7b8a" opacity="1"/><circle cx="790.1" cy="114.0" r="4.6" fill="#ff7b8a" opacity="1"/><circle cx="597.3" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="729.1" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="729.0" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="667.8" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="458.7" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="711.8" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="432.4" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="704.3" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="704.9" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="704.4" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="670.7" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="842.2" cy="114.0" r="4.6" fill="#ff7b8a" opacity="1"/><circle cx="483.6" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="528.0" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="415.7" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="797.0" cy="114.0" r="4.6" fill="#ff7b8a" opacity="1"/><circle cx="431.3" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="663.8" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="224.5" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="444.5" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="590.3" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="796.4" cy="114.0" r="4.6" fill="#ff7b8a" opacity="1"/><circle cx="401.8" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="704.5" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="761.5" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="448.7" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="407.4" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="407.4" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="559.6" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="725.4" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="726.4" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="521.2" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="559.2" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="551.0" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="786.0" cy="114.0" r="4.6" fill="#ff7b8a" opacity="1"/><circle cx="785.7" cy="114.0" r="4.6" fill="#ff7b8a" opacity="1"/><circle cx="788.0" cy="114.0" r="4.6" fill="#ff7b8a" opacity="1"/><circle cx="744.9" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="745.5" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="692.4" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="278.9" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="258.9" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="258.9" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="704.9" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="705.2" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="705.2" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="483.0" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="481.1" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="790.4" cy="114.0" r="4.6" fill="#ff7b8a" opacity="1"/><circle cx="668.6" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="796.8" cy="114.0" r="4.6" fill="#ff7b8a" opacity="1"/><circle cx="462.4" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="463.7" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="558.2" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="425.1" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="398.9" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="429.9" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="790.1" cy="114.0" r="4.6" fill="#ff7b8a" opacity="1"/><circle cx="663.2" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="401.8" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="739.5" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="451.0" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="380.7" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="738.2" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="725.5" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="438.1" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><circle cx="725.4" cy="114.0" r="3.4" fill="#ff7b8a" opacity="0.6"/><line x1="637.0" y1="99" x2="637.0" y2="129" stroke="#8be9fd" stroke-width="2" stroke-dasharray="3 3"/><text x="637.0" y="93" fill="#8be9fd" font-size="10.5" text-anchor="middle">median 3,807</text></svg>
+<div class="legend"><span><i style="background:#50fa7b"></i>Eitri</span><span><i style="background:#ff7b8a"></i>Traditional</span>
+<span><i style="background:#8be9fd"></i>median</span></div></div>
+
+<h2><span class="n">03</span>Task by task</h2>
+<p class="sub">Mean read bytes per task and the traditional/Eitri ratio; turns as Eitri / traditional.</p>
+<div class="panel"><table><thead><tr><th>Task</th><th>Fixture</th><th class="num">Eitri</th><th class="num">Traditional</th><th class="num">ratio</th><th class="num">turns o/t</th></tr></thead>
+<tbody><tr><td><b>T01</b> <span class="tag">symbol-lookup</span></td><td class="mono" style="color:#8be9fd">fixtures/bigsvc.go</td><td class="num"><span class="mini" style="width:54px;background:#50fa7b"></span> 725</td><td class="num"><span class="mini" style="width:70px;background:#ff7b8a"></span> 939</td><td class="num" style="color:#50fa7b">1.3×</td><td class="num">2.3 / 2.5</td></tr><tr><td><b>T02</b> <span class="tag">doc-comment</span></td><td class="mono" style="color:#8be9fd">fixtures/handlers.go</td><td class="num"><span class="mini" style="width:16px;background:#50fa7b"></span> 5,124</td><td class="num"><span class="mini" style="width:70px;background:#ff7b8a"></span> 21,927</td><td class="num" style="color:#50fa7b">4.3×</td><td class="num">2.8 / 3.7</td></tr><tr><td><b>T03</b> <span class="tag">csv-predicate</span></td><td class="mono" style="color:#8be9fd">fixtures/metrics.csv</td><td class="num"><span class="mini" style="width:53px;background:#50fa7b"></span> 8,672</td><td class="num"><span class="mini" style="width:70px;background:#ff7b8a"></span> 11,351</td><td class="num" style="color:#50fa7b">1.3×</td><td class="num">3.5 / 3.5</td></tr><tr><td><b>T04</b> <span class="tag">generated-const</span></td><td class="mono" style="color:#8be9fd">fixtures/pb_gen.go</td><td class="num"><span class="mini" style="width:2px;background:#50fa7b"></span> 34</td><td class="num"><span class="mini" style="width:70px;background:#ff7b8a"></span> 1,774</td><td class="num" style="color:#50fa7b">52.2×</td><td class="num">2.0 / 2.7</td></tr><tr><td><b>T05</b> <span class="tag">deep-config</span></td><td class="mono" style="color:#8be9fd">fixtures/app.yaml</td><td class="num"><span class="mini" style="width:32px;background:#50fa7b"></span> 4,117</td><td class="num"><span class="mini" style="width:70px;background:#ff7b8a"></span> 9,030</td><td class="num" style="color:#50fa7b">2.2×</td><td class="num">3.0 / 2.8</td></tr><tr><td><b>T06</b> <span class="tag">log-tail</span></td><td class="mono" style="color:#8be9fd">fixtures/app.log</td><td class="num"><span class="mini" style="width:2px;background:#50fa7b"></span> 502</td><td class="num"><span class="mini" style="width:70px;background:#ff7b8a"></span> 14,356</td><td class="num" style="color:#50fa7b">28.6×</td><td class="num">2.3 / 2.7</td></tr><tr><td><b>T07</b> <span class="tag">call-sites</span></td><td class="mono" style="color:#8be9fd">fixtures/*.go</td><td class="num"><span class="mini" style="width:9px;background:#50fa7b"></span> 1,335</td><td class="num"><span class="mini" style="width:70px;background:#ff7b8a"></span> 10,926</td><td class="num" style="color:#50fa7b">8.2×</td><td class="num">2.8 / 3.2</td></tr><tr><td><b>T08</b> <span class="tag">nested-json</span></td><td class="mono" style="color:#8be9fd">fixtures/data.json</td><td class="num"><span class="mini" style="width:70px;background:#50fa7b"></span> 2,114</td><td class="num"><span class="mini" style="width:43px;background:#ff7b8a"></span> 1,288</td><td class="num" style="color:#ff7b8a">0.6×</td><td class="num">3.0 / 4.0</td></tr><tr><td><b>T09</b> <span class="tag">minified-wide</span></td><td class="mono" style="color:#8be9fd">fixtures/bundle.min.js</td><td class="num"><span class="mini" style="width:32px;background:#50fa7b"></span> 4,486</td><td class="num"><span class="mini" style="width:70px;background:#ff7b8a"></span> 9,759</td><td class="num" style="color:#50fa7b">2.2×</td><td class="num">2.7 / 4.3</td></tr><tr><td><b>T10</b> <span class="tag">duplicate-symbol</span></td><td class="mono" style="color:#8be9fd">fixtures/clientv2.go</td><td class="num"><span class="mini" style="width:70px;background:#50fa7b"></span> 8,252</td><td class="num"><span class="mini" style="width:67px;background:#ff7b8a"></span> 7,882</td><td class="num" style="color:#ff7b8a">1.0×</td><td class="num">2.5 / 2.2</td></tr><tr><td><b>T11</b> <span class="tag">changelog-heading</span></td><td class="mono" style="color:#8be9fd">fixtures/CHANGELOG.md</td><td class="num"><span class="mini" style="width:11px;background:#50fa7b"></span> 382</td><td class="num"><span class="mini" style="width:70px;background:#ff7b8a"></span> 2,512</td><td class="num" style="color:#50fa7b">6.6×</td><td class="num">3.8 / 3.8</td></tr><tr><td><b>T12</b> <span class="tag">todo-ticket</span></td><td class="mono" style="color:#8be9fd">fixtures/legacy.go</td><td class="num"><span class="mini" style="width:3px;background:#50fa7b"></span> 334</td><td class="num"><span class="mini" style="width:70px;background:#ff7b8a"></span> 8,133</td><td class="num" style="color:#50fa7b">24.3×</td><td class="num">3.0 / 4.2</td></tr></tbody></table>
+<div class="legend" style="margin-top:14px"><span><i style="background:#50fa7b"></i>Eitri</span><span><i style="background:#ff7b8a"></i>Traditional</span></div></div>
+
+<h2><span class="n">04</span>Anatomy of a read</h2>
+<p class="sub">Every bash command across all 144 runs, by shape. The green slices are Eitri reaching for
+<code>rg -n 'Foo' -A 25</code> and stopping; the red slice is the traditional convention doing exactly what it says.</p>
+<div class="panel"><svg viewBox="0 0 980 150"><text x="0" y="37" fill="#f4f4f2" font-size="13.5" font-weight="600">Eitri</text><rect x="150.0" y="14" width="100.2" height="34" fill="#50fa7b" opacity="0.9"/><text x="200.1" y="36" fill="#10111a" font-size="12.5" font-weight="700" text-anchor="middle">16</text><rect x="250.2" y="14" width="6.3" height="34" fill="#8be9fd" opacity="0.9"/><rect x="256.4" y="14" width="100.2" height="34" fill="#bd93f9" opacity="0.9"/><text x="306.5" y="36" fill="#10111a" font-size="12.5" font-weight="700" text-anchor="middle">16</text><rect x="356.6" y="14" width="381.8" height="34" fill="#6272a4" opacity="0.9"/><text x="547.5" y="36" fill="#10111a" font-size="12.5" font-weight="700" text-anchor="middle">61</text><rect x="738.4" y="14" width="68.9" height="34" fill="#f1fa8c" opacity="0.9"/><text x="772.8" y="36" fill="#10111a" font-size="12.5" font-weight="700" text-anchor="middle">11</text><rect x="807.3" y="14" width="75.1" height="34" fill="#ff7b8a" opacity="0.9"/><text x="844.8" y="36" fill="#10111a" font-size="12.5" font-weight="700" text-anchor="middle">12</text><rect x="882.4" y="14" width="87.6" height="34" fill="#4b4f5e" opacity="0.9"/><text x="926.2" y="36" fill="#10111a" font-size="12.5" font-weight="700" text-anchor="middle">14</text><text x="0" y="111" fill="#f4f4f2" font-size="13.5" font-weight="600">Traditional</text><rect x="150.0" y="88" width="39.3" height="34" fill="#50fa7b" opacity="0.9"/><text x="169.6" y="110" fill="#10111a" font-size="12.5" font-weight="700" text-anchor="middle">8</text><rect x="189.3" y="88" width="98.2" height="34" fill="#bd93f9" opacity="0.9"/><text x="238.4" y="110" fill="#10111a" font-size="12.5" font-weight="700" text-anchor="middle">20</text><rect x="287.5" y="88" width="338.8" height="34" fill="#6272a4" opacity="0.9"/><text x="456.9" y="110" fill="#10111a" font-size="12.5" font-weight="700" text-anchor="middle">69</text><rect x="626.3" y="88" width="24.6" height="34" fill="#f1fa8c" opacity="0.9"/><rect x="650.8" y="88" width="191.5" height="34" fill="#ff7b8a" opacity="0.9"/><text x="746.6" y="110" fill="#10111a" font-size="12.5" font-weight="700" text-anchor="middle">39</text><rect x="842.3" y="88" width="127.7" height="34" fill="#4b4f5e" opacity="0.9"/><text x="906.2" y="110" fill="#10111a" font-size="12.5" font-weight="700" text-anchor="middle">26</text></svg>
+<div class="legend"><span><i style="background:#50fa7b"></i>symbol+context</span><span><i style="background:#8be9fd"></i>unit-to-brace</span>
+<span><i style="background:#bd93f9"></i>predicate</span><span><i style="background:#6272a4"></i>grep/rg locate</span>
+<span><i style="background:#f1fa8c"></i>coordinate range</span><span><i style="background:#ff7b8a"></i>whole-file</span><span><i style="background:#4b4f5e"></i>other</span></div>
+<div class="grid3" style="margin-top:12px">
+<div class="card" style="--c:#50fa7b"><div class="k">Eitri whole-file reads</div><div class="v">12/72</div><div class="d">17% of runs</div></div>
+<div class="card" style="--c:#ff7b8a"><div class="k">Traditional</div><div class="v">35/72</div><div class="d">49% of runs · 2.9× Eitri's rate</div></div>
+<div class="card" style="--c:var(--cyan)"><div class="k">Symbol+context reads</div><div class="v">16</div><div class="d">Eitri runs using <code>rg -A/-B</code> vs 8</div></div>
+</div></div>
+
+<h2><span class="n">05</span>The same question, two reads</h2>
+<p class="sub">Both arms read <b>T02</b> — "which status does <code>HandleWebhook</code> reply with on partial
+success?", the answer sitting in a doc comment inside a 4,000-line file. On some runs they converge; on the runs
+that cost, the traditional reader prints the whole file.</p>
+<div class="grid2">
+  <div class="panel"><h3 style="color:var(--opt)">Eitri</h3>
+    <pre class="o"><span class="cmd">$ ls && rg -n "HandleWebhook" -A 40 fixtures/handlers.go | head -80</span>
+<span style="color:#9aa0b5">→ 1,552 B · 2 turns · the symbol, its doc comment and body in one strike</span></pre>
+    <h3 style="color:var(--cl)">Traditional — the same task, a costly run</h3>
+    <pre class="c"><span class="cmd">$ ls && rg -n "HandleWebhook" -r '' fixtures/handlers.go</span>
+<span style="color:#9aa0b5">→ 26,707 B · 5 turns · <code>nl -ba</code> the whole 4k-line file</span></pre></div>
+  <div class="panel"><h3 style="color:var(--opt)">Eitri — T09, a wide minified line</h3>
+    <pre class="o"><span class="cmd">$ ls && rg -o 'VERSION[^,;]{0,40}' fixtures/bundle.min.js | head -20</span>
+<span style="color:#9aa0b5">→ 30 B · 2 turns · never reads the 191 KB bundle</span></pre>
+    <h3 style="color:var(--cl)">Traditional — T09, a costly run</h3>
+    <pre class="c"><span class="cmd">$ ls && rg -o "VERSION[\"']?\s*[:=]\s*[\"'][^\"']*[\"']" fixtures/bundle.min.js | head -20</span>
+<span style="color:#9aa0b5">→ 28,948 B · 6 turns · ends up catting the whole file</span></pre></div>
+</div>
+<div class="note"><b>Read it as a distribution, not a single run.</b> Any one traditional run can be as cheap as
+Eitri's — it is the <i>rate</i> at which the convention falls back to a whole-file read
+(49% vs 17%) that sets the cost.</div>
+
+<h2><span class="n">06</span>The fixtures</h2>
+<p class="sub">Twelve answers hidden the way real work hides them — deep symbols, doc comments, predicate-filtered
+data, generated banners, one minified line, a directory of 300 files — with heavy files so a whole-file read is
+expensive. Plus 300 generated <code>mod_###.go</code> and 120 <code>client_###.go</code> files.</p>
+<div class="panel"><table><thead><tr><th>File</th><th class="num">Size</th></tr></thead><tbody><tr><td class="mono">app.log</td><td class="num">868.3 KB</td></tr><tr><td class="mono">data.json</td><td class="num">516.5 KB</td></tr><tr><td class="mono">metrics.csv</td><td class="num">268.0 KB</td></tr><tr><td class="mono">bigsvc.go</td><td class="num">199.0 KB</td></tr><tr><td class="mono">bundle.min.js</td><td class="num">191.2 KB</td></tr><tr><td class="mono">handlers.go</td><td class="num">116.8 KB</td></tr><tr><td class="mono">pb_gen.go</td><td class="num">78.7 KB</td></tr><tr><td class="mono">legacy.go</td><td class="num">70.1 KB</td></tr><tr><td class="mono">CHANGELOG.md</td><td class="num">36.9 KB</td></tr><tr><td class="mono">app.yaml</td><td class="num">32.4 KB</td></tr><tr><td class="mono">shim.go</td><td class="num">0.1 KB</td></tr><tr><td class="mono">alpha.go</td><td class="num">0.1 KB</td></tr><tr><td class="mono">gamma.go</td><td class="num">0.1 KB</td></tr><tr><td class="mono">clientv2.go</td><td class="num">0.1 KB</td></tr></tbody></table></div>
+
+<h2><span class="n">07</span>Method</h2>
+<div class="panel">
+<p class="sub">One model (<code>deepseek-v4.1-flash</code>, thinking off), one tool (the <code>bash</code> sandbox),
+identical fixtures and questions, <b>72 runs per arm</b> (12 tasks × 6 repetitions). Only the read
+strategy — the system prompt — varies, across two binaries built from this repo:</p>
+<pre class="o"><span class="cmd">Eitri: "choose the shape that is most token-efficient yet accurate — rg -n 'Foo' -A 25 | sed -n '/^func/,/^}/p' | a range | numbered coordinates"</span></pre>
+<pre class="c"><span class="cmd">Traditional: "print the whole file with line numbers, nl -ba &lt;file&gt;, read it end to end"</span></pre>
+<div class="grid3" style="margin-top:16px">
+<div class="card" style="--c:var(--cyan)"><div class="k">Runs / arm</div><div class="v">72</div><div class="d">equal n both arms</div></div>
+<div class="card" style="--c:var(--opt)"><div class="k">Correct</div><div class="v">72/72</div><div class="d">Eitri / traditional — both perfect</div></div>
+<div class="card" style="--c:var(--accent)"><div class="k">Wall time</div><div class="v">1.17×</div><div class="d">traditional / Eitri, summed run seconds</div></div>
+</div>
+<div class="note">Eitri's system prompt is the <b>larger</b> of the two
+(2334 B vs 1723 B), so its win is not a smaller-prompt artifact. Token totals come from each run's own
+transcript <code>usage</code>; p-values are two-sided permutation tests (40,000 resamples) on per-run means.
+A per-task comparison is reported alongside every aggregate because aggregates hide reversals — Eitri
+reads less on 10/12 tasks, not 12/12.</div>
+<details><summary>The 12 task prompts</summary><ol><li><code>In fixtures/bigsvc.go, what string does the function `resolveTenant` return? Reply with just the string.</code></li><li><code>In fixtures/handlers.go, which HTTP status code does `HandleWebhook` reply with on a partial success? Reply with just the number.</code></li><li><code>In fixtures/metrics.csv, what is the value in the row whose host is `web-12` and whose status is `FAIL`? Reply with just the number.</code></li><li><code>What is the value of the constant `MaxBatchSize` in fixtures/pb_gen.go? Reply with just the number.</code></li><li><code>In fixtures/app.yaml, is `feature_flags.experimental.quantum_mode` enabled? Reply with just yes or no.</code></li><li><code>In fixtures/app.log, what is the correlation id (the `cid-...` token) on the LAST ERROR line in the file? Reply with just the correlation id.</code></li><li><code>Which Go files in fixtures/ call the function `legacyShim`? Reply with just the file names.</code></li><li><code>In fixtures/data.json, what is the `settings.tier` of the account whose id is `ACC-0007`? Reply with just the tier.</code></li><li><code>What is the `VERSION` value baked into fixtures/bundle.min.js? Reply with just the version.</code></li><li><code>Two files in fixtures/ define a `NewClient`. In fixtures/clientv2.go, what default timeout (in seconds) does `NewClient` set? Reply with just the number.</code></li><li><code>In fixtures/CHANGELOG.md, which version first introduced the quantum cache? Reply with just the version number.</code></li><li><code>In fixtures/legacy.go, what ticket number is referenced by the TODO about retry backoff? Reply with just the ticket id.</code></li></ol></details>
+</div>
+<div class="foot">Generated 2026-10-10 · 12 tasks · 72 Eitri runs vs 72 traditional
+runs · model <code>deepseek-v4.1-flash</code> · metrics extracted from per-run session transcripts
+(<code>usage</code> + tool output) · p-values by two-sided permutation test. Fixtures and raw results are synthetic
+and reproducible.</div>
+</div></body></html>
