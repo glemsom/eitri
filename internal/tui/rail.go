@@ -359,7 +359,7 @@ const defaultRailWidth = constants.DefaultRailWidth
 
 // syncWidths re-sizes the composer to the panel body width so markdown wraps inside the edge-to-edge bottom band.
 func (m *Model) syncWidths() {
-	m.composer.SetWidth(composerPanelBodyWidth(m.tx.bandWidth()))
+	m.composer.SetWidth(composerPanelBodyWidth(m.tx.Geometry().BandWidth))
 	m.syncComposerHeight()
 }
 

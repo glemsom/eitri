@@ -91,7 +91,7 @@ func TestRenderPane_ComposesRegionsInOrder(t *testing.T) {
 	m.renderBand(&band)
 	bandStr := band.String()
 
-	got := m.renderPane()
+	got := m.tx.renderPane(bandStr)
 	if !strings.HasSuffix(got, bandStr) {
 		t.Errorf("renderPane must keep the band as the final (bottom-pinned) region\n--- got ---\n%s", got)
 	}

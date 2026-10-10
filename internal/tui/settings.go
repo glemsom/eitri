@@ -956,8 +956,9 @@ func settingsView(f settingsForm) string {
 // startSettings opens the Settings surface and returns the command to run.
 func (m Model) startSettings() (tea.Model, tea.Cmd) {
 	o, cmd := openSettingsOverlay(m.deps.Config, m.deps.Models, m.tx.theme, m.deps.ThinkingSuppression, m.deps)
-	o.width = m.tx.width
-	o.height = m.tx.height
+	g := m.tx.Geometry()
+	o.width = g.Width
+	o.height = g.Height
 	m.settings = o
 	return m, cmd
 }

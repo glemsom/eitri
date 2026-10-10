@@ -369,6 +369,28 @@ func (t Transcript) viewMode() viewMode {
 // railVisible reports whether the right context rail should render now.
 func (t Transcript) railVisible() bool { return t.rail != nil }
 
+// Geometry is the transcript's frame footprint: the pane size the composer and
+// the overlays lay out against, and the rail column the frame carves beside it.
+type Geometry struct {
+	Width       int
+	Height      int
+	BandWidth   int
+	RailWidth   int
+	RailVisible bool
+}
+
+// Geometry reads the footprint for the current terminal size; RailWidth is the
+// rail's own column width, the value the face derives its size from.
+func (t Transcript) Geometry() Geometry {
+	return Geometry{
+		Width:       t.width,
+		Height:      t.height,
+		BandWidth:   t.bandWidth(),
+		RailWidth:   t.railWidthOrDefault(),
+		RailVisible: t.railVisible(),
+	}
+}
+
 // transcriptWidth returns the column width the transcript pane should use for
 // wrapping: the terminal width (or a sane default before a resize) minus the
 // 2-col gutter, and minus the rail + separator when the rail is visible. A
@@ -442,6 +464,45 @@ func (t Transcript) surfaceWithRail(pane, rail string, bandHeight int) string {
 		rows[i] = ansi.Truncate(rows[i], leftWidth, "") + strings.Repeat(" ", max(0, leftWidth-ansi.StringWidth(rows[i]))) + railRows[i]
 	}
 	return strings.Join(rows, "\n")
+}
+
+// View composes the whole left surface for a frame: the history pane above the
+// caller-rendered band, the right rail merged in, and the trim that drops rows
+// past the terminal height while keeping the band anchored at the bottom.
+func (t *Transcript) View(band string, bandHeight int) string {
+	return t.trimToHeight(t.viewWithRail(t.renderPane(band), bandHeight), bandHeight)
+}
+
+// trimToHeight drops overflow rows so the frame fits the terminal. Without a
+// rail the oldest rows fall off the top; with a rail, history rows are dropped
+// from just above the band so the band and the rail's lower rows stay put.
+func (t Transcript) trimToHeight(content string, bandHeight int) string {
+	if t.height <= 0 {
+		return content
+	}
+	trimmed := strings.TrimRight(content, "\n")
+	rows := strings.Split(trimmed, "\n")
+	if len(rows) <= t.height {
+		return content
+	}
+	overflow := len(rows) - t.height
+	if !t.railVisible() {
+		return strings.Join(rows[overflow:], "\n")
+	}
+	cutBefore := max(0, len(rows)-bandHeight)
+	if overflow > cutBefore {
+		overflow = cutBefore
+	}
+	rows = append(rows[:cutBefore-overflow], rows[cutBefore:]...)
+	return strings.Join(rows, "\n")
+}
+
+// RailHeight returns how many rows the rail's content occupies for the given
+// band height, capped at the rows the rail region may show. It reads the row
+// count the composing render recorded, so the fit verdict and the frame's rail
+// always agree, and no second render is spent counting rows.
+func (t Transcript) RailHeight(bandHeight int) int {
+	return min(railContentRows(t.railRenderInput), t.railClampHeight(bandHeight))
 }
 
 // viewWithRail composes the final surface content for a rail-visible pane: it renders the wired rail through styledRail at the rail's clamp height and floats it above the full-width band via surfaceWithRail.

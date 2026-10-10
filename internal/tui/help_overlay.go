@@ -134,7 +134,8 @@ func (h *HelpOverlay) footer() string {
 
 // startHelp opens the `/help` reference as a dedicated scrollable overlay.
 func (m Model) startHelp() (tea.Model, tea.Cmd) {
-	m.help = openHelpOverlay(m.tx.theme, m.tx.configTheme, m.tx.width, m.tx.height)
+	g := m.tx.Geometry()
+	m.help = openHelpOverlay(m.tx.theme, m.tx.configTheme, g.Width, g.Height)
 	return m, nil
 }
 

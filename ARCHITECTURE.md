@@ -69,7 +69,7 @@ Stores GUID-named, append-only session directories under the data directory. Mes
 Bubble Tea terminal UI. It owns the composer, transcript view, right rail, settings, login, help, slash commands, and turn lifecycle. Three seams carry the turn:
 
 - `TurnRuntime` is the only caller-facing seam for a live Run. It dispatches and cancels the Run, drains the FIFO event feed, preserves event order, and rejects stale Run IDs.
-- `Transcript` is the sole owner of transcript projection state, receiving typed start, stream, tool, and completion outcomes. It also owns the live turn's pulse — the busy flag, elapsed clock, spinner and forge frames, and idle ember — behind `Status()` and the `TickBusy`/`TickEmber`/`ArmEmber`/`EndTurn` commands.
+- `Transcript` is the sole owner of transcript projection state, receiving typed start, stream, tool, and completion outcomes. It also owns the live turn's pulse — the busy flag, elapsed clock, spinner and forge frames, and idle ember — behind `Status()` and the `TickBusy`/`TickEmber`/`ArmEmber`/`EndTurn` commands. Its geometry concern owns how a frame fits the terminal: `Geometry()` reports the frame footprint, `View(band, bandHeight)` composes the whole left surface, and `RailHeight(bandHeight)` answers the rail's row count.
 - `TurnSession` supplies cancellable execution only.
 
 The TUI never calls a provider: it names provider kinds for the settings UI and receives every turn through the runtime seam. `livekey` and `telemetry` are already extracted sub-packages; the remaining leaves are tracked in [docs/agents/de-monolith-tui.md](docs/agents/de-monolith-tui.md).

@@ -75,8 +75,8 @@ func (m *Model) syncComposerHeight() {
 	if rows < minComposerRows {
 		rows = minComposerRows
 	}
-	if m.tx.height > 0 {
-		if lim := m.tx.height - 1; rows > lim {
+	if h := m.tx.Geometry().Height; h > 0 {
+		if lim := h - 1; rows > lim {
 			rows = lim
 		}
 	}
@@ -169,18 +169,20 @@ func renderTitledPanel(th Theme, title string, width int, titleStyle lipgloss.St
 	return b.String()
 }
 
-// bandHeight returns how many terminal rows the fixed bottom band (status strip, slash completion, composer) occupies, so the scroll region and the right rail can clamp to the rows it leaves behind.
-func (m Model) bandHeight() int {
-	var band strings.Builder
-	m.renderBand(&band)
-	return lineCount(band.String())
+// band renders the fixed bottom band and returns its text plus the terminal
+// rows it occupies, so the scroll region and the right rail can clamp to the
+// rows it leaves behind.
+func (m Model) band() (string, int) {
+	var b strings.Builder
+	m.renderBand(&b)
+	s := b.String()
+	return s, lineCount(s)
 }
 
-// renderPane renders the transcript + composer surface into the left pane.
-func (m Model) renderPane() string {
-	var band strings.Builder
-	m.renderBand(&band)
-	return m.tx.renderPane(band.String())
+// bandHeight returns how many terminal rows the band occupies.
+func (m Model) bandHeight() int {
+	_, h := m.band()
+	return h
 }
 
 // syncComposerRail recolors the composer's prompt rail by editing state: the accent rail signals an editable composer, while a running turn makes the composer inert, so the rail dims to a muted accent (state-as-color — the mode-colored composer border pattern, benchmark §4.3).
@@ -197,10 +199,11 @@ func (m *Model) syncComposerRail() {
 // renderBand renders the fixed bottom band: completion candidates above the composer panel, then contextual composer hints and transient feedback below it.
 func (m Model) renderBand(b *strings.Builder) {
 	var inner strings.Builder
+	bw := m.tx.Geometry().BandWidth
 	st := m.tx.Status()
 	if st.Busy {
 		body := forgeBusyLine(st.Frame, st.Phase) + " · " + m.tx.theme.statusStyle.Render("Hold steady — composer locked during forging")
-		inner.WriteString(renderTitledPanel(m.tx.theme, m.forgeTitle(), m.tx.bandWidth(), lipgloss.NewStyle(), body))
+		inner.WriteString(renderTitledPanel(m.tx.theme, m.forgeTitle(), bw, lipgloss.NewStyle(), body))
 	} else {
 		if m.slash.isOpen() {
 			body := m.slash.RenderCompletionBody(m.tx.theme)
@@ -210,13 +213,13 @@ func (m Model) renderBand(b *strings.Builder) {
 				}
 				body += badge
 			}
-			inner.WriteString(renderTitledPanel(m.tx.theme, "Commands", m.tx.bandWidth(), m.tx.theme.bandSeparatorStyle, body))
+			inner.WriteString(renderTitledPanel(m.tx.theme, "Commands", bw, m.tx.theme.bandSeparatorStyle, body))
 			inner.WriteByte('\n')
 		} else if m.mention.isOpen() {
-			inner.WriteString(renderTitledPanel(m.tx.theme, "Workspace mentions", m.tx.bandWidth(), m.tx.theme.bandSeparatorStyle, m.mention.RenderCompletionBody(m.tx.theme)))
+			inner.WriteString(renderTitledPanel(m.tx.theme, "Workspace mentions", bw, m.tx.theme.bandSeparatorStyle, m.mention.RenderCompletionBody(m.tx.theme)))
 			inner.WriteByte('\n')
 		}
-		inner.WriteString(renderTitledPanel(m.tx.theme, "Ask Eitri", m.tx.bandWidth(), m.tx.theme.bandSeparatorStyle, m.composer.View()))
+		inner.WriteString(renderTitledPanel(m.tx.theme, "Ask Eitri", bw, m.tx.theme.bandSeparatorStyle, m.composer.View()))
 	}
 	inner.WriteByte('\n')
 	inner.WriteString(m.renderBandStatusRow())
@@ -251,7 +254,7 @@ func (m Model) composerCursor(content string) *tea.Cursor {
 // so this row pins only the workspace, the one global path not otherwise
 // surfaced.
 func (m Model) renderBandStatusRow() string {
-	w := m.tx.bandWidth()
+	w := m.tx.Geometry().BandWidth
 	right := ""
 	if ws := m.deps.WorkspacePath; ws != "" {
 		// Cap the right zone so the left hints keep room; an over-long workspace
@@ -281,13 +284,14 @@ func (m Model) renderBandStatusRow() string {
 }
 
 func (m Model) renderFeedback() string {
+	bw := m.tx.Geometry().BandWidth
 	switch m.feedback.kind {
 	case feedbackSuccess:
-		return m.tx.theme.outcomeOKStyle.Render(fitBandLine(lookup("ok")+" "+m.feedback.text, m.tx.bandWidth()))
+		return m.tx.theme.outcomeOKStyle.Render(fitBandLine(lookup("ok")+" "+m.feedback.text, bw))
 	case feedbackFailure:
-		return m.tx.theme.outcomeErrStyle.Render(fitBandLine(lookup("fail")+" "+m.feedback.text, m.tx.bandWidth()))
+		return m.tx.theme.outcomeErrStyle.Render(fitBandLine(lookup("fail")+" "+m.feedback.text, bw))
 	default:
-		return m.tx.theme.statusStyle.Render(fitBandLine(m.feedback.text, m.tx.bandWidth()))
+		return m.tx.theme.statusStyle.Render(fitBandLine(m.feedback.text, bw))
 	}
 }
 

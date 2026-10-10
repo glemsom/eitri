@@ -957,26 +957,8 @@ func (m Model) viewString() string {
 		return promptView(m.tx.theme)
 	}
 
-	bandHeight := m.bandHeight()
-	content := m.tx.viewWithRail(m.renderPane(), bandHeight)
-	if m.tx.height <= 0 {
-		return content
-	}
-	trimmed := strings.TrimRight(content, "\n")
-	rows := strings.Split(trimmed, "\n")
-	if len(rows) <= m.tx.height {
-		return content
-	}
-	overflow := len(rows) - m.tx.height
-	if !m.tx.railVisible() {
-		return strings.Join(rows[overflow:], "\n")
-	}
-	cutBefore := max(0, len(rows)-bandHeight)
-	if overflow > cutBefore {
-		overflow = cutBefore
-	}
-	rows = append(rows[:cutBefore-overflow], rows[cutBefore:]...)
-	return strings.Join(rows, "\n")
+	bandStr, bandHeight := m.band()
+	return m.tx.View(bandStr, bandHeight)
 }
 
 // telemetryWait returns a command that blocks until the next live telemetry update arrives on the engine seam channel, then delivers it to the UI loop as a telemetryUpdateMsg.
@@ -1021,8 +1003,7 @@ func (m Model) drawFaceCmd() (Model, tea.Cmd) {
 	if !m.faceNeedsDraw() {
 		return m, nil
 	}
-	railWidth := m.tx.railWidthOrDefault()
-	seq := kittyFaceUpload(railWidth)
+	seq := kittyFaceUpload(m.tx.Geometry().RailWidth)
 	m.faceDirty = false
 	if seq == "" {
 		return m, nil
@@ -1031,15 +1012,13 @@ func (m Model) drawFaceCmd() (Model, tea.Cmd) {
 }
 
 func (m Model) canDrawFace() bool {
-	if m.settings != nil || m.help != nil || m.prompting || !m.tx.railVisible() || m.tx.width <= 0 || m.tx.height <= 0 {
+	g := m.tx.Geometry()
+	if m.settings != nil || m.help != nil || m.prompting || !g.RailVisible || g.Width <= 0 || g.Height <= 0 {
 		return false
 	}
-	railWidth := m.tx.railWidthOrDefault()
-	_, faceRows := railFaceRows(railWidth)
-	railHeight := m.tx.railClampHeight(m.bandHeight())
-	st := m.tx.Status()
-	content := m.tx.rail.renderLiveWithTools(m.tx.telemetry, m.tx.theme, railWidth, st.Phase, st.Frame, &m.tx.log)
-	return faceRows > 0 && railHeight >= railContentRows(content)+railFaceTopGap+faceRows
+	_, faceRows := railFaceRows(g.RailWidth)
+	bandHeight := m.bandHeight()
+	return faceRows > 0 && m.tx.railClampHeight(bandHeight) >= m.tx.RailHeight(bandHeight)+railFaceTopGap+faceRows
 }
 
 func (m Model) applyEvent(update Event) (tea.Model, tea.Cmd) {
