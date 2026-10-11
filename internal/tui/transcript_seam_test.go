@@ -134,6 +134,19 @@ func TestPlainLinesQueryReturnsCopySpace(t *testing.T) {
 	}
 }
 
+// historyRowIndex returns the index of the first plain history row carrying
+// marker, failing the test when no row does.
+func historyRowIndex(t *testing.T, lines []string, marker string) int {
+	t.Helper()
+	for i, line := range lines {
+		if strings.Contains(line, marker) {
+			return i
+		}
+	}
+	t.Fatalf("marker %q not found in the history:\n%s", marker, strings.Join(lines, "\n"))
+	return -1
+}
+
 // TestToolCardAtQueryResolvesTheEntry locks the tool-card hit-test: every
 // content row the entry draws resolves to that entry, ordinary answer text
 // resolves to none, and the index names the entry a click toggles.
@@ -152,17 +165,9 @@ func TestToolCardAtQueryResolvesTheEntry(t *testing.T) {
 	view(m)
 
 	lines := m.tx.PlainLines()
-	find := func(marker string) int {
-		t.Helper()
-		for i, line := range lines {
-			if strings.Contains(line, marker) {
-				return i
-			}
-		}
-		t.Fatalf("marker %q not found in the history:\n%s", marker, strings.Join(lines, "\n"))
-		return -1
-	}
-	head, body, answer := find("bash"), find("full output line one"), find("final answer")
+	head := historyRowIndex(t, lines, "bash")
+	body := historyRowIndex(t, lines, "full output line one")
+	answer := historyRowIndex(t, lines, "final answer")
 
 	idx, ok := m.tx.ToolCardAt(head)
 	if !ok || idx != 0 {
@@ -195,16 +200,7 @@ func TestRenderedLineQueryCarriesHyperlink(t *testing.T) {
 	m = submitAndWait(t, m)
 
 	lines := m.tx.PlainLines()
-	line := -1
-	for i, l := range lines {
-		if strings.Contains(l, "Example") {
-			line = i
-			break
-		}
-	}
-	if line < 0 {
-		t.Fatalf("link label missing from the history:\n%s", strings.Join(lines, "\n"))
-	}
+	line := historyRowIndex(t, lines, "Example")
 
 	rendered := m.tx.RenderedLine(line)
 	if ansiStrip(rendered) != lines[line] {
