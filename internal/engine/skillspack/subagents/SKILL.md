@@ -10,8 +10,7 @@ A 'background agent' is a subagent: a batch-mode `eitri -b` run with its own
 session and sandbox, launched from the parent's Bash tool call.
 
 **Launch** each subagent into its own execution directory, then **collect** it —
-wait, and read the answer — inside the same Bash tool call. The one script
-covers one or many:
+wait, and read the answer — inside the same Bash tool call:
 ```sh
 for task_number in 1 2; do
   task="<task $task_number>"
@@ -33,15 +32,14 @@ for task_number in 1 2; do
 done
 ```
 
-One subagent is both ranges set to `1`. Collecting inside the same Bash tool call
-is what makes the results there. Uncollected subagents are lost: in sandboxed mode
-the sandbox terminates child processes when the tool call returns; elsewhere they
-merely keep running.
+For a single subagent, set both ranges to `1`. In sandboxed mode the sandbox
+terminates child processes when the tool call returns; elsewhere uncollected
+runs merely keep running, their answers unread. Collect inside that call.
 
-The gate is load-bearing. Each run prints one `--format json` envelope whose
-`answer` field is the result; a failed run prints no envelope and exits
-non-zero, and bare `jq -r` on that empty file prints nothing while exiting 0 — a
-crash would read as an answer with nothing in it.
+Each run prints one `--format json` envelope, whose `answer` field is the
+result; a failed run prints no envelope and exits non-zero. Bare `jq -r` on
+that empty file prints nothing while exiting 0, so a crash would read as an
+empty answer — the script's `jq -e .answer` gate is what tells them apart.
 
 ## Handoff
 
@@ -50,17 +48,15 @@ and carries up to 1 MiB, refused (never truncated) past that. Reach for the
 workspace when the payload is larger, or when the subagent has to write a file
 back.
 
-For files, use the **workspace**: the one path writable from both sides. A
-subagent takes its launch directory as its workspace, so launch from the
-workspace and never from `$TMPDIR` — launching from `$TMPDIR` hands every
-subagent the parent's scratch read-write, silently, with no failed write to show
-for it. Pass workspace paths in the task prompt for anything crossing the
-boundary.
+The **workspace** is the one path writable from both sides: a subagent takes
+its launch directory as its workspace. Launch from the workspace, never from
+`$TMPDIR` — launching there hands every subagent the parent's scratch
+read-write, silently, with no failed write to show for it. Pass workspace paths
+in the task prompt for anything crossing the boundary.
 
-Each run leaves its session trail at `$agent_dir` — the parent's to read, on a
-path minted per run, with an implementation-detail layout inside. Hand work
-across the boundary as workspace paths, not as locations in it, and replay a run
-by pointing `eitri session show` at the data directory that run used:
+Each run leaves its session trail at `$agent_dir`, a directory minted per run,
+its layout an implementation detail. Replay a run with `eitri session show`
+pointed at the data directory that run used:
 ```sh
 EITRI_DIR="$agent_dir" eitri session show "$(jq -r .session "$TMPDIR/sa-1.json")"
 ```
