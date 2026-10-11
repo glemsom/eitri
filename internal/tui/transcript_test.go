@@ -350,7 +350,7 @@ func transcriptWithTool(t *testing.T) Transcript {
 	}
 }
 
-func TestTranscript_toggleToolEntryFlipsExpansion(t *testing.T) {
+func TestTranscript_ToggleToolEntryFlipsExpansion(t *testing.T) {
 	tx := transcriptWithTool(t)
 
 	tx.ToggleToolEntry(0)

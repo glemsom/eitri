@@ -122,7 +122,7 @@ func stripRoleMarks(text string) string {
 // copySelection puts a finished drag on the clipboard and reports the outcome on
 // the band. The transcript resolved what the drag covered against the copy space
 // it holds; this side owns the clipboard and the wording the user reads.
-func (m *Model) copySelection(drag PointerRelease) {
+func (m *Model) copySelection(drag PointerOutcome) {
 	if !drag.InBounds {
 		if len(m.tx.PlainLines()) == 0 {
 			m.feedback = failureFeedback("copy failed: empty transcript")

@@ -1199,7 +1199,7 @@ func (t *Transcript) highlightedViewportView(content string) string {
 		Render(contents)
 }
 
-// NavigateHistory applies a T2 keyboard scroll command to the persisted history viewport owned by the Transcript: PgUp/Home move toward the older output and break the follow position; PgDn/End move toward the newest and re-engage follow when they reach the bottom. PgUp/PgDn page by half the visible height so the reading position keeps its place in view.
+// NavigateHistory applies a T2 keyboard scroll command to the persisted history viewport owned by the Transcript: PgUp/Home move toward the older output and break the follow position; PgDn/End move toward the newest and re-engage follow when they reach the bottom. PgUp/PgDn page by half the visible height so the reading position keeps its place in view. It reports the follow position the scroll leaves behind.
 func (t *Transcript) NavigateHistory(key string) bool {
 	t.ensureViewportSynced()
 	switch key {
@@ -1227,7 +1227,7 @@ func (t *Transcript) NavigateHistory(key string) bool {
 	return t.histFollow
 }
 
-// NavigateMouse applies a T2 mouse-wheel scroll to the persisted history viewport owned by the Transcript: wheel up scrolls toward older output and breaks follow; wheel down scrolls toward the newest and re-engages follow once it reaches the bottom. Each notch scrolls a small fixed number of rows so the wheel moves the reading position gently.
+// NavigateMouse applies a T2 mouse-wheel scroll to the persisted history viewport owned by the Transcript: wheel up scrolls toward older output and breaks follow; wheel down scrolls toward the newest and re-engages follow once it reaches the bottom. Each notch scrolls a small fixed number of rows so the wheel moves the reading position gently. A wheel outside the history region scrolls nothing, and the follow position it leaves behind is what it reports.
 func (t *Transcript) NavigateMouse(msg tea.MouseWheelMsg) bool {
 	if !t.inScrollRegion(msg.Y) {
 		return t.histFollow
@@ -1256,10 +1256,8 @@ func (t *Transcript) pageRows() int {
 	return rows
 }
 
-// ResumeFollow re-engages auto-follow, so the newest output stays in view from
-// the next frame on without moving the reading position the caller left behind. A
-// submitted prompt calls it: the turn that prompt starts must render visible even
-// after the user had scrolled back.
+// ResumeFollow re-engages auto-follow, so the newest output stays in view from the
+// next frame on, leaving the reading position where it is.
 func (t *Transcript) ResumeFollow() {
 	t.histFollow = true
 }
@@ -1298,18 +1296,18 @@ func (t *Transcript) PointerActive() bool {
 	return t.weaver.active
 }
 
-// PointerCancel abandons the pointer interaction without resolving it: the press
+// PointerCancel drops the pointer interaction without resolving it: the press
 // landed outside the history region, so the drag and any pending tool-card click
-// are dropped.
+// go together.
 func (t *Transcript) PointerCancel() {
 	t.weaver = selectionWeaver{}
 	t.pendingToolClick = false
 }
 
-// PointerRelease is what a pointer release resolved to: a completed drag holding
+// PointerOutcome is what a pointer release resolved to: a completed drag holding
 // the text the caller copies, a plain click on the tool entry the caller toggles,
 // or neither. At most one of Dragged and Clicked is set.
-type PointerRelease struct {
+type PointerOutcome struct {
 	// Dragged reports a press and release with movement between them; Text is
 	// the plain text the drag covered and InBounds whether its range fell inside
 	// the copy space the transcript holds now — a drag the copy space emptied in
@@ -1326,23 +1324,21 @@ type PointerRelease struct {
 // PointerUp finishes the pointer interaction and reports what it resolved to. The
 // release drops the drag either way, so a second release with nothing behind it
 // resolves nothing.
-func (t *Transcript) PointerUp() PointerRelease {
-	drag := t.weaver
-	pendingClick := t.pendingToolClick
-	t.weaver = selectionWeaver{}
-	t.pendingToolClick = false
+func (t *Transcript) PointerUp() PointerOutcome {
+	drag, pendingClick := t.weaver, t.pendingToolClick
+	t.PointerCancel()
 
 	if pendingClick && !drag.moved {
 		if idx, onCard := t.ToolCardAt(drag.anchorLine); onCard {
-			return PointerRelease{Clicked: true, ToolIdx: idx}
+			return PointerOutcome{Clicked: true, ToolIdx: idx}
 		}
-		return PointerRelease{}
+		return PointerOutcome{}
 	}
 	if !drag.active || !drag.moved {
-		return PointerRelease{}
+		return PointerOutcome{}
 	}
 	text, inBounds := drag.coveredLines(t.PlainLines())
-	return PointerRelease{Dragged: true, Text: text, InBounds: inBounds}
+	return PointerOutcome{Dragged: true, Text: text, InBounds: inBounds}
 }
 
 // scrollRegion assembles the history-region seam from the persisted viewport's
@@ -1667,6 +1663,10 @@ func (t *Transcript) toggleExpandAll() bool {
 	return t.expandAll
 }
 
+// ToggleExpandedMode flips the global expansion mode between expand-all and
+// collapse-all-to-hints and reports whether expand-all is on after the flip, so
+// the first ctrl+e expands every block and the next collapses every block to its
+// hint.
 func (t *Transcript) ToggleExpandedMode() bool {
 	if t.expandAll {
 		t.setCollapseAll(true)
