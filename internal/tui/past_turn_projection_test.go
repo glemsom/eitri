@@ -105,9 +105,9 @@ func TestTranscript_pastTurnExpandReplaysFullInterleavedSequence(t *testing.T) {
 	// Expand turn k's reasoning and tool blocks through the block-focus
 	// interaction (Tab + Enter), the same path a user takes on a past turn.
 	focusBlock(tx, 2*k)
-	tx.toggleFocused() // reveal the reasoning body
+	tx.ToggleFocused() // reveal the reasoning body
 	focusBlock(tx, 2*k+1)
-	tx.toggleFocused() // reveal the tool result
+	tx.ToggleFocused() // reveal the tool result
 
 	var hist strings.Builder
 	tx.renderHistory(&hist, nil, nil)

@@ -7,7 +7,7 @@ import (
 
 func TestTranscriptUserPromptPreservesMultilineInput(t *testing.T) {
 	tx := &Transcript{theme: themeFor("dark"), configTheme: "dark", width: 80}
-	tx.appendUserMsg("first line\nsecond line")
+	tx.AppendUserMsg("first line\nsecond line")
 
 	var hist strings.Builder
 	tx.renderHistory(&hist, nil, nil)

@@ -125,13 +125,13 @@ func TestTranscript_perDeltaFocusCyclesFragmentsOnBothSidesOfTool(t *testing.T) 
 		{kind: blockReasoning, msgIdx: 1, fragIdx: 1},
 		{kind: blockTool, toolIdx: 0},
 	} {
-		tx.focusNext()
+		tx.FocusNext()
 		if got, ok := tx.focused(); !ok || got != want {
 			t.Fatalf("after Tab focused = %+v ok=%v, want %+v", got, ok, want)
 		}
 	}
 	// One more Tab wraps back to the first pre-tool fragment.
-	tx.focusNext()
+	tx.FocusNext()
 	if got, ok := tx.focused(); !ok || got != (collapsibleBlock{kind: blockReasoning, msgIdx: 1, fragIdx: 0}) {
 		t.Fatalf("wrap-around Tab focused = %+v ok=%v, want reasoning run 0", got, ok)
 	}
@@ -139,8 +139,8 @@ func TestTranscript_perDeltaFocusCyclesFragmentsOnBothSidesOfTool(t *testing.T) 
 	// The cursor resolves exactly the pre-tool run on the seam used by the
 	// renderer's focus marker.
 	tx = livePerDeltaWithToolTranscript()
-	tx.focusNext() // pre-tool run
-	tx.focusNext() // post-tool run
+	tx.FocusNext() // pre-tool run
+	tx.FocusNext() // post-tool run
 	if !tx.focusedBlockIs(blockReasoning, 1, 0, 1) {
 		t.Fatalf("cursor must point at post-tool run 1, got focused=%+v", mustFocused(tx))
 	}
@@ -163,12 +163,12 @@ func mustFocused(tx *Transcript) collapsibleBlock {
 func TestTranscript_enterTogglesSingleInterleavedRunIndependently(t *testing.T) {
 	tx := livePerDeltaWithToolTranscript() // pre-tool run (fragA fragB), tool, post-tool run (fragC)
 
-	tx.focusNext() // pre-tool run (fragIdx 0)
-	tx.focusNext() // post-tool run (fragIdx 1)
+	tx.FocusNext() // pre-tool run (fragIdx 0)
+	tx.FocusNext() // post-tool run (fragIdx 1)
 	if blk, ok := tx.focused(); !ok || blk.fragIdx != 1 {
 		t.Fatalf("focused = %+v ok=%v, want reasoning run 1", blk, ok)
 	}
-	tx.toggleFocused()
+	tx.ToggleFocused()
 
 	var hist strings.Builder
 	tx.renderHistory(&hist, nil, nil)
@@ -185,7 +185,7 @@ func TestTranscript_enterTogglesSingleInterleavedRunIndependently(t *testing.T) 
 		t.Errorf("collapsed run 1 must keep its hint among the two run headers, got %d hints:\n%s", n, plain)
 	}
 
-	tx.toggleFocused()
+	tx.ToggleFocused()
 	var hist2 strings.Builder
 	tx.renderHistory(&hist2, nil, nil)
 	plain2 := ansiStrip(hist2.String())

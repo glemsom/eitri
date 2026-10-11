@@ -322,17 +322,17 @@ func TestTranscript_liveReasoningFocusTogglesSingleFragmentIndependently(t *test
 	}
 
 	// Tab to the second reasoning fragment and Enter to collapse only that one.
-	tx.focusNext() // frag0
+	tx.FocusNext() // frag0
 	x2, ok := tx.focused()
 	if !ok || x2.fragIdx != 0 {
 		t.Fatalf("after first Tab focused = %+v ok=%v, want reasoning fragment 0", x2, ok)
 	}
-	tx.focusNext() // frag1
+	tx.FocusNext() // frag1
 	blk, ok := tx.focused()
 	if !ok || blk.kind != blockReasoning || blk.fragIdx != 1 {
 		t.Fatalf("after second Tab focused = %+v ok=%v, want reasoning fragment 1", blk, ok)
 	}
-	tx.toggleFocused()
+	tx.ToggleFocused()
 
 	var hist strings.Builder
 	tx.renderHistory(&hist, nil, nil)
@@ -349,7 +349,7 @@ func TestTranscript_liveReasoningFocusTogglesSingleFragmentIndependently(t *test
 	if !strings.Contains(plain, "tok") {
 		t.Errorf("collapsed fragment 1 must keep its ≡ N tok hint, got:\n%s", plain)
 	}
-	tx.toggleFocused()
+	tx.ToggleFocused()
 	var hist2 strings.Builder
 	tx.renderHistory(&hist2, nil, nil)
 	plain2 := ansiStrip(hist2.String())

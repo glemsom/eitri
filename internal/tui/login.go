@@ -16,7 +16,7 @@ type LoginCode struct {
 
 // startLogin runs the built-in `/login` command through the interactive login seam and renders its code/result as assistant notes.
 func (m Model) startLogin() (tea.Model, tea.Cmd) {
-	m.tx.appendUserMsg("/login")
+	m.tx.AppendUserMsg("/login")
 	if m.deps.Login == nil {
 		m.tx.appendMsg(failurePrefix() + "no login flow available")
 		return m, nil

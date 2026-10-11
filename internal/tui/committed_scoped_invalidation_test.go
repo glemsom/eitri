@@ -104,7 +104,7 @@ func TestToolToggleRerendersOnlyItsUnit(t *testing.T) {
 		t.Fatalf("precondition: turn two's tool result must render collapsed, got:\n%s", ansiStrip(tx.layout.rendered))
 	}
 
-	tx.toggleToolEntry(0) // expand turn two's tool result (unit 3)
+	tx.ToggleToolEntry(0) // expand turn two's tool result (unit 3)
 	tx.ensureLayout()
 
 	if got := tx.committedUnitRenders - base; got != 1 {
@@ -185,7 +185,7 @@ func TestFocusMoveRerendersOnlyAffectedUnits(t *testing.T) {
 
 	// Tab activates the cursor on turn one's reasoning block (unit 1): only
 	// that unit gains the marker.
-	tx.focusNext()
+	tx.FocusNext()
 	tx.ensureLayout()
 	if got := tx.committedUnitRenders - base; got != 1 {
 		t.Fatalf("activating the focus marker re-rendered %d committed units, want exactly 1: the marker must not rebuild history", got)
@@ -194,7 +194,7 @@ func TestFocusMoveRerendersOnlyAffectedUnits(t *testing.T) {
 
 	// Tab again moves the marker to turn two's reasoning block: the old unit
 	// loses the marker and the new one gains it, so exactly two units refresh.
-	tx.focusNext()
+	tx.FocusNext()
 	tx.ensureLayout()
 	if got := tx.committedUnitRenders - base; got != 3 {
 		t.Fatalf("moving the focus marker re-rendered %d committed units cumulative, want exactly 3 (1 + the two units the marker left and entered): history must not rebuild", got)
@@ -214,7 +214,7 @@ func TestLiveToolToggleDoesNotTouchCommittedMemo(t *testing.T) {
 	base := tx.committedUnitRenders
 	prefix := tx.busyPrefix
 
-	tx.toggleToolEntry(idx)
+	tx.ToggleToolEntry(idx)
 	tx.renderPaneContent()
 
 	if got := tx.committedUnitRenders - base; got != 0 {
@@ -267,7 +267,7 @@ func TestPostTurnToolObservationScopedToCommittedUnits(t *testing.T) {
 	// The added entry sits past every flow's drawn start count, so toggling it
 	// cannot change a single rendered byte: the memo re-renders nothing.
 	added := len(tx.log.entries) - 1
-	tx.toggleToolEntry(added)
+	tx.ToggleToolEntry(added)
 	tx.ensureLayout()
 	if got := tx.committedUnitRenders - base; got != 1 {
 		t.Fatalf("toggling a tool entry no unit draws re-rendered %d committed units, want still exactly 1: a block with no rendered bytes must not invalidate anything", got)

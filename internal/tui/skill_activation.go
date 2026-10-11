@@ -103,7 +103,7 @@ func (s *SkillActivation) Complete(apply func(candidate string)) bool {
 
 // Activate runs one slash-command activation through the SkillsSurface activation seam on a detached command; it appends the invocation to the transcript and reports a failure note when no activation seam is wired. The resulting payload is injected into the follow-up agent turn's context so the model acts on the skill instructions.
 func (s *SkillActivation) Activate(tx *Transcript, surface *SkillsSurface, name, args string) tea.Cmd {
-	tx.appendUserMsg("/" + name)
+	tx.AppendUserMsg("/" + name)
 	if surface == nil || surface.Activate == nil {
 		tx.appendMsg(failurePrefix() + "no skill activation available")
 		return nil

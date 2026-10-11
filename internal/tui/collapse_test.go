@@ -115,7 +115,7 @@ func TestTranscript_blockFocusCyclesAndToggles(t *testing.T) {
 	}
 
 	// Focus has not been entered yet: toggling must be a no-op.
-	tx.toggleFocused()
+	tx.ToggleFocused()
 	var before strings.Builder
 	tx.renderHistory(&before, nil, nil)
 	if strings.Contains(ansiStrip(before.String()), "Let me check the repo first.") {
@@ -123,12 +123,12 @@ func TestTranscript_blockFocusCyclesAndToggles(t *testing.T) {
 	}
 
 	// Tab -> focus the reasoning block; Enter expands it.
-	tx.focusNext()
+	tx.FocusNext()
 	blk, ok := tx.focused()
 	if !ok || blk.kind != blockReasoning {
 		t.Fatalf("first focus = %+v ok=%v, want the reasoning block", blk, ok)
 	}
-	tx.toggleFocused()
+	tx.ToggleFocused()
 	var expanded strings.Builder
 	tx.renderHistory(&expanded, nil, nil)
 	if !strings.Contains(ansiStrip(expanded.String()), "Let me check the repo first.") {
@@ -136,7 +136,7 @@ func TestTranscript_blockFocusCyclesAndToggles(t *testing.T) {
 	}
 
 	// Enter again collapses it back to the hint.
-	tx.toggleFocused()
+	tx.ToggleFocused()
 	var recollapsed strings.Builder
 	tx.renderHistory(&recollapsed, nil, nil)
 	if strings.Contains(ansiStrip(recollapsed.String()), "Let me check the repo first.") {
@@ -144,12 +144,12 @@ func TestTranscript_blockFocusCyclesAndToggles(t *testing.T) {
 	}
 
 	// Tab -> focus the tool entry; Enter reveals the tool result.
-	tx.focusNext()
+	tx.FocusNext()
 	blk, ok = tx.focused()
 	if !ok || blk.kind != blockTool || blk.toolIdx != 0 {
 		t.Fatalf("second focus = %+v ok=%v, want the tool block", blk, ok)
 	}
-	tx.toggleFocused()
+	tx.ToggleFocused()
 	var toolExpanded strings.Builder
 	tx.renderHistory(&toolExpanded, nil, nil)
 	if !strings.Contains(ansiStrip(toolExpanded.String()), "a.go") {
@@ -157,7 +157,7 @@ func TestTranscript_blockFocusCyclesAndToggles(t *testing.T) {
 	}
 
 	// Tab wraps back to the reasoning block.
-	tx.focusNext()
+	tx.FocusNext()
 	blk, ok = tx.focused()
 	if !ok || blk.kind != blockReasoning {
 		t.Fatalf("wrap focus = %+v ok=%v, want the reasoning block again", blk, ok)
@@ -168,7 +168,7 @@ func TestTranscript_blockFocusCyclesAndToggles(t *testing.T) {
 // carries the focus marker so the user can see where Enter will land.
 func TestTranscript_focusedBlockRendersMarker(t *testing.T) {
 	tx := flowTranscript()
-	tx.focusNext() // focus the reasoning header
+	tx.FocusNext() // focus the reasoning header
 
 	var hist strings.Builder
 	tx.renderHistory(&hist, nil, nil)

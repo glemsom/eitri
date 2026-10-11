@@ -466,13 +466,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		case "pgup", "home":
-			m.tx.navigateHistory(msgi.String())
+			m.tx.NavigateHistory(msgi.String())
 			return m, nil
 		case "pgdown", "end":
-			m.tx.navigateHistory(msgi.String())
+			m.tx.NavigateHistory(msgi.String())
 			return m, nil
 		case "ctrl+e":
-			m.tx.toggleExpandedMode()
+			m.tx.ToggleExpandedMode()
 			return m, nil
 		case "ctrl+j", "shift+enter":
 			if m.tx.Status().Busy {
@@ -500,7 +500,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if strings.TrimSpace(m.composer.Value()) == "" {
-				m.tx.focusNext() // empty composer: Tab cycles the block focus
+				m.tx.FocusNext() // empty composer: Tab cycles the block focus
 				return m, nil
 			}
 			if m.tx.Status().Busy {
@@ -702,13 +702,13 @@ func (m Model) newGUID() string {
 func (m Model) submitPrompt() (tea.Model, tea.Cmd) {
 	prompt := strings.TrimSpace(m.composer.Value())
 	if prompt == "" {
-		m.tx.toggleFocused() // empty composer: Enter toggles the focused block (works while busy too)
+		m.tx.ToggleFocused() // empty composer: Enter toggles the focused block (works while busy too)
 		return m, nil
 	}
 	if m.tx.Status().Busy {
 		return m, nil
 	}
-	m.tx.histFollow = true
+	m.tx.ResumeFollow()
 	m.composer.Reset()
 	m.syncComposerHeight()
 	m.slash.Reset()
@@ -854,7 +854,7 @@ func (m *Model) endRecall() {
 }
 
 func (m Model) startSkillActivation(name, args string) (tea.Model, tea.Cmd) {
-	m.tx.appendUserMsg("/" + name)
+	m.tx.AppendUserMsg("/" + name)
 	if m.deps.Skills == nil || m.deps.Skills.Activate == nil {
 		m.tx.appendMsg(failurePrefix() + "no skill activation available")
 		return m, nil
@@ -939,7 +939,7 @@ func (m Model) View() tea.View {
 	// Cell-motion mode turns on SGR mouse reporting so wheel events (scroll)
 	// and click-drag (selection) reach updateMouse; without it bubbletea v2
 	// defaults to MouseModeNone and no mouse input is delivered, even though
-	// the navigateMouse handlers exist.
+	// the NavigateMouse handlers exist.
 	v.MouseMode = tea.MouseModeCellMotion
 	v.Cursor = m.composerCursor(content)
 	return v

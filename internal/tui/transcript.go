@@ -212,7 +212,7 @@ func (t *Transcript) Project(outcome TranscriptOutcome) (bool, error) {
 		t.flow.Reset()
 		t.curStream = -1
 		t.thinkingEnabled = start.ThinkingEnabled
-		t.appendUserMsg(start.Prompt)
+		t.AppendUserMsg(start.Prompt)
 		t.busy = true
 		t.busyStartedAt = time.Now()
 		t.log.SetAnchor(len(t.messages) - 1)
@@ -561,8 +561,8 @@ func (t *Transcript) ApplySettings(cfg config.Config) {
 	t.invalidateCommittedMemo()
 }
 
-// appendUserMsg appends a user message (a slash/skill/login activation prompt) to the transcript and marks the shared layout cache dirty in the same step, so callers never invalidate by hand around the append.
-func (t *Transcript) appendUserMsg(content string) {
+// AppendUserMsg appends a user message (a slash/skill/login activation prompt) to the transcript and marks the shared layout cache dirty in the same step, so callers never invalidate by hand around the append.
+func (t *Transcript) AppendUserMsg(content string) {
 	t.messages = append(t.messages, message{role: "you", content: content})
 	t.layout.dirty = true
 	t.busyPrefixDirty = true
@@ -1199,8 +1199,8 @@ func (t *Transcript) highlightedViewportView(content string) string {
 		Render(contents)
 }
 
-// navigateHistory applies a T2 keyboard scroll command to the persisted history viewport owned by the Transcript: PgUp/Home move toward the older output and break the follow position; PgDn/End move toward the newest and re-engage follow when they reach the bottom. PgUp/PgDn page by half the visible height so the reading position keeps its place in view.
-func (t *Transcript) navigateHistory(key string) bool {
+// NavigateHistory applies a T2 keyboard scroll command to the persisted history viewport owned by the Transcript: PgUp/Home move toward the older output and break the follow position; PgDn/End move toward the newest and re-engage follow when they reach the bottom. PgUp/PgDn page by half the visible height so the reading position keeps its place in view.
+func (t *Transcript) NavigateHistory(key string) bool {
 	t.ensureViewportSynced()
 	switch key {
 	case "pgup":
@@ -1227,8 +1227,8 @@ func (t *Transcript) navigateHistory(key string) bool {
 	return t.histFollow
 }
 
-// navigateMouse applies a T2 mouse-wheel scroll to the persisted history viewport owned by the Transcript: wheel up scrolls toward older output and breaks follow; wheel down scrolls toward the newest and re-engages follow once it reaches the bottom. Each notch scrolls a small fixed number of rows so the wheel moves the reading position gently.
-func (t *Transcript) navigateMouse(msg tea.MouseWheelMsg) bool {
+// NavigateMouse applies a T2 mouse-wheel scroll to the persisted history viewport owned by the Transcript: wheel up scrolls toward older output and breaks follow; wheel down scrolls toward the newest and re-engages follow once it reaches the bottom. Each notch scrolls a small fixed number of rows so the wheel moves the reading position gently.
+func (t *Transcript) NavigateMouse(msg tea.MouseWheelMsg) bool {
 	if !t.inScrollRegion(msg.Y) {
 		return t.histFollow
 	}
@@ -1256,12 +1256,93 @@ func (t *Transcript) pageRows() int {
 	return rows
 }
 
+// ResumeFollow re-engages auto-follow, so the newest output stays in view from
+// the next frame on without moving the reading position the caller left behind. A
+// submitted prompt calls it: the turn that prompt starts must render visible even
+// after the user had scrolled back.
+func (t *Transcript) ResumeFollow() {
+	t.histFollow = true
+}
+
 func (t *Transcript) mouseWheelRows() int {
 	rows := t.histViewport.Height() / 40
 	if rows < 1 {
 		return 1
 	}
 	return rows
+}
+
+// PointerDown anchors a drag selection on history content cell (line, col) and
+// records whether that cell sits on a tool card, so a later release resolves a
+// press and release on one cell as that entry's toggle instead of a copy. col is
+// a rune index into the plain row — the copy space the selection covers.
+func (t *Transcript) PointerDown(line, col int) {
+	t.weaver.start(line, col)
+	_, t.pendingToolClick = t.ToolCardAt(line)
+}
+
+// PointerMove extends the in-progress drag's end cell to (line, col). It is a
+// no-op when no drag is in progress, so a motion no press started (or one whose
+// release already resolved) leaves the stored selection alone.
+func (t *Transcript) PointerMove(line, col int) {
+	if !t.weaver.active {
+		return
+	}
+	t.weaver.move(line, col)
+}
+
+// PointerActive reports whether a drag selection is in progress: the guard the
+// mouse handler maps motion events through, so a motion outside a drag costs no
+// hit-test.
+func (t *Transcript) PointerActive() bool {
+	return t.weaver.active
+}
+
+// PointerCancel abandons the pointer interaction without resolving it: the press
+// landed outside the history region, so the drag and any pending tool-card click
+// are dropped.
+func (t *Transcript) PointerCancel() {
+	t.weaver = selectionWeaver{}
+	t.pendingToolClick = false
+}
+
+// PointerRelease is what a pointer release resolved to: a completed drag holding
+// the text the caller copies, a plain click on the tool entry the caller toggles,
+// or neither. At most one of Dragged and Clicked is set.
+type PointerRelease struct {
+	// Dragged reports a press and release with movement between them; Text is
+	// the plain text the drag covered and InBounds whether its range fell inside
+	// the copy space the transcript holds now — a drag the copy space emptied in
+	// the meantime resolves out of bounds.
+	Dragged  bool
+	Text     string
+	InBounds bool
+	// Clicked reports a press and release on one cell of a tool entry, named by
+	// ToolIdx.
+	Clicked bool
+	ToolIdx int
+}
+
+// PointerUp finishes the pointer interaction and reports what it resolved to. The
+// release drops the drag either way, so a second release with nothing behind it
+// resolves nothing.
+func (t *Transcript) PointerUp() PointerRelease {
+	drag := t.weaver
+	pendingClick := t.pendingToolClick
+	t.weaver = selectionWeaver{}
+	t.pendingToolClick = false
+
+	if pendingClick && !drag.moved {
+		if idx, onCard := t.ToolCardAt(drag.anchorLine); onCard {
+			return PointerRelease{Clicked: true, ToolIdx: idx}
+		}
+		return PointerRelease{}
+	}
+	if !drag.active || !drag.moved {
+		return PointerRelease{}
+	}
+	text, inBounds := drag.coveredLines(t.PlainLines())
+	return PointerRelease{Dragged: true, Text: text, InBounds: inBounds}
 }
 
 // scrollRegion assembles the history-region seam from the persisted viewport's
@@ -1344,10 +1425,10 @@ func (t *Transcript) recordLayout() {
 	l.builds++
 }
 
-// toggleToolEntry flips one tool entry's expansion state. An expanded entry
+// ToggleToolEntry flips one tool entry's expansion state. An expanded entry
 // force-collapses (beating an expanded default or the expand-all mode), while a
 // collapsed entry force-expands.
-func (t *Transcript) toggleToolEntry(idx int) {
+func (t *Transcript) ToggleToolEntry(idx int) {
 	if t.toolExpandedFor(idx) {
 		t.log.ForceCollapse(idx)
 	} else {
@@ -1586,7 +1667,7 @@ func (t *Transcript) toggleExpandAll() bool {
 	return t.expandAll
 }
 
-func (t *Transcript) toggleExpandedMode() bool {
+func (t *Transcript) ToggleExpandedMode() bool {
 	if t.expandAll {
 		t.setCollapseAll(true)
 		return false
@@ -1751,9 +1832,9 @@ func (t Transcript) focused() (collapsibleBlock, bool) {
 	return blocks[idx], true
 }
 
-// toggleFocused flips the focused block's expansion (Enter on the model), the
+// ToggleFocused flips the focused block's expansion (Enter on the model), the
 // per-block half of the collapse-by-default interaction.
-func (t *Transcript) toggleFocused() {
+func (t *Transcript) ToggleFocused() {
 	blk, ok := t.focused()
 	if !ok {
 		return
@@ -1762,7 +1843,7 @@ func (t *Transcript) toggleFocused() {
 	case blockReasoning:
 		t.toggleThinkingFragment(blk.msgIdx, blk.fragIdx)
 	case blockTool:
-		t.toggleToolEntry(blk.toolIdx)
+		t.ToggleToolEntry(blk.toolIdx)
 	}
 }
 
@@ -1815,13 +1896,13 @@ func (t Transcript) thinkingExpandedForFragment(msg message, fragIdx int) bool {
 	return thinkingExpandedForFrag(msg, fragIdx, t.expansionConfig())
 }
 
-// focusNext advances the block focus to the next collapsible block, wrapping;
+// FocusNext advances the block focus to the next collapsible block, wrapping;
 // the first Tab activates the focus cursor on the first block; a transcript
 // with no collapsible blocks stays unfocused. Moving the cursor changes the
 // focus marker baked into the units that draw the old and new focused blocks,
 // so exactly those units drop from the memo and the frame re-renders only
 // them — the marker renders without ever rebuilding the whole history.
-func (t *Transcript) focusNext() {
+func (t *Transcript) FocusNext() {
 	old, oldOK := t.focused()
 	t.focus.focusNext(len(t.collapsibleBlocks()))
 	new, newOK := t.focused()

@@ -68,7 +68,7 @@ func TestMutationsKeepHitTestCorrectWithoutCallerInvalidation(t *testing.T) {
 	}
 	// Phase 4: mutate outside any turn — two appends plus a resize — and
 	// check the whole mapping survives with indexes shifted by the appends.
-	tx.appendUserMsg("help me")
+	tx.AppendUserMsg("help me")
 	tx.appendMsg("a standalone note")
 	tx.SetSize(80, 30)
 	plain = rebuild("after appends+resize")

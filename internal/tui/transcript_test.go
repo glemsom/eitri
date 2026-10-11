@@ -291,32 +291,32 @@ func TestTranscript_navigateScrollsSharedViewport(t *testing.T) {
 		t.Fatalf("overflowed follow should start at the bottom, got offset %d", start)
 	}
 
-	if follow := tx.navigateHistory("pgup"); follow {
+	if follow := tx.NavigateHistory("pgup"); follow {
 		t.Errorf("PgUp must break follow, got follow=true")
 	}
 	if up := tx.histViewport.YOffset(); up >= start {
 		t.Errorf("PgUp must move the viewport up: offset %d -> %d", start, up)
 	}
 
-	tx.navigateHistory("home")
+	tx.NavigateHistory("home")
 	if top := tx.histViewport.YOffset(); top != 0 {
 		t.Errorf("Home should jump to the transcript top, got offset %d", top)
 	}
 
-	tx.navigateHistory("pgdown")
+	tx.NavigateHistory("pgdown")
 	if down := tx.histViewport.YOffset(); down <= 0 {
 		t.Errorf("PgDn must move the viewport down from the top, got offset %d", down)
 	}
-	tx.navigateHistory("end")
+	tx.NavigateHistory("end")
 	if !tx.histViewport.AtBottom() {
 		t.Errorf("End should jump to the transcript bottom, got offset %d", tx.histViewport.YOffset())
 	}
-	if follow := tx.navigateHistory("end"); !follow {
+	if follow := tx.NavigateHistory("end"); !follow {
 		t.Errorf("End reaching the bottom should re-engage follow, got follow=false")
 	}
 
 	wheelStart := tx.histViewport.YOffset()
-	if follow := tx.navigateMouse(tea.MouseWheelMsg{Button: tea.MouseWheelUp}); follow {
+	if follow := tx.NavigateMouse(tea.MouseWheelMsg{Button: tea.MouseWheelUp}); follow {
 		t.Errorf("wheel up must break follow, got follow=true")
 	}
 	if up := tx.histViewport.YOffset(); up >= wheelStart {
@@ -353,13 +353,13 @@ func transcriptWithTool(t *testing.T) Transcript {
 func TestTranscript_toggleToolEntryFlipsExpansion(t *testing.T) {
 	tx := transcriptWithTool(t)
 
-	tx.toggleToolEntry(0)
+	tx.ToggleToolEntry(0)
 	if !tx.toolExpandedFor(0) {
-		t.Errorf("toggleToolEntry(0) must expand entry 0")
+		t.Errorf("ToggleToolEntry(0) must expand entry 0")
 	}
-	tx.toggleToolEntry(0)
+	tx.ToggleToolEntry(0)
 	if tx.toolExpandedFor(0) {
-		t.Errorf("second toggleToolEntry(0) must collapse entry 0")
+		t.Errorf("second ToggleToolEntry(0) must collapse entry 0")
 	}
 }
 
@@ -421,14 +421,14 @@ func TestTranscript_expandAllPerEntryCollapseOverride(t *testing.T) {
 		t.Fatalf("with expandAll on, entry must render its full result, got: %q", on.String())
 	}
 
-	tx.toggleToolEntry(0)
+	tx.ToggleToolEntry(0)
 	var off strings.Builder
 	tx.renderHistory(&off, nil, nil)
 	if strings.Contains(off.String(), "a.go") {
 		t.Errorf("per-entry collapse must hide the result even in expanded-view mode, got: %q", off.String())
 	}
 
-	tx.toggleToolEntry(0)
+	tx.ToggleToolEntry(0)
 	var again strings.Builder
 	tx.renderHistory(&again, nil, nil)
 	if !strings.Contains(again.String(), "a.go") {
@@ -438,7 +438,7 @@ func TestTranscript_expandAllPerEntryCollapseOverride(t *testing.T) {
 
 func TestTranscript_expandAllOffDoesNotWipePerEntry(t *testing.T) {
 	tx := transcriptWithTool(t)
-	tx.toggleToolEntry(0)
+	tx.ToggleToolEntry(0)
 	var one strings.Builder
 	tx.renderHistory(&one, nil, nil)
 	if !strings.Contains(one.String(), "a.go") {

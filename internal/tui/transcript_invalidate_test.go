@@ -47,17 +47,17 @@ func TestApplySettingsMarksLayoutDirty(t *testing.T) {
 }
 
 // TestAppendUserMsgMarksLayoutDirty drives a slash-activation-style user
-// append through Transcript.appendUserMsg and asserts the same invariant.
+// append through Transcript.AppendUserMsg and asserts the same invariant.
 func TestAppendUserMsgMarksLayoutDirty(t *testing.T) {
 	tx := newTestTx()
 	n := len(tx.messages)
-	tx.layout.dirty = false // isolate appendUserMsg: only the method may re-mark it
+	tx.layout.dirty = false // isolate AppendUserMsg: only the method may re-mark it
 
-	tx.appendUserMsg("/skill")
+	tx.AppendUserMsg("/skill")
 	if !tx.layout.dirty {
-		t.Error("appendUserMsg must mark the transcript layout dirty: it appends a rendered message")
+		t.Error("AppendUserMsg must mark the transcript layout dirty: it appends a rendered message")
 	}
 	if len(tx.messages) != n+1 || tx.messages[n].role != "you" || tx.messages[n].content != "/skill" {
-		t.Errorf("appendUserMsg appended %+v, want a 'you' message with the given content", tx.messages[n])
+		t.Errorf("AppendUserMsg appended %+v, want a 'you' message with the given content", tx.messages[n])
 	}
 }

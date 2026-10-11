@@ -11,14 +11,14 @@ import (
 
 // This file wires the drag-select copy seam (`selectionWeaver`) into the Model
 // and Transcript: mouse events map on-screen cells to content coordinates and
-// route them through the weaver, and a finished selection copies through the
-// same clipboard seam used for selected terminal text. The store and its rune-space
-// highlight / copy logic live on the weaver itself.
+// route them through the transcript's pointer commands, and a finished selection
+// copies through the same clipboard seam used for selected terminal text. The
+// store and its rune-space highlight / copy logic live on the weaver itself.
 
 func (m *Model) updateMouse(msg tea.MouseMsg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.MouseWheelMsg:
-		m.tx.navigateMouse(msg)
+		m.tx.NavigateMouse(msg)
 		return nil
 	case tea.MouseClickMsg:
 		if m.settings != nil || m.prompting {
@@ -40,43 +40,29 @@ func (m *Model) updateMouse(msg tea.MouseMsg) tea.Cmd {
 			return nil
 		}
 		if !ok {
-			m.tx.weaver = selectionWeaver{}
-			m.tx.pendingToolClick = false
+			m.tx.PointerCancel()
 			return nil
 		}
-		m.tx.weaver.start(line, col)
-		if _, onCard := m.tx.ToolCardAt(line); onCard {
-			m.tx.pendingToolClick = true
-		} else {
-			m.tx.pendingToolClick = false
-		}
+		m.tx.PointerDown(line, col)
 		return nil
 	case tea.MouseMotionMsg:
-		if !m.tx.weaver.active {
+		if !m.tx.PointerActive() {
 			return nil
 		}
 		line, col, ok := m.mouseToContent(msg.X, msg.Y)
 		if !ok {
 			return nil // the drag left the region; keep the last valid end
 		}
-		m.tx.weaver.move(line, col)
+		m.tx.PointerMove(line, col)
 		return nil
 	case tea.MouseReleaseMsg:
-		d := m.tx.weaver
-		m.tx.weaver = selectionWeaver{}
-		if m.tx.pendingToolClick && !d.moved {
-			if idx, ok := m.tx.ToolCardAt(d.anchorLine); ok {
-				m.tx.toggleToolEntry(idx)
-			}
-			m.tx.pendingToolClick = false
+		release := m.tx.PointerUp()
+		if release.Clicked {
+			m.tx.ToggleToolEntry(release.ToolIdx)
 			return nil
 		}
-		m.tx.pendingToolClick = false
-		if !d.active {
-			return nil
-		}
-		if d.moved {
-			m.copySelection(d)
+		if release.Dragged {
+			m.copySelection(release)
 		}
 		return nil
 	}
@@ -133,17 +119,19 @@ func stripRoleMarks(text string) string {
 	return strings.Join(lines, "\n")
 }
 
-func (m *Model) copySelection(d selectionWeaver) {
-	lines := m.tx.PlainLines()
-	text, ok := d.coveredLines(lines)
-	if !ok {
-		if len(lines) == 0 {
+// copySelection puts a finished drag on the clipboard and reports the outcome on
+// the band. The transcript resolved what the drag covered against the copy space
+// it holds; this side owns the clipboard and the wording the user reads.
+func (m *Model) copySelection(drag PointerRelease) {
+	if !drag.InBounds {
+		if len(m.tx.PlainLines()) == 0 {
 			m.feedback = failureFeedback("copy failed: empty transcript")
 		} else {
 			m.feedback = failureFeedback("copy failed: selection out of range")
 		}
 		return
 	}
+	text := drag.Text
 	if text == "" {
 		return // selection covered no text; nothing to copy
 	}

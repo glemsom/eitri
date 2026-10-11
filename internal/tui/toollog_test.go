@@ -63,7 +63,7 @@ func TestToolLog_ApplyPairsMostRecentIncompleteSameName(t *testing.T) {
 }
 
 // TestToolLog_ExpandForceCollapseBoundsChecks locks that the live per-entry
-// operations (the two toggleToolEntry routes) bounds-check their index: an
+// operations (the two ToggleToolEntry routes) bounds-check their index: an
 // in-range expansion/force-collapse pins the seam force, and out-of-range
 // indices are silent no-ops that never disturb an in-range entry.
 func TestToolLog_ExpandForceCollapseBoundsChecks(t *testing.T) {

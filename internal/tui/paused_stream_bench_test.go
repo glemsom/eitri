@@ -51,7 +51,7 @@ func pausedStreamRenderTranscript(tb testing.TB, turns int) *Transcript {
 	reserved := 5
 
 	_ = tx.renderHistoryPane(reserved) // follow fast path leaves viewport stale.
-	tx.navigateMouse(wheelMsg(true).(tea.MouseWheelMsg))
+	tx.NavigateMouse(wheelMsg(true).(tea.MouseWheelMsg))
 	if tx.histFollow {
 		tb.Fatal("wheel up must pause follow")
 	}
