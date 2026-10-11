@@ -41,7 +41,7 @@ func TestModel_pasteDroppedWhenComposerDoesNotOwnInput(t *testing.T) {
 			model: func(t *testing.T) Model {
 				t.Helper()
 				m := resize(t, NewModelCfg(Dependencies{Config: cfgFixture()}))
-				m.help = openHelpOverlay(m.tx.theme, m.tx.configTheme, m.tx.width, m.tx.height)
+				m.help = openHelpOverlay(m.tx.Theme(), m.tx.ConfigTheme(), m.tx.width, m.tx.height)
 				m.composer.SetValue("draft")
 				return m
 			},

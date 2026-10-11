@@ -305,7 +305,7 @@ func TestComposerRail_modeColor(t *testing.T) {
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 
-	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail != m.tx.theme.accent {
+	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail != m.tx.Theme().accent {
 		t.Fatalf("idle rail = %v, want the full accent", rail)
 	}
 
@@ -314,12 +314,12 @@ func TestComposerRail_modeColor(t *testing.T) {
 	if !m.tx.Status().Busy {
 		t.Fatalf("model must be busy after submit")
 	}
-	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail == m.tx.theme.accent {
+	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail == m.tx.Theme().accent {
 		t.Errorf("busy rail must dim from the accent, still accent")
 	}
 
 	m = upd(t, m, turnDoneMsg{prompt: "hi", answer: "done"})
-	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail != m.tx.theme.accent {
+	if rail := m.composer.Styles().Focused.Prompt.GetForeground(); rail != m.tx.Theme().accent {
 		t.Errorf("rail must restore the accent after the turn, got %v", rail)
 	}
 

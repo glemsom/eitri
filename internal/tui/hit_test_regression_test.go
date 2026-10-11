@@ -22,7 +22,7 @@ func TestMutationsKeepHitTestCorrectWithoutCallerInvalidation(t *testing.T) {
 	// happened exactly then, returning the plain rendered rows.
 	rebuild := func(when string) []string {
 		builds := tx.layout.builds
-		plain := tx.plainLines()
+		plain := tx.PlainLines()
 		if got := tx.layout.builds - builds; got != 1 {
 			t.Fatalf("%s: layout builds = %d, want exactly 1", when, got)
 		}

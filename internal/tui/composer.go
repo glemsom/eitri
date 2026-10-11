@@ -187,9 +187,9 @@ func (m Model) bandHeight() int {
 
 // syncComposerRail recolors the composer's prompt rail by editing state: the accent rail signals an editable composer, while a running turn makes the composer inert, so the rail dims to a muted accent (state-as-color — the mode-colored composer border pattern, benchmark §4.3).
 func (m *Model) syncComposerRail() {
-	c := m.tx.theme.accent
+	c := m.tx.Theme().accent
 	if m.tx.Status().Busy {
-		c = dimmed(m.tx.theme.accent, 0.45)
+		c = dimmed(m.tx.Theme().accent, 0.45)
 	}
 	st := m.composer.Styles()
 	st.Focused.Prompt = lipgloss.NewStyle().Foreground(c)
@@ -202,24 +202,24 @@ func (m Model) renderBand(b *strings.Builder) {
 	bw := m.tx.Geometry().BandWidth
 	st := m.tx.Status()
 	if st.Busy {
-		body := forgeBusyLine(st.Frame, st.Phase) + " · " + m.tx.theme.statusStyle.Render("Hold steady — composer locked during forging")
-		inner.WriteString(renderTitledPanel(m.tx.theme, m.forgeTitle(), bw, lipgloss.NewStyle(), body))
+		body := forgeBusyLine(st.Frame, st.Phase) + " · " + m.tx.Theme().statusStyle.Render("Hold steady — composer locked during forging")
+		inner.WriteString(renderTitledPanel(m.tx.Theme(), m.forgeTitle(), bw, lipgloss.NewStyle(), body))
 	} else {
 		if m.slash.isOpen() {
-			body := m.slash.RenderCompletionBody(m.tx.theme)
-			if badge := m.slash.skipBadge(m.tx.theme); badge != "" {
+			body := m.slash.RenderCompletionBody(m.tx.Theme())
+			if badge := m.slash.skipBadge(m.tx.Theme()); badge != "" {
 				if body != "" {
 					body += "\n"
 				}
 				body += badge
 			}
-			inner.WriteString(renderTitledPanel(m.tx.theme, "Commands", bw, m.tx.theme.bandSeparatorStyle, body))
+			inner.WriteString(renderTitledPanel(m.tx.Theme(), "Commands", bw, m.tx.Theme().bandSeparatorStyle, body))
 			inner.WriteByte('\n')
 		} else if m.mention.isOpen() {
-			inner.WriteString(renderTitledPanel(m.tx.theme, "Workspace mentions", bw, m.tx.theme.bandSeparatorStyle, m.mention.RenderCompletionBody(m.tx.theme)))
+			inner.WriteString(renderTitledPanel(m.tx.Theme(), "Workspace mentions", bw, m.tx.Theme().bandSeparatorStyle, m.mention.RenderCompletionBody(m.tx.Theme())))
 			inner.WriteByte('\n')
 		}
-		inner.WriteString(renderTitledPanel(m.tx.theme, "Ask Eitri", bw, m.tx.theme.bandSeparatorStyle, m.composer.View()))
+		inner.WriteString(renderTitledPanel(m.tx.Theme(), "Ask Eitri", bw, m.tx.Theme().bandSeparatorStyle, m.composer.View()))
 	}
 	inner.WriteByte('\n')
 	inner.WriteString(m.renderBandStatusRow())
@@ -278,20 +278,20 @@ func (m Model) renderBandStatusRow() string {
 	}
 	left := fitBandLine(m.composerHint(), avail)
 	if right != "" {
-		return m.tx.theme.statusStyle.Render(left + " " + right)
+		return m.tx.Theme().statusStyle.Render(left + " " + right)
 	}
-	return m.tx.theme.statusStyle.Render(left)
+	return m.tx.Theme().statusStyle.Render(left)
 }
 
 func (m Model) renderFeedback() string {
 	bw := m.tx.Geometry().BandWidth
 	switch m.feedback.kind {
 	case feedbackSuccess:
-		return m.tx.theme.outcomeOKStyle.Render(fitBandLine(lookup("ok")+" "+m.feedback.text, bw))
+		return m.tx.Theme().outcomeOKStyle.Render(fitBandLine(lookup("ok")+" "+m.feedback.text, bw))
 	case feedbackFailure:
-		return m.tx.theme.outcomeErrStyle.Render(fitBandLine(lookup("fail")+" "+m.feedback.text, bw))
+		return m.tx.Theme().outcomeErrStyle.Render(fitBandLine(lookup("fail")+" "+m.feedback.text, bw))
 	default:
-		return m.tx.theme.statusStyle.Render(fitBandLine(m.feedback.text, bw))
+		return m.tx.Theme().statusStyle.Render(fitBandLine(m.feedback.text, bw))
 	}
 }
 
@@ -320,7 +320,7 @@ func (m Model) composerPreRows() int {
 	n := 0
 	if m.slash.isOpen() {
 		n += m.slash.popoverRows()
-		if m.slash.skipBadge(m.tx.theme) != "" {
+		if m.slash.skipBadge(m.tx.Theme()) != "" {
 			n++
 		}
 	} else if m.mention.isOpen() {
@@ -355,7 +355,7 @@ func (m Model) composerHint() string {
 // existing cadence drives a slower back-and-forth sweep, while reduced-motion
 // keeps the stronger static hierarchy without animation.
 func (m Model) forgeTitle() string {
-	accent := m.tx.theme.accent
+	accent := m.tx.Theme().accent
 	muted := lipgloss.NewStyle().Foreground(dimmed(accent, 0.65))
 	strong := lipgloss.NewStyle().Foreground(accent)
 	st := m.tx.Status()

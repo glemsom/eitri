@@ -379,6 +379,14 @@ type Geometry struct {
 	RailVisible bool
 }
 
+// Theme reads the resolved palette the transcript renders with, so a call site
+// outside the transcript styles through the same theme the history does.
+func (t Transcript) Theme() Theme { return t.theme }
+
+// ConfigTheme reads the configured theme name — the renderer's theme input,
+// not the resolved palette.
+func (t Transcript) ConfigTheme() string { return t.configTheme }
+
 // Geometry reads the footprint for the current terminal size; RailWidth is the
 // rail's own column width, the value the face derives its size from.
 func (t Transcript) Geometry() Geometry {
@@ -1267,7 +1275,7 @@ func (t *Transcript) scrollRegion() scrollRegion {
 	return scrollRegion{
 		height:  vp.Height(),
 		yOffset: vp.YOffset(),
-		content: len(t.plainLines()),
+		content: len(t.PlainLines()),
 	}
 }
 
@@ -1276,8 +1284,8 @@ func (t *Transcript) inScrollRegion(y int) bool {
 	return t.scrollRegion().inRegion(y)
 }
 
-// contentLineAtScreenRow is the scroll-region hit-test seam: it answers "is a screen row y inside the history scroll region, and which content line does it map to".
-func (t *Transcript) contentLineAtScreenRow(y int) (line int, ok bool) {
+// ContentLineAtScreenRow is the scroll-region hit-test seam: it answers "is a screen row y inside the history scroll region, and which content line does it map to".
+func (t *Transcript) ContentLineAtScreenRow(y int) (line int, ok bool) {
 	return t.scrollRegion().contentLineAtScreenRow(y)
 }
 
@@ -1353,10 +1361,10 @@ func (t *Transcript) toggleToolEntry(idx int) {
 	t.invalidateCommittedUnitsForTool(idx)
 }
 
-// onToolCard reports whether the given content line falls inside any tool
+// ToolCardAt reports whether the given content line falls inside any tool
 // entry's rendered row range, regardless of whether that entry is expanded or
 // collapsed, and returns the entry index if so.
-func (t Transcript) onToolCard(line int) (idx int, ok bool) {
+func (t Transcript) ToolCardAt(line int) (idx int, ok bool) {
 	for _, r := range t.layout.rows {
 		if line >= r.start && line <= r.end {
 			return r.idx, true
@@ -1866,10 +1874,21 @@ func (t *Transcript) clearReasoningExpandForce(i int) {
 	}
 }
 
-// plainLines returns the history scroll content as plain text per rendered row (ANSI stripped) — the coordinate space drag selection maps into.
-func (t *Transcript) plainLines() []string {
+// PlainLines returns the history scroll content as plain text per rendered row (ANSI stripped) — the coordinate space drag selection maps into.
+func (t *Transcript) PlainLines() []string {
 	t.ensureLayout()
 	return t.layout.plain
+}
+
+// RenderedLine returns the ANSI-rendered history row at content line — the
+// space hyperlink resolution reads, since a link's OSC 8 target survives only
+// in the rendered bytes. It answers "" past the content.
+func (t *Transcript) RenderedLine(line int) string {
+	t.ensureLayout()
+	if line < 0 || line >= len(t.layout.renderedLines) {
+		return ""
+	}
+	return t.layout.renderedLines[line]
 }
 
 // messageAtLine returns the message whose rendered rows include the given content line, via the persistent row->message index .

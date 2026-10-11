@@ -67,20 +67,20 @@ func TestScrollRegion_seamMapsBandEdgeRows(t *testing.T) {
 	tx := scrollRegionFixture(t, 12, 4)
 	inside := tx.height - 4 - 1
 
-	line, ok := tx.contentLineAtScreenRow(inside)
+	line, ok := tx.ContentLineAtScreenRow(inside)
 	if !ok {
 		t.Fatalf("screen row %d (just above the band) must map inside the region", inside)
 	}
 	if want := tx.histViewport.YOffset() + inside; line != want {
-		t.Errorf("contentLineAtScreenRow(%d) = %d, want viewport offset + row = %d", inside, line, want)
+		t.Errorf("ContentLineAtScreenRow(%d) = %d, want viewport offset + row = %d", inside, line, want)
 	}
 
 	for _, y := range []int{tx.height - 4, tx.height - 4 + 1, tx.height - 1, tx.height, tx.height + 8} {
-		if _, ok := tx.contentLineAtScreenRow(y); ok {
+		if _, ok := tx.ContentLineAtScreenRow(y); ok {
 			t.Errorf("row %d (in/near the fixed band) must map outside the region", y)
 		}
 	}
-	if _, ok := tx.contentLineAtScreenRow(-1); ok {
+	if _, ok := tx.ContentLineAtScreenRow(-1); ok {
 		t.Errorf("row -1 must map outside the region")
 	}
 }

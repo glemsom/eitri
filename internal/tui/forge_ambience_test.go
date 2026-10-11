@@ -169,7 +169,7 @@ func TestModel_forgingComposerFrameMatchesIdle(t *testing.T) {
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 	m, _ = submitBusy(t, m)
-	th := m.tx.theme
+	th := m.tx.Theme()
 
 	var topBorder string
 	for _, line := range strings.Split(view(m), "\n") {

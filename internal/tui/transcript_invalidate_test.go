@@ -38,8 +38,8 @@ func TestApplySettingsMarksLayoutDirty(t *testing.T) {
 	if !tx.layout.dirty {
 		t.Error("ApplySettings must mark the transcript layout dirty: the flip can re-wrap the transcript")
 	}
-	if tx.configTheme != "gruvbox" {
-		t.Errorf("ApplySettings stored configTheme %q, want gruvbox", tx.configTheme)
+	if tx.ConfigTheme() != "gruvbox" {
+		t.Errorf("ApplySettings stored configTheme %q, want gruvbox", tx.ConfigTheme())
 	}
 	if tx.cotExpanded || tx.toolResultsExpanded {
 		t.Error("ApplySettings must apply the collapse-by-default flags")

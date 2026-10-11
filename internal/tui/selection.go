@@ -31,7 +31,7 @@ func (m *Model) updateMouse(msg tea.MouseMsg) tea.Cmd {
 		// The TUI owns SGR mouse reporting, so Ghostty cannot consume Ctrl+click.
 		// Resolve and open OSC 8 links here instead of starting a selection.
 		if msg.Mod&tea.ModCtrl != 0 && ok {
-			if target, linked := hyperlinkAt(m.tx.layout.renderedLines[line], msg.X); linked && m.deps.OpenURL != nil {
+			if target, linked := hyperlinkAt(m.tx.RenderedLine(line), msg.X); linked && m.deps.OpenURL != nil {
 				return func() tea.Msg {
 					_ = m.deps.OpenURL(context.Background(), target)
 					return nil
@@ -45,7 +45,7 @@ func (m *Model) updateMouse(msg tea.MouseMsg) tea.Cmd {
 			return nil
 		}
 		m.tx.weaver.start(line, col)
-		if _, onCard := m.tx.onToolCard(line); onCard {
+		if _, onCard := m.tx.ToolCardAt(line); onCard {
 			m.tx.pendingToolClick = true
 		} else {
 			m.tx.pendingToolClick = false
@@ -65,7 +65,7 @@ func (m *Model) updateMouse(msg tea.MouseMsg) tea.Cmd {
 		d := m.tx.weaver
 		m.tx.weaver = selectionWeaver{}
 		if m.tx.pendingToolClick && !d.moved {
-			if idx, ok := m.tx.onToolCard(d.anchorLine); ok {
+			if idx, ok := m.tx.ToolCardAt(d.anchorLine); ok {
 				m.tx.toggleToolEntry(idx)
 			}
 			m.tx.pendingToolClick = false
@@ -85,7 +85,7 @@ func (m *Model) updateMouse(msg tea.MouseMsg) tea.Cmd {
 
 // mouseToContent maps a screen cell to history-content coordinates: line is the full content line under the pointer (viewport offset + row within the scroll region) and col the CELL within that line's plain text, clamped to the rendered content.
 func (m *Model) mouseToContent(x, y int) (line, col int, ok bool) {
-	line, ok = m.tx.contentLineAtScreenRow(y)
+	line, ok = m.tx.ContentLineAtScreenRow(y)
 	if !ok {
 		return 0, 0, false
 	}
@@ -93,7 +93,7 @@ func (m *Model) mouseToContent(x, y int) (line, col int, ok bool) {
 	// prefix in the same coordinate space, while the viewport begins one cell
 	// inside the transcript surface; remove both before converting to rune
 	// space.
-	plain := m.tx.plainLines()[line]
+	plain := m.tx.PlainLines()[line]
 	prefix := strings.TrimRight(plain[:len(plain)-len(strings.TrimLeft(plain, " "))], " ")
 	// Leading layout cells are not part of the selectable payload.
 	col = x - lipgloss.Width(prefix)
@@ -134,7 +134,7 @@ func stripRoleMarks(text string) string {
 }
 
 func (m *Model) copySelection(d selectionWeaver) {
-	lines := m.tx.plainLines()
+	lines := m.tx.PlainLines()
 	text, ok := d.coveredLines(lines)
 	if !ok {
 		if len(lines) == 0 {

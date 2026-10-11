@@ -84,8 +84,8 @@ func TestTranscript_flatFlowAnswerKeepsAgentHue(t *testing.T) {
 	// The completed answer block must keep the full agent accent, not the
 	// dimmed streaming hue, on the merged stream.
 	answerColor := lineBorderColor(rendered, "Done.")
-	if answerColor != borderColorStr(tx.theme.agentPaneStyle) {
-		t.Errorf("flat-flow answer border color = %q, want agent accent %q:\n%s", answerColor, borderColorStr(tx.theme.agentPaneStyle), ansiStrip(rendered))
+	if answerColor != borderColorStr(tx.Theme().agentPaneStyle) {
+		t.Errorf("flat-flow answer border color = %q, want agent accent %q:\n%s", answerColor, borderColorStr(tx.Theme().agentPaneStyle), ansiStrip(rendered))
 	}
 }
 
@@ -539,12 +539,12 @@ func TestTranscript_emptyTimelineGapRendersThroughFlowRenderer(t *testing.T) {
 	// legacy tool-log branch output beneath the card.
 	want := ""
 	roleMark := userRoleMark() + " "
-	md, _ := RenderPromptMarkdown("run it", tx.transcriptWidth()-4-ansi.StringWidth(roleMark), tx.configTheme)
-	card := renderUserPromptCard(tx.theme, md, tx.transcriptWidth(), roleMark)
+	md, _ := RenderPromptMarkdown("run it", tx.transcriptWidth()-4-ansi.StringWidth(roleMark), tx.ConfigTheme())
+	card := renderUserPromptCard(tx.Theme(), md, tx.transcriptWidth(), roleMark)
 	want += card + "\n"
 	flow, _ := tx.renderEventFlow(nil, 0, message{}, 0, time.Time{}, assistantRoleMark()+" ")
 	want += flow
-	want += tx.theme.statusStyle.Render(busyLine(tx.Status().Frame, tx.phase())) + "\n"
+	want += tx.Theme().statusStyle.Render(busyLine(tx.Status().Frame, tx.phase())) + "\n"
 
 	if hist.String() != want {
 		t.Errorf("empty-timeline gap must render prompt card + FlowRenderer output only:\n got %q\nwant %q", hist.String(), want)

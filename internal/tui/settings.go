@@ -955,7 +955,7 @@ func settingsView(f settingsForm) string {
 
 // startSettings opens the Settings surface and returns the command to run.
 func (m Model) startSettings() (tea.Model, tea.Cmd) {
-	o, cmd := openSettingsOverlay(m.deps.Config, m.deps.Models, m.tx.theme, m.deps.ThinkingSuppression, m.deps)
+	o, cmd := openSettingsOverlay(m.deps.Config, m.deps.Models, m.tx.Theme(), m.deps.ThinkingSuppression, m.deps)
 	g := m.tx.Geometry()
 	o.width = g.Width
 	o.height = g.Height
@@ -989,7 +989,7 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if savedRailWidth == 0 {
 				savedRailWidth = defaultRailWidth
 			}
-			faceChanged := res.saved.Theme != m.tx.configTheme || savedRailWidth != m.tx.railWidthOrDefault()
+			faceChanged := res.saved.Theme != m.tx.ConfigTheme() || savedRailWidth != m.tx.railWidthOrDefault()
 			m.deps.Config = *res.saved
 			m.tx.ApplySettings(*res.saved)
 			m.runtime.SetThinkingEnabled(res.saved.ThinkingEnabled)
