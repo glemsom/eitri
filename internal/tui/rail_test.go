@@ -247,8 +247,8 @@ func TestModelRailTranscriptFloor(t *testing.T) {
 	if !m.tx.railVisible() {
 		t.Fatal("rail must stay visible on an extreme-minimum terminal")
 	}
-	if tw := m.tx.transcriptWidth(); tw != 7 {
-		t.Errorf("transcriptWidth = %d on a 40-col window, want the width remaining beside the rail (7)", tw)
+	if tw := m.tx.TranscriptWidth(); tw != 7 {
+		t.Errorf("TranscriptWidth = %d on a 40-col window, want the width remaining beside the rail (7)", tw)
 	}
 }
 
@@ -380,8 +380,8 @@ func TestModelBandSpansFullWidthWhileTranscriptStaysRailShrunk(t *testing.T) {
 			if !m.tx.railVisible() {
 				t.Fatalf("rail must stay visible at %dx30", tc.w)
 			}
-			if bw, tw := m.tx.bandWidth(), m.tx.transcriptWidth(); bw <= tw {
-				t.Errorf("bandWidth = %d must exceed rail-shrunk transcriptWidth = %d; band spans the full terminal width while the history stays rail-shrunk", bw, tw)
+			if bw, tw := m.tx.bandWidth(), m.tx.TranscriptWidth(); bw <= tw {
+				t.Errorf("bandWidth = %d must exceed rail-shrunk TranscriptWidth = %d; band spans the full terminal width while the history stays rail-shrunk", bw, tw)
 			}
 			if bw := m.tx.bandWidth(); bw != tc.w {
 				t.Errorf("bandWidth = %d, want full terminal width = %d", bw, tc.w)
@@ -426,11 +426,11 @@ func TestModelBandWidthIndependentOfComposer(t *testing.T) {
 		t.Errorf("bandWidth changed %d -> %d after composer width changed; band must be independent of composer width", before, after)
 	}
 
-	twA := m.tx.transcriptWidth()
+	twA := m.tx.TranscriptWidth()
 	m.composer.SetWidth(5)
-	twB := m.tx.transcriptWidth()
+	twB := m.tx.TranscriptWidth()
 	if twA != twB {
-		t.Errorf("transcriptWidth changed %d -> %d after composer width changed; must not read composer width", twA, twB)
+		t.Errorf("TranscriptWidth changed %d -> %d after composer width changed; must not read composer width", twA, twB)
 	}
 }
 

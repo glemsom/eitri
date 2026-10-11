@@ -105,7 +105,7 @@ func (s *SkillActivation) Complete(apply func(candidate string)) bool {
 func (s *SkillActivation) Activate(tx *Transcript, surface *SkillsSurface, name, args string) tea.Cmd {
 	tx.AppendUserMsg("/" + name)
 	if surface == nil || surface.Activate == nil {
-		tx.appendMsg(failurePrefix() + "no skill activation available")
+		tx.AppendAssistantMsg(failurePrefix() + "no skill activation available")
 		return nil
 	}
 	return skillCmd(surface.Activate, name, args)

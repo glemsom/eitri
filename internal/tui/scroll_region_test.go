@@ -57,8 +57,8 @@ func TestScrollRegion_sizesViewportFromSeam(t *testing.T) {
 	if got := tx.scrollRegionHeight(4); got != 0 {
 		t.Errorf("band-fills-terminal scrollRegionHeight = %d, want 0", got)
 	}
-	if got := tx.railClampHeight(4); got != 0 {
-		t.Errorf("railClampHeight must share the region seam's 0-row budget, got %d", got)
+	if got := tx.RailMaxHeight(4); got != 0 {
+		t.Errorf("RailMaxHeight must share the region seam's 0-row budget, got %d", got)
 	}
 }
 

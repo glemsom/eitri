@@ -10,6 +10,7 @@ Done:
 - `internal/tui/telemetry` — `Telemetry`. Already atomic. Extraction exported the `Apply`, `LiveContextSize`, `HitPercent`, and `Stats` seams, replacing the direct unexported-field reads that `rail.go` and tests used to make. Its unit test moved into the sub-package.
 - The transcript's live-turn pulse. `Status()` and the `TickBusy`, `TickEmber`, `ArmEmber`, and `EndTurn` commands make the busy flag, elapsed clock, spinner/forge frames, and idle ember a single owner inside package `tui` — step 1 of the transcript seam.
 - The transcript's geometry and frame composition. `Geometry()`, `View(band, bandHeight)`, and `RailHeight(bandHeight)` make the frame footprint, the whole left-surface composition, and the rail row count a single owner inside package `tui`, so the model no longer reads transcript geometry to finish its own frame, and the duplicate rail render is gone — step 2 of the transcript seam.
+- The transcript's exported interface. Every production file outside `transcript.go` — `model.go`, `composer.go`, `selection.go`, `settings.go`, `rail.go`, `login.go`, `skill_activation.go`, and `help_overlay.go` — reaches `Transcript` through an exported member only, so the leaf is ready for the file move into `internal/tui/transcript/` — step 3 of the transcript seam.
 - The turn-session seam. `TurnSession` no longer reaches into `Transcript` — it supplies cancellable execution only, and `TurnRuntime.Begin` projects through `Transcript.Project`. `TurnFlow` and `Phase` are already separate package-level owners.
 
 ## Why the hot modules are not extractable by file-move alone
@@ -29,7 +30,7 @@ Each remaining leaf is a seam-export redesign, not a file relocation. Do them on
 
 ## Remaining leaves, in order
 
-1. **`internal/tui/transcript`** — `Transcript` + `toolLog` + `collapseFocus`. Requires exporting the ~40 members the rest of the package pokes directly. Largest export surface, but mechanically the pattern above.
+1. **`internal/tui/transcript`** — `Transcript` + `toolLog` + `collapseFocus`. Its export surface is done (see Status); what remains is the file move into the sub-package, the call-site flip, and the focused unit tests moving with it — pattern steps 2–4.
 2. **`internal/tui/render`** — `render.go` + `markdown.go` + `cheap_live_render.go` + `live_markdown_cache.go` + the `Phase`/caption console. Requires moving `Theme` (and its 35 fields) and the glyph/motion/spinner accessors into the render package, or passing them as explicit params on an exported `Render` seam. The original ticket called this the "cheapest first win", but the shared `Theme`/`lookup()`/spinner surface makes it a larger change than the leaf-moves above.
 3. **`internal/tui/composer`** — `composer.go` + `completion_menu.go` + `mention.go` + `prompt_history.go`. Deepest coupling into `Transcript`'s theme and height; do it after the transcript seam exists.
 

@@ -18,7 +18,7 @@ type LoginCode struct {
 func (m Model) startLogin() (tea.Model, tea.Cmd) {
 	m.tx.AppendUserMsg("/login")
 	if m.deps.Login == nil {
-		m.tx.appendMsg(failurePrefix() + "no login flow available")
+		m.tx.AppendAssistantMsg(failurePrefix() + "no login flow available")
 		return m, nil
 	}
 	return m, loginCmd(m.deps.Login)

@@ -44,7 +44,7 @@ func TestIdleEmber_boundedWindowSettlesAndStops(t *testing.T) {
 
 func TestIdleEmber_typingReArms(t *testing.T) {
 	m := idleEmberModel(t)
-	m.tx.settleIdleEmber()
+	m.tx.SettleIdleEmber()
 	m = typeText(t, m, "x")
 	if m.tx.Status().EmberRemaining == 0 {
 		t.Fatal("typing must re-arm the idle ember window")

@@ -42,7 +42,7 @@ func NewRail(provider, model, effort string, thinking bool, sessionID, sessionTe
 	}
 }
 
-// presizeTerminalWidth is the non-composer fallback terminal width used by the Transcript's bandWidth and transcriptWidth before the first window resize lands (t.width == 0).
+// presizeTerminalWidth is the non-composer fallback terminal width used by the Transcript's bandWidth and TranscriptWidth before the first window resize lands (t.width == 0).
 const presizeTerminalWidth = constants.PresizeTerminalWidth
 
 // line appends one indented rail entry, truncating an over-long row with a trailing ellipsis so the rail stays single-line.
@@ -365,11 +365,11 @@ func (m *Model) syncWidths() {
 
 // adjustRailWidth nudges the rail width by delta (clamped to minWidthRail) and persists it, so ctrl+x/z resize the right pane across sessions.
 func (m *Model) adjustRailWidth(delta int) {
-	w := m.tx.railWidthOrDefault() + delta
+	w := m.tx.Geometry().RailWidth + delta
 	if w < minWidthRail {
 		w = minWidthRail
 	}
-	m.tx.setRailWidth(w)
+	m.tx.SetRailWidth(w)
 	m.persistRailWidth()
 	m.syncWidths()
 	// The face's column count derives from the rail width; callers run
@@ -379,7 +379,7 @@ func (m *Model) adjustRailWidth(delta int) {
 
 // persistRailWidth writes the current rail width into deps.Config and persists it via the Save seam so the width round-trips across sessions.
 func (m *Model) persistRailWidth() {
-	m.deps.Config.RailWidth = m.tx.railWidthOrDefault()
+	m.deps.Config.RailWidth = m.tx.Geometry().RailWidth
 	if m.deps.Save != nil {
 		_ = m.deps.Save(m.deps.Config)
 	}

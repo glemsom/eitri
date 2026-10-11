@@ -399,13 +399,13 @@ func (t Transcript) Geometry() Geometry {
 	}
 }
 
-// transcriptWidth returns the column width the transcript pane should use for
+// TranscriptWidth returns the column width the transcript pane should use for
 // wrapping: the terminal width (or a sane default before a resize) minus the
 // 2-col gutter, and minus the rail + separator when the rail is visible. A
 // one-column minimum keeps the wrapping helpers valid; surfaceWithRail clips
 // that column when an exceptionally narrow terminal gives all space to the
 // permanent rail.
-func (t Transcript) transcriptWidth() int {
+func (t Transcript) TranscriptWidth() int {
 	w := t.unclampedTranscriptWidth()
 	if w < 1 {
 		return 1
@@ -414,7 +414,7 @@ func (t Transcript) transcriptWidth() int {
 }
 
 // unclampedTranscriptWidth is the visual width allocated to the transcript.
-// Unlike transcriptWidth it may be zero, which lets surfaceWithRail keep a
+// Unlike TranscriptWidth it may be zero, which lets surfaceWithRail keep a
 // permanent rail within terminals too narrow to show both panes.
 func (t Transcript) unclampedTranscriptWidth() int {
 	w := t.bandWidth() - 2
@@ -448,14 +448,14 @@ func (t Transcript) scrollRegionHeight(bandHeight int) int {
 	return scrollRegionHeight(t.height, bandHeight)
 }
 
-// railClampHeight returns the maximum number of rows the right context rail may occupy so it matches the history region's visible height: both panes clamp to the rows left over by the fixed bottom band, so the two form one coherent row.
-func (t Transcript) railClampHeight(bandHeight int) int {
+// RailMaxHeight returns the maximum number of rows the right context rail may occupy so it matches the history region's visible height: both panes clamp to the rows left over by the fixed bottom band, so the two form one coherent row.
+func (t Transcript) RailMaxHeight(bandHeight int) int {
 	return t.scrollRegionHeight(bandHeight)
 }
 
 // surfaceWithRail merges the rendered right rail into a full-width pane so the bottom band stays edge-to-edge: the band is a bottom-anchored region spanning the whole terminal width, so the rail cannot sit to its right the way it sits beside the transcript.
 func (t Transcript) surfaceWithRail(pane, rail string, bandHeight int) string {
-	vh := t.railClampHeight(bandHeight)
+	vh := t.RailMaxHeight(bandHeight)
 	if vh <= 0 {
 		if t.height <= 0 {
 			return lipgloss.JoinHorizontal(lipgloss.Top, pane, rail)
@@ -510,7 +510,7 @@ func (t Transcript) trimToHeight(content string, bandHeight int) string {
 // count the composing render recorded, so the fit verdict and the frame's rail
 // always agree, and no second render is spent counting rows.
 func (t Transcript) RailHeight(bandHeight int) int {
-	return min(railContentRows(t.railRenderInput), t.railClampHeight(bandHeight))
+	return min(railContentRows(t.railRenderInput), t.RailMaxHeight(bandHeight))
 }
 
 // viewWithRail composes the final surface content for a rail-visible pane: it renders the wired rail through styledRail at the rail's clamp height and floats it above the full-width band via surfaceWithRail.
@@ -519,7 +519,7 @@ func (t *Transcript) viewWithRail(pane string, bandHeight int) string {
 		return pane
 	}
 	rw := t.layoutRailWidth()
-	height := t.railClampHeight(bandHeight)
+	height := t.RailMaxHeight(bandHeight)
 	content := t.rail.renderLiveWithTools(t.telemetry, t.theme, rw, t.phase(), t.spinner, &t.log)
 	if content != t.railRenderInput || height != t.railRenderHeight || rw != t.railRenderWidth {
 		t.railRenderInput = content
@@ -568,11 +568,11 @@ func (t *Transcript) AppendUserMsg(content string) {
 	t.busyPrefixDirty = true
 }
 
-// setRailWidth stores the rail width and marks the shared layout cache dirty,
+// SetRailWidth stores the rail width and marks the shared layout cache dirty,
 // so the next render pass re-wraps the history at the new transcript width and
 // re-records the row layout. Scroll/follow survive because the persisted
 // viewport keeps its position; it is only re-sized, never re-created.
-func (t *Transcript) setRailWidth(w int) {
+func (t *Transcript) SetRailWidth(w int) {
 	t.railWidth = w
 	t.layout.dirty = true
 	t.busyPrefixDirty = true
@@ -601,7 +601,7 @@ func (t *Transcript) renderPane(band string) string {
 func (t *Transcript) renderHistoryPane(reserved int) string {
 	vh := t.scrollRegionHeight(reserved)
 	if vh > 0 && t.busy && t.histFollow && !t.weaver.active {
-		t.histViewport.SetWidth(t.transcriptWidth())
+		t.histViewport.SetWidth(t.TranscriptWidth())
 		t.histViewport.SetHeight(vh)
 		t.viewportStale = true
 		if t.busyPrefixDirty || t.busyPrefix == "" {
@@ -610,7 +610,7 @@ func (t *Transcript) renderHistoryPane(reserved int) string {
 		return t.renderTailWindow(t.busyPrefixTail+t.renderLiveTail(), vh)
 	}
 	if vh > 0 && t.busy && !t.histFollow && !t.weaver.active && !t.viewportStale && !t.busyPrefixDirty {
-		t.histViewport.SetWidth(t.transcriptWidth())
+		t.histViewport.SetWidth(t.TranscriptWidth())
 		t.histViewport.SetHeight(vh)
 		return t.histViewport.View()
 	}
@@ -849,7 +849,7 @@ func (t *Transcript) committedEmission(i, anchor int) (string, []toolRowRange, i
 	var rows []toolRowRange
 	msg := t.messages[i]
 	if msg.role == "you" {
-		w := t.transcriptWidth()
+		w := t.TranscriptWidth()
 		roleMark := userRoleMark() + " "
 		mdWidth := w - 4
 		if roleMark != "" {
@@ -970,7 +970,7 @@ func (t *Transcript) renderMessageRange(b *strings.Builder, toolRows *[]toolRowR
 	}
 	if withHeader {
 		if len(t.messages) == 0 && !t.busy {
-			emit(idleWelcome(t.theme, t.transcriptWidth(), t.idleEmberFrame))
+			emit(idleWelcome(t.theme, t.TranscriptWidth(), t.idleEmberFrame))
 		}
 	}
 	now := time.Time{}
@@ -1069,7 +1069,7 @@ func (t *Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg mes
 		MsgIdx:        msgIdx,
 		Theme:         t.theme,
 		ConfigTheme:   t.configTheme,
-		Width:         t.transcriptWidth(),
+		Width:         t.TranscriptWidth(),
 		Pulse:         t.busyPulse > 0,
 		Effort:        t.reasoningEffort,
 		Cfg:           t.expansionConfig(),
@@ -1092,7 +1092,7 @@ func (t *Transcript) renderHistoryViewport(content string, reserved int) string 
 	if vh == 0 {
 		return ""
 	}
-	t.histViewport.SetWidth(t.transcriptWidth())
+	t.histViewport.SetWidth(t.TranscriptWidth())
 	t.histViewport.SetHeight(vh)
 
 	t.syncViewportContent(content)
@@ -1398,7 +1398,7 @@ func (t *Transcript) recordLayout() {
 		t.ensureCommittedUnits(len(t.messages))
 		var hist strings.Builder
 		if len(t.messages) == 0 {
-			hist.WriteString(idleWelcome(t.theme, t.transcriptWidth(), t.idleEmberFrame))
+			hist.WriteString(idleWelcome(t.theme, t.TranscriptWidth(), t.idleEmberFrame))
 		}
 		row := 0
 		for i, u := range t.units {
@@ -1463,8 +1463,12 @@ func (t Transcript) expansionConfig() expansionConfig {
 	return expansionConfig{mode: t.viewMode(), cotExpanded: t.cotExpanded, toolExpanded: t.toolResultsExpanded}
 }
 
-// appendMsg appends a finished assistant entry to the transcript and marks the shared message layout dirty in the same step, so the appended block re-wraps at the current transcript width on the next frame instead of rendering at a stale width.
-func (t *Transcript) appendMsg(content string) {
+// AppendAssistantMsg appends a finished assistant note (a welcome, login, or
+// failure entry the TUI authors itself) to the transcript and marks the shared
+// message layout dirty in the same step, so the appended block re-wraps at the
+// current transcript width on the next frame instead of rendering at a stale
+// width.
+func (t *Transcript) AppendAssistantMsg(content string) {
 	t.messages = append(t.messages, message{role: "eitri", content: content, events: synthAnswerLog(content)})
 	t.layout.dirty = true
 	t.busyPrefixDirty = true
@@ -1609,7 +1613,7 @@ func (t *Transcript) TickEmber(overlayOpen bool) tea.Cmd {
 	if !t.busy && !overlayOpen && motionEnabled() && t.advanceIdleEmber() {
 		return idleEmberTick()
 	}
-	t.settleIdleEmber()
+	t.SettleIdleEmber()
 	return nil
 }
 
@@ -1620,9 +1624,9 @@ func (t *Transcript) armIdleEmber() {
 	t.idleEmberRemaining = idleEmberWindow
 }
 
-// settleIdleEmber parks the ember on the static mark and closes the window, so
+// SettleIdleEmber parks the ember on the static mark and closes the window, so
 // a busy turn, an overlay, or reduced motion stops the idle wakeup.
-func (t *Transcript) settleIdleEmber() {
+func (t *Transcript) SettleIdleEmber() {
 	t.setIdleEmberFrame(0)
 	t.idleEmberRemaining = 0
 }

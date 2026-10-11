@@ -58,8 +58,8 @@ func TestModelBandSpansFullTerminalWidthTall(t *testing.T) {
 	if !m.tx.railVisible() {
 		t.Fatal("rail must stay visible at 120x40")
 	}
-	if bw, tw := m.tx.bandWidth(), m.tx.transcriptWidth(); bw <= tw {
-		t.Errorf("bandWidth = %d must exceed rail-shrunk transcriptWidth = %d (band spans full terminal width, history stays rail-shrunk)", bw, tw)
+	if bw, tw := m.tx.bandWidth(), m.tx.TranscriptWidth(); bw <= tw {
+		t.Errorf("bandWidth = %d must exceed rail-shrunk TranscriptWidth = %d (band spans full terminal width, history stays rail-shrunk)", bw, tw)
 	}
 	if w := m.tx.bandWidth(); w != 120 {
 		t.Errorf("bandWidth = %d, want full terminal width = %d", w, 120)
@@ -82,20 +82,20 @@ func TestModelHistoryWrapsAtTranscriptWidthWithRail(t *testing.T) {
 	t.Parallel()
 	m := railBandModel(t, 120, 40)
 	fill := strings.Repeat("a", 40)
-	long := fill + " " + fill + " XYZEND" // tail beyond transcriptWidth content, within full band
+	long := fill + " " + fill + " XYZEND" // tail beyond TranscriptWidth content, within full band
 	m = typeText(t, m, long)
 	m = submitAndWait(t, m)
 
 	p := plain(view(m))
 	if !strings.Contains(p, "XYZEND") {
 		t.Errorf(
-			"history wrapped at the full band width, truncating the prompt tail %q behind the rail (transcriptWidth=%d bandWidth=%d); must wrap at transcriptWidth",
-			"XYZEND", m.tx.transcriptWidth(), m.tx.bandWidth(),
+			"history wrapped at the full band width, truncating the prompt tail %q behind the rail (TranscriptWidth=%d bandWidth=%d); must wrap at TranscriptWidth",
+			"XYZEND", m.tx.TranscriptWidth(), m.tx.bandWidth(),
 		)
 	}
 	for _, ln := range strings.Split(p, "\n") {
-		if i := strings.Index(ln, "XYZEND"); i >= 0 && i >= m.tx.transcriptWidth() {
-			t.Errorf("history tail column %d not below transcriptWidth=%d (rail-shrunk wrap width)", i, m.tx.transcriptWidth())
+		if i := strings.Index(ln, "XYZEND"); i >= 0 && i >= m.tx.TranscriptWidth() {
+			t.Errorf("history tail column %d not below TranscriptWidth=%d (rail-shrunk wrap width)", i, m.tx.TranscriptWidth())
 		}
 	}
 }
@@ -231,8 +231,8 @@ func TestModelBandSpansFullWidthUnderRailTallSweep(t *testing.T) {
 			if !m.tx.railVisible() {
 				t.Fatal("rail must stay visible at 120x", h)
 			}
-			if bw, tw := m.tx.bandWidth(), m.tx.transcriptWidth(); bw <= tw {
-				t.Errorf("h=%d bandWidth=%d must exceed rail-shrunk transcriptWidth=%d across the tall range", h, bw, tw)
+			if bw, tw := m.tx.bandWidth(), m.tx.TranscriptWidth(); bw <= tw {
+				t.Errorf("h=%d bandWidth=%d must exceed rail-shrunk TranscriptWidth=%d across the tall range", h, bw, tw)
 			}
 			if w := m.tx.bandWidth(); w != 120 {
 				t.Errorf("h=%d bandWidth=%d, want full terminal width=%d", h, w, 120)

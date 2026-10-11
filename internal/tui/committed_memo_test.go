@@ -169,8 +169,8 @@ func shapeFixture() *Transcript {
 	)
 
 	// appended non-streaming notes
-	tx.appendMsg("a standalone note")
-	tx.appendMsg("another note")
+	tx.AppendAssistantMsg("a standalone note")
+	tx.AppendAssistantMsg("another note")
 
 	return tx
 }
@@ -203,8 +203,8 @@ func TestIncrementalMatchesFullRenderAfterCommits(t *testing.T) {
 	tx.ensureLayout()
 	assertLayoutMatchesFreshFullRender(t, tx)
 
-	// appended non-streaming note (appendMsg dirties the layout itself)
-	tx.appendMsg("a standalone note")
+	// appended non-streaming note (AppendAssistantMsg dirties the layout itself)
+	tx.AppendAssistantMsg("a standalone note")
 	assertLayoutMatchesFreshFullRender(t, tx)
 
 	// an error turn committed through the real TurnSession path

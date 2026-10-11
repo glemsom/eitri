@@ -445,3 +445,101 @@ func TestToggleExpandedModeCommandFlipsTheGlobalModes(t *testing.T) {
 		t.Error("the third toggle must return to expand-all")
 	}
 }
+
+// The final closure. These are the last members the rest of package tui reached
+// directly; each is exported so every production call site reaches the
+// transcript only through its interface.
+
+// TestAppendAssistantMsgSeamAppendsANote locks the note-append command: a call
+// site outside the transcript appends an assistant note, and the transcript owns
+// the entry's synthesized one-event answer log.
+func TestAppendAssistantMsgSeamAppendsANote(t *testing.T) {
+	tx := newTestTx()
+
+	tx.AppendAssistantMsg("login saved")
+
+	if len(tx.messages) != 1 {
+		t.Fatalf("AppendAssistantMsg must append one note, got %d messages", len(tx.messages))
+	}
+	note := tx.messages[0]
+	if note.role != "eitri" {
+		t.Errorf("appended note role = %q, want eitri", note.role)
+	}
+	if note.content != "login saved" {
+		t.Errorf("appended note content = %q, want the note text", note.content)
+	}
+	if len(note.events) != 1 || note.events[0].Kind != EventAnswer || note.events[0].Delta != "login saved" {
+		t.Errorf("appended note must carry its one-event answer log, got %+v", note.events)
+	}
+}
+
+// TestRailWidthSeamReportsThroughGeometry locks the rail-width seam: the
+// transcript reports the width in effect through Geometry, and SetRailWidth
+// stores a new width that Geometry then reports.
+func TestRailWidthSeamReportsThroughGeometry(t *testing.T) {
+	tx := NewTranscript(TranscriptConfig{Rail: &Rail{}})
+	if got := tx.Geometry().RailWidth; got != defaultRailWidth {
+		t.Errorf("Geometry().RailWidth with no rail width set = %d, want the default %d", got, defaultRailWidth)
+	}
+
+	tx.SetRailWidth(22)
+	if got := tx.Geometry().RailWidth; got != 22 {
+		t.Errorf("Geometry().RailWidth after SetRailWidth(22) = %d, want 22", got)
+	}
+}
+
+// TestTranscriptWidthSeamShrinksForTheRail locks the wrap-width read: the
+// transcript reports the column width its history wraps at, narrower than the
+// band once the rail carves a column beside it, and re-reads it after a rail
+// resize.
+func TestTranscriptWidthSeamShrinksForTheRail(t *testing.T) {
+	tx := NewTranscript(TranscriptConfig{Rail: &Rail{}, RailWidth: defaultRailWidth})
+	tx.SetSize(120, 30)
+
+	if bw := tx.Geometry().BandWidth; tx.TranscriptWidth() >= bw {
+		t.Errorf("TranscriptWidth %d must sit below the band width %d when the rail is visible", tx.TranscriptWidth(), bw)
+	}
+	if tw := tx.TranscriptWidth(); tw != 120-2-defaultRailWidth-1 {
+		t.Errorf("TranscriptWidth = %d at width 120 rail %d, want %d", tw, defaultRailWidth, 120-2-defaultRailWidth-1)
+	}
+
+	tx.SetRailWidth(22)
+	if tw := tx.TranscriptWidth(); tw != 120-2-23 {
+		t.Errorf("TranscriptWidth = %d at rail 22, want %d", tw, 120-2-23)
+	}
+}
+
+// TestRailMaxHeightSeamBoundsTheRailRegion locks the rail-region read: the rail
+// may occupy at most the history region's visible rows, so the bound drops as
+// the fixed bottom band grows.
+func TestRailMaxHeightSeamBoundsTheRailRegion(t *testing.T) {
+	tx := NewTranscript(TranscriptConfig{Rail: &Rail{}})
+	tx.SetSize(120, 40)
+
+	if got := tx.RailMaxHeight(4); got != 36 {
+		t.Errorf("RailMaxHeight(band 4) at height 40 = %d, want 36", got)
+	}
+	if got := tx.RailMaxHeight(10); got != 30 {
+		t.Errorf("RailMaxHeight(band 10) at height 40 = %d, want 30", got)
+	}
+}
+
+// TestSettleIdleEmberSeamParksTheShimmer locks the settle command: once the
+// window is open and the shimmer advanced, SettleIdleEmber parks the ember on
+// the static mark and closes the window, so a caller outside the transcript
+// stops the idle wakeup.
+func TestSettleIdleEmberSeamParksTheShimmer(t *testing.T) {
+	tx := NewTranscript(TranscriptConfig{})
+	if cmd := tx.ArmEmber(false); cmd == nil {
+		t.Fatal("precondition: ArmEmber must open the ember window and start its tick")
+	}
+	tx.TickEmber(false)
+	if tx.Status().EmberFrame == 0 {
+		t.Fatal("precondition: the armed ember must have advanced off the static mark")
+	}
+
+	tx.SettleIdleEmber()
+	if s := tx.Status(); s.EmberFrame != 0 || s.EmberRemaining != 0 {
+		t.Errorf("SettleIdleEmber = frame %d remaining %d, want the static mark and a closed window", s.EmberFrame, s.EmberRemaining)
+	}
+}

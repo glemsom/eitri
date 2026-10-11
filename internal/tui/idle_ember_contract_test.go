@@ -107,7 +107,7 @@ func TestIdleEmber_turnDoneReArms(t *testing.T) {
 	m = resize(t, m)
 	m = typeText(t, m, "hi")
 	m, _ = submitBusy(t, m)
-	m.tx.settleIdleEmber()
+	m.tx.SettleIdleEmber()
 	if m.tx.Status().EmberRemaining != 0 {
 		t.Fatal("precondition: ember should be settled while busy")
 	}

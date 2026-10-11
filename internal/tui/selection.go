@@ -87,7 +87,7 @@ func (m *Model) mouseToContent(x, y int) (line, col int, ok bool) {
 		col -= 3
 	}
 	width := lipgloss.Width(plain)
-	if tw := m.tx.transcriptWidth(); tw > 0 && width > tw {
+	if tw := m.tx.TranscriptWidth(); tw > 0 && width > tw {
 		width = tw
 	}
 	if width <= 0 {

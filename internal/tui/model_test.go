@@ -127,7 +127,7 @@ func TestModel_thinkingLongReasoningWraps(t *testing.T) {
 	if len(rows) < 3 {
 		t.Fatalf("long single-line reasoning should wrap into multiple rows, got %d: %q", len(rows), rows)
 	}
-	limit := m.tx.transcriptWidth()
+	limit := m.tx.TranscriptWidth()
 	for i, row := range rows {
 		if w := lipgloss.Width(ansiStrip(row)); w > limit {
 			t.Errorf("reasoning pane row %d is %d cols wide, exceeds transcript width %d: %q", i, w, limit, row)

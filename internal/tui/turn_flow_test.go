@@ -539,8 +539,8 @@ func TestTranscript_emptyTimelineGapRendersThroughFlowRenderer(t *testing.T) {
 	// legacy tool-log branch output beneath the card.
 	want := ""
 	roleMark := userRoleMark() + " "
-	md, _ := RenderPromptMarkdown("run it", tx.transcriptWidth()-4-ansi.StringWidth(roleMark), tx.ConfigTheme())
-	card := renderUserPromptCard(tx.Theme(), md, tx.transcriptWidth(), roleMark)
+	md, _ := RenderPromptMarkdown("run it", tx.TranscriptWidth()-4-ansi.StringWidth(roleMark), tx.ConfigTheme())
+	card := renderUserPromptCard(tx.Theme(), md, tx.TranscriptWidth(), roleMark)
 	want += card + "\n"
 	flow, _ := tx.renderEventFlow(nil, 0, message{}, 0, time.Time{}, assistantRoleMark()+" ")
 	want += flow

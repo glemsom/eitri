@@ -7,20 +7,20 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// TestAppendMsg_synthesizesAnswerEventLog locks the contract that every
+// TestAppendAssistantMsg_synthesizesAnswerEventLog locks the contract that every
 // appended note carries its own one-event transcript event log, so the
 // history renderer can route it through the FlowRenderer like any turn.
-func TestAppendMsg_synthesizesAnswerEventLog(t *testing.T) {
+func TestAppendAssistantMsg_synthesizesAnswerEventLog(t *testing.T) {
 	tx := newTestTx()
 
-	tx.appendMsg(helpView())
+	tx.AppendAssistantMsg(helpView())
 
 	if len(tx.messages) != 1 {
-		t.Fatalf("appendMsg must append one message, got %d", len(tx.messages))
+		t.Fatalf("AppendAssistantMsg must append one note, got %d", len(tx.messages))
 	}
 	events := tx.messages[0].events
 	if len(events) != 1 {
-		t.Fatalf("appendMsg message must carry one event, got %d", len(events))
+		t.Fatalf("the appended note must carry one event, got %d", len(events))
 	}
 	if events[0].Kind != EventAnswer {
 		t.Errorf("event kind = %v, want %v", events[0].Kind, EventAnswer)
@@ -30,10 +30,10 @@ func TestAppendMsg_synthesizesAnswerEventLog(t *testing.T) {
 	}
 }
 
-// TestAppendMsg_rendersPixelIdenticalThroughFlow locks identical rendering for
+// TestAppendAssistantMsg_rendersPixelIdenticalThroughFlow locks identical rendering for
 // help, login, and failure notes: the history render of an appended note must
 // equal exactly what the shared answer emitter produces for it.
-func TestAppendMsg_rendersPixelIdenticalThroughFlow(t *testing.T) {
+func TestAppendAssistantMsg_rendersPixelIdenticalThroughFlow(t *testing.T) {
 	th := themeFor(config.DefaultTheme)
 	notes := []string{
 		helpView(),
@@ -48,12 +48,12 @@ func TestAppendMsg_rendersPixelIdenticalThroughFlow(t *testing.T) {
 		tx.height = 24
 		tx.histFollow = true
 		tx.histViewport = newHistoryViewport()
-		tx.appendMsg(note)
+		tx.AppendAssistantMsg(note)
 
 		var hist strings.Builder
 		tx.renderHistory(&hist, nil, nil)
 
-		want := renderAnswerBlock(th, config.DefaultTheme, tx.transcriptWidth(), tx.messages[0], note, true)
+		want := renderAnswerBlock(th, config.DefaultTheme, tx.TranscriptWidth(), tx.messages[0], note, true)
 		if hist.String() != want {
 			t.Errorf("appended note %q must render pixel-identical through the flow path", note)
 		}

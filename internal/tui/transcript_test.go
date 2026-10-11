@@ -43,7 +43,7 @@ func TestTranscript_rendersStandalone(t *testing.T) {
 	}
 }
 
-func TestTranscript_appendMsgAppendsAndInvalidates(t *testing.T) {
+func TestTranscript_appendAssistantMsgAppendsAndInvalidates(t *testing.T) {
 	th := themeFor(config.DefaultTheme)
 	tx := &Transcript{
 		theme:       th,
@@ -51,19 +51,19 @@ func TestTranscript_appendMsgAppendsAndInvalidates(t *testing.T) {
 	}
 	tx.layout.dirty = false
 
-	tx.appendMsg(helpView())
+	tx.AppendAssistantMsg(helpView())
 
 	if len(tx.messages) != 1 {
-		t.Fatalf("appendMsg must append one message, got %d", len(tx.messages))
+		t.Fatalf("AppendAssistantMsg must append one note, got %d", len(tx.messages))
 	}
 	if tx.messages[0].role != "eitri" {
-		t.Errorf("appendMsg message role = %q, want eitri", tx.messages[0].role)
+		t.Errorf("appended note role = %q, want eitri", tx.messages[0].role)
 	}
 	if tx.messages[0].content != helpView() {
-		t.Errorf("appendMsg must store the given content, got %q", tx.messages[0].content)
+		t.Errorf("AppendAssistantMsg must store the given content, got %q", tx.messages[0].content)
 	}
 	if !tx.layout.dirty {
-		t.Error("appendMsg must mark the message layout dirty so the appended block re-wraps")
+		t.Error("AppendAssistantMsg must mark the message layout dirty so the appended block re-wraps")
 	}
 }
 
@@ -159,13 +159,13 @@ func TestTranscript_ownsRailSurface(t *testing.T) {
 		t.Errorf("bandWidth = %d, want %d", bw, presizeTerminalWidth)
 	}
 
-	if bw, tw := tx.bandWidth(), tx.transcriptWidth(); tw >= bw {
-		t.Errorf("transcriptWidth %d must be rail-shrunk below bandWidth %d", tw, bw)
+	if bw, tw := tx.bandWidth(), tx.TranscriptWidth(); tw >= bw {
+		t.Errorf("TranscriptWidth %d must be rail-shrunk below bandWidth %d", tw, bw)
 	}
 
 	tx.width, tx.height = 120, 40
-	if c := tx.railClampHeight(4); c != 36 {
-		t.Errorf("railClampHeight(band 4) = %d, want height-band=36", c)
+	if c := tx.RailMaxHeight(4); c != 36 {
+		t.Errorf("RailMaxHeight(band 4) = %d, want height-band=36", c)
 	}
 
 	pane := tx.renderPane("band\n")
@@ -189,20 +189,20 @@ func TestTranscript_dynamicRailWidth(t *testing.T) {
 	if d := tx.railWidthOrDefault(); d != 30 {
 		t.Errorf("railWidthOrDefault = %d, want default 30", d)
 	}
-	defaultTW := tx.transcriptWidth()
+	defaultTW := tx.TranscriptWidth()
 	if defaultTW != 120-2-31 {
-		t.Errorf("transcriptWidth = %d at default width, want %d", defaultTW, 120-2-31)
+		t.Errorf("TranscriptWidth = %d at default width, want %d", defaultTW, 120-2-31)
 	}
 
-	tx.setRailWidth(22)
+	tx.SetRailWidth(22)
 	if tx.railWidthOrDefault() != 22 {
 		t.Errorf("railWidthOrDefault = %d after set, want 22", tx.railWidthOrDefault())
 	}
-	if tw := tx.transcriptWidth(); tw != 120-2-23 {
-		t.Errorf("transcriptWidth = %d at railWidth 22, want %d", tw, 120-2-23)
+	if tw := tx.TranscriptWidth(); tw != 120-2-23 {
+		t.Errorf("TranscriptWidth = %d at railWidth 22, want %d", tw, 120-2-23)
 	}
 	if !tx.layout.dirty {
-		t.Errorf("setRailWidth must mark the layout cache dirty (re-wrap trigger), got clean")
+		t.Errorf("SetRailWidth must mark the layout cache dirty (re-wrap trigger), got clean")
 	}
 	rails := strings.Split(tx.viewWithRail(tx.renderPane("band\n"), 4), "\n")
 	bordered := false

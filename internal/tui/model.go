@@ -282,7 +282,7 @@ func NewModelCfg(d Dependencies) Model {
 		m.feedback = neutralFeedback(fmt.Sprintf("unknown theme %q, using %s", d.Config.Theme, config.DefaultTheme))
 	}
 	if d.NeedsSetup {
-		m.tx.appendMsg("Welcome to Eitri! Please configure your provider in Settings to get started.")
+		m.tx.AppendAssistantMsg("Welcome to Eitri! Please configure your provider in Settings to get started.")
 		if o, _ := openSettingsOverlay(d.Config, d.Models, m.tx.Theme(), m.deps.ThinkingSuppression, m.deps); o != nil {
 			m.settings = o
 		}
@@ -602,7 +602,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msgi.err != nil {
 			m.tx.EndTurn()
 			if !errors.Is(msgi.err, context.Canceled) {
-				m.tx.appendMsg(failurePrefix() + fmt.Errorf("activate skill %q: %w", msgi.name, msgi.err).Error())
+				m.tx.AppendAssistantMsg(failurePrefix() + fmt.Errorf("activate skill %q: %w", msgi.name, msgi.err).Error())
 			}
 			m.syncComposerRail()
 			return m, nil
@@ -613,19 +613,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case loginCodeMsg:
-		m.tx.appendMsg(fmt.Sprintf("Open %s and enter code: %s", msgi.code.VerificationURI, msgi.code.UserCode))
+		m.tx.AppendAssistantMsg(fmt.Sprintf("Open %s and enter code: %s", msgi.code.VerificationURI, msgi.code.UserCode))
 		return m, loginWait(msgi.next)
 
 	case loginDoneMsg:
 		if msgi.err != nil {
-			m.tx.appendMsg(failurePrefix() + msgi.err.Error())
+			m.tx.AppendAssistantMsg(failurePrefix() + msgi.err.Error())
 			return m, nil
 		}
 		m.deps.Config = msgi.cfg
 		if m.deps.SaveBack != nil {
 			m.deps.SaveBack(msgi.cfg)
 		}
-		m.tx.appendMsg("login saved")
+		m.tx.AppendAssistantMsg("login saved")
 		return m, nil
 	}
 
@@ -749,7 +749,7 @@ func (m Model) submitPrompt() (tea.Model, tea.Cmd) {
 // acceptance for the turn: re-arming the run ID, draining the merged event
 // feed, and starting the spinner tick so the busy indicator animates.
 func (m *Model) startTurn(prompt string, payload string) tea.Cmd {
-	m.tx.settleIdleEmber()
+	m.tx.SettleIdleEmber()
 	cmd := m.runtime.Begin(prompt, payload)
 	m.syncComposerRail()
 	return cmd
@@ -856,7 +856,7 @@ func (m *Model) endRecall() {
 func (m Model) startSkillActivation(name, args string) (tea.Model, tea.Cmd) {
 	m.tx.AppendUserMsg("/" + name)
 	if m.deps.Skills == nil || m.deps.Skills.Activate == nil {
-		m.tx.appendMsg(failurePrefix() + "no skill activation available")
+		m.tx.AppendAssistantMsg(failurePrefix() + "no skill activation available")
 		return m, nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -877,7 +877,7 @@ func (m *Model) stopTurn() {
 		m.skillPending = false
 		m.skillCancel = nil
 		m.tx.EndTurn()
-		m.tx.appendMsg("[stopped]")
+		m.tx.AppendAssistantMsg("[stopped]")
 		m.syncComposerRail()
 		return
 	}
@@ -1018,7 +1018,7 @@ func (m Model) canDrawFace() bool {
 	}
 	_, faceRows := railFaceRows(g.RailWidth)
 	bandHeight := m.bandHeight()
-	return faceRows > 0 && m.tx.railClampHeight(bandHeight) >= m.tx.RailHeight(bandHeight)+railFaceTopGap+faceRows
+	return faceRows > 0 && m.tx.RailMaxHeight(bandHeight) >= m.tx.RailHeight(bandHeight)+railFaceTopGap+faceRows
 }
 
 func (m Model) applyEvent(update Event) (tea.Model, tea.Cmd) {
