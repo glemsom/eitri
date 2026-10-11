@@ -354,7 +354,7 @@ func railMeter(fraction float64, railWidth int) string {
 // liveContextWarnThreshold is the live context-window size (prompt tokens) at which the STATS ctx line flips to warning styling.
 const liveContextWarnThreshold = constants.LiveContextWarnThreshold
 
-// defaultRailWidth is the rail width applied while the Transcript's mutable railWidth field is unset (0): consumers read the field through railWidthOrDefault, so this constant is only the zero-state default, never a width any consumer computes from.
+// defaultRailWidth is the rail width applied while the Transcript's mutable railWidth field is unset (0): consumers read the resolved width through Geometry, so this constant is only the zero-state default, never a width any consumer computes from.
 const defaultRailWidth = constants.DefaultRailWidth
 
 // syncWidths re-sizes the composer to the panel body width so markdown wraps inside the edge-to-edge bottom band.

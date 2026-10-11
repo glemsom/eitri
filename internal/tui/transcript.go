@@ -1537,6 +1537,23 @@ type Status struct {
 	EmberRemaining int
 }
 
+// phase returns the agent's current Phase, derived from the owned live turn state: the busy flag and the in-progress streaming assistant message (if any).
+func (t Transcript) phase() Phase {
+	if !t.busy {
+		return PhaseIdle
+	}
+	var streaming, hasReasoning, hasAnswer bool
+	for i := len(t.messages) - 1; i >= 0; i-- {
+		if m := t.messages[i]; m.streaming {
+			streaming = true
+			hasReasoning = m.reasoning != ""
+			hasAnswer = m.content != ""
+			break
+		}
+	}
+	return derivePhase(t.busy, streaming, hasReasoning, hasAnswer)
+}
+
 // Status reports the live turn's status. It is the single read of the pulse
 // state; the composer, the rail, and the model reach the busy flag, the
 // frames, and the idle ember through it rather than the fields.

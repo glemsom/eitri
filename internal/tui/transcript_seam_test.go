@@ -446,9 +446,9 @@ func TestToggleExpandedModeCommandFlipsTheGlobalModes(t *testing.T) {
 	}
 }
 
-// The final closure. These are the last members the rest of package tui reached
-// directly; each is exported so every production call site reaches the
-// transcript only through its interface.
+// The seam's outer members: the note-append, pulse and geometry calls the rest
+// of package tui makes. Each is exported, so a caller reaches the transcript
+// only through its interface.
 
 // TestAppendAssistantMsgSeamAppendsANote locks the note-append command: a call
 // site outside the transcript appends an assistant note, and the transcript owns
@@ -504,8 +504,8 @@ func TestTranscriptWidthSeamShrinksForTheRail(t *testing.T) {
 	}
 
 	tx.SetRailWidth(22)
-	if tw := tx.TranscriptWidth(); tw != 120-2-23 {
-		t.Errorf("TranscriptWidth = %d at rail 22, want %d", tw, 120-2-23)
+	if tw := tx.TranscriptWidth(); tw != 120-2-22-1 {
+		t.Errorf("TranscriptWidth = %d at rail 22, want %d", tw, 120-2-22-1)
 	}
 }
 
