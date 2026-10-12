@@ -3,6 +3,7 @@ package skillspack_test
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -80,8 +81,8 @@ func TestEmbeddedSubagentsPackBodyContract(t *testing.T) {
 	// The recipe scaffolding ports verbatim from the prompt sections.
 	for _, want := range []string{
 		`agent_dir=$(mktemp -d "$TMPDIR/subagent.XXXXXX")`,
-		`EITRI_DIR="$agent_dir"`,
-		`EITRI_CONFIG="${EITRI_CONFIG:-${EITRI_DIR:-$HOME/.eitri}/config.json}"`,
+		`parent_config="${EITRI_CONFIG:-${EITRI_DIR:-$HOME/.eitri}/config.json}"`,
+		`EITRI_DIR="$agent_dir" EITRI_CONFIG="$parent_config"`,
 		`wait "${pids[`,
 		"--format json",
 		"jq -r .answer",
@@ -107,6 +108,77 @@ func TestEmbeddedSubagentsPackBodyContract(t *testing.T) {
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing mode-agnostic invariant fragment %q", want)
+		}
+	}
+}
+
+// subagentsRecipe returns the first ```sh fenced block of the pack body.
+func subagentsRecipe(t *testing.T, body string) string {
+	t.Helper()
+	const open = "```sh\n"
+	start := strings.Index(body, open)
+	if start < 0 {
+		t.Fatal("no ```sh block in subagents body")
+	}
+	rest := body[start+len(open):]
+	end := strings.Index(rest, "```")
+	if end < 0 {
+		t.Fatal("unterminated ```sh block in subagents body")
+	}
+	return rest[:end]
+}
+
+// TestSubagentsRecipePropagatesParentConfig runs the launch recipe with a stub
+// eitri and pins the one thing the shell gets subtly wrong: repointing EITRI_DIR
+// in the same command that resolves the config fallback would leave every
+// subagent on its own fresh data directory instead of the parent's config.
+func TestSubagentsRecipePropagatesParentConfig(t *testing.T) {
+	t.Parallel()
+	data, err := skillspack.FS.ReadFile(filepath.Join("subagents", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read embedded subagents/SKILL.md: %v", err)
+	}
+	recipe := subagentsRecipe(t, string(data))
+
+	dir := t.TempDir()
+	binDir := filepath.Join(dir, "bin")
+	parentDir := filepath.Join(dir, "parent")
+	for _, d := range []string{binDir, parentDir} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatalf("mkdir %s: %v", d, err)
+		}
+	}
+	seen := filepath.Join(dir, "seen.txt")
+	stub := "#!/bin/sh\n" +
+		`printf '%s\n' "$EITRI_CONFIG" >> "$SEEN"` + "\n" +
+		`printf '%s\n' '{"answer":"ok","session":"s","turns":1,"stopped":false}'` + "\n"
+	if err := os.WriteFile(filepath.Join(binDir, "eitri"), []byte(stub), 0o700); err != nil {
+		t.Fatalf("write stub eitri: %v", err)
+	}
+
+	cmd := exec.Command("bash", "-c", recipe)
+	cmd.Env = append(os.Environ(),
+		"PATH="+binDir+":"+os.Getenv("PATH"),
+		"SEEN="+seen,
+		"TMPDIR="+dir,
+		"EITRI_DIR="+parentDir,
+		"EITRI_CONFIG=",
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("recipe failed (%v):\n%s", err, out)
+	}
+
+	got, err := os.ReadFile(seen)
+	if err != nil {
+		t.Fatalf("stub eitri never ran: %v", err)
+	}
+	want := filepath.Join(parentDir, "config.json")
+	if lines := strings.Fields(string(got)); len(lines) != 2 {
+		t.Fatalf("expected 2 subagent launches, got %q", lines)
+	}
+	for _, line := range strings.Fields(string(got)) {
+		if line != want {
+			t.Fatalf("subagent booted with EITRI_CONFIG=%q, want the parent's %q", line, want)
 		}
 	}
 }

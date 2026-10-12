@@ -10,12 +10,16 @@ A 'background agent' is a subagent: a batch-mode `eitri -b` run with its own
 session and sandbox, launched from the parent's Bash tool call.
 
 **Launch** each subagent into its own execution directory, then **collect** it —
-wait, and read the answer — inside the same Bash tool call:
+wait, and read the answer — inside the same Bash tool call. The subagent takes
+its own data directory and the parent's config:
 ```sh
+# Resolve the parent's config before repointing EITRI_DIR: assigned in the same
+# command, EITRI_DIR would make this fallback resolve to the fresh agent dir.
+parent_config="${EITRI_CONFIG:-${EITRI_DIR:-$HOME/.eitri}/config.json}"
 for task_number in 1 2; do
   task="<task $task_number>"
   agent_dir=$(mktemp -d "$TMPDIR/subagent.XXXXXX")
-  EITRI_DIR="$agent_dir" EITRI_CONFIG="${EITRI_CONFIG:-${EITRI_DIR:-$HOME/.eitri}/config.json}" \
+  EITRI_DIR="$agent_dir" EITRI_CONFIG="$parent_config" \
     eitri -b "$task" --format json > "$TMPDIR/sa-$task_number.json" 2> "$TMPDIR/sa-$task_number.err" &
   pids[$task_number]=$!
 done
