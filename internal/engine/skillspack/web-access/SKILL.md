@@ -14,7 +14,7 @@ garbage.
 
 Pipe through lynx to read the rendered text:
 ```sh
-curl --fail -L --max-time 30 "$URL" | lynx -dump -nolist -stdin
+curl -sS --fail -L --max-time 30 "$URL" | lynx -dump -nolist -stdin
 ```
 
 ### API / JSON data
@@ -22,11 +22,14 @@ curl --fail -L --max-time 30 "$URL" | lynx -dump -nolist -stdin
 Fetch raw — never through lynx — and filter with jq only when you need to
 filter or pretty-print:
 ```sh
-curl --fail -L --max-time 30 "$URL" | jq .
+curl -sS --fail -L --max-time 30 "$URL" | jq .
 ```
 
 ## Gotchas
 
+- **Curl noise**: `-sS` keeps curl quiet on success — its progress meter
+  dumps ~half a KB to stderr on every fetch — while `-S` still prints the
+  error `--fail` relies on. Never bare `-s`: that would swallow the reason.
 - **JS-rendered page**: lynx shows an empty or skeleton page. Try the
   underlying JSON/XHR endpoint (check for an API path or `?format=json`);
   fall back to asking the user or a headless renderer if available.
@@ -37,10 +40,10 @@ curl --fail -L --max-time 30 "$URL" | jq .
   command's — `curl -f … | jq` still exits 0 on a 404 — so lead with
   `set -o pipefail` when the fetch's outcome decides the pipeline. To read the
   error, re-fetch *without* `--fail` — many APIs return the reason as JSON.
-- **Auth**: pass headers explicitly, `curl -H "Authorization: Bearer $TOKEN"`
+- **Auth**: pass headers explicitly, `curl -sS -H "Authorization: Bearer $TOKEN"`
   — never paste secrets into URLs.
-- **File download**: `curl --fail -L -o "$TMPDIR/name" "$URL"` — no lynx,
-  no jq. Verify with `file` before use.
+- **File download**: `curl -sS --fail -L --max-time 30 -o "$TMPDIR/name" "$URL"` —
+  no lynx, no jq. Verify with `file` before use.
 - **Paginated API**: loop with a page/offset variable, accumulate with
   `jq -s`, stop on an empty result set.
 - **Slow endpoint**: `--max-time 30` is the ceiling; raise it only for
