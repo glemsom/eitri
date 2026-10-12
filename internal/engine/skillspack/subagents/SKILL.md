@@ -15,7 +15,7 @@ wait, and read the answer — inside the same Bash tool call:
 for task_number in 1 2; do
   task="<task $task_number>"
   agent_dir=$(mktemp -d "$TMPDIR/subagent.XXXXXX")
-  EITRI_DIR="$agent_dir" EITRI_CONFIG="${EITRI_CONFIG:-$HOME/.eitri/config.json}" \
+  EITRI_DIR="$agent_dir" EITRI_CONFIG="${EITRI_CONFIG:-${EITRI_DIR:-$HOME/.eitri}/config.json}" \
     eitri -b "$task" --format json > "$TMPDIR/sa-$task_number.json" 2> "$TMPDIR/sa-$task_number.err" &
   pids[$task_number]=$!
 done

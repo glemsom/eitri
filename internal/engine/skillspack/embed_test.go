@@ -81,7 +81,7 @@ func TestEmbeddedSubagentsPackBodyContract(t *testing.T) {
 	for _, want := range []string{
 		`agent_dir=$(mktemp -d "$TMPDIR/subagent.XXXXXX")`,
 		`EITRI_DIR="$agent_dir"`,
-		`EITRI_CONFIG="${EITRI_CONFIG:-$HOME/.eitri/config.json}"`,
+		`EITRI_CONFIG="${EITRI_CONFIG:-${EITRI_DIR:-$HOME/.eitri}/config.json}"`,
 		`wait "${pids[`,
 		"--format json",
 		"jq -r .answer",

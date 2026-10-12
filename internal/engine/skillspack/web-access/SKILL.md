@@ -14,7 +14,7 @@ garbage.
 
 Pipe through lynx to read the rendered text:
 ```sh
-curl --fail --max-time 30 "$URL" | lynx -dump -nolist -stdin
+curl --fail -L --max-time 30 "$URL" | lynx -dump -nolist -stdin
 ```
 
 ### API / JSON data
@@ -22,7 +22,7 @@ curl --fail --max-time 30 "$URL" | lynx -dump -nolist -stdin
 Fetch raw — never through lynx — and filter with jq only when you need to
 filter or pretty-print:
 ```sh
-curl --fail --max-time 30 "$URL" | jq .
+curl --fail -L --max-time 30 "$URL" | jq .
 ```
 
 ## Gotchas
@@ -32,9 +32,11 @@ curl --fail --max-time 30 "$URL" | jq .
   fall back to asking the user or a headless renderer if available.
 - **HTML arrives when JSON was expected**: the URL is probably a human page
   (login wall, redirect) — switch paths, don't force jq.
-- **Non-2xx status**: `--fail` makes curl exit non-zero, so chain with `&&`
-  and a 404 never feeds an error page into lynx/jq. To see the error,
-  re-fetch *without* `--fail` — many APIs return the reason as JSON.
+- **Non-2xx status**: `--fail` makes curl exit non-zero and print no body, so a
+  404 never feeds an error page into lynx/jq. But a pipe's status is the *last*
+  command's — `curl -f … | jq` still exits 0 on a 404 — so lead with
+  `set -o pipefail` when the fetch's outcome decides the pipeline. To read the
+  error, re-fetch *without* `--fail` — many APIs return the reason as JSON.
 - **Auth**: pass headers explicitly, `curl -H "Authorization: Bearer $TOKEN"`
   — never paste secrets into URLs.
 - **File download**: `curl --fail -L -o "$TMPDIR/name" "$URL"` — no lynx,
