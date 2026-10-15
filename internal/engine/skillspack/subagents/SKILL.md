@@ -1,10 +1,17 @@
 ---
 name: subagents
-description: "Subagents: hand a task to its own `eitri -b` agent. Use when a prompt asks for a 'background agent', a sub-agent, a second agent, or several independent tasks in parallel."
+description: "Outsource part of your own workload to a subagent — a batch `eitri -b` run with its own session and sandbox that hands back an answer. Use when the work splits into independent pieces, when bulky or noisy legwork would flood your context, when something slow (a build, a test run, a sweep) can overlap other work, or when an independent second opinion is wanted — even if the prompt never says 'subagent' or 'background agent'."
 model-invocable: true
 ---
 
 ## Subagents
+
+Reach for a subagent when delegating pays for the launch: several pieces that
+don't depend on each other; legwork whose *output* matters but whose volume
+would flood this context (a wide search, a large diff, a long log); a slow
+command to overlap with other work; or a judgement you want a second agent to
+reach independently. Keep it inline when one shell call would answer it — the
+launch costs a session, and the subagent sees only what the prompt says.
 
 A 'background agent' is a subagent: a batch-mode `eitri -b` run with its own
 session and sandbox, launched from the parent's Bash tool call.
