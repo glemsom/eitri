@@ -46,7 +46,7 @@ Reads and writes the config file it is handed — `<data directory>/config.json`
 
 ### `internal/engine`
 
-Runs the bounded agent loop. It assembles prompts, streams provider responses, dispatches tool calls through the injected `ToolExecutor`, emits typed events, enforces the turn cap, exposes `ErrStopped`, and retries once after context-overflow compaction. `prompt.md` is embedded at build time; `skillspack/` embeds builtin skills and materializes them under `$EITRI_DIR/skills-builtin`.
+Runs the bounded agent loop. It assembles prompts, streams provider responses, dispatches tool calls through the injected `ToolExecutor`, emits typed events, enforces the turn cap, exposes `ErrStopped`, and retries once after context-overflow compaction. `prompt.md` is embedded at build time; `skillspack/` embeds builtin skills and materializes them under `$EITRI_DIR/skills-builtin`. The read-shape guidance `prompt.md` carries is measured by the [read benchmark](docs/research/read-benchmark-report.html).
 
 ### `internal/provider`
 
@@ -107,4 +107,4 @@ The TUI never calls a provider: it names provider kinds for the settings UI and 
 | Batch contract | [docs/batch-mode.md](docs/batch-mode.md) |
 | Session commands | [docs/sessions.md](docs/sessions.md) |
 | Render diagnostics | [docs/render-diagnostics.md](docs/render-diagnostics.md) |
-| TUI marks and icons | [docs/tui-iconography.md](docs/tui-iconography.md), [docs/adr/](docs/adr/) |
+| TUI marks and icons | `internal/tui/glyphs.go`, [docs/adr/](docs/adr/) |

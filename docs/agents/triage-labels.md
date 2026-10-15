@@ -1,4 +1,4 @@
-# Triage Labels
+# Triage labels
 
 The skills speak in terms of five canonical triage roles. This repo's tracker spells every one of them exactly the same way:
 

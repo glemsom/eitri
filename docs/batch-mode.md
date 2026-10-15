@@ -69,7 +69,7 @@ JSON object** at run end:
 Stdout carries nothing but this envelope — no banner, no progress, no thinking.
 Everything else routes to stderr:
 
-- `-v` thinking is streamed to stderr under both formats, so `--format json -v`
+- `-v` thinking is written to stderr under both formats, so `--format json -v`
   keeps stdout machine-parseable.
 - Refusals and errors are written to stderr as `eitri: <error>`, and the
   process exits 1.

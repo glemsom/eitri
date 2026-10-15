@@ -1,4 +1,4 @@
-# Domain Docs
+# Domain docs
 
 How the engineering skills consume this repo's domain documentation.
 

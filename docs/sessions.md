@@ -1,4 +1,4 @@
-# Session debug transcripts
+# Session transcripts
 
 Every Eitri session writes a GUID-named directory under `sessions/` in the data
 directory (`~/.eitri` by default, override with `EITRI_DIR`). A batch run is one

@@ -7,9 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Entries describe user-visible behavior. Use **Added**, **Changed**, **Deprecated**,
-**Removed**, **Fixed**, and **Security** categories as applicable. Record dependency
-changes and compatibility changes in **Changed**.
+<!-- Categories: Added, Changed, Deprecated, Removed, Fixed, Security. Entries
+     describe user-visible behavior; record dependency and compatibility
+     changes under Changed. -->
+
+### Changed
+
+- Bumped `charm.land/bubbletea/v2` to v2.0.10.
+- Tightened the system prompt: reworked the read guidance into an
+  explicit read-shape menu and trimmed duplicated or contradictory rules.
+
+### Fixed
+
+- `bash` output compression now reports collapsed output instead of dropping
+  it silently: runs of consecutive duplicate lines are replaced by an explicit
+  `+N repeated lines collapsed` marker, alongside the existing truncation marker.
+- `subagents` skill: a subagent no longer boots with a default config, a failed
+  run no longer reads as an empty answer, and the handoff leads with piped stdin
+  and states that subagent isolation depends on the launch directory.
+- `web-access` skill: fetch recipes fixed through a pipe and on redirects, and
+  curl's progress meter silenced on every fetch.
 
 ## [0.1.0] - 2026-09-27
 
