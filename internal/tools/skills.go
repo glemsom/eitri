@@ -89,10 +89,11 @@ func (c *Catalog) ModelVisibleSkills() []string {
 const maxDescriptionWidth = 100
 
 // RenderIndex renders the model-visible skill inventory as a compact plain-text
-// block. A single header declares each distinct skill root once, keyed by a
-// small integer, and each skill is then one line: <name>@<root-id>: <description>.
-// A skill's files live at <root>/<name>/, so the header plus its line is enough
-// to open any pack's SKILL.md and bundled resources. When no skill is
+// block. Each distinct skill root is a bracketed heading, `[<root>]`, and its
+// skills follow as one line each: <name>: <description>. A skill's files live at
+// <root>/<name>/, so a skill nested under its root heading is enough to open its
+// SKILL.md and bundled resources; the association is structural, never a numeric
+// key the reader must resolve against a separate list. When no skill is
 // model-visible the result is empty; callers treat that as "omit the block".
 //
 // The block's opening tag comes from internal/skillindex, the same single source
@@ -107,9 +108,10 @@ func (c *Catalog) RenderIndex() string {
 // relevant to prompt, plus a one-line note that omitted skills still exist and
 // how to list them. Selection is deterministic and side-effect-free; the
 // per-skill line shape is identical to RenderIndex, so only the catalogue's
-// contents narrow, never its format or the activation surface. The header
-// declares every visible root, not just the chosen ones, so the note's `ls`
-// affordance reaches a skill the selector missed.
+// contents narrow, never its format or the activation surface. Every visible
+// root appears as a heading, not just the chosen ones (a root whose skills are
+// all omitted shows an empty group), so the note's `ls` affordance reaches a
+// skill the selector missed.
 func (c *Catalog) SelectIndex(prompt string, k int) string {
 	visible := c.ModelVisibleSkills()
 	chosen := c.rankSkills(prompt, visible, k)
@@ -130,32 +132,33 @@ func (c *Catalog) roots(names []string) []string {
 	return roots
 }
 
-// renderIndex emits the compact block for entries, declaring each root once as
-// its own `<id> <path>` line so a path containing spaces stays unambiguous, and
-// appending a "more exist" note when omitted > 0. roots must cover every entry's
-// root.
+// renderIndex emits the compact block for entries: each root in roots is a
+// bracketed heading `[<root>]`, followed by its entries as `<name>: <desc>`
+// lines. Bracketing keeps a heading distinct from a skill line even when a path
+// contains spaces. roots must cover every entry's root; a root with no entries
+// still gets a heading (its group is empty). A "more exist" note is appended
+// when omitted > 0.
 func (c *Catalog) renderIndex(entries, roots []string, omitted int) string {
 	if len(entries) == 0 {
 		return ""
 	}
-	rootIndex := map[string]int{}
-	for i, root := range roots {
-		rootIndex[root] = i + 1
+	entriesByRoot := map[string][]string{}
+	for _, name := range entries {
+		root := filepath.Dir(c.skills[name].Dir)
+		entriesByRoot[root] = append(entriesByRoot[root], name)
 	}
 	var b strings.Builder
 	b.WriteString(skillindex.OpenTag)
 	b.WriteByte('\n')
-	b.WriteString("roots:")
-	for i, root := range roots {
-		fmt.Fprintf(&b, "\n%d %s", i+1, root)
-	}
-	b.WriteByte('\n')
-	for _, name := range entries {
-		sk := c.skills[name]
-		fmt.Fprintf(&b, "%s@%d: %s\n", name, rootIndex[filepath.Dir(sk.Dir)], catalogDescription(catalogEntryText(sk)))
+	for _, root := range roots {
+		fmt.Fprintf(&b, "[%s]\n", root)
+		for _, name := range entriesByRoot[root] {
+			sk := c.skills[name]
+			fmt.Fprintf(&b, "%s: %s\n", name, catalogDescription(catalogEntryText(sk)))
+		}
 	}
 	if omitted > 0 {
-		fmt.Fprintf(&b, "# %d more skill(s) exist; list them under a root above with `ls <root>/`.\n", omitted)
+		fmt.Fprintf(&b, "# %d more skill(s) exist; list them under a bracketed root above with `ls <root>/`.\n", omitted)
 	}
 	b.WriteString(skillindex.CloseTag)
 	return b.String()

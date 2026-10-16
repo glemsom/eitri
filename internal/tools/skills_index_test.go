@@ -1,7 +1,6 @@
 package tools
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -36,9 +35,9 @@ func fixedCatalog() *Catalog {
 func TestRenderIndexGolden(t *testing.T) {
 	c := fixedCatalog()
 	want := skillIndexOpenForTest + "\n" +
-		"roots:\n1 /opt/eitri/skills\n" +
-		"subagents@1: Outsource part of your own workload to a subagent — a batch run with its own session and sandbox.\n" +
-		"web-access@1: Fetch and read web content — pages, API/JSON data, downloads — with curl and lynx recipes.\n" +
+		"[/opt/eitri/skills]\n" +
+		"subagents: Outsource part of your own workload to a subagent — a batch run with its own session and sandbox.\n" +
+		"web-access: Fetch and read web content — pages, API/JSON data, downloads — with curl and lynx recipes.\n" +
 		skillIndexCloseForTest
 	if got := c.RenderIndex(); got != want {
 		t.Fatalf("rendered index bytes drifted from the pin:\n got: %q\nwant: %q", got, want)
@@ -50,8 +49,8 @@ func TestRenderIndexGolden(t *testing.T) {
 func TestRenderIndexDeclaresEachRootOnce(t *testing.T) {
 	c := fixedCatalog()
 	idx := c.RenderIndex()
-	if n := strings.Count(idx, "/opt/eitri/skills\n"); n != 1 {
-		t.Fatalf("root declared %d times, want once in the header:\n%s", n, idx)
+	if n := strings.Count(idx, "[/opt/eitri/skills]"); n != 1 {
+		t.Fatalf("root has %d headings, want exactly one:\n%s", n, idx)
 	}
 	if strings.Contains(idx, "<skill>") || strings.Contains(idx, "<path>") {
 		t.Fatalf("per-skill XML scaffolding survived the compaction:\n%s", idx)
@@ -67,11 +66,11 @@ func TestRenderIndexCapsDescriptionWidth(t *testing.T) {
 	}
 	var line string
 	for _, l := range strings.Split(c.RenderIndex(), "\n") {
-		if strings.HasPrefix(l, "verbose@1: ") {
+		if strings.HasPrefix(l, "verbose: ") {
 			line = l
 		}
 	}
-	desc := strings.TrimPrefix(line, "verbose@1: ")
+	desc := strings.TrimPrefix(line, "verbose: ")
 	if !strings.HasSuffix(desc, "…") {
 		t.Fatalf("over-wide description not truncated: %q", desc)
 	}
@@ -87,7 +86,7 @@ func TestRenderIndexFlattensMultiLineDescription(t *testing.T) {
 		skills: map[string]*Skill{"multi": {Dir: "/s/multi", Description: "first\nsecond   third", ModelInvocable: true}},
 		order:  []string{"multi"},
 	}
-	if got := c.RenderIndex(); !strings.Contains(got, "multi@1: first second third\n") {
+	if got := c.RenderIndex(); !strings.Contains(got, "multi: first second third\n") {
 		t.Fatalf("multi-line description not flattened to one line:\n%s", got)
 	}
 }
@@ -121,10 +120,10 @@ func TestRenderIndexLocatesSkillBodiesAndResources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Discover error = %v, want nil", err)
 	}
-	roots, lines := parseRenderedIndex(t, catalog.RenderIndex())
+	roots := parseRenderedIndex(t, catalog.RenderIndex())
 	for _, name := range catalog.ModelVisibleSkills() {
 		sk := catalog.Skill(name)
-		root, ok := roots[lineRootID(t, lines, name)]
+		root, ok := roots[name]
 		if !ok {
 			t.Fatalf("skill %q references an undeclared root", name)
 		}
@@ -140,48 +139,26 @@ func TestRenderIndexLocatesSkillBodiesAndResources(t *testing.T) {
 	}
 }
 
-// parseRenderedIndex reads the roots header and per-skill lines back out of the
-// rendered block, mirroring how a model resolves a skill's files.
-func parseRenderedIndex(t *testing.T, idx string) (roots map[int]string, lines map[string]int) {
+// parseRenderedIndex reads the bracketed root headings and the per-skill lines
+// nested under them back out of the rendered block, returning each skill name's
+// root, mirroring how a model resolves a skill's files.
+func parseRenderedIndex(t *testing.T, idx string) map[string]string {
 	t.Helper()
-	rows := strings.Split(idx, "\n")
-	roots = map[int]string{}
-	lines = map[string]int{}
-	inRoots := false
-	for _, row := range rows {
-		if row == "roots:" {
-			inRoots = true
+	root := ""
+	byName := map[string]string{}
+	for _, row := range strings.Split(idx, "\n") {
+		if strings.HasPrefix(row, "[") && strings.HasSuffix(row, "]") {
+			root = row[1 : len(row)-1]
 			continue
 		}
-		if name, rest, ok := strings.Cut(row, "@"); ok {
-			inRoots = false
-			var id int
-			if _, err := fmt.Sscanf(rest, "%d", &id); err == nil {
-				lines[name] = id
-			}
+		if strings.HasPrefix(row, "# ") {
 			continue
 		}
-		if inRoots {
-			id, path, ok := strings.Cut(row, " ")
-			if !ok {
-				continue
-			}
-			var n int
-			if _, err := fmt.Sscanf(id, "%d", &n); err == nil {
-				roots[n] = path
-			}
+		if name, _, ok := strings.Cut(row, ": "); ok {
+			byName[name] = root
 		}
 	}
-	return roots, lines
-}
-
-func lineRootID(t *testing.T, lines map[string]int, name string) int {
-	t.Helper()
-	id, ok := lines[name]
-	if !ok {
-		t.Fatalf("skill %q missing from rendered catalog", name)
-	}
-	return id
+	return byName
 }
 
 func referenceCatalog() *Catalog {
@@ -233,13 +210,13 @@ func TestRenderIndexShortDescriptionTier(t *testing.T) {
 		t.Fatalf("Discover error = %v, want nil", err)
 	}
 	idx := catalog.RenderIndex()
-	if !strings.Contains(idx, "shortened@1: a tight one-liner\n") {
+	if !strings.Contains(idx, "shortened: a tight one-liner\n") {
 		t.Fatalf("catalog did not show the declared short description:\n%s", idx)
 	}
 	if strings.Contains(idx, "should stay off the wire") {
 		t.Fatalf("catalog leaked the full description despite a short one:\n%s", idx)
 	}
-	if !strings.Contains(idx, "fallback@1: the full description used when no short one is declared\n") {
+	if !strings.Contains(idx, "fallback: the full description used when no short one is declared\n") {
 		t.Fatalf("catalog did not fall back to the full description:\n%s", idx)
 	}
 }
@@ -292,14 +269,14 @@ func TestSelectIndexKeepsEntryShapeAndNotesMore(t *testing.T) {
 	if !strings.HasPrefix(idx, skillIndexOpenForTest+"\n") || !strings.HasSuffix(idx, skillIndexCloseForTest) {
 		t.Fatalf("subset lost the block markers:\n%s", idx)
 	}
-	if !strings.Contains(idx, "code-review@") {
+	if !strings.Contains(idx, "code-review:") {
 		t.Fatalf("subset omitted the relevant skill:\n%s", idx)
 	}
 	if !strings.Contains(idx, "# 13 more skill(s) exist") {
 		t.Fatalf("subset did not announce the omitted skills:\n%s", idx)
 	}
 	// Only the subset's skills appear; the rest are omitted.
-	if strings.Contains(idx, "resolving-merge-conflicts@") {
+	if strings.Contains(idx, "resolving-merge-conflicts:") {
 		t.Fatalf("subset leaked an irrelevant skill:\n%s", idx)
 	}
 }
@@ -317,7 +294,7 @@ func TestSelectIndexDeclaresOmittedRoots(t *testing.T) {
 		order: []string{"aaa", "code-review", "zzz"},
 	}
 	idx := c.SelectIndex("please review this branch", 1)
-	if !strings.Contains(idx, "code-review@") {
+	if !strings.Contains(idx, "code-review:") {
 		t.Fatalf("dynamic subset omitted the relevant skill:\n%s", idx)
 	}
 	if !strings.Contains(idx, "/home/u/.agents/skills") {

@@ -156,7 +156,7 @@ func TestRunAgentDynamicSkillCatalogGatesInjection(t *testing.T) {
 
 	// Default: full catalog.
 	full := runAndCaptureSkillIndex(t, reg, skills, prompt, false)
-	if !strings.Contains(full, "clean-code@") || !strings.Contains(full, "subagents@") {
+	if !strings.Contains(full, "clean-code:") || !strings.Contains(full, "subagents:") {
 		t.Fatalf("full-catalog default omitted a skill:\n%s", full)
 	}
 	if strings.Contains(full, "more skill(s) exist") {
@@ -165,13 +165,13 @@ func TestRunAgentDynamicSkillCatalogGatesInjection(t *testing.T) {
 
 	// Opt-in: subset plus the note.
 	sub := runAndCaptureSkillIndex(t, reg, skills, prompt, true)
-	if !strings.Contains(sub, "code-review@") {
+	if !strings.Contains(sub, "code-review:") {
 		t.Fatalf("dynamic subset omitted the relevant skill:\n%s", sub)
 	}
 	if !strings.Contains(sub, "more skill(s) exist") {
 		t.Fatalf("dynamic subset did not announce omitted skills:\n%s", sub)
 	}
-	if strings.Contains(sub, "writing-for-agents@") {
+	if strings.Contains(sub, "writing-for-agents:") {
 		t.Fatalf("dynamic subset leaked an irrelevant skill:\n%s", sub)
 	}
 }

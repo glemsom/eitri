@@ -109,11 +109,11 @@ func TestSkillBuiltinScopeDiscovered(t *testing.T) {
 		t.Fatalf("builtin-skill scope = %q, want builtin", catalog.Scope("builtin-skill"))
 	}
 	idx := catalog.RenderIndex()
-	if !strings.Contains(idx, "builtin-skill@") {
+	if !strings.Contains(idx, "builtin-skill:") {
 		t.Fatalf("builtin skill missing from rendered index: %q", idx)
 	}
-	// The root named in the header plus the skill name must lead to a real,
-	// cat-able SKILL.md.
+	// The root heading plus the skill name must lead to a real, cat-able
+	// SKILL.md.
 	path := filepath.Join(catalog.Skill("builtin-skill").Dir, "SKILL.md")
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("builtin SKILL.md path not readable: %v", err)
@@ -629,7 +629,7 @@ func TestActivateSkillDeliversFullDescription(t *testing.T) {
 		t.Fatalf("Discover error = %v, want nil", err)
 	}
 	idx := catalog.RenderIndex()
-	if !strings.Contains(idx, "tier@1: a tight one-liner\n") {
+	if !strings.Contains(idx, "tier: a tight one-liner\n") {
 		t.Fatalf("catalog did not show the short description:\n%s", idx)
 	}
 	rd, _ := NewRegistry(testDeps(t, "", catalog))
