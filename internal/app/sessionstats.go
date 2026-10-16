@@ -44,14 +44,18 @@ type sessionAgg struct {
 	FirstTS          time.Time
 	LastTS           time.Time
 	Finish           map[string]int
+	Outcome          string
 	Calls            []turnToolCall
 }
 
 // aggregateSession folds a session's turns into one sessionAgg. Tool results
 // are answered in the *next* turn's request messages, keyed by call id, so it
 // indexes every tool message first and then joins the response-side calls.
-func aggregateSession(guid string, mod time.Time, turns []sessionTurn) sessionAgg {
+func aggregateSession(guid string, mod time.Time, turns []sessionTurn, ends []provider.RunEndLog) sessionAgg {
 	agg := sessionAgg{GUID: guid, ModTime: mod, Turns: len(turns), Finish: map[string]int{}}
+	if len(ends) > 0 {
+		agg.Outcome = ends[len(ends)-1].Reason
+	}
 	results := map[string]string{}
 	for _, c := range turns {
 		if c.Req == nil {
@@ -134,14 +138,14 @@ func readAllSessions(dataDir string) ([]sessionAgg, error) {
 			}
 			return nil, fmt.Errorf("session %s unreadable: %w", e.Name(), err)
 		}
-		turns, err := readTurns(path)
+		turns, ends, err := readTurns(path)
 		if err != nil {
 			return nil, fmt.Errorf("session %s unreadable: %w", e.Name(), err)
 		}
 		if len(turns) == 0 {
 			continue
 		}
-		aggs = append(aggs, aggregateSession(e.Name(), fi.ModTime(), turns))
+		aggs = append(aggs, aggregateSession(e.Name(), fi.ModTime(), turns, ends))
 	}
 	sort.Slice(aggs, func(i, j int) bool { return aggs[i].ModTime.After(aggs[j].ModTime) })
 	return aggs, nil
@@ -157,11 +161,11 @@ func readOneSession(dataDir, guid string) (sessionAgg, error) {
 	if err != nil {
 		return sessionAgg{}, fmt.Errorf("session %s unreadable: %w", guid, err)
 	}
-	turns, err := readTurns(path)
+	turns, ends, err := readTurns(path)
 	if err != nil {
 		return sessionAgg{}, fmt.Errorf("session %s unreadable: %w", guid, err)
 	}
-	return aggregateSession(guid, fi.ModTime(), turns), nil
+	return aggregateSession(guid, fi.ModTime(), turns, ends), nil
 }
 
 // collectSessions resolves the guid operand shared by stats and tools: "all"
@@ -266,6 +270,9 @@ func writeStatsText(aggs []sessionAgg, all bool, out io.Writer) error {
 			if a.Model != "" {
 				fmt.Fprintf(&b, "\t%s", a.Model)
 			}
+			if a.Outcome != "" {
+				fmt.Fprintf(&b, "\toutcome=%s", a.Outcome)
+			}
 			b.WriteByte('\n')
 		}
 	} else {
@@ -286,6 +293,9 @@ func writeStatsDetail(b *strings.Builder, a sessionAgg) {
 		head += "   span " + s
 	}
 	fmt.Fprintf(b, "%s\n", head)
+	if a.Outcome != "" {
+		fmt.Fprintf(b, "outcome %s\n", a.Outcome)
+	}
 	tokens := fmt.Sprintf("tokens in=%d out=%d", a.PromptTokens, a.CompletionTokens)
 	if a.CacheHitTokens+a.CacheMissTokens+a.CacheWriteTokens > 0 {
 		tokens += fmt.Sprintf(" cache_hit=%d cache_miss=%d cache_write=%d", a.CacheHitTokens, a.CacheMissTokens, a.CacheWriteTokens)
@@ -344,6 +354,7 @@ type sessionStatsJSON struct {
 	LastTS           string          `json:"last_ts,omitempty"`
 	SpanSeconds      float64         `json:"span_seconds"`
 	FinishReasons    map[string]int  `json:"finish_reasons,omitempty"`
+	Outcome          string          `json:"outcome,omitempty"`
 	Tools            []toolCountJSON `json:"tools,omitempty"`
 }
 
@@ -355,6 +366,7 @@ func toStatsJSON(a sessionAgg) sessionStatsJSON {
 		CacheWriteTokens: a.CacheWriteTokens,
 		Errors:           a.Errors, ToolCalls: len(a.Calls), ToolErrors: countErrors(a.Calls),
 		FinishReasons: a.Finish,
+		Outcome:       a.Outcome,
 		Tools:         toolCounts(a.Calls),
 	}
 	if !a.FirstTS.IsZero() {

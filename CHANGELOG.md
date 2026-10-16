@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A run-end record in the message-layer transcript (`messages.jsonl`): every
+  run now appends one `{"dir":"end","reason":…}` line naming why it ended
+  (`completed`, `max_turns`, `stopped`, or `error`), so a run that looped to
+  the turn cap, was stopped, and failed are distinguishable after the fact;
+  `session show` prints it as a trailing `end=<reason>` line and
+  `session stats` reports it as `outcome`.
 - `eitri session stats [guid|all]`: aggregate per-session statistics — turns,
   input/output tokens, cache hit ratio, tool-call and error counts, wall-clock
   span — as one row per session or a labelled breakdown, with `--format json`.
@@ -22,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A turn's tool calls now run concurrently (bounded in flight), so a turn's
+  wall-clock approaches its slowest call rather than the sum of the calls;
+  tool results and events are still emitted and appended in the model's call
+  order, leaving the next provider request byte-identical.
 - The model-visible skill catalog is now one compact line per skill with each
   skill root declared once in a header, replacing the per-skill XML and the
   repeated absolute path; descriptions are capped in width, and a skill may
@@ -36,6 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Provider requests now retry `429 Too Many Requests`, honoring a
+  `Retry-After` header in both its delta-seconds and HTTP-date forms with a
+  bounded, jittered backoff; a value exceeding the remaining retry budget
+  stops the loop, and other `4xx` responses still do not retry.
+- Transcript write failures are counted and reported once at run end instead
+  of being dropped silently.
 - Session transcript reading now decodes each message's `tool_call_id`, so
   `session talk` tool-result labels and `session grep`'s `tool_call_id` matches
   work instead of silently reading an empty id.

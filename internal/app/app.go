@@ -259,6 +259,8 @@ func Run(opts Options) error {
 	// Message-layer debug transcript: every request and response the engine sees is mirrored to messages.jsonl.
 	logged := provider.NewLoggingProvider(liveProvider, sess.MessageLogSink())
 	e := engine.New(logged, sess)
+	e.SetRunEndSink(sess)
+	e.SetTranscriptErrorReporter(reportTranscriptErrors)
 	key := sess.GUID() // opt into the session-scoped prompt cache
 
 	if opts.Prompt == "" {
@@ -411,6 +413,12 @@ type stderrWarner struct{}
 
 func (stderrWarner) Warnf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "eitri: "+format+"\n", args...)
+}
+
+// reportTranscriptErrors surfaces, once at run end, that the human-readable
+// transcript trail is incomplete because writes failed during the run.
+func reportTranscriptErrors(failed int) {
+	fmt.Fprintf(os.Stderr, "eitri: warning: %d transcript write(s) failed; the session trail is incomplete\n", failed)
 }
 
 // runAgent drives one agent turn (user prompt → assistant answer) over the shared run engine, session transcript, and tool registry that both the TUI and batch use. The model-visible index and the per-run workspace directive are each carried as their own system message so they reach the model without perturbing the byte-stable system prompt; a catalog with none renders to a nil index that keeps the no-index wire bytes intact. ctx is threaded through to the engine so the TUI's per-turn cancellation (Ctrl+C/Esc) and batch's interrupt binding (SIGINT/SIGTERM cancel the run) both reach an in-flight run.

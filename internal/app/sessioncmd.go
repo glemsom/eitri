@@ -21,13 +21,17 @@ type sessionTurn struct {
 	Resp *provider.ResponseLog
 }
 
-func readTurns(path string) ([]sessionTurn, error) {
+// readTurns parses a messages.jsonl file into its turn records and run-end
+// records, in file order. A run-end record (dir "end") names why one run ended
+// and is not a turn, so it is returned separately and never counted among them.
+func readTurns(path string) ([]sessionTurn, []provider.RunEndLog, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer f.Close()
 	var turns []sessionTurn
+	var ends []provider.RunEndLog
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 1024*1024), 16*1024*1024)
 	cur := sessionTurn{Turn: 1}
@@ -48,42 +52,48 @@ func readTurns(path string) ([]sessionTurn, error) {
 			Dir string `json:"dir"`
 		}
 		if err := json.Unmarshal(line, &probe); err != nil {
-			return nil, fmt.Errorf("line %d: malformed record: %w", lineNumber, err)
+			return nil, nil, fmt.Errorf("line %d: malformed record: %w", lineNumber, err)
 		}
 		switch probe.Dir {
 		case "req":
 			if cur.Req != nil {
-				return nil, fmt.Errorf("line %d: request record before previous turn received a response", lineNumber)
+				return nil, nil, fmt.Errorf("line %d: request record before previous turn received a response", lineNumber)
 			}
 			var r provider.RequestLog
 			if err := json.Unmarshal(line, &r); err != nil {
-				return nil, fmt.Errorf("line %d: malformed request record: %w", lineNumber, err)
+				return nil, nil, fmt.Errorf("line %d: malformed request record: %w", lineNumber, err)
 			}
 			rp := r
 			cur.Req = &rp
 		case "resp":
 			if cur.Req == nil {
-				return nil, fmt.Errorf("line %d: response record without a request", lineNumber)
+				return nil, nil, fmt.Errorf("line %d: response record without a request", lineNumber)
 			}
 			var r provider.ResponseLog
 			if err := json.Unmarshal(line, &r); err != nil {
-				return nil, fmt.Errorf("line %d: malformed response record: %w", lineNumber, err)
+				return nil, nil, fmt.Errorf("line %d: malformed response record: %w", lineNumber, err)
 			}
 			rp := r
 			cur.Resp = &rp
 			flush()
+		case "end":
+			var r provider.RunEndLog
+			if err := json.Unmarshal(line, &r); err != nil {
+				return nil, nil, fmt.Errorf("line %d: malformed run-end record: %w", lineNumber, err)
+			}
+			ends = append(ends, r)
 		default:
-			return nil, fmt.Errorf("line %d: message record has unknown direction %q", lineNumber, probe.Dir)
+			return nil, nil, fmt.Errorf("line %d: message record has unknown direction %q", lineNumber, probe.Dir)
 		}
 	}
 	if err := sc.Err(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if cur.Req != nil {
-		return nil, fmt.Errorf("line %d: transcript ends before request received a response", lineNumber)
+		return nil, nil, fmt.Errorf("line %d: transcript ends before request received a response", lineNumber)
 	}
 	flush()
-	return turns, nil
+	return turns, ends, nil
 }
 
 func truncate(s string, n int) string {
@@ -121,7 +131,7 @@ func ListSessions(dataDir string, out io.Writer) error {
 			}
 			return fmt.Errorf("session %s unreadable: %w", e.Name(), err)
 		}
-		turns, err := readTurns(path)
+		turns, _, err := readTurns(path)
 		if err != nil {
 			return fmt.Errorf("session %s unreadable: %w", e.Name(), err)
 		}
@@ -143,7 +153,7 @@ func ShowSession(dataDir, guid string, turn int, noReasoning bool, out io.Writer
 	if err := session.ValidateGUID(guid); err != nil {
 		return err
 	}
-	turns, err := readTurns(filepath.Join(dataDir, "sessions", guid, "messages.jsonl"))
+	turns, ends, err := readTurns(filepath.Join(dataDir, "sessions", guid, "messages.jsonl"))
 	if err != nil {
 		if !os.IsNotExist(err) {
 			return fmt.Errorf("session %s unreadable: %w", guid, err)
@@ -195,6 +205,11 @@ func ShowSession(dataDir, guid string, turn int, noReasoning bool, out io.Writer
 		}
 		fmt.Fprintf(out, "[%d] %s\n", c.Turn, b.String())
 	}
+	if turn == 0 {
+		for _, e := range ends {
+			fmt.Fprintf(out, "end=%s\n", e.Reason)
+		}
+	}
 	return nil
 }
 
@@ -236,7 +251,7 @@ func TalkSession(dataDir, guid string, opts TalkOptions, out io.Writer) error {
 	if err := session.ValidateGUID(guid); err != nil {
 		return err
 	}
-	turns, err := readTurns(filepath.Join(dataDir, "sessions", guid, "messages.jsonl"))
+	turns, _, err := readTurns(filepath.Join(dataDir, "sessions", guid, "messages.jsonl"))
 	if err != nil {
 		return fmt.Errorf("session %s unreadable: %w", guid, err)
 	}
@@ -350,7 +365,7 @@ func GrepSession(dataDir, pattern, guid string, full bool, out io.Writer) error 
 	}
 	for _, dir := range dirs {
 		tag := filepath.Base(dir)
-		turns, err := readTurns(filepath.Join(dir, "messages.jsonl"))
+		turns, _, err := readTurns(filepath.Join(dir, "messages.jsonl"))
 		if err != nil {
 			return fmt.Errorf("session %s unreadable: %w", tag, err)
 		}

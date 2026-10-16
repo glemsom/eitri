@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"math/rand/v2"
 	"net/http"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -25,23 +28,27 @@ func resolveClient(c *http.Client) *http.Client {
 }
 
 // doWithRetry issues req, retrying transient failures before giving up. It
-// retries on transport errors (connection refused/reset, timeouts, DNS) and on
-// 5xx provider responses, pausing providerRetryDelay between attempts. Success
-// (2xx) and client errors (4xx) are returned without retry so callers keep
-// handling them. A cancelled or expired context stops retries immediately and
-// returns the context error.
+// retries on transport errors (connection refused/reset, timeouts, DNS), on 5xx
+// provider responses, and on 429 rate limits, pausing between attempts. Other
+// 4xx responses are returned without retry so callers keep handling them. The
+// pause is providerRetryDelay widened by jitter, unless the server sent a
+// Retry-After header, whose value is honored verbatim. A Retry-After larger than
+// the remaining retry budget stops the loop rather than stalling the run. A
+// cancelled or expired context stops retries immediately and returns the
+// context error.
 //
 // Between attempts req.Body is replayed from req.GetBody; http.NewRequest*
 // populates GetBody for the *bytes.Reader bodies this package sends, so each
 // retry replays the full request.
 func doWithRetry(ctx context.Context, client *http.Client, req *http.Request) (*http.Response, error) {
 	var lastErr error
+	var wait time.Duration
 	for attempt := 0; attempt <= providerMaxRetries; attempt++ {
 		if attempt > 0 {
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
-			case <-time.After(providerRetryDelay):
+			case <-time.After(wait):
 			}
 			if req.GetBody != nil {
 				if b, err := req.GetBody(); err == nil {
@@ -50,10 +57,13 @@ func doWithRetry(ctx context.Context, client *http.Client, req *http.Request) (*
 			}
 		}
 		resp, err := client.Do(req)
-		if err == nil && resp.StatusCode < 500 {
+		if err == nil && !retryableStatus(resp.StatusCode) {
 			return resp, nil
 		}
+		var retryAfter time.Duration
+		var hasRetryAfter bool
 		if resp != nil {
+			retryAfter, hasRetryAfter = parseRetryAfter(resp.Header.Get("Retry-After"), time.Now())
 			body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 			resp.Body.Close()
 			if err == nil {
@@ -61,8 +71,74 @@ func doWithRetry(ctx context.Context, client *http.Client, req *http.Request) (*
 			}
 		}
 		lastErr = err
+
+		if attempt == providerMaxRetries {
+			break
+		}
+		next, ok := retryWait(attempt, retryAfter, hasRetryAfter)
+		if !ok {
+			return nil, lastErr
+		}
+		wait = next
 	}
 	return nil, lastErr
+}
+
+// retryableStatus reports whether a provider response status warrants a retry:
+// server-side failures and rate limits, but not other client errors.
+func retryableStatus(code int) bool {
+	return code >= http.StatusInternalServerError || code == http.StatusTooManyRequests
+}
+
+// parseRetryAfter interprets a Retry-After header value, which per HTTP is
+// either a number of seconds to wait or an HTTP-date at which to retry. It
+// reports ok=false for an absent or unparseable value so the caller falls back
+// to the base backoff; a delta-seconds value or a date already past yields a
+// zero wait.
+func parseRetryAfter(value string, now time.Time) (time.Duration, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, false
+	}
+	if secs, err := strconv.Atoi(value); err == nil {
+		if secs <= 0 {
+			return 0, true
+		}
+		return time.Duration(secs) * time.Second, true
+	}
+	when, err := http.ParseTime(value)
+	if err != nil {
+		return 0, false
+	}
+	if d := when.Sub(now); d > 0 {
+		return d, true
+	}
+	return 0, true
+}
+
+// retryWait returns the pause before the next attempt. An honored Retry-After is
+// used verbatim, unless it would spend more than the time the remaining attempts
+// are budgeted for (each worth providerRetryDelay), in which case ok=false tells
+// the caller to stop rather than sleep past the budget. Without a header the
+// base delay is widened by jitter.
+func retryWait(attempt int, retryAfter time.Duration, hasRetryAfter bool) (time.Duration, bool) {
+	if hasRetryAfter {
+		if remaining := time.Duration(providerMaxRetries-attempt) * providerRetryDelay; retryAfter > remaining {
+			return 0, false
+		}
+		return retryAfter, true
+	}
+	return jitteredDelay(providerRetryDelay), true
+}
+
+// jitteredDelay spreads a retry pause across the second half of base so
+// concurrent runs sharing a rate limit do not retry in lockstep.
+func jitteredDelay(base time.Duration) time.Duration {
+	half := base / 2
+	if half <= 0 {
+		return base
+	}
+	return half + time.Duration(rand.Int64N(int64(half)))
 }
 
 // HTTPTraceSink receives raw provider HTTP bodies. It is intended for explicit

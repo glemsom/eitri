@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/glemsom/eitri/internal/provider"
 )
@@ -29,6 +30,13 @@ func (m *messageLog) LogRequest(rec provider.RequestLog) {
 
 func (m *messageLog) LogResponse(rec provider.ResponseLog) {
 	m.append(rec)
+}
+
+// LogRunEnd appends the run's terminal reason as one message-layer record, so a
+// reader can tell how a run ended from messages.jsonl alone. It is called once
+// per run, after the run's last turn record.
+func (s *Session) LogRunEnd(reason string) {
+	s.messages.append(provider.RunEndLog{Time: time.Now(), Dir: "end", Reason: reason})
 }
 
 // append serializes rec as one JSON line and appends it, opening the file on first write. Write failures are swallowed: the debug trail must never take down a live run.

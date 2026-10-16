@@ -30,10 +30,23 @@ type TranscriptWriter interface {
 	WriteTranscript(line []byte) error
 }
 
+// RunEndSink receives the terminal reason of one run, called exactly once per
+// run. The reason is one of the provider.RunEnd* values.
+type RunEndSink interface {
+	LogRunEnd(reason string)
+}
+
+// TranscriptErrorReporter receives the number of transcript writes that failed
+// during one run. RunAgent invokes it at most once per run, and only when at
+// least one write failed, so a broken trail is surfaced without per-write noise.
+type TranscriptErrorReporter func(failed int)
+
 // Engine is a run engine bound to a provider and a transcript sink.
 type Engine struct {
 	provider   provider.Provider
 	transcript TranscriptWriter
+	runEnd     RunEndSink
+	onTrErr    TranscriptErrorReporter
 	listener   Listener
 
 	histMu    sync.Mutex
@@ -50,6 +63,17 @@ func New(p provider.Provider, tr TranscriptWriter) *Engine {
 
 func (e *Engine) SetTranscript(tr TranscriptWriter) {
 	e.transcript = tr
+}
+
+// SetRunEndSink registers the sink that records each run's terminal reason.
+func (e *Engine) SetRunEndSink(s RunEndSink) {
+	e.runEnd = s
+}
+
+// SetTranscriptErrorReporter registers the reporter notified at run end when one
+// or more transcript writes failed during that run.
+func (e *Engine) SetTranscriptErrorReporter(r TranscriptErrorReporter) {
+	e.onTrErr = r
 }
 
 // Listener receives one typed Event per streamed observation from a live run, in order, synchronously from within the turn's drain loop.
@@ -186,11 +210,47 @@ func (e *Engine) stopped(ctx context.Context) bool {
 	return ctx.Err() != nil
 }
 
-// finishStopped emits the turn-ending event and the stopped transcript record for a run aborted by cancellation.
-func (e *Engine) finishStopped(res Result, prompt string, runID, turn int) {
+// runTranscript wraps the run's transcript writer to count failed writes, so a
+// broken trail is reported once at run end rather than dropped per write.
+type runTranscript struct {
+	writer TranscriptWriter
+	failed int
+}
+
+func (t *runTranscript) write(line []byte) {
+	if t.writer == nil {
+		return
+	}
+	if err := t.writer.WriteTranscript(line); err != nil {
+		t.failed++
+	}
+}
+
+// finishStopped emits the turn-ending event and the transcript record naming the
+// user stop for a run aborted by cancellation.
+func (e *Engine) finishStopped(tr *runTranscript, res Result, prompt string, runID, turn int) {
 	e.emit(TurnEvent{RunID: runID, Turn: turn, EndReason: "stopped"})
-	if e.transcript != nil {
-		_ = e.transcript.WriteTranscript(fmt.Appendf(nil, "=== %s ===\n%s\n[stopped]\n", prompt, res.Answer))
+	tr.write(fmt.Appendf(nil, "=== %s ===\n%s\n[stopped] run ended by user stop\n", prompt, res.Answer))
+}
+
+// finishMaxTurns records a run that exhausted its turn budget: the loop kept
+// calling tools past the cap and the continuation hook, if any, refused a fresh
+// budget.
+func (e *Engine) finishMaxTurns(tr *runTranscript, res Result, prompt string, maxTurns int) {
+	tr.write(fmt.Appendf(nil, "=== %s ===\n%s\n[max_turns] reached the turn cap of %d\n", prompt, res.Answer, maxTurns))
+}
+
+// runEndReason maps a run's terminal error to its provider.RunEnd* reason.
+func runEndReason(err error) string {
+	switch {
+	case err == nil:
+		return provider.RunEndCompleted
+	case errors.Is(err, ErrStopped):
+		return provider.RunEndStopped
+	case errors.Is(err, ErrMaxTurns):
+		return provider.RunEndMaxTurns
+	default:
+		return provider.RunEndError
 	}
 }
 
@@ -234,11 +294,20 @@ type AgentOptions struct {
 	lastUsage *provider.Usage
 }
 
-func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions) (final Result, _ error) {
+func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions) (final Result, runErr error) {
 	if len(opts.Tools) > 0 && opts.Executor == nil {
 		return Result{}, errors.New("declared tools require a tool executor")
 	}
 	runID := e.claimRunID()
+	tr := &runTranscript{writer: e.transcript}
+	defer func() {
+		if e.runEnd != nil {
+			e.runEnd.LogRunEnd(runEndReason(runErr))
+		}
+		if tr.failed > 0 && e.onTrErr != nil {
+			e.onTrErr(tr.failed)
+		}
+	}()
 	if ctx.Err() != nil {
 		stopped := true
 		defer func() { final.Stopped = stopped }()
@@ -299,7 +368,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 			stopped = true
 			final.Answer = stopContent
 			final.Reasoning = stopReasoning
-			e.finishStopped(final, req.Prompt, runID, turn)
+			e.finishStopped(tr, final, req.Prompt, runID, turn)
 			return final, ErrStopped
 		}
 		if opts.MaxTurns > 0 && turn >= opts.MaxTurns {
@@ -308,9 +377,10 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 					stopped = true
 					final.Answer = stopContent
 					final.Reasoning = stopReasoning
-					e.finishStopped(final, req.Prompt, runID, turn)
+					e.finishStopped(tr, final, req.Prompt, runID, turn)
 					return final, ErrStopped
 				}
+				e.finishMaxTurns(tr, final, req.Prompt, opts.MaxTurns)
 				return final, ErrMaxTurns
 			}
 			turn = 0 // a granted continuation resets the turn budget
@@ -318,7 +388,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 				stopped = true
 				final.Answer = stopContent
 				final.Reasoning = stopReasoning
-				e.finishStopped(final, req.Prompt, runID, turn)
+				e.finishStopped(tr, final, req.Prompt, runID, turn)
 				return final, ErrStopped
 			}
 		}
@@ -341,7 +411,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 				stopped = true
 				final.Answer = stopContent
 				final.Reasoning = stopReasoning
-				e.finishStopped(final, req.Prompt, runID, turn)
+				e.finishStopped(tr, final, req.Prompt, runID, turn)
 				return final, ErrStopped
 			}
 			if provider.IsContextOverflow(err) {
@@ -373,7 +443,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 					stopReasoning += reasoning.String()
 					final.Answer = stopContent
 					final.Reasoning = stopReasoning
-					e.finishStopped(final, req.Prompt, runID, turn)
+					e.finishStopped(tr, final, req.Prompt, runID, turn)
 					return final, ErrStopped
 				}
 				if !terminal {
@@ -388,7 +458,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 					stopReasoning += reasoning.String()
 					final.Answer = stopContent
 					final.Reasoning = stopReasoning
-					e.finishStopped(final, req.Prompt, runID, turn)
+					e.finishStopped(tr, final, req.Prompt, runID, turn)
 					return final, ErrStopped
 				}
 				return final, err
@@ -438,37 +508,89 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 				messages = append(messages, assistant)
 			}
 			e.storeSessionHistory(req.SessionKey, messages)
-			if e.transcript != nil {
-				_ = e.transcript.WriteTranscript(fmt.Appendf(nil, "=== %s ===\n%s\n", req.Prompt, content.String()))
-			}
+			tr.write(fmt.Appendf(nil, "=== %s ===\n%s\n", req.Prompt, content.String()))
 			return final, nil
 		}
 
 		assistant.ToolCalls = done.ToolCalls
 		messages = append(messages, assistant)
-		for _, tc := range done.ToolCalls {
-			if e.stopped(ctx) {
-				stopped = true
-				stopContent += content.String()
-				stopReasoning += reasoning.String()
-				final.Answer = stopContent
-				final.Reasoning = stopReasoning
-				e.finishStopped(final, req.Prompt, runID, turn)
-				return final, ErrStopped
-			}
-			e.emit(ToolCallEvent{RunID: runID, Turn: turn, ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments})
-			result := execToolCall(ctx, opts, tc)
-			delivered, dropped := compress.CapBytes(result.Text, compress.DefaultByteCap, result.Dropped, result.BytesDropped)
-			e.emit(newToolResultEvent(runID, turn, tc.ID, tc.Name, result, dropped))
-			messages = append(messages, provider.Message{
-				Role:       provider.RoleTool,
-				ToolCallID: tc.ID,
-				Content:    delivered,
-			})
+		if e.dispatchToolCalls(ctx, opts, runID, turn, done.ToolCalls, &messages) {
+			stopped = true
+			stopContent += content.String()
+			stopReasoning += reasoning.String()
+			final.Answer = stopContent
+			final.Reasoning = stopReasoning
+			e.finishStopped(tr, final, req.Prompt, runID, turn)
+			return final, ErrStopped
 		}
 		stopContent += content.String()
 		stopReasoning += reasoning.String()
 	}
+}
+
+// maxConcurrentToolCalls bounds how many of a turn's tool calls run at once.
+// Each call can spawn a sandbox process, so a model that emits a large batch
+// must not fan out that many processes simultaneously; eight keeps a turn's
+// wall-clock near its slowest call without oversubscribing the sandbox.
+const maxConcurrentToolCalls = 8
+
+// dispatchToolCalls runs a turn's tool calls concurrently, bounded by
+// maxConcurrentToolCalls, then drains them on the calling goroutine so tool
+// events and provider messages are appended strictly in the model's call order:
+// the following provider request is byte-identical to the serial version's. It
+// reports whether a stop cut the turn short; already-dispatched calls are joined
+// before it returns, so no tool goroutine outlives the run.
+func (e *Engine) dispatchToolCalls(ctx context.Context, opts AgentOptions, runID, turn int, calls []provider.ToolCall, messages *[]provider.Message) (stopped bool) {
+	type outcome struct {
+		result ToolExecResult
+		ran    bool
+	}
+	outcomes := make([]outcome, len(calls))
+	done := make([]chan struct{}, len(calls))
+	for i := range done {
+		done[i] = make(chan struct{})
+	}
+	sem := make(chan struct{}, maxConcurrentToolCalls)
+	var wg sync.WaitGroup
+	for i, tc := range calls {
+		wg.Add(1)
+		go func(i int, tc provider.ToolCall) {
+			defer wg.Done()
+			defer close(done[i])
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
+			defer func() { <-sem }()
+			if ctx.Err() != nil {
+				return
+			}
+			outcomes[i] = outcome{result: execToolCall(ctx, opts, tc), ran: true}
+		}(i, tc)
+	}
+	for i, tc := range calls {
+		if ctx.Err() != nil {
+			stopped = true
+			break
+		}
+		e.emit(ToolCallEvent{RunID: runID, Turn: turn, ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments})
+		<-done[i]
+		if !outcomes[i].ran {
+			stopped = true
+			break
+		}
+		result := outcomes[i].result
+		delivered, dropped := compress.CapBytes(result.Text, compress.DefaultByteCap, result.Dropped, result.BytesDropped)
+		e.emit(newToolResultEvent(runID, turn, tc.ID, tc.Name, result, dropped))
+		*messages = append(*messages, provider.Message{
+			Role:       provider.RoleTool,
+			ToolCallID: tc.ID,
+			Content:    delivered,
+		})
+	}
+	wg.Wait()
+	return stopped
 }
 
 func declaredTool(tools []provider.Tool, name string) (provider.Tool, bool) {

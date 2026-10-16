@@ -130,6 +130,154 @@ func TestDoWithRetryDoesNotRetry4xx(t *testing.T) {
 	}
 }
 
+func TestDoWithRetryRetries429ThenSucceeds(t *testing.T) {
+	withFastRetry(t)
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		if hits < 2 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		_, _ = io.WriteString(w, "ok")
+	}))
+	defer srv.Close()
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, srv.URL, strings.NewReader("body"))
+	if err != nil {
+		t.Fatalf("NewRequestWithContext: %v", err)
+	}
+	resp, err := doWithRetry(context.Background(), srv.Client(), req)
+	if err != nil {
+		t.Fatalf("doWithRetry() error = %v, want nil", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if hits != 2 {
+		t.Fatalf("server hits = %d, want 2 (429 then success)", hits)
+	}
+}
+
+func TestDoWithRetryHonorsRetryAfterDeltaSeconds(t *testing.T) {
+	oldDelay, oldRetries := providerRetryDelay, providerMaxRetries
+	providerRetryDelay = 5 * time.Second
+	providerMaxRetries = 3
+	t.Cleanup(func() { providerRetryDelay, providerMaxRetries = oldDelay, oldRetries })
+
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		if hits < 2 {
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		_, _ = io.WriteString(w, "ok")
+	}))
+	defer srv.Close()
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, srv.URL, strings.NewReader("body"))
+	if err != nil {
+		t.Fatalf("NewRequestWithContext: %v", err)
+	}
+	start := time.Now()
+	resp, err := doWithRetry(context.Background(), srv.Client(), req)
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("doWithRetry() error = %v, want nil", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if hits != 2 {
+		t.Fatalf("server hits = %d, want 2", hits)
+	}
+	if elapsed < 900*time.Millisecond {
+		t.Fatalf("elapsed = %s, want ~1s honoring Retry-After", elapsed)
+	}
+	if elapsed > 2*time.Second {
+		t.Fatalf("elapsed = %s, want the 1s header, not the 5s base delay", elapsed)
+	}
+}
+
+func TestDoWithRetryHonorsRetryAfterHTTPDate(t *testing.T) {
+	oldDelay, oldRetries := providerRetryDelay, providerMaxRetries
+	providerRetryDelay = 5 * time.Second
+	providerMaxRetries = 3
+	t.Cleanup(func() { providerRetryDelay, providerMaxRetries = oldDelay, oldRetries })
+
+	// A date already in the past retries immediately: parsing it proves the
+	// HTTP-date form is honored rather than falling back to the 5s base delay.
+	past := time.Now().Add(-time.Minute).UTC().Format(http.TimeFormat)
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		if hits < 2 {
+			w.Header().Set("Retry-After", past)
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		_, _ = io.WriteString(w, "ok")
+	}))
+	defer srv.Close()
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, srv.URL, strings.NewReader("body"))
+	if err != nil {
+		t.Fatalf("NewRequestWithContext: %v", err)
+	}
+	start := time.Now()
+	resp, err := doWithRetry(context.Background(), srv.Client(), req)
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("doWithRetry() error = %v, want nil", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if hits != 2 {
+		t.Fatalf("server hits = %d, want 2", hits)
+	}
+	if elapsed > time.Second {
+		t.Fatalf("elapsed = %s, want an immediate retry for a past HTTP-date", elapsed)
+	}
+}
+
+func TestDoWithRetryStopsWhenRetryAfterExceedsBudget(t *testing.T) {
+	withFastRetry(t)
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		w.Header().Set("Retry-After", "60")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, srv.URL, strings.NewReader("body"))
+	if err != nil {
+		t.Fatalf("NewRequestWithContext: %v", err)
+	}
+	start := time.Now()
+	resp, err := doWithRetry(context.Background(), srv.Client(), req)
+	elapsed := time.Since(start)
+	if resp != nil {
+		t.Fatalf("resp = %v, want nil", resp)
+	}
+	var he *HTTPError
+	if !errors.As(err, &he) || he.Code != http.StatusTooManyRequests {
+		t.Fatalf("err = %v, want HTTPError{429}", err)
+	}
+	if hits != 1 {
+		t.Fatalf("server hits = %d, want 1 (a Retry-After past the budget stops the loop)", hits)
+	}
+	if elapsed > time.Second {
+		t.Fatalf("elapsed = %s, want an immediate stop instead of sleeping the header", elapsed)
+	}
+}
+
 func TestDoWithRetryStopsOnCanceledContext(t *testing.T) {
 	withFastRetry(t)
 	ctx, cancel := context.WithCancel(context.Background())

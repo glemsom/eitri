@@ -12,12 +12,13 @@ loading whole sessions into its context window.
 | File | Content |
 |---|---|
 | `transcript.md` | Human-readable trail: prompts and final answers only (legacy, always written). |
-| `messages.jsonl` | **Message-layer transcript**: one JSON line per provider request/response turn — the exact messages sent to and received from the model. |
+| `messages.jsonl` | **Message-layer transcript**: one JSON line per provider request/response turn, plus one run-end record per run — the exact messages sent to and received from the model, and why each run ended. |
 | `trace-request.http`, `trace-response.http` | Raw HTTP bodies; written only in debug mode (`-d`). |
 
 ## `messages.jsonl` schema
 
-Each turn appends two lines: one request record, one response record.
+Each turn appends two lines: one request record, one response record. A run
+appends one further line when it ends: a run-end record.
 
 Request record:
 
@@ -41,8 +42,23 @@ Response record:
 
 - `usage.prompt_cache_write_tokens` is present when the provider reports cache-write tokens; it is distinct from cache hits and may be absent on dialects that do not report it.
 - `error` is present only when the turn failed (provider error or mid-stream failure).
+Run-end record:
+
+```json
+{"ts":"…","dir":"end","reason":"completed|max_turns|stopped|error"}
+```
+
+- One record per run, written after the run's last turn. `reason` is `completed`
+  for a final answer, `max_turns` for a run that hit the turn cap, `stopped` for
+  a user stop, and `error` for a failed run. It is not a turn: it carries no
+  request/response and is never counted as one.
+
 - Turns are implicitly numbered 1..N in file order, and that number is what
-  `--turn N` takes. `session list` prints the total as `N turns`.
+  `--turn N` takes. `session list` prints the total as `N turns`, counting turn
+  records only — a run-end record never inflates that number. `session show`
+  prints the run's reason as a trailing `end=<reason>` line and `session stats`
+  reports it as `outcome` (text) / `outcome` (json); both omit it for older
+  sessions written before the record existed.
 
 ## Agent navigation workflow
 

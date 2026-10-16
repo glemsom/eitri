@@ -27,6 +27,23 @@ type ResponseLog struct {
 	Error            string     `json:"error,omitempty"`
 }
 
+// RunEndLog is the message-layer record of why a run ended: one record per run,
+// written after the run's last turn. Its Dir "end" distinguishes it from the
+// per-turn "req"/"resp" records, and it is not counted as a turn.
+type RunEndLog struct {
+	Time   time.Time `json:"ts"`
+	Dir    string    `json:"dir"` // always "end"
+	Reason string    `json:"reason"`
+}
+
+// The closed set of run-end reasons a RunEndLog.Reason may carry.
+const (
+	RunEndCompleted = "completed"
+	RunEndMaxTurns  = "max_turns"
+	RunEndStopped   = "stopped"
+	RunEndError     = "error"
+)
+
 // MessageLogSink receives the request and response of every turn as two ordered records.
 type MessageLogSink interface {
 	LogRequest(rec RequestLog)

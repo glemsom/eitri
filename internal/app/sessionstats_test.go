@@ -186,3 +186,65 @@ func TestRunSessionCmdStatsToolsRejectBadArgs(t *testing.T) {
 		}
 	}
 }
+
+// writeStatsFixtureWithEnd adds a run-end record to the first stats session.
+func writeStatsFixtureWithEnd(t *testing.T, dataDir, reason string) {
+	t.Helper()
+	writeStatsFixture(t, dataDir)
+	path := filepath.Join(dataDir, "sessions", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1", "messages.jsonl")
+	line := `{"ts":"2026-01-01T00:00:04Z","dir":"end","reason":"` + reason + `"}` + "\n"
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(line); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestStatsSessionSurfacesOutcome(t *testing.T) {
+	dataDir := t.TempDir()
+	writeStatsFixtureWithEnd(t, dataDir, "max_turns")
+
+	var text bytes.Buffer
+	if err := StatsSession(dataDir, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1", "text", &text); err != nil {
+		t.Fatalf("StatsSession(text) error = %v", err)
+	}
+	if !strings.Contains(text.String(), "outcome max_turns") {
+		t.Fatalf("stats text missing outcome:\n%s", text.String())
+	}
+
+	var jsonOut bytes.Buffer
+	if err := StatsSession(dataDir, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1", "json", &jsonOut); err != nil {
+		t.Fatalf("StatsSession(json) error = %v", err)
+	}
+	var row sessionStatsJSON
+	if err := json.Unmarshal(jsonOut.Bytes(), &row); err != nil {
+		t.Fatalf("stats json not decodable: %v", err)
+	}
+	if row.Outcome != "max_turns" {
+		t.Fatalf("stats json outcome = %q, want %q", row.Outcome, "max_turns")
+	}
+	if row.Turns != 2 {
+		t.Fatalf("stats json turns = %d, want 2 (end record must not count)", row.Turns)
+	}
+}
+
+func TestStatsSessionToleratesAbsentOutcome(t *testing.T) {
+	dataDir := t.TempDir()
+	writeStatsFixture(t, dataDir)
+	var out bytes.Buffer
+	if err := StatsSession(dataDir, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1", "json", &out); err != nil {
+		t.Fatalf("StatsSession() error = %v", err)
+	}
+	var row sessionStatsJSON
+	if err := json.Unmarshal(out.Bytes(), &row); err != nil {
+		t.Fatalf("stats json not decodable: %v", err)
+	}
+	if row.Outcome != "" {
+		t.Fatalf("stats json outcome = %q, want empty for a session without an end record", row.Outcome)
+	}
+}

@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"testing"
 
 	"github.com/glemsom/eitri/internal/provider"
@@ -40,6 +41,7 @@ func strictToolDefs() []provider.Tool {
 }
 
 type mockToolRecorder struct {
+	mu    sync.Mutex
 	calls []callRecord
 }
 
@@ -53,7 +55,9 @@ func (m *mockToolRecorder) Execute(_ context.Context, name, argsJSON string) (To
 	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
 		return ToolExecResult{}, err
 	}
+	m.mu.Lock()
 	m.calls = append(m.calls, callRecord{name: name, args: args})
+	m.mu.Unlock()
 	return ToolExecResult{Text: "result:" + name}, nil
 }
 
@@ -154,11 +158,15 @@ func TestParallelToolCallsDispatchAllInOnePass(t *testing.T) {
 	if len(rec.calls) != 2 {
 		t.Fatalf("executor calls = %d, want 2", len(rec.calls))
 	}
-	if rec.calls[0].name != "bash" || rec.calls[1].name != "read" {
-		t.Fatalf("call order = %+v, want bash then read", rec.calls)
+	called := map[string]bool{}
+	for _, c := range rec.calls {
+		called[c.name] = true
+	}
+	if !called["bash"] || !called["read"] {
+		t.Fatalf("executor calls = %+v, want both bash and read (order is not fixed under concurrent dispatch)", rec.calls)
 	}
 	if len(lastIDs) != 2 || lastIDs[0] != "call_a" || lastIDs[1] != "call_b" {
-		t.Fatalf("resubmitted tool_call_ids = %v, want [call_a call_b]", lastIDs)
+		t.Fatalf("resubmitted tool_call_ids = %v, want [call_a call_b] in call order", lastIDs)
 	}
 }
 

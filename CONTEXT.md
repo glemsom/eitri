@@ -37,7 +37,7 @@ _Avoid_: past turn, history.
 **Session**: the append-only, GUID-named on-disk record of a sequence of runs — one per batch run, and in the TUI until `/new` re-mints it. It is not an editable conversation.
 _Avoid_: conversation, chat history.
 
-**Persisted transcript**: the message-layer JSONL record of provider requests and responses inside a session — the ground truth for debugging and performance work.
+**Persisted transcript**: the message-layer JSONL record of provider requests and responses inside a session, plus one run-end record naming why a run ended — the ground truth for debugging and performance work.
 _Avoid_: message log, trace.
 
 **TUI transcript view**: the rendered conversation in the terminal. Qualify "transcript" when the UI is meant.

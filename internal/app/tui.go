@@ -25,6 +25,7 @@ func bindSessionArtifacts(e *engine.Engine, logged *provider.LoggingProvider, re
 		return err
 	}
 	e.SetTranscript(sess)
+	e.SetRunEndSink(sess)
 	logged.SetSink(sess.MessageLogSink())
 	return nil
 }

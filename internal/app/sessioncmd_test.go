@@ -515,3 +515,59 @@ func TestRunSessionCmdTalkRejectsRemovedAllFlag(t *testing.T) {
 		t.Fatalf("talk usage still advertises --all: %v", err)
 	}
 }
+
+// writeMessagesFixtureWithEnd appends a run-end record to the two-turn fixture.
+func writeMessagesFixtureWithEnd(t *testing.T, dataDir, guid, reason string) {
+	t.Helper()
+	writeMessagesFixture(t, dataDir, guid)
+	path := filepath.Join(dataDir, "sessions", guid, "messages.jsonl")
+	line := `{"ts":"2026-01-01T00:00:04Z","dir":"end","reason":"` + reason + `"}` + "\n"
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(line); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestShowSessionSurfacesRunEndReason(t *testing.T) {
+	dataDir := t.TempDir()
+	const guid = "cccccccccccccccccccccccccccccccc"
+	writeMessagesFixtureWithEnd(t, dataDir, guid, "max_turns")
+	var out bytes.Buffer
+	if err := ShowSession(dataDir, guid, 0, false, &out); err != nil {
+		t.Fatalf("ShowSession() error = %v", err)
+	}
+	if !strings.Contains(out.String(), "end=max_turns") {
+		t.Fatalf("show did not surface the run-end reason:\n%s", out.String())
+	}
+}
+
+func TestShowSessionToleratesAbsentRunEndReason(t *testing.T) {
+	dataDir := t.TempDir()
+	const guid = "dddddddddddddddddddddddddddddddd"
+	writeMessagesFixture(t, dataDir, guid)
+	var out bytes.Buffer
+	if err := ShowSession(dataDir, guid, 0, false, &out); err != nil {
+		t.Fatalf("ShowSession() error = %v", err)
+	}
+	if strings.Contains(out.String(), "end=") {
+		t.Fatalf("show invented a run-end line for a session without one:\n%s", out.String())
+	}
+}
+
+func TestListSessionsIgnoresRunEndRecordsForTurnCount(t *testing.T) {
+	dataDir := t.TempDir()
+	writeMessagesFixtureWithEnd(t, dataDir, "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "completed")
+	var out bytes.Buffer
+	if err := ListSessions(dataDir, &out); err != nil {
+		t.Fatalf("ListSessions() error = %v", err)
+	}
+	if !strings.Contains(out.String(), "2 turns") {
+		t.Fatalf("run-end record changed the turn count:\n%s", out.String())
+	}
+}
