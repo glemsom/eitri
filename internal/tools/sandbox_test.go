@@ -141,6 +141,12 @@ func hasArgvPair(argv []string, opt, src, dst string) bool {
 	return false
 }
 
+// networkProbeTimeout bounds the real-network ssh probe below: an
+// unresponsive host, or ssh blocking on a passphrase/touch prompt, must fail
+// into the "not verifiable" path rather than stall the suite until Go's global
+// test timeout (which would fail every test in this package).
+const networkProbeTimeout = 30 * time.Second
+
 func TestSandboxRealBwrapIntegration(t *testing.T) {
 	t.Parallel()
 	if !bwrapAvailable() {
@@ -230,7 +236,13 @@ func TestSandboxRealBwrapIntegration(t *testing.T) {
 
 	gitBin, _ := exec.LookPath("git")
 	if gitBin != "" && sshBin != "" {
-		o, err := sb.Run(context.Background(), "git ls-remote git@github.com:glemsom/eitri.git >/dev/null")
+		// Real network + credential I/O, so bound it and forbid interactive
+		// auth: without BatchMode ssh blocks while prompting for a key
+		// passphrase or security-key touch when no terminal is attached.
+		ctx, cancel := context.WithTimeout(context.Background(), networkProbeTimeout)
+		defer cancel()
+		cmd := "GIT_SSH_COMMAND='ssh -o BatchMode=yes -o ConnectTimeout=10' git ls-remote git@github.com:glemsom/eitri.git >/dev/null"
+		o, err := sb.Run(ctx, cmd)
 		switch {
 		case err == nil:
 		case strings.Contains(o.Stderr, "Bad owner or permissions"):
