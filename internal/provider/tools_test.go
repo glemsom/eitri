@@ -122,3 +122,30 @@ func (s *toolFixtureStream) Next() (Chunk, error) {
 	s.idx++
 	return parseEvent(data, s.acc)
 }
+
+func TestMessageRoundTripsToolCallID(t *testing.T) {
+	t.Parallel()
+	in := Message{Role: RoleTool, ToolCallID: "call_9", Content: "ok"}
+	b, err := json.Marshal(in)
+	if err != nil {
+		t.Fatalf("marshal error = %v", err)
+	}
+	var got Message
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatalf("unmarshal error = %v", err)
+	}
+	if got.ToolCallID != "call_9" || got.Role != RoleTool || got.Content != "ok" {
+		t.Fatalf("round trip = %+v, want tool_call_id call_9", got)
+	}
+}
+
+func TestMessageUnmarshalReadsAssistantToolCalls(t *testing.T) {
+	t.Parallel()
+	var got Message
+	if err := json.Unmarshal([]byte(`{"role":"assistant","content":"","reasoning_content":"think","tool_calls":[{"id":"t1","type":"function","function":{"name":"bash","arguments":"{}"}}]}`), &got); err != nil {
+		t.Fatalf("unmarshal error = %v", err)
+	}
+	if got.ReasoningContent != "think" || len(got.ToolCalls) != 1 || got.ToolCalls[0].Name != "bash" {
+		t.Fatalf("assistant message = %+v", got)
+	}
+}

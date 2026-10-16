@@ -101,6 +101,27 @@ func (m Message) MarshalJSON() ([]byte, error) {
 	return json.Marshal(wire)
 }
 
+// UnmarshalJSON decodes the wire shape MarshalJSON writes. It exists because
+// ToolCallID maps to the `tool_call_id` key, which Go's default field matching
+// (case-folding only, no underscore handling) cannot resolve.
+func (m *Message) UnmarshalJSON(data []byte) error {
+	var wire messageWire
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+	m.Role = wire.Role
+	if wire.Content != nil {
+		m.Content = *wire.Content
+	}
+	m.ToolCallID = wire.ToolCallID
+	m.ToolCalls = wire.ToolCalls
+	if wire.ReasoningContent != nil {
+		m.ReasoningContent = *wire.ReasoningContent
+	}
+	m.CacheControl = wire.CacheControl
+	return nil
+}
+
 // messageWire is the deterministic field-ordered serialization shape for a Message.
 type messageWire struct {
 	Role             Role          `json:"role"`

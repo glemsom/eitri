@@ -62,7 +62,32 @@ eitri session talk <guid>             # the full message stream as plain text: [
 #   --from N        start at turn N and run to the end
 #   --role R        keep only user|assistant|tool|system messages (assistant responses included)
 #   --reasoning     include chain-of-thought blocks (stripped by default)
+eitri session stats [guid|all]        # aggregate statistics (see below)
+#   --format text|json   text (default) or one JSON object
+eitri session tools [guid|all]        # every tool call joined to its result (see below)
+#   --name T         keep only calls to tool T
+#   --turn N         keep only calls issued on turn N
+#   --format text|json   text (default) or one JSON object
 ```
+
+`stats` summarises a session's cost and shape. Without a GUID (or with
+`all`) it prints one tab-separated row per session, newest first — GUID, turns,
+input/output tokens, cache hit ratio, tool-call count, turn errors, wall-clock
+span, and model. Given a GUID it prints a labelled breakdown: totals, the
+cache hit/miss/write split, turn errors, tool-call count with a per-tool error
+tally, and a finish-reason histogram.
+
+`tools` is the tool-call inspector. Each line is
+`[turn] name status bytes  args`, where `status` is `ok`, `error` (the result
+is the engine's failure form), or `no-result` (the call was never answered —
+typically the last call of a truncated run). Results are joined to their calls
+by `tool_call_id`, which lives on the *next* turn's request. Each session's
+calls are followed by a per-tool count/error summary.
+
+Both commands accept `--format json`: `stats` emits one object per session
+(`{"sessions":[…]}` for `all`, a single object otherwise), and `tools` emits
+`{"calls":[…],"summary":[…]}` with the full untruncated arguments per call, so
+an agent can pipe them straight into `jq`.
 
 `talk` is the read-the-messages command: it renders actual message bodies,
 where `show` renders per-turn metadata. Tool calls render as
@@ -70,11 +95,13 @@ where `show` renders per-turn metadata. Tool calls render as
 to answer "what did the user say / what did the model reply", `grep -full` to
 pull every message containing a string without truncation.
 
-Recommended loop: `list` → pick a session → `show` to find the interesting
-turn (spike in tokens, an error, an odd tool call) → `--turn N` for full
-detail → `grep` across all sessions to find similar behavior elsewhere. To
-read the dialogue itself — user prompts and assistant replies in order — use
-`talk`, optionally filtered with `--turn`/`--role`.
+Recommended loop: `list` → `stats` to rank sessions by cost and spot errors →
+pick a session → `show` to find the interesting turn (spike in tokens, an
+error, an odd tool call) → `--turn N` for full detail → `tools` to see what the
+agent actually executed and how often it failed → `grep` across all sessions to
+find similar behavior elsewhere. To read the dialogue itself — user prompts and
+assistant replies in order — use `talk`, optionally filtered with
+`--turn`/`--role`.
 
 ## Out of scope
 

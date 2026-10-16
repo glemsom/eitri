@@ -26,6 +26,13 @@ Usage:
   eitri session grep <pattern> [guid|all] [-full]
                          find turns whose messages match pattern, with snippets;
                          -full prints the complete matching field text
+  eitri session stats [guid|all] [--format text|json]
+                         aggregate statistics: turns, tokens, cache hit ratio,
+                         tool calls, errors; one row per session, or a full
+                         breakdown for a single GUID
+  eitri session tools [guid|all] [--name T] [--turn N] [--format text|json]
+                         every tool call joined to its result, with per-tool
+                         counts and error tallies
 
 Flags:
 

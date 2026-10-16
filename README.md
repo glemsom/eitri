@@ -50,6 +50,8 @@ eitri session list
 eitri session show <guid>
 eitri session talk <guid>
 eitri session grep <pattern> [guid|all]
+eitri session stats [guid|all]        # per-session tokens, cache, tool calls, errors
+eitri session tools [guid|all]        # every tool call with its result and error tally
 eitri --version
 ```
 

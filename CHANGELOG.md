@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
      describe user-visible behavior; record dependency and compatibility
      changes under Changed. -->
 
+### Added
+
+- `eitri session stats [guid|all]`: aggregate per-session statistics — turns,
+  input/output tokens, cache hit ratio, tool-call and error counts, wall-clock
+  span — as one row per session or a labelled breakdown, with `--format json`.
+- `eitri session tools [guid|all]`: every tool call joined to its result, with
+  `ok`/`error`/`no-result` status, optional `--name`/`--turn` filters, a
+  per-tool summary, and `--format json` carrying full arguments.
+
 ### Changed
 
 - Bumped `charm.land/bubbletea/v2` to v2.0.10.
@@ -19,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Session transcript reading now decodes each message's `tool_call_id`, so
+  `session talk` tool-result labels and `session grep`'s `tool_call_id` matches
+  work instead of silently reading an empty id.
 - `bash` output compression now reports collapsed output instead of dropping
   it silently: runs of consecutive duplicate lines are replaced by an explicit
   `+N repeated lines collapsed` marker, alongside the existing truncation marker.
