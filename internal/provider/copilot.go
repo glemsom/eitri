@@ -123,12 +123,14 @@ func (cp *CopilotProvider) streamChatCompletions(ctx context.Context, tok string
 	if err != nil {
 		return nil, err
 	}
-	resp, err := cp.do(ctx, tok, cp.url, body)
-	if err != nil {
-		return nil, err
-	}
-	streamBody := watchForIdle(resp.Body)
-	return closeBodyOnDone(cp.chat.Stream(streamBody), streamBody), nil
+	return beginStream(ctx, func() (Stream, error) {
+		resp, err := cp.do(ctx, tok, cp.url, body)
+		if err != nil {
+			return nil, err
+		}
+		streamBody := watchForIdle(resp.Body)
+		return closeBodyOnDone(cp.chat.Stream(streamBody), streamBody), nil
+	})
 }
 
 func (cp *CopilotProvider) streamResponses(ctx context.Context, tok string, req Request) (Stream, error) {
@@ -136,12 +138,14 @@ func (cp *CopilotProvider) streamResponses(ctx context.Context, tok string, req 
 	if err != nil {
 		return nil, err
 	}
-	resp, err := cp.do(ctx, tok, cp.responsesURL(), body)
-	if err != nil {
-		return nil, err
-	}
-	streamBody := watchForIdle(resp.Body)
-	return closeBodyOnDone(cp.responses.Stream(streamBody), streamBody), nil
+	return beginStream(ctx, func() (Stream, error) {
+		resp, err := cp.do(ctx, tok, cp.responsesURL(), body)
+		if err != nil {
+			return nil, err
+		}
+		streamBody := watchForIdle(resp.Body)
+		return closeBodyOnDone(cp.responses.Stream(streamBody), streamBody), nil
+	})
 }
 
 func (cp *CopilotProvider) do(ctx context.Context, tok, url string, body []byte) (*http.Response, error) {

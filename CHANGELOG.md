@@ -46,6 +46,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A provider stream that is reset mid-flight (`stream error: stream ID N;
+  CANCEL; received from peer`, or any HTTP/2 peer reset, dropped connection, or
+  transport error) is now retried as long as no content has been streamed yet,
+  so a transient reset resumes the turn instead of failing it; a reset after
+  content has started still surfaces, since a retry would duplicate output.
 - Provider requests now retry `429 Too Many Requests`, honoring a
   `Retry-After` header in both its delta-seconds and HTTP-date forms with a
   bounded, jittered backoff; a value exceeding the remaining retry budget

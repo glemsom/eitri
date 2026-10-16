@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 )
@@ -208,32 +207,25 @@ func (o *OpenAICompatible) streamChat(ctx context.Context, req Request) (Stream,
 	if err != nil {
 		return nil, err
 	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, o.url, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	if o.apiKey != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+o.apiKey)
-	}
-	if req.Capabilities.Supports(ProviderCapabilityOpenCodeSessionHeader) && req.SessionKey != "" {
-		httpReq.Header.Set("X-Opencode-Session", req.SessionKey)
-	}
-	httpReq.Header.Set("User-Agent", eitriUserAgent)
-
 	client := resolveClient(o.http)
-	resp, err := doWithRetry(ctx, client, httpReq)
-	if err != nil {
-		return nil, err
+	build := func() (*http.Request, error) {
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, o.url, bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+		if o.apiKey != "" {
+			httpReq.Header.Set("Authorization", "Bearer "+o.apiKey)
+		}
+		if req.Capabilities.Supports(ProviderCapabilityOpenCodeSessionHeader) && req.SessionKey != "" {
+			httpReq.Header.Set("X-Opencode-Session", req.SessionKey)
+		}
+		httpReq.Header.Set("User-Agent", eitriUserAgent)
+		return httpReq, nil
 	}
-	if resp.StatusCode/100 != 2 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // cap error payloads to a sane size
-		resp.Body.Close()
-		return nil, &HTTPError{Code: resp.StatusCode, Body: string(body)}
-	}
-	streamBody := watchForIdle(resp.Body)
-	return closeBodyOnDone(chatDialect.Stream(streamBody), streamBody), nil
+	return beginStream(ctx, func() (Stream, error) {
+		return openStream(ctx, client, build, chatDialect.Stream)
+	})
 }
 
 // streamAnthropic sends the turn over the Anthropic Messages wire to o.anthropicURL,
@@ -243,31 +235,24 @@ func (o *OpenAICompatible) streamAnthropic(ctx context.Context, req Request) (St
 	if err != nil {
 		return nil, err
 	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, o.anthropicURL, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-api-key", o.apiKey)
-	httpReq.Header.Set("anthropic-version", anthropicAPIVersion)
-	if req.Capabilities.Supports(ProviderCapabilityOpenCodeSessionHeader) && req.SessionKey != "" {
-		httpReq.Header.Set("X-Opencode-Session", req.SessionKey)
-	}
-	httpReq.Header.Set("User-Agent", eitriUserAgent)
-
 	client := resolveClient(o.http)
-	resp, err := doWithRetry(ctx, client, httpReq)
-	if err != nil {
-		return nil, err
+	build := func() (*http.Request, error) {
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, o.anthropicURL, bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("x-api-key", o.apiKey)
+		httpReq.Header.Set("anthropic-version", anthropicAPIVersion)
+		if req.Capabilities.Supports(ProviderCapabilityOpenCodeSessionHeader) && req.SessionKey != "" {
+			httpReq.Header.Set("X-Opencode-Session", req.SessionKey)
+		}
+		httpReq.Header.Set("User-Agent", eitriUserAgent)
+		return httpReq, nil
 	}
-	if resp.StatusCode/100 != 2 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // cap error payloads to a sane size
-		resp.Body.Close()
-		return nil, &HTTPError{Code: resp.StatusCode, Body: string(body)}
-	}
-	streamBody := watchForIdle(resp.Body)
-	return closeBodyOnDone(anthropicDialect.Stream(streamBody), streamBody), nil
+	return beginStream(ctx, func() (Stream, error) {
+		return openStream(ctx, client, build, anthropicDialect.Stream)
+	})
 }
 
 // SupportedGenerationControls reports only controls honored by every wire this
