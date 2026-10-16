@@ -6,7 +6,17 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode"
+	"unicode/utf8"
+
+	"github.com/glemsom/eitri/internal/skillindex"
 )
+
+// MaxSkillIndexTokens is the hard ceiling on the model-visible skill index's
+// per-turn token estimate (chars/4), measured against the reference catalogue in
+// the tests. The index rides in every request, so its format is guarded by a
+// budget rather than left to drift.
+const MaxSkillIndexTokens = 450
 
 // SkillWarner receives lenient-discovery warnings so a caller can surface them (log/stderr) without failing the run.
 type SkillWarner interface {
@@ -16,9 +26,13 @@ type SkillWarner interface {
 // Skill is one discovered, validated skill pack.
 type Skill struct {
 	Description string
-	Body        string
-	Resources   []string
-	Dir         string
+	// ShortDescription is the optional always-resident one-liner the catalog
+	// shows in place of Description. When empty the catalog falls back to
+	// Description; either way the full Description arrives on activation.
+	ShortDescription string
+	Body             string
+	Resources        []string
+	Dir              string
 	// ModelInvocable reports whether the model may discover and use this skill
 	// via the rendered skill index. Non-model-invocable skills stay reachable
 	// through the human slash surface only.
@@ -68,40 +82,161 @@ func (c *Catalog) ModelVisibleSkills() []string {
 	return out
 }
 
-// RenderIndex renders the model-visible skill inventory as an XML block of the
-// form <available_skills><skill><name/><path/><description/></skill>...</available_skills>.
-// Each <path> is the absolute path to the pack's SKILL.md. Paths are escaped so
-// multi-line descriptions and &/<> characters stay well-formed. When no skill is
+// maxDescriptionWidth bounds the width (in runes) of the description shown in
+// the catalog, so one verbose skill cannot bloat every turn. Longer text is
+// truncated on a rune boundary with an ellipsis; the full description arrives
+// only on activation.
+const maxDescriptionWidth = 100
+
+// RenderIndex renders the model-visible skill inventory as a compact plain-text
+// block. A single header declares each distinct skill root once, keyed by a
+// small integer, and each skill is then one line: <name>@<root-id>: <description>.
+// A skill's files live at <root>/<name>/, so the header plus its line is enough
+// to open any pack's SKILL.md and bundled resources. When no skill is
 // model-visible the result is empty; callers treat that as "omit the block".
+//
+// The block's opening tag comes from internal/skillindex, the same single source
+// its consumers (compaction, history partitioning) match on, so the renderer and
+// the recogniser can never drift apart.
 func (c *Catalog) RenderIndex() string {
-	names := c.ModelVisibleSkills()
-	if len(names) == 0 {
+	visible := c.ModelVisibleSkills()
+	return c.renderIndex(visible, c.roots(visible), 0)
+}
+
+// SelectIndex renders the catalog limited to the k model-visible skills most
+// relevant to prompt, plus a one-line note that omitted skills still exist and
+// how to list them. Selection is deterministic and side-effect-free; the
+// per-skill line shape is identical to RenderIndex, so only the catalogue's
+// contents narrow, never its format or the activation surface. The header
+// declares every visible root, not just the chosen ones, so the note's `ls`
+// affordance reaches a skill the selector missed.
+func (c *Catalog) SelectIndex(prompt string, k int) string {
+	visible := c.ModelVisibleSkills()
+	chosen := c.rankSkills(prompt, visible, k)
+	return c.renderIndex(chosen, c.roots(visible), len(visible)-len(chosen))
+}
+
+// roots returns the distinct skill roots of names, in first-appearance order.
+func (c *Catalog) roots(names []string) []string {
+	var roots []string
+	seen := map[string]bool{}
+	for _, name := range names {
+		root := filepath.Dir(c.skills[name].Dir)
+		if !seen[root] {
+			seen[root] = true
+			roots = append(roots, root)
+		}
+	}
+	return roots
+}
+
+// renderIndex emits the compact block for entries, declaring each root once as
+// its own `<id> <path>` line so a path containing spaces stays unambiguous, and
+// appending a "more exist" note when omitted > 0. roots must cover every entry's
+// root.
+func (c *Catalog) renderIndex(entries, roots []string, omitted int) string {
+	if len(entries) == 0 {
 		return ""
 	}
-	var b strings.Builder
-	b.WriteString("<available_skills>")
-	for _, name := range names {
-		sk := c.skills[name]
-		b.WriteString("<skill>")
-		b.WriteString("<name>" + xmlEscape(name) + "</name>")
-		b.WriteString("<path>" + xmlEscape(filepath.Join(sk.Dir, "SKILL.md")) + "</path>")
-		b.WriteString("<description>" + xmlEscape(sk.Description) + "</description>")
-		b.WriteString("</skill>")
+	rootIndex := map[string]int{}
+	for i, root := range roots {
+		rootIndex[root] = i + 1
 	}
-	b.WriteString("</available_skills>")
+	var b strings.Builder
+	b.WriteString(skillindex.OpenTag)
+	b.WriteByte('\n')
+	b.WriteString("roots:")
+	for i, root := range roots {
+		fmt.Fprintf(&b, "\n%d %s", i+1, root)
+	}
+	b.WriteByte('\n')
+	for _, name := range entries {
+		sk := c.skills[name]
+		fmt.Fprintf(&b, "%s@%d: %s\n", name, rootIndex[filepath.Dir(sk.Dir)], catalogDescription(catalogEntryText(sk)))
+	}
+	if omitted > 0 {
+		fmt.Fprintf(&b, "# %d more skill(s) exist; list them under a root above with `ls <root>/`.\n", omitted)
+	}
+	b.WriteString(skillindex.CloseTag)
 	return b.String()
 }
 
-// xmlEscape escapes the five XML entities so text forms stay well-formed.
-func xmlEscape(s string) string {
-	r := strings.NewReplacer(
-		"&", "&amp;",
-		"<", "&lt;",
-		">", "&gt;",
-		`"`, "&quot;",
-		"'", "&apos;",
-	)
-	return r.Replace(s)
+// rankSkills ranks names against prompt by lexical overlap and returns the top k
+// (all names when k <= 0 or nothing is filtered). The ranking is deterministic:
+// name/description token overlap with a verbatim-name bonus, ties broken by
+// name, so identical inputs always yield identical subsets.
+func (c *Catalog) rankSkills(prompt string, names []string, k int) []string {
+	if k <= 0 || len(names) <= k {
+		return append([]string(nil), names...)
+	}
+	promptTokens := tokenize(prompt)
+	promptLower := strings.ToLower(prompt)
+	type ranked struct {
+		name  string
+		score int
+	}
+	scores := make([]ranked, 0, len(names))
+	for _, name := range names {
+		nameTokens := tokenize(strings.ReplaceAll(name, "-", " "))
+		descTokens := tokenize(catalogEntryText(c.skills[name]))
+		score := 0
+		if strings.Contains(promptLower, strings.ReplaceAll(name, "-", " ")) {
+			score += 10
+		}
+		for t := range promptTokens {
+			switch {
+			case nameTokens[t]:
+				score += 5
+			case descTokens[t]:
+				score++
+			}
+		}
+		scores = append(scores, ranked{name: name, score: score})
+	}
+	sort.SliceStable(scores, func(i, j int) bool {
+		if scores[i].score != scores[j].score {
+			return scores[i].score > scores[j].score
+		}
+		return scores[i].name < scores[j].name
+	})
+	out := make([]string, 0, k)
+	for _, r := range scores[:k] {
+		out = append(out, r.name)
+	}
+	return out
+}
+
+// tokenize lowercases text and splits it into the set of word tokens of three or
+// more characters, so selection ignores noise like "a", "to", and "of".
+func tokenize(text string) map[string]bool {
+	out := map[string]bool{}
+	for _, tok := range strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	}) {
+		if utf8.RuneCountInString(tok) >= 3 {
+			out[tok] = true
+		}
+	}
+	return out
+}
+
+// catalogEntryText is the text the catalog shows for a skill: its short
+// description when it declares one, else its full description.
+func catalogEntryText(sk *Skill) string {
+	if sk.ShortDescription != "" {
+		return sk.ShortDescription
+	}
+	return sk.Description
+}
+
+// catalogDescription flattens a description to a single line and caps its width,
+// so one skill's prose cannot grow the per-turn catalog.
+func catalogDescription(desc string) string {
+	desc = strings.Join(strings.Fields(desc), " ")
+	if utf8.RuneCountInString(desc) <= maxDescriptionWidth {
+		return desc
+	}
+	return string([]rune(desc)[:maxDescriptionWidth-1]) + "\u2026"
 }
 
 func (c *Catalog) Scope(name string) string {
@@ -201,6 +336,7 @@ func parseSkill(packDir string) (*Skill, error) {
 	if desc == "" {
 		return nil, fmt.Errorf("description must be a non-empty scalar")
 	}
+	shortDesc := strings.TrimSpace(meta["short-description"])
 
 	modelInvocable := true
 	modelValue, hasModel := meta["model-invocable"]
@@ -223,11 +359,12 @@ func parseSkill(packDir string) (*Skill, error) {
 	}
 
 	return &Skill{
-		Description:    desc,
-		Body:           strings.TrimPrefix(body, "\n"),
-		Resources:      bundledResources(packDir, md),
-		Dir:            packDir,
-		ModelInvocable: modelInvocable,
+		Description:      desc,
+		ShortDescription: shortDesc,
+		Body:             strings.TrimPrefix(body, "\n"),
+		Resources:        bundledResources(packDir, md),
+		Dir:              packDir,
+		ModelInvocable:   modelInvocable,
 	}, nil
 }
 
@@ -305,12 +442,12 @@ func parseFrontmatter(s string) (map[string]string, error) {
 		}
 		if line[0] == ' ' || line[0] == '\t' {
 			continuation := strings.TrimSpace(line)
-			if curKey == "description" && !strings.Contains(continuation, ":") {
+			if (curKey == "description" || curKey == "short-description") && !strings.Contains(continuation, ":") {
 				out[curKey] += " " + continuation
 				i++
 				continue
 			}
-			if curKey != "name" && curKey != "description" && curKey != "model-invocable" && curKey != "disable-model-invocation" {
+			if curKey != "name" && curKey != "description" && curKey != "short-description" && curKey != "model-invocable" && curKey != "disable-model-invocation" {
 				if strings.HasPrefix(continuation, "- ") || strings.Contains(continuation, ":") {
 					i++
 					continue
@@ -439,11 +576,17 @@ func decodeBlockScalar(ind byte, chomp byte, block []string) (string, error) {
 	}
 }
 
-// renderSkillPayload builds the structured agentskills-io payload: the body wrapped in <skill_content name="..."> plus a <skill_resources> listing of the bundled files.
+// renderSkillPayload builds the structured agentskills-io payload: the full
+// description and body wrapped in <skill_content name="..."> plus a
+// <skill_resources> listing of the bundled files. Activation always delivers the
+// full description, even when the catalog showed a short one.
 func renderSkillPayload(name string, sk *Skill) string {
 	var b strings.Builder
 	b.WriteString("skill content for active session; tags: [\"skill\"]\n\n")
 	fmt.Fprintf(&b, `<skill_content name="%s">`+"\n", name)
+	if sk.Description != "" {
+		fmt.Fprintf(&b, "<skill_description>%s</skill_description>\n", sk.Description)
+	}
 	b.WriteString(sk.Body)
 	b.WriteString("\n</skill_content>\n")
 	if len(sk.Resources) > 0 {

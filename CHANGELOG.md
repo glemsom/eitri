@@ -22,6 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The model-visible skill catalog is now one compact line per skill with each
+  skill root declared once in a header, replacing the per-skill XML and the
+  repeated absolute path; descriptions are capped in width, and a skill may
+  declare a `short-description` one-liner that the catalog shows in place of its
+  full description (the full text still arrives on activation).
+- New `dynamic_skill_catalog` config setting: when enabled, only the skills a
+  deterministic selector ranks relevant to the prompt are injected, plus a note
+  that more exist; it defaults off (the full catalog).
 - Bumped `charm.land/bubbletea/v2` to v2.0.10.
 - Tightened the system prompt: reworked the read guidance into an
   explicit read-shape menu and trimmed duplicated or contradictory rules.

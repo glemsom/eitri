@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/glemsom/eitri/internal/provider"
+	"github.com/glemsom/eitri/internal/skillindex"
 )
 
 // skillIndexCaptureHandler records each request's messages so tests can assert
@@ -54,7 +55,7 @@ func TestRunAgentSkillIndexInjectedAsSecondSystemMessage(t *testing.T) {
 	c := &skillIndexCaptureHandler{}
 	e := New(provider.NewScripted(c.stream), nil)
 
-	idx := "<available_skills><skill><name>review</name></skill></available_skills>"
+	idx := skillindex.OpenTag + "<skill><name>review</name></skill>" + skillindex.CloseTag
 	if _, err := e.RunAgent(context.Background(), RunRequest{
 		Model:      "deepseek-v4-flash",
 		Prompt:     "hi",
@@ -89,7 +90,7 @@ func TestRunAgentSkillIndexNotPersistedInSessionHistory(t *testing.T) {
 	c := &skillIndexCaptureHandler{}
 	e := New(provider.NewScripted(c.stream), nil)
 
-	idx := "<available_skills><skill><name>review</name></skill></available_skills>"
+	idx := skillindex.OpenTag + "<skill><name>review</name></skill>" + skillindex.CloseTag
 	if _, err := e.RunAgent(context.Background(), RunRequest{
 		Model:      "deepseek-v4-flash",
 		Prompt:     "first",

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/glemsom/eitri/internal/skillindex"
 )
 
 func writeSkill(t *testing.T, root, name, description, body string, files map[string]string) {
@@ -107,10 +109,11 @@ func TestSkillBuiltinScopeDiscovered(t *testing.T) {
 		t.Fatalf("builtin-skill scope = %q, want builtin", catalog.Scope("builtin-skill"))
 	}
 	idx := catalog.RenderIndex()
-	if !strings.Contains(idx, "<name>builtin-skill</name>") {
+	if !strings.Contains(idx, "builtin-skill@") {
 		t.Fatalf("builtin skill missing from rendered index: %q", idx)
 	}
-	// The rendered path must be a real, cat-able SKILL.md.
+	// The root named in the header plus the skill name must lead to a real,
+	// cat-able SKILL.md.
 	path := filepath.Join(catalog.Skill("builtin-skill").Dir, "SKILL.md")
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("builtin SKILL.md path not readable: %v", err)
@@ -349,7 +352,7 @@ func TestRenderIndexBlock(t *testing.T) {
 		t.Fatalf("Discover error = %v, want nil", err)
 	}
 	idx := catalog.RenderIndex()
-	if !strings.HasPrefix(idx, "<available_skills>") {
+	if !strings.HasPrefix(idx, skillindex.OpenTag) {
 		t.Fatalf("index missing opening tag: %q", idx)
 	}
 	if strings.Contains(idx, "hidden") {
@@ -609,5 +612,62 @@ func TestSkillDiscoverRecordsSkippedSurface(t *testing.T) {
 	}
 	if warnings.count == 0 {
 		t.Fatal("expected a warning for the skipped skill, got none")
+	}
+}
+
+// TestActivateSkillDeliversFullDescription guards the other half of the tier
+// split: whatever the catalog shows, activation carries the full description,
+// the body, and the bundled resources.
+func TestActivateSkillDeliversFullDescription(t *testing.T) {
+	t.Parallel()
+	user := t.TempDir()
+	writeSkillMeta(t, user, "tier", "the full description that triggers the skill", "FULL BODY", map[string]string{"ref/api.md": "ref content\n"},
+		[]string{"short-description: a tight one-liner"})
+
+	catalog, err := Discover(user, t.TempDir(), t.TempDir(), &warningSink{})
+	if err != nil {
+		t.Fatalf("Discover error = %v, want nil", err)
+	}
+	idx := catalog.RenderIndex()
+	if !strings.Contains(idx, "tier@1: a tight one-liner\n") {
+		t.Fatalf("catalog did not show the short description:\n%s", idx)
+	}
+	rd, _ := NewRegistry(testDeps(t, "", catalog))
+	res, err := rd.ActivateSkill(context.Background(), "tier")
+	if err != nil {
+		t.Fatalf("ActivateSkill error = %v, want nil", err)
+	}
+	if !strings.Contains(res.Text, "the full description that triggers the skill") {
+		t.Fatalf("activation dropped the full description: %s", res.Text)
+	}
+	if !strings.Contains(res.Text, "FULL BODY") || !strings.Contains(res.Text, "ref/api.md") {
+		t.Fatalf("activation dropped the body or resources: %s", res.Text)
+	}
+}
+
+// TestParseFrontmatterShortDescription guards the optional tier field: it parses
+// as a plain scalar, a hard-wrapped continuation, and a folded block scalar, the
+// same shapes description accepts.
+func TestParseFrontmatterShortDescription(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		front string
+		want  string
+	}{
+		{name: "plain", front: "short-description: a tight one-liner", want: "a tight one-liner"},
+		{name: "continuation", front: "short-description: a tight\n  one-liner", want: "a tight one-liner"},
+		{name: "folded", front: "short-description: >\n  a tight\n  one-liner\n", want: "a tight one-liner\n"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			meta, err := parseFrontmatter(tc.front)
+			if err != nil {
+				t.Fatalf("parseFrontmatter error = %v, want nil", err)
+			}
+			if got := meta["short-description"]; got != tc.want {
+				t.Fatalf("short-description = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

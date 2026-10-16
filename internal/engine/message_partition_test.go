@@ -6,12 +6,13 @@ import (
 	"testing"
 
 	"github.com/glemsom/eitri/internal/provider"
+	"github.com/glemsom/eitri/internal/skillindex"
 )
 
 func TestPartitionMessagesSharesStableHeadAcrossCompactionAndPersistence(t *testing.T) {
 	persona := provider.Message{Role: provider.RoleSystem, Content: SystemPromptContent()}
 	workspace := provider.Message{Role: provider.RoleSystem, Content: "## Working directory\n/workspace"}
-	skills := provider.Message{Role: provider.RoleSystem, Content: "<available_skills>index</available_skills>"}
+	skills := provider.Message{Role: provider.RoleSystem, Content: skillindex.OpenTag + "index" + skillindex.CloseTag}
 	repo := provider.Message{Role: provider.RoleSystem, Content: "## Repository instructions (AGENTS.md)\nfollow them"}
 	activation := provider.Message{Role: provider.RoleUser, Content: "<skill_content name=\"tdd\">test first</skill_content>\n\nrequest"}
 	conversation := []provider.Message{{Role: provider.RoleAssistant, Content: "answer"}, {Role: provider.RoleUser, Content: "next"}}
@@ -58,7 +59,7 @@ func TestStoreSessionHistoryUsesSharedPartitionAndPreservesOrder(t *testing.T) {
 	e := New(provider.NewFake(""), &mockTranscript{})
 	persona := provider.Message{Role: provider.RoleSystem, Content: SystemPromptContent()}
 	workspace := provider.Message{Role: provider.RoleSystem, Content: "## Working directory\n/workspace"}
-	skills := provider.Message{Role: provider.RoleSystem, Content: "<available_skills>index</available_skills>"}
+	skills := provider.Message{Role: provider.RoleSystem, Content: skillindex.OpenTag + "index" + skillindex.CloseTag}
 	repo := provider.Message{Role: provider.RoleSystem, Content: "## Repository instructions (AGENTS.md)\nfollow them"}
 	activation := provider.Message{Role: provider.RoleUser, Content: "<skill_content name=\"tdd\">test first</skill_content>\n\nrequest"}
 	conversation := []provider.Message{{Role: provider.RoleAssistant, Content: "answer"}, {Role: provider.RoleUser, Content: "next"}}

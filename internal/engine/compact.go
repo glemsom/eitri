@@ -6,6 +6,7 @@ import (
 
 	"github.com/glemsom/eitri/internal/constants"
 	"github.com/glemsom/eitri/internal/provider"
+	"github.com/glemsom/eitri/internal/skillindex"
 )
 
 // CompactionConfig configures the unified session compaction engine.
@@ -184,10 +185,10 @@ func (e *Engine) generateSummary(ctx context.Context, req RunRequest, cfg *Compa
 
 // isSkillIndexMessage reports whether a message is the injected model-visible
 // skill index system message (see RunRequest.SkillIndex). It matches a system
-// message carrying the rendered <available_skills> block so history stripping
-// can drop it.
+// message carrying the rendered skill index block so history stripping can drop
+// it; the block's marker is owned by internal/skillindex beside the renderer.
 func isSkillIndexMessage(m provider.Message) bool {
-	return m.Role == provider.RoleSystem && strings.Contains(m.Content, "<available_skills>")
+	return m.Role == provider.RoleSystem && skillindex.IsBlock(m.Content)
 }
 
 // isWorkspaceMessage reports whether a message is the injected per-run

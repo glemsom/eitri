@@ -15,6 +15,7 @@ import (
 	"github.com/glemsom/eitri/internal/engine"
 	"github.com/glemsom/eitri/internal/engine/skillspack"
 	"github.com/glemsom/eitri/internal/provider"
+	"github.com/glemsom/eitri/internal/skillindex"
 	"github.com/glemsom/eitri/internal/tools"
 	"github.com/glemsom/eitri/internal/tui"
 )
@@ -390,7 +391,7 @@ func TestTUISlashArgsPutsSkillInProviderContext(t *testing.T) {
 	if len(msgs) != 4 {
 		t.Fatalf("provider Messages = %d, want 4 (system head + skill index + workspace directive + user); got %v", len(msgs), msgs)
 	}
-	if msgs[1].Role != provider.RoleSystem || !strings.Contains(msgs[1].Content, "<available_skills>") {
+	if msgs[1].Role != provider.RoleSystem || !skillindex.IsBlock(msgs[1].Content) {
 		t.Errorf("Messages[1] should be the skill index: %v", msgs[1])
 	}
 	if msgs[2].Role != provider.RoleSystem || !strings.Contains(msgs[2].Content, "## Working directory") {
@@ -471,7 +472,7 @@ func TestTUISlashBarePutsSkillInProviderContext(t *testing.T) {
 	if len(msgs) != 4 {
 		t.Fatalf("provider Messages = %d, want 4 (system head + skill index + workspace directive + user); got %v", len(msgs), msgs)
 	}
-	if msgs[1].Role != provider.RoleSystem || !strings.Contains(msgs[1].Content, "<available_skills>") {
+	if msgs[1].Role != provider.RoleSystem || !skillindex.IsBlock(msgs[1].Content) {
 		t.Errorf("Messages[1] should be the skill index: %v", msgs[1])
 	}
 	if msgs[2].Role != provider.RoleSystem || !strings.Contains(msgs[2].Content, "## Working directory") {

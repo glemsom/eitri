@@ -76,7 +76,7 @@ The TUI never calls a provider: it names provider kinds for the settings UI and 
 
 ### Small packages
 
-`internal/osc52` writes clipboard escape sequences; `internal/constants` holds cross-layer limits; `internal/testutil` contains shared test helpers. The session temp is *named* by `internal/session` (`Session.TempDir`), *created* by the bash backends on first use, and owned by the tools registry as `TempHost`; the backends and the rail read it.
+`internal/osc52` writes clipboard escape sequences; `internal/constants` holds cross-layer limits; `internal/skillindex` owns the model-visible skill index block's marker and the predicate that recognises it, shared by the renderer in `internal/tools` and its consumers in `internal/engine` so the engine need not import `internal/tools`; `internal/testutil` contains shared test helpers. The session temp is *named* by `internal/session` (`Session.TempDir`), *created* by the bash backends on first use, and owned by the tools registry as `TempHost`; the backends and the rail read it.
 
 `internal/tools/memtmp` is the one exception to the package map: it is a `package main` scratch program, not a library, and nothing imports it.
 

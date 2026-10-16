@@ -46,16 +46,22 @@ type Config struct {
 	// CoTCollapsedByDefault and ToolResultsCollapsedByDefault are the
 	// tool results render as hints/one-liners until expanded, so a large CoT
 	// never pushes tool calls out of view.
-	CoTCollapsedByDefault         bool             `json:"cot_collapsed_by_default"`
-	ToolResultsCollapsedByDefault bool             `json:"tool_results_collapsed_by_default"`
-	MaxTurns                      int              `json:"max_turns"`
-	ContextOverflowRecovery       bool             `json:"context_overflow_recovery"`
-	ExtraWritablePaths            []string         `json:"extra_writable_paths,omitempty"`
-	Theme                         string           `json:"theme"`
-	RailWidth                     int              `json:"rail_width,omitempty"`
-	Copilot                       CopilotConfig    `json:"copilot,omitempty"`
-	OpenCodeGo                    OpenCodeGoConfig `json:"opencode_go,omitempty"`
-	CustomOpenAI                  OpenAIConfig     `json:"custom_openai,omitempty"`
+	CoTCollapsedByDefault         bool `json:"cot_collapsed_by_default"`
+	ToolResultsCollapsedByDefault bool `json:"tool_results_collapsed_by_default"`
+	MaxTurns                      int  `json:"max_turns"`
+	ContextOverflowRecovery       bool `json:"context_overflow_recovery"`
+	// DynamicSkillCatalog, when true, injects only the skills the selector ranks
+	// relevant to each turn's prompt (plus a note that more exist) instead of the
+	// full catalog. It defaults to false, the full-catalog behaviour, until the
+	// selector is shown not to regress discovery. Set dynamic_skill_catalog to
+	// true in the config file to opt in.
+	DynamicSkillCatalog bool             `json:"dynamic_skill_catalog"`
+	ExtraWritablePaths  []string         `json:"extra_writable_paths,omitempty"`
+	Theme               string           `json:"theme"`
+	RailWidth           int              `json:"rail_width,omitempty"`
+	Copilot             CopilotConfig    `json:"copilot,omitempty"`
+	OpenCodeGo          OpenCodeGoConfig `json:"opencode_go,omitempty"`
+	CustomOpenAI        OpenAIConfig     `json:"custom_openai,omitempty"`
 }
 
 // Default returns a config populated with Eitri's defaults.
