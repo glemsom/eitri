@@ -309,7 +309,6 @@ func TestPprofEnablesMutexAndBlockProfiling(t *testing.T) {
 
 func TestBootUsesDataDirForConfig(t *testing.T) {
 	t.Setenv(ProviderKeyEnv, "test-key")
-	t.Setenv(ConfigEnv, "") // no EITRI_CONFIG override: config must land in the data dir
 	stubTUI(t)
 	dir := t.TempDir()
 	dataDir := filepath.Join(dir, ".eitri")
