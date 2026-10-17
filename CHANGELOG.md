@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The `skill` tool's `name` parameter now enumerates the model-visible skill
+  names, so the tool offers exactly the skills the index lists; with no
+  model-visible skill the tool stays registered and `name` is an unconstrained
+  string.
 - Skill activation is now derived from the conversation: a repeat activation of
   a still-active skill — including a second same-named call in the same turn —
   returns a short note instead of re-injecting its body, a body dropped by

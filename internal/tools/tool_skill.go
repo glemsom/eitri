@@ -27,12 +27,16 @@ func (s *skillTool) Name() string { return "skill" }
 func (s *skillTool) Description() string { return skillToolDescription }
 
 func (s *skillTool) Schema() map[string]any {
-	return strictSchema(map[string]any{
-		"name": map[string]any{
-			"type":        "string",
-			"description": "The exact name of a skill listed in the skill index.",
-		},
-	}, []string{"name"})
+	name := map[string]any{
+		"type":        "string",
+		"description": "The exact name of a skill listed in the skill index.",
+	}
+	if s.catalog != nil {
+		if visible := s.catalog.ModelVisibleSkills(); len(visible) > 0 {
+			name["enum"] = visible
+		}
+	}
+	return strictSchema(map[string]any{"name": name}, []string{"name"})
 }
 
 func (s *skillTool) Run(ctx context.Context, args map[string]any) (compress.ToolResult, error) {

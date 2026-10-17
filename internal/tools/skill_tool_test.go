@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -62,6 +63,77 @@ func TestSkillToolExposedToProvider(t *testing.T) {
 		if !strings.Contains(def.Description, want) {
 			t.Errorf("skill description lacks activation mechanic %q:\n%s", want, def.Description)
 		}
+	}
+}
+
+// skillNameProperty returns the `skill` tool's schema property for its `name`
+// parameter, failing the test if the tool is not exposed.
+func skillNameProperty(t *testing.T, rd *Registry) map[string]any {
+	t.Helper()
+	for _, d := range rd.Definitions() {
+		if d.Name != "skill" {
+			continue
+		}
+		props, ok := d.Parameters["properties"].(map[string]any)
+		if !ok {
+			t.Fatalf("skill schema properties = %T, want an object", d.Parameters["properties"])
+		}
+		prop, ok := props["name"].(map[string]any)
+		if !ok {
+			t.Fatalf("skill schema name property = %T, want an object", props["name"])
+		}
+		return prop
+	}
+	t.Fatalf("skill definition not exposed to the provider: %v", rd.Definitions())
+	return nil
+}
+
+func TestSkillToolNameEnumMatchesModelVisibleSkills(t *testing.T) {
+	t.Parallel()
+	user := t.TempDir()
+	writeSkill(t, user, "b-skill", "b desc", "b", nil)
+	writeSkillMeta(t, user, "hidden", "h", "body", nil, []string{"model-invocable: false"})
+	writeSkill(t, user, "a-skill", "a desc", "a", nil)
+	catalog, err := Discover(user, t.TempDir(), t.TempDir(), &warningSink{})
+	if err != nil {
+		t.Fatalf("Discover error = %v, want nil", err)
+	}
+	rd, _ := NewRegistry(testDeps(t, "", catalog))
+
+	enum, ok := skillNameProperty(t, rd)["enum"].([]string)
+	if !ok {
+		t.Fatalf("skill schema name has no string enum; got %v", skillNameProperty(t, rd)["enum"])
+	}
+	if want := []string{"a-skill", "b-skill"}; !slices.Equal(enum, want) {
+		t.Fatalf("skill name enum = %v, want %v", enum, want)
+	}
+	if !slices.Equal(enum, catalog.ModelVisibleSkills()) {
+		t.Fatalf("skill name enum = %v, want the model-visible set %v", enum, catalog.ModelVisibleSkills())
+	}
+	if slices.Contains(enum, "hidden") {
+		t.Fatalf("skill name enum leaks the human-only skill: %v", enum)
+	}
+}
+
+func TestSkillToolNameUnconstrainedWithoutModelVisibleSkills(t *testing.T) {
+	t.Parallel()
+	user := t.TempDir()
+	writeSkillMeta(t, user, "hidden", "h", "body", nil, []string{"model-invocable: false"})
+	catalog, err := Discover(user, t.TempDir(), t.TempDir(), &warningSink{})
+	if err != nil {
+		t.Fatalf("Discover error = %v, want nil", err)
+	}
+	rd, _ := NewRegistry(testDeps(t, "", catalog))
+
+	if !contains(rd.Names(), "skill") {
+		t.Fatalf("registry missing the skill tool with no model-visible skills; names = %v", rd.Names())
+	}
+	prop := skillNameProperty(t, rd)
+	if _, ok := prop["enum"]; ok {
+		t.Fatalf("skill name carries an enum with no model-visible skills: %v", prop["enum"])
+	}
+	if prop["type"] != "string" {
+		t.Fatalf("skill name type = %v, want string", prop["type"])
 	}
 }
 
