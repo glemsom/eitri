@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+
+	"github.com/glemsom/eitri/internal/compress"
 )
 
 // Deps carries the per-session wiring the registry (and hence every tool) needs: the workspace, the session temp host root, configured extra writable paths, the sandbox runner, the unsandboxed (--yolo-unsafe) switch, the browser seam, and the skill catalog backing the human /skillname slash surface.
@@ -18,22 +20,11 @@ type Deps struct {
 	Skills *Catalog
 }
 
-type ToolResult struct {
-	Text       string
-	Compressed bool
-	Dropped    int
-
-	// BytesDropped is the count of bytes an upstream memory bound (the sandbox
-	// buffer) already rejected from this result's stream; the engine's byte cap
-	// folds it into the single authoritative truncation marker.
-	BytesDropped int
-}
-
 type Tool interface {
 	Name() string
 	Description() string
 	Schema() map[string]any
-	Run(ctx context.Context, args map[string]any) (ToolResult, error)
+	Run(ctx context.Context, args map[string]any) (compress.ToolResult, error)
 }
 
 // Definition is a tool's provider-facing definition: name, description, and a minimal JSON-Schema parameters object (strict-shaped).
@@ -139,10 +130,10 @@ func (r *Registry) SetTempHost(tempHost string) error {
 func (r *Registry) TempHost() string { return r.sandbox.tempHost }
 
 // Run executes the named tool with the given decoded args, returning its result string plus whether the result is the line-compressor's compressed form.
-func (r *Registry) Run(ctx context.Context, name string, args map[string]any) (ToolResult, error) {
+func (r *Registry) Run(ctx context.Context, name string, args map[string]any) (compress.ToolResult, error) {
 	tool, ok := r.tools[name]
 	if !ok {
-		return ToolResult{}, fmt.Errorf("unknown tool %q", name)
+		return compress.ToolResult{}, fmt.Errorf("unknown tool %q", name)
 	}
 	return tool.Run(ctx, args)
 }
@@ -152,15 +143,15 @@ func (r *Registry) Run(ctx context.Context, name string, args map[string]any) (T
 // human re-invoke is an explicit command, never short-circuited. The model has
 // no `skill` tool; it sees a name/path/description index and loads pack bodies
 // itself via `bash cat` (see the system prompt).
-func (r *Registry) ActivateSkill(_ context.Context, name string) (ToolResult, error) {
+func (r *Registry) ActivateSkill(_ context.Context, name string) (compress.ToolResult, error) {
 	if r.catalog == nil || len(r.catalog.Names()) == 0 {
-		return ToolResult{}, fmt.Errorf("no skills configured")
+		return compress.ToolResult{}, fmt.Errorf("no skills configured")
 	}
 	sk := r.catalog.Skill(name)
 	if sk == nil {
-		return ToolResult{}, fmt.Errorf("unknown skill %q", name)
+		return compress.ToolResult{}, fmt.Errorf("unknown skill %q", name)
 	}
-	return ToolResult{Text: renderSkillPayload(name, sk)}, nil
+	return compress.ToolResult{Text: renderSkillPayload(name, sk)}, nil
 }
 
 func strArg(args map[string]any, key string) (string, error) {
