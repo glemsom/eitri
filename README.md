@@ -1,7 +1,7 @@
 # Eitri
 
 <p align="center">
-  <img src="docs/images/face.webp" alt="Eitri" width="170">
+  <img src="docs/images/face.png" alt="Eitri" width="510">
 </p>
 
 Eitri is a self-hosted AI coding agent for GNU/Linux — a single static Go binary
