@@ -146,6 +146,10 @@ type Dependencies struct {
 	// at boot; the TUI opens Settings automatically so the user can configure
 	// them instead of exiting with an error.
 	NeedsSetup bool
+	// Tick is the timer schedule the model and its pulse consult for every
+	// animation tick (clock, face draw, spinner, idle ember); nil uses the
+	// production real-timer default (`defaultTick`).
+	Tick pulse.TickFunc
 }
 
 type feedbackKind int
@@ -223,6 +227,10 @@ type Model struct {
 	// upload attempt itself, so an idle model uploads the face once and then
 	// stops: the 50 ms faceDrawTick loop only runs while dirty.
 	faceDirty bool
+
+	// tick is the timer schedule the clock and face-draw loops arm on, shared
+	// with the transcript's pulse so every animation tick reads one schedule.
+	tick pulse.TickFunc
 }
 
 // newModelHistory builds the Model's prompt-history ring: file-backed when a
@@ -251,12 +259,18 @@ func NewModelCfg(d Dependencies) Model {
 	st.Focused.Prompt = lipgloss.NewStyle().Foreground(th.accent)
 	comp.SetStyles(st)
 
+	tick := d.Tick
+	if tick == nil {
+		tick = defaultTick
+	}
+
 	transcript := NewTranscript(TranscriptConfig{
 		Theme:                         d.Config.Theme,
 		ReasoningEffort:               d.Config.ReasoningEffort,
 		Telemetry:                     d.Telemetry,
 		Rail:                          d.Rail,
 		RailWidth:                     d.Config.RailWidth,
+		Tick:                          tick,
 		CoTCollapsedByDefault:         d.Config.CoTCollapsedByDefault,
 		ToolResultsCollapsedByDefault: d.Config.ToolResultsCollapsedByDefault,
 	})
@@ -264,6 +278,7 @@ func NewModelCfg(d Dependencies) Model {
 	m := Model{
 		composer:     comp,
 		deps:         d,
+		tick:         tick,
 		tx:           transcript,
 		continueReq:  make(chan struct{}, 1),
 		continueResp: make(chan bool, 1),
@@ -319,13 +334,25 @@ func internalContinue(req chan struct{}, resp chan bool) bool {
 type clockTickMsg struct{}
 type faceDrawMsg struct{}
 
+// clockTickInterval is the statusline's elapsed-timer cadence; faceDrawTickInterval
+// is the kitty face's redraw cadence while it carries unrendered damage.
+const (
+	clockTickInterval    = time.Second
+	faceDrawTickInterval = 50 * time.Millisecond
+)
+
+// defaultTick is the timer schedule the model and its pulse use when
+// Dependencies.Tick is not injected. Production uses real tea.Tick timers;
+// tests swap it for an immediate schedule so a submitted turn never sleeps.
+var defaultTick pulse.TickFunc = pulse.RealTick
+
 // clockTick returns the command that delivers the next one-second clock tick.
-func clockTick() tea.Cmd {
-	return tea.Tick(time.Second, func(time.Time) tea.Msg { return clockTickMsg{} })
+func (m Model) clockTick() tea.Cmd {
+	return m.tick(clockTickInterval, func(time.Time) tea.Msg { return clockTickMsg{} })
 }
 
-func faceDrawTick() tea.Cmd {
-	return tea.Tick(50*time.Millisecond, func(time.Time) tea.Msg { return faceDrawMsg{} })
+func (m Model) faceDrawTick() tea.Cmd {
+	return m.tick(faceDrawTickInterval, func(time.Time) tea.Msg { return faceDrawMsg{} })
 }
 
 // Init returns any startup commands.
@@ -343,7 +370,7 @@ func (m Model) Init() tea.Cmd {
 	if cmd := m.armIdleEmber(); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
-	cmds = append(cmds, clockTick())
+	cmds = append(cmds, m.clockTick())
 	return tea.Batch(cmds...)
 }
 
@@ -572,7 +599,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncComposerRail()
 		return m, m.armIdleEmber()
 	case clockTickMsg:
-		return m, clockTick()
+		return m, m.clockTick()
 
 	case faceDrawMsg:
 		m, cmd := m.drawFaceCmd()
@@ -977,7 +1004,7 @@ func (m Model) queueFaceDrawCmd() tea.Cmd {
 	if !m.faceNeedsDraw() {
 		return nil
 	}
-	return faceDrawTick()
+	return m.faceDrawTick()
 }
 
 // markFaceDamage records that the face's placement or size may have changed

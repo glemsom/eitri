@@ -11,6 +11,7 @@ import (
 
 type Pulse struct {
 	clock              func() time.Time
+	tick               TickFunc
 	busy               bool
 	busyStartedAt      time.Time
 	spinner            int
@@ -23,12 +24,13 @@ type Pulse struct {
 	hasAnswer          bool
 }
 
-// New builds a pulse reading wall-clock time; a nil clock uses time.Now.
+// New builds a pulse reading wall-clock time and ticking on real timers; a nil
+// clock uses time.Now.
 func New(clock func() time.Time) *Pulse {
 	if clock == nil {
 		clock = time.Now
 	}
-	return &Pulse{clock: clock}
+	return &Pulse{clock: clock, tick: RealTick}
 }
 
 // Busy reports whether a turn is running. A nil pulse is never busy, so a bare
@@ -132,7 +134,7 @@ func (p *Pulse) TickBusy() tea.Cmd {
 	if p.busyPulse > 0 {
 		p.busyPulse--
 	}
-	return SpinnerTick()
+	return p.SpinnerTick()
 }
 
 // ArmEmber restarts the idle-ember window at its leading frame, extending the
@@ -148,7 +150,7 @@ func (p *Pulse) ArmEmber(overlayOpen bool) tea.Cmd {
 	if running {
 		return nil
 	}
-	return idleEmberTick()
+	return p.idleEmberTick()
 }
 
 // TickEmber advances the idle ember one 140 ms cadence and reports the next
@@ -159,7 +161,7 @@ func (p *Pulse) TickEmber(overlayOpen bool) tea.Cmd {
 		return nil
 	}
 	if !p.busy && !overlayOpen && MotionEnabled() && p.advanceIdleEmber() {
-		return idleEmberTick()
+		return p.idleEmberTick()
 	}
 	p.SettleIdleEmber()
 	return nil
@@ -224,4 +226,17 @@ func (p *Pulse) SetClock(clock func() time.Time) {
 		clock = time.Now
 	}
 	p.clock = clock
+}
+
+// SetTick swaps the timer schedule the spinner and idle ember arm, a seam for
+// tests that advance the ticks deterministically; a nil schedule restores the
+// real timers.
+func (p *Pulse) SetTick(tick TickFunc) {
+	if p == nil {
+		return
+	}
+	if tick == nil {
+		tick = RealTick
+	}
+	p.tick = tick
 }

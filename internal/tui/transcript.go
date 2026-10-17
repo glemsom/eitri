@@ -96,12 +96,15 @@ type Transcript struct {
 // invariants a fresh transcript owns (follow on, an empty history viewport, a
 // dirty layout) are constructor defaults, not config fields.
 type TranscriptConfig struct {
-	Theme                         string
-	ReasoningEffort               string
-	Telemetry                     *telemetry.Telemetry
-	Rail                          *Rail
-	RailWidth                     int
-	Pulse                         *pulse.Pulse
+	Theme           string
+	ReasoningEffort string
+	Telemetry       *telemetry.Telemetry
+	Rail            *Rail
+	RailWidth       int
+	Pulse           *pulse.Pulse
+	// Tick is the timer schedule the shared pulse arms its spinner and ember
+	// ticks on; nil keeps the pulse's real-timer default.
+	Tick                          pulse.TickFunc
 	CoTCollapsedByDefault         bool
 	ToolResultsCollapsedByDefault bool
 }
@@ -126,7 +129,7 @@ func (t *Transcript) ensurePulse() *pulse.Pulse {
 
 // NewTranscript is the single construction seam for the transcript.
 func NewTranscript(cfg TranscriptConfig) *Transcript {
-	return &Transcript{
+	t := &Transcript{
 		theme:               themeFor(cfg.Theme),
 		configTheme:         cfg.Theme,
 		reasoningEffort:     cfg.ReasoningEffort,
@@ -140,6 +143,10 @@ func NewTranscript(cfg TranscriptConfig) *Transcript {
 		cotExpanded:         !cfg.CoTCollapsedByDefault,
 		toolResultsExpanded: !cfg.ToolResultsCollapsedByDefault,
 	}
+	if cfg.Tick != nil {
+		t.pulse.SetTick(cfg.Tick)
+	}
+	return t
 }
 
 type toolRowRange struct {
@@ -1598,6 +1605,11 @@ func (t *Transcript) BeginBusy() {
 // TickBusy advances the busy animation one cadence and reports the next tick.
 func (t *Transcript) TickBusy() tea.Cmd {
 	return t.ensurePulse().TickBusy()
+}
+
+// SpinnerTick reports the next busy-spinner tick on the shared pulse's schedule.
+func (t *Transcript) SpinnerTick() tea.Cmd {
+	return t.ensurePulse().SpinnerTick()
 }
 
 // ArmEmber restarts the idle-ember window, extending the bounded shimmer on
