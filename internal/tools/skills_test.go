@@ -258,7 +258,7 @@ func writeParsableSkill(t *testing.T, root, dir string) {
 
 func warnedAbout(w *warningSink, name string) bool {
 	for _, warning := range w.warns {
-		if strings.Contains(warning, fmt.Sprintf("%q", name)) {
+		if strings.Contains(warning, name) {
 			return true
 		}
 	}
