@@ -18,6 +18,58 @@ expect_contains() {
 	[[ $haystack == *"$needle"* ]] || fail "expected output to contain: $needle\nactual: $haystack"
 }
 
+# Emit one release asset object shaped like the GitHub Releases API, including
+# the nested "uploader" object whose braces sit between "name" and
+# "browser_download_url". The installer must match the versioned archive without
+# being confused by that nesting.
+release_asset() {
+	local name=$1 url=$2
+	cat <<JSON
+    {
+      "url": "https://api.github.com/repos/glemsom/eitri/releases/assets/1",
+      "id": 1,
+      "node_id": "RA_1",
+      "name": "$name",
+      "label": "",
+      "uploader": {
+        "login": "github-actions[bot]",
+        "id": 41898282,
+        "node_id": "MDM6Qm90NDE4OTgyODI=",
+        "avatar_url": "https://avatars.githubusercontent.com/in/15368?v=4",
+        "url": "https://api.github.com/users/github-actions%5Bbot%5D",
+        "html_url": "https://github.com/apps/github-actions",
+        "following_url": "https://api.github.com/users/github-actions/following{/other_user}",
+        "gists_url": "https://api.github.com/users/github-actions/gists{/gist_id}"
+      },
+      "content_type": "application/gzip",
+      "state": "uploaded",
+      "size": 7345905,
+      "download_count": 3,
+      "created_at": "2026-10-17T06:41:48Z",
+      "updated_at": "2026-10-17T06:41:48Z",
+      "browser_download_url": "$url"
+    }
+JSON
+}
+
+# release_json TAG "name<TAB>url" ... — a realistic latest-release payload.
+release_json() {
+	local tag=$1
+	shift
+	printf '{\n  "tag_name": "v%s",\n  "assets": [\n' "$tag"
+	local first=1 spec
+	for spec in "$@"; do
+		[[ $first == 1 ]] || printf ',\n'
+		first=0
+		release_asset "${spec%%$'\t'*}" "${spec#*$'\t'}"
+	done
+	printf '\n  ]\n}\n'
+}
+
+asset_url() {
+	printf 'https://github.com/glemsom/eitri/releases/download/v%s/eitri_%s_linux_amd64.tar.gz' "$1" "$1"
+}
+
 write_fakes() {
 	cat <<'FAKE' > "$fake/curl"
 #!/usr/bin/env bash
@@ -32,7 +84,7 @@ while (($#)); do
 done
 printf '%s\n' "$url" >> "$FAKE_LOG/curl-urls"
 if [[ $url == 'https://api.github.com/repos/glemsom/eitri/releases/latest' ]]; then
-	response=${FAKE_RELEASE_JSON:-'{"assets":[{"name":"eitri_0.1.0_linux_amd64.tar.gz","browser_download_url":"https://github.com/glemsom/eitri/releases/download/v0.1.0/eitri_0.1.0_linux_amd64.tar.gz"}]}' }
+	response=${FAKE_RELEASE_JSON:?FAKE_RELEASE_JSON must be set}
 else
 	response='archive'
 fi
@@ -73,8 +125,12 @@ FAKE
 run_installer() {
 	local home=$1
 	shift
-	FAKE_LOG="$temp/log" PATH="$fake:$PATH" HOME="$home" bash "$installer" "$@"
+	FAKE_RELEASE_JSON=${FAKE_RELEASE_JSON:-$latest_release_json} \
+		FAKE_LOG="$temp/log" PATH="$fake:$PATH" HOME="$home" bash "$installer" "$@"
 }
+
+latest_release_json=$(release_json 0.1.0 \
+	$'eitri_0.1.0_linux_amd64.tar.gz\t'"$(asset_url 0.1.0)")
 
 write_fakes
 mkdir -p "$temp/log"
@@ -91,10 +147,20 @@ expect_contains "$output" "export PATH=\"$temp/home-latest/.local/bin:\$PATH\""
 output=$(FAKE_TAR_LIST=$'eitri\nLICENSE\nextra' run_installer "$temp/home-extra") || fail 'installation with extra archive member failed'
 [[ -x "$temp/home-extra/.local/bin/eitri" ]] || fail 'installation with extra archive member is not executable'
 
-if output=$(FAKE_RELEASE_JSON='{"assets":[{"name":"eitri_0.1.0_linux_amd64.tar.gz","browser_download_url":"https://github.com/glemsom/eitri/releases/download/v0.1.0/eitri_0.1.0_linux_amd64.tar.gz"},{"name":"eitri_0.1.1_linux_amd64.tar.gz","browser_download_url":"https://github.com/glemsom/eitri/releases/download/v0.1.1/eitri_0.1.1_linux_amd64.tar.gz"}]}' run_installer "$temp/home-ambiguous" 2>&1); then
+ambiguous_release_json=$(release_json 0.1.1 \
+	$'eitri_0.1.0_linux_amd64.tar.gz\t'"$(asset_url 0.1.0)" \
+	$'eitri_0.1.1_linux_amd64.tar.gz\t'"$(asset_url 0.1.1)")
+if output=$(FAKE_RELEASE_JSON=$ambiguous_release_json run_installer "$temp/home-ambiguous" 2>&1); then
 	fail 'ambiguous latest release succeeded'
 fi
 expect_contains "$output" 'latest stable release has multiple versioned Linux amd64 archives'
+
+decoy_release_json=$(release_json 0.1.0 \
+	$'eitri_0.1.0_linux_amd64.tar.gz\t'"$(asset_url 0.1.0)" \
+	$'eitri_0.1.0_linux_amd64.tar.gz.sha256\t'"$(asset_url 0.1.0).sha256")
+output=$(FAKE_RELEASE_JSON=$decoy_release_json run_installer "$temp/home-decoy") || fail 'release with a non-versioned decoy asset failed'
+[[ -x "$temp/home-decoy/.local/bin/eitri" ]] || fail 'decoy release install is not executable'
+expect_contains "$output" 'Installed Eitri 0.1.0 to '
 
 mkdir -p "$temp/custom-bin"
 printf 'old binary\n' > "$temp/custom-bin/eitri"
