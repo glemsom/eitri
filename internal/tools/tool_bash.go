@@ -70,29 +70,29 @@ func (b *bashTool) Schema() map[string]any {
 	}, []string{"command"})
 }
 
-func (b *bashTool) Run(ctx context.Context, args map[string]any) (ToolResult, error) {
+func (b *bashTool) Run(ctx context.Context, args map[string]any) (compress.ToolResult, error) {
 	cmd, err := strArg(args, "command")
 	if err != nil {
-		return ToolResult{}, err
+		return compress.ToolResult{}, err
 	}
 	timeout, err := BashTimeout(args)
 	if err != nil {
-		return ToolResult{}, err
+		return compress.ToolResult{}, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	o, err := b.backend.Run(ctx, cmd)
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return ToolResult{}, fmt.Errorf("timed out after %d seconds", int(timeout.Seconds()))
+			return compress.ToolResult{}, fmt.Errorf("timed out after %d seconds", int(timeout.Seconds()))
 		}
 		if o == nil {
-			return ToolResult{}, err
+			return compress.ToolResult{}, err
 		}
-		return ToolResult{Text: o.Combined(), BytesDropped: o.Dropped}, err
+		return compress.ToolResult{Text: o.Combined(), BytesDropped: o.Dropped}, err
 	}
 	text, compressed, dropped := compress.CompressResult(o.Combined())
-	return ToolResult{Text: text, Compressed: compressed, Dropped: dropped, BytesDropped: o.Dropped}, nil
+	return compress.ToolResult{Text: text, Compressed: compressed, Dropped: dropped, BytesDropped: o.Dropped}, nil
 }
 
 // BashTimeout resolves the effective time bound for one bash call from its

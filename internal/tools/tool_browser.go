@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+
+	"github.com/glemsom/eitri/internal/compress"
 )
 
 // openInBrowserTool is the open_in_browser tool: host-side, outside the bwrap sandbox.
@@ -29,18 +31,18 @@ func (o *openInBrowserTool) Schema() map[string]any {
 	}, []string{"path"})
 }
 
-func (o *openInBrowserTool) Run(ctx context.Context, args map[string]any) (ToolResult, error) {
+func (o *openInBrowserTool) Run(ctx context.Context, args map[string]any) (compress.ToolResult, error) {
 	target, err := strArg(args, "path")
 	if err != nil {
-		return ToolResult{}, err
+		return compress.ToolResult{}, err
 	}
 	if strings.HasPrefix(target, "file://") {
 		if _, err := url.Parse(target); err != nil {
-			return ToolResult{}, fmt.Errorf("open_in_browser %s: %w", target, err)
+			return compress.ToolResult{}, fmt.Errorf("open_in_browser %s: %w", target, err)
 		}
 	}
 	if err := o.br.Open(ctx, target); err != nil {
-		return ToolResult{}, fmt.Errorf("open_in_browser %s: %w", target, err)
+		return compress.ToolResult{}, fmt.Errorf("open_in_browser %s: %w", target, err)
 	}
-	return ToolResult{Text: fmt.Sprintf("Opened %s in the host browser", target)}, nil
+	return compress.ToolResult{Text: fmt.Sprintf("Opened %s in the host browser", target)}, nil
 }
