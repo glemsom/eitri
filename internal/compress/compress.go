@@ -15,6 +15,19 @@ const maxLines = 500
 // DefaultByteCap is the shared byte budget every tool result is measured against at the tool-result boundary before it enters message history: the bytes the provider sees and that land in the session-cache head are bounded, so one oversized fetch (via curl) or whole-file read cannot exhaust the context window. 64 KiB fits comfortably inside deepseek's economics — a prompt token is ~3.5 bytes, so a capped result is ~18K tokens, small next to the ~1M-token context — while staying far under the session-cache head that must remain byte-stable.
 const DefaultByteCap = constants.DefaultByteCap
 
+// ToolResult is the tool-dispatch seam's shared currency: the four fields a tool call's
+// outcome carries back through the executor and into message history.
+type ToolResult struct {
+	Text       string
+	Compressed bool
+	Dropped    int
+
+	// BytesDropped is the count of bytes an upstream memory bound (the sandbox
+	// buffer) already rejected from this result's stream; the engine's byte cap
+	// folds it into the single authoritative truncation marker.
+	BytesDropped int
+}
+
 // stripTerminalControls removes ECMA-48 terminal controls while preserving ordinary text.
 func stripTerminalControls(s string) string {
 	var b strings.Builder
