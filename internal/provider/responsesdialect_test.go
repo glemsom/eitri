@@ -68,16 +68,15 @@ func TestResponsesDialectBuildShapesControls(t *testing.T) {
 	}
 }
 
-func TestResponsesDialectBuildsNativePromptCacheControls(t *testing.T) {
+func TestResponsesDialectBuildsPromptCacheKeyWithoutBreakpoints(t *testing.T) {
 	t.Parallel()
-	capabilities := ProviderCapabilities(ProviderCapabilityPromptCacheKey | ProviderCapabilityPromptCacheOptions | ProviderCapabilityPromptCacheBreakpoint)
 	body, err := NewResponsesDialect().Build(Request{
 		Model:           "gpt-5.6",
 		Messages:        []Message{{Role: RoleSystem, Content: "stable instructions"}, {Role: RoleUser, Content: "question"}},
 		StaticPrefixLen: 1,
 		SetCacheKey:     true,
 		SessionKey:      "session-1",
-		Capabilities:    capabilities,
+		Capabilities:    ProviderCapabilities(ProviderCapabilityPromptCacheKey),
 	})
 	if err != nil {
 		t.Fatalf("Build() error = %v, want nil", err)
@@ -89,17 +88,7 @@ func TestResponsesDialectBuildsNativePromptCacheControls(t *testing.T) {
 	if got := parsed["prompt_cache_key"]; got != "session-1" {
 		t.Errorf("prompt_cache_key = %#v, want session-1", got)
 	}
-	if got := parsed["prompt_cache_options"]; !jsonEqual(got, map[string]any{"mode": "explicit"}) {
-		t.Errorf("prompt_cache_options = %#v, want explicit mode", got)
-	}
-	input := parsed["input"].([]any)
-	for _, index := range []int{0, 1} {
-		item := input[index].(map[string]any)
-		part := item["content"].([]any)[0].(map[string]any)
-		if got := part["prompt_cache_breakpoint"]; !jsonEqual(got, map[string]any{"mode": "explicit"}) {
-			t.Errorf("input[%d] breakpoint = %#v, want explicit", index, got)
-		}
-	}
+	assertNoCacheMarkers(t, string(body), "prompt_cache_key")
 }
 
 func TestResponsesDialectBuildOmitsUnsetControls(t *testing.T) {

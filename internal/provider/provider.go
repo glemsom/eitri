@@ -188,8 +188,6 @@ const (
 	ProviderCapabilityPromptCacheRetention
 	ProviderCapabilityCacheControl
 	ProviderCapabilityOpenCodeSessionHeader
-	ProviderCapabilityPromptCacheOptions
-	ProviderCapabilityPromptCacheBreakpoint
 )
 
 // ProviderCapabilities declares the extensions a Provider permits Eitri to emit.

@@ -145,9 +145,7 @@ func TestCopilotStreamScopesCacheExtensionsToProviderCapabilities(t *testing.T) 
 			ProviderCapabilityPromptCacheKey |
 				ProviderCapabilityPromptCacheRetention |
 				ProviderCapabilityCacheControl |
-				ProviderCapabilityOpenCodeSessionHeader |
-				ProviderCapabilityPromptCacheOptions |
-				ProviderCapabilityPromptCacheBreakpoint,
+				ProviderCapabilityOpenCodeSessionHeader,
 		),
 	})
 	if err != nil {
@@ -159,11 +157,7 @@ func TestCopilotStreamScopesCacheExtensionsToProviderCapabilities(t *testing.T) 
 	if session != "" {
 		t.Errorf("X-Opencode-Session = %q, want absent", session)
 	}
-	for _, extension := range []string{"prompt_cache_key", "prompt_cache_retention", "prompt_cache_options", "prompt_cache_breakpoint", "cache_control"} {
-		if strings.Contains(body, extension) {
-			t.Errorf("Copilot request leaked %s: %s", extension, body)
-		}
-	}
+	assertNoCacheMarkers(t, body)
 }
 
 func TestCopilotBearerConcurrentRefreshIsRaceFree(t *testing.T) {
@@ -480,7 +474,7 @@ func TestCopilotUsesSharedChatCompletionsDialect(t *testing.T) {
 
 func TestCopilotChatDialectBuildExplicitThinkingToggle(t *testing.T) {
 	t.Parallel()
-	build := func(thinking bool) map[string]any {
+	build := func(thinking bool) (string, map[string]any) {
 		body, err := NewCopilot(config.CopilotConfig{}, "", nil, nil, nil).chat.Build(Request{Model: "gpt-4o", ThinkingEnabled: thinking})
 		if err != nil {
 			t.Fatalf("Build() error = %v, want nil", err)
@@ -489,10 +483,10 @@ func TestCopilotChatDialectBuildExplicitThinkingToggle(t *testing.T) {
 		if err := json.Unmarshal(body, &parsed); err != nil {
 			t.Fatalf("body not JSON: %v", err)
 		}
-		return parsed
+		return string(body), parsed
 	}
 
-	on := build(true)
+	_, on := build(true)
 	if th, ok := on["thinking"].(map[string]any); !ok || th["type"] != "enabled" {
 		t.Errorf("thinking-on body = %#v, want thinking.type enabled", on)
 	}
@@ -500,12 +494,8 @@ func TestCopilotChatDialectBuildExplicitThinkingToggle(t *testing.T) {
 		t.Errorf("thinking-on body carried reasoning_effort without an effort, want omitted: %#v", on)
 	}
 
-	off := build(false)
-	for _, field := range []string{"prompt_cache_key", "prompt_cache_retention"} {
-		if _, ok := off[field]; ok {
-			t.Errorf("thinking-off body carried Copilot-unsupported %s: %#v", field, off)
-		}
-	}
+	offBody, off := build(false)
+	assertNoCacheMarkers(t, offBody)
 	if th, ok := off["thinking"].(map[string]any); !ok || th["type"] != "disabled" {
 		t.Errorf("thinking-off body = %#v, want thinking.type disabled", off)
 	}

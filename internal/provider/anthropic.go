@@ -91,26 +91,104 @@ type anthropicTool struct {
 	CacheControl *CacheControl  `json:"cache_control,omitempty"`
 }
 
+// anthropicCacheMarker returns the breakpoint the Messages API takes: an
+// ephemeral cache entry with the API's default 5m lifetime. Anthropic's only
+// other TTL is 1h, so the OpenAI retention duration is not a value this wire
+// accepts. Every stamped breakpoint gets its own value, so mutating one cannot
+// rewrite the markers on the rest of the request.
+func anthropicCacheMarker() *CacheControl {
+	return &CacheControl{Type: "ephemeral"}
+}
+
+// anthropicMaxCacheBreakpoints is the Messages API cap on cache_control markers
+// in one request.
+const anthropicMaxCacheBreakpoints = 4
+
 // marshalAnthropicBody builds the Anthropic Messages request body from a turn.
 func marshalAnthropicBody(req Request) ([]byte, error) {
-	if !req.Capabilities.Supports(ProviderCapabilityCacheControl) {
-		req.Messages = messagesForWire(req)
-		req.Tools = toolsForWire(req)
+	messages, tools := req.Messages, req.Tools
+	if req.Capabilities.Supports(ProviderCapabilityCacheControl) {
+		messages, tools = stampAnthropicCacheBreakpoints(req)
+	} else {
+		messages, tools = messagesForWire(req), toolsForWire(req)
 	}
-	system, messages := anthropicMessages(req.Messages)
+	system, conv := anthropicMessages(messages)
 	body := anthropicBody{
 		Model:      req.Model,
 		MaxTokens:  anthropicMaxTokens(req),
 		Stream:     true,
 		System:     system,
-		Messages:   messages,
-		Tools:      anthropicToolManifestFromTool(req.Tools),
+		Messages:   conv,
+		Tools:      anthropicToolManifestFromTool(tools),
 		ToolChoice: anthropicToolChoice(req.ToolChoice),
 	}
 	if !req.ThinkingEnabled {
 		body.Thinking = &anthropicThinking{Type: "disabled"}
 	}
 	return json.Marshal(body)
+}
+
+// stampAnthropicCacheBreakpoints returns copies of the request's messages and
+// tools carrying the breakpoints the Messages API needs to read back what it
+// writes. A write happens only at a breakpoint and its hash is cumulative over
+// everything before it, so the first marker lands on the last message of the
+// byte-stable static prefix and the second on the tail message, which seeds the
+// next turn's read. The third lands on the last tool definition, making the
+// tools + system prefix one cached span. That is three of the four markers the
+// API allows; a slice already carrying markers from the caller keeps its own
+// placement until the budget runs out.
+func stampAnthropicCacheBreakpoints(req Request) ([]Message, []Tool) {
+	messages := append([]Message(nil), req.Messages...)
+	tools := append([]Tool(nil), req.Tools...)
+	budget := anthropicMaxCacheBreakpoints - countCacheMarkers(messages, tools)
+
+	for _, index := range []int{staticPrefixEnd(messages, req.StaticPrefixLen), len(messages) - 1} {
+		if budget <= 0 {
+			break
+		}
+		if index < 0 || index >= len(messages) || messages[index].CacheControl != nil {
+			continue
+		}
+		messages[index].CacheControl = anthropicCacheMarker()
+		budget--
+	}
+	if budget > 0 && len(tools) > 0 && tools[len(tools)-1].CacheControl == nil {
+		tools[len(tools)-1].CacheControl = anthropicCacheMarker()
+	}
+	return messages, tools
+}
+
+func countCacheMarkers(messages []Message, tools []Tool) int {
+	count := 0
+	for i := range messages {
+		if messages[i].CacheControl != nil {
+			count++
+		}
+	}
+	for i := range tools {
+		if tools[i].CacheControl != nil {
+			count++
+		}
+	}
+	return count
+}
+
+// staticPrefixEnd reports the index of the last message forming the run's static
+// prefix, or -1 when there is none to mark. A declared length wins when it lands
+// inside the message list; otherwise the leading run of system messages stands in
+// for it, since those are the messages a caller builds unconditionally per run.
+func staticPrefixEnd(messages []Message, declared int) int {
+	if declared > 0 {
+		if declared > len(messages) {
+			return -1
+		}
+		return declared - 1
+	}
+	n := 0
+	for n < len(messages) && messages[n].Role == RoleSystem {
+		n++
+	}
+	return n - 1
 }
 
 func anthropicMaxTokens(req Request) int {
@@ -133,9 +211,10 @@ func anthropicMessages(messages []Message) (system []anthropicContent, conv []an
 			conv = append(conv, anthropicMessage{
 				Role: "user",
 				Content: []anthropicContent{{
-					Type:      "tool_result",
-					ToolUseID: m.ToolCallID,
-					Content:   m.Content,
+					Type:         "tool_result",
+					ToolUseID:    m.ToolCallID,
+					Content:      m.Content,
+					CacheControl: m.CacheControl,
 				}},
 			})
 		case RoleUser:
@@ -158,7 +237,9 @@ func anthropicMessages(messages []Message) (system []anthropicContent, conv []an
 
 // anthropicAssistantContent folds an assistant message's replayable reply text
 // and tool calls into ordered Anthropic content blocks. Extended thinking is
-// replayable only when its opaque Anthropic signature was retained with it.
+// replayable only when its opaque Anthropic signature was retained with it. A
+// cache marker rides on the message's last block, the position a breakpoint
+// caches everything up to.
 func anthropicAssistantContent(m Message) []anthropicContent {
 	var content []anthropicContent
 	if m.ReasoningContent != "" && m.ThinkingSignature != "" {
@@ -169,6 +250,9 @@ func anthropicAssistantContent(m Message) []anthropicContent {
 	}
 	for _, tc := range m.ToolCalls {
 		content = append(content, anthropicContent{Type: "tool_use", ID: tc.ID, Name: tc.Name, Input: toolInput(tc.Arguments)})
+	}
+	if len(content) > 0 {
+		content[len(content)-1].CacheControl = m.CacheControl
 	}
 	return content
 }

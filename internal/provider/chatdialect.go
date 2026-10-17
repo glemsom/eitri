@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 )
 
 // Dialect is the seam for a single wire dialect: it owns both request shaping
@@ -45,31 +44,20 @@ func newCopilotChatCompletionsDialect() *ChatCompletionsDialect {
 var chatDialect = NewChatCompletionsDialect()
 
 func (d *ChatCompletionsDialect) Build(req Request) ([]byte, error) {
-	messages := messagesForWire(req)
 	var promptKey, retention string
-	var options *promptCacheOptions
 	if !d.copilotRequestPolicy {
-		req.Messages = messages
 		promptKey = promptCacheKey(req)
 		retention = promptCacheRetention(req)
-		options = chatPromptCacheOptions(req)
-	}
-	wireMessages := any(messages)
-	if options != nil {
-		wireMessages = chatMessagesWithCacheBreakpoints(messages, req.StaticPrefixLen)
-	} else if !d.copilotRequestPolicy {
-		wireMessages = stampCacheBreakpoints(req)
 	}
 	body := chatCompletionBody{
 		Model:                req.Model,
-		Messages:             wireMessages,
+		Messages:             messagesForWire(req),
 		Tools:                toolsForWire(req),
 		ToolChoice:           req.ToolChoice,
 		Stream:               true,
 		StreamOptions:        &streamOptions{IncludeUsage: true},
 		PromptCacheKey:       promptKey,
 		PromptCacheRetention: retention,
-		PromptCacheOptions:   options,
 		Thinking:             d.thinkingControl(req),
 		ReasoningEffort:      reasoningEffortControl(req),
 		MaxOutputTokens:      maxOutputTokens(req),
@@ -101,18 +89,17 @@ func (d *ChatCompletionsDialect) Stream(r io.Reader) Stream {
 }
 
 type chatCompletionBody struct {
-	Model                string              `json:"model"`
-	Messages             any                 `json:"messages"`
-	Tools                []Tool              `json:"tools,omitempty"`
-	ToolChoice           any                 `json:"tool_choice,omitempty"`
-	Stream               bool                `json:"stream"`
-	StreamOptions        *streamOptions      `json:"stream_options,omitempty"`
-	PromptCacheKey       string              `json:"prompt_cache_key,omitempty"`
-	PromptCacheRetention string              `json:"prompt_cache_retention,omitempty"`
-	PromptCacheOptions   *promptCacheOptions `json:"prompt_cache_options,omitempty"`
-	Thinking             *thinkingEnabler    `json:"thinking,omitempty"`
-	ReasoningEffort      string              `json:"reasoning_effort,omitempty"`
-	MaxOutputTokens      int                 `json:"max_completion_tokens,omitempty"`
+	Model                string           `json:"model"`
+	Messages             []Message        `json:"messages"`
+	Tools                []Tool           `json:"tools,omitempty"`
+	ToolChoice           any              `json:"tool_choice,omitempty"`
+	Stream               bool             `json:"stream"`
+	StreamOptions        *streamOptions   `json:"stream_options,omitempty"`
+	PromptCacheKey       string           `json:"prompt_cache_key,omitempty"`
+	PromptCacheRetention string           `json:"prompt_cache_retention,omitempty"`
+	Thinking             *thinkingEnabler `json:"thinking,omitempty"`
+	ReasoningEffort      string           `json:"reasoning_effort,omitempty"`
+	MaxOutputTokens      int              `json:"max_completion_tokens,omitempty"`
 }
 
 // thinkingEnabler is DeepSeek's thinking-mode toggle; the enabled form keeps thinking default-on for agent loops.
@@ -206,64 +193,6 @@ func messagesForWire(req Request) []Message {
 // prompt-cache retention duration for a Provider that explicitly supports it.
 const promptCacheRetention24h = "24h"
 
-func promptCacheRetention(req Request) string {
-	if !req.Capabilities.Supports(ProviderCapabilityPromptCacheRetention) {
-		return ""
-	}
-	return promptCacheRetention24h
-}
-
-func chatPromptCacheOptions(req Request) *promptCacheOptions {
-	if req.Capabilities.Supports(ProviderCapabilityPromptCacheOptions) && req.Capabilities.Supports(ProviderCapabilityPromptCacheBreakpoint) {
-		return &promptCacheOptions{Mode: "explicit"}
-	}
-	return nil
-}
-
-type chatCacheContentPart struct {
-	Type                  string                 `json:"type"`
-	Text                  string                 `json:"text"`
-	PromptCacheBreakpoint *promptCacheBreakpoint `json:"prompt_cache_breakpoint,omitempty"`
-}
-
-type chatCacheMessage struct {
-	Role             Role          `json:"role"`
-	Content          any           `json:"content,omitempty"`
-	ToolCallID       string        `json:"tool_call_id,omitempty"`
-	ToolCalls        []ToolCall    `json:"tool_calls,omitempty"`
-	ReasoningContent *string       `json:"reasoning_content,omitempty"`
-	CacheControl     *CacheControl `json:"cache_control,omitempty"`
-}
-
-func chatMessagesWithCacheBreakpoints(messages []Message, staticPrefixLen int) []chatCacheMessage {
-	head := staticPrefixEnd(messages, staticPrefixLen)
-	tail := len(messages) - 1
-	marked := map[int]bool{}
-	if head >= 0 && messages[head].Content != "" {
-		marked[head] = true
-	}
-	if tail >= 0 && messages[tail].Content != "" {
-		marked[tail] = true
-	}
-	out := make([]chatCacheMessage, 0, len(messages))
-	for i, m := range messages {
-		wire := chatCacheMessage{Role: m.Role, ToolCallID: m.ToolCallID, ToolCalls: m.ToolCalls, CacheControl: m.CacheControl}
-		if m.Content != "" || m.Role == RoleTool {
-			if marked[i] {
-				wire.Content = []chatCacheContentPart{{Type: "text", Text: m.Content, PromptCacheBreakpoint: &promptCacheBreakpoint{Mode: "explicit"}}}
-			} else {
-				wire.Content = m.Content
-			}
-		}
-		if m.Role == RoleAssistant {
-			reasoning := m.ReasoningContent
-			wire.ReasoningContent = &reasoning
-		}
-		out = append(out, wire)
-	}
-	return out
-}
-
 func promptCacheKey(req Request) string {
 	if req.SetCacheKey && req.Capabilities.Supports(ProviderCapabilityPromptCacheKey) {
 		return req.SessionKey
@@ -271,87 +200,11 @@ func promptCacheKey(req Request) string {
 	return ""
 }
 
-// cacheMarker is the Anthropic-style breakpoint stamped on OpenCode Go turns so
-// long sessions stay cheap: the static prefix and earlier turns keep hitting the
-// cache while the newest message changes every turn.
-var cacheMarker = &CacheControl{Type: "ephemeral", TTL: promptCacheRetention24h}
-
-// stampCacheBreakpoints returns req.Messages with two OpenCode Go cache
-// breakpoints — Anthropic's wire allows four, and two leaves room for a gateway
-// that counts its own markers alongside ours — on a fresh copy so the caller's
-// slice is untouched: one at the end of the static prefix (req.StaticPrefixLen)
-// and one on the last message. Without a declared static prefix it falls back to
-// the leading system messages.
-//
-// Two is the whole policy because a write happens only at a breakpoint and its
-// hash is cumulative over everything up to it. The static-prefix breakpoint is
-// what a later request reads to skip re-prefilling the persona head, the skill
-// index and the repo instructions; a breakpoint on or before a per-run
-// directive would instead write an entry nothing ever reads. The tail
-// breakpoint is what seeds the next one: a turn appends far fewer messages
-// than the provider's lookback window reaches back, so the following request
-// finds this write and the growing conversation is cached incrementally.
-//
-// It returns the slice unchanged when OpenCode Go stamping does not apply:
-// custom-openai turns, GLM/Zhipu models (whose API rejects Anthropic-style
-// markers), or a request that already carries a marker anywhere (no double-stamp).
-func stampCacheBreakpoints(req Request) []Message {
-	if !req.Capabilities.Supports(ProviderCapabilityCacheControl) || isGLMModel(req.Model) || carriesCacheMarker(req) {
-		return req.Messages
+func promptCacheRetention(req Request) string {
+	if !req.Capabilities.Supports(ProviderCapabilityPromptCacheRetention) {
+		return ""
 	}
-	out := make([]Message, len(req.Messages))
-	copy(out, req.Messages)
-
-	head := staticPrefixEnd(out, req.StaticPrefixLen)
-	tail := len(out) - 1
-	if head < 0 || tail < 0 {
-		return out
-	}
-	out[head].CacheControl = cacheMarker
-	if tail != head {
-		out[tail].CacheControl = cacheMarker
-	}
-	return out
-}
-
-// staticPrefixEnd reports the index of the last message forming the run's static
-// prefix, or -1 when there is none to mark. A declared length wins when it lands
-// inside the message list; otherwise the leading run of system messages stands in
-// for it, since those are the messages a caller builds unconditionally per run.
-func staticPrefixEnd(messages []Message, declared int) int {
-	if declared > 0 {
-		if declared > len(messages) {
-			return -1
-		}
-		return declared - 1
-	}
-	n := 0
-	for n < len(messages) && messages[n].Role == RoleSystem {
-		n++
-	}
-	return n - 1
-}
-
-// isGLMModel reports whether req.Model is a Zhipu GLM variant, whose downstream
-// API rejects Anthropic-style cache_control markers.
-func isGLMModel(model string) bool {
-	return strings.Contains(model, "glm-") || strings.Contains(model, "zhipu-")
-}
-
-// carriesCacheMarker reports whether any message or tool already carries a cache_control
-// marker, which forbids the dialect from stamping another one.
-func carriesCacheMarker(req Request) bool {
-	for i := range req.Messages {
-		if req.Messages[i].CacheControl != nil {
-			return true
-		}
-	}
-	for i := range req.Tools {
-		if req.Tools[i].CacheControl != nil {
-			return true
-		}
-	}
-	return false
+	return promptCacheRetention24h
 }
 
 // openAIStream adapts parsed SSE events into the Stream seam, mapping [DONE] to a Done chunk and io.EOF to io.EOF, accumulating tool_call fragments.

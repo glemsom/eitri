@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"os"
-	"reflect"
 	"strings"
 	"testing"
 )
@@ -75,16 +74,16 @@ func TestChatCompletionsDialectBuildShapesAllControls(t *testing.T) {
 	}
 }
 
-func TestChatCompletionsDialectBuildsNativePromptCacheControls(t *testing.T) {
+func TestChatCompletionsDialectBuildEmitsPromptCacheHintWithoutBreakpoints(t *testing.T) {
 	t.Parallel()
-	capabilities := ProviderCapabilities(ProviderCapabilityPromptCacheKey | ProviderCapabilityPromptCacheOptions | ProviderCapabilityPromptCacheBreakpoint)
 	body, err := NewChatCompletionsDialect().Build(Request{
-		Model:           "gpt-5.6",
+		Model:           "some-model",
+		ProviderID:      ProviderCustomOpenAI,
 		Messages:        []Message{{Role: RoleSystem, Content: "stable instructions"}, {Role: RoleUser, Content: "question"}},
 		StaticPrefixLen: 1,
 		SetCacheKey:     true,
 		SessionKey:      "session-1",
-		Capabilities:    capabilities,
+		Capabilities:    cacheExtensions,
 	})
 	if err != nil {
 		t.Fatalf("Build() error = %v, want nil", err)
@@ -96,25 +95,10 @@ func TestChatCompletionsDialectBuildsNativePromptCacheControls(t *testing.T) {
 	if got := parsed["prompt_cache_key"]; got != "session-1" {
 		t.Errorf("prompt_cache_key = %#v, want session-1", got)
 	}
-	if got := parsed["prompt_cache_options"]; !jsonEqual(got, map[string]any{"mode": "explicit"}) {
-		t.Errorf("prompt_cache_options = %#v, want explicit mode", got)
+	if got := parsed["prompt_cache_retention"]; got != promptCacheRetention24h {
+		t.Errorf("prompt_cache_retention = %#v, want %q", got, promptCacheRetention24h)
 	}
-	messages, ok := parsed["messages"].([]any)
-	if !ok {
-		t.Fatalf("messages = %#v, want content blocks", parsed["messages"])
-	}
-	for _, index := range []int{0, 1} {
-		message := messages[index].(map[string]any)
-		parts, ok := message["content"].([]any)
-		if !ok || len(parts) != 1 {
-			t.Errorf("messages[%d].content = %#v, want one content block", index, message["content"])
-			continue
-		}
-		part := parts[0].(map[string]any)
-		if got := part["prompt_cache_breakpoint"]; !jsonEqual(got, map[string]any{"mode": "explicit"}) {
-			t.Errorf("messages[%d] breakpoint = %#v, want explicit", index, got)
-		}
-	}
+	assertNoCacheMarkers(t, string(body), "prompt_cache_key", "prompt_cache_retention")
 }
 
 func TestChatCompletionsDialectBuildOmitsUnsetControls(t *testing.T) {
@@ -133,12 +117,12 @@ func TestChatCompletionsDialectBuildOmitsUnsetControls(t *testing.T) {
 	}
 }
 
-func TestChatCompletionsDialectBuildSetsRetentionForOpenCodeGo(t *testing.T) {
+func TestChatCompletionsDialectBuildSetsRetentionWhenDeclared(t *testing.T) {
 	t.Parallel()
 	body, err := NewChatCompletionsDialect().Build(Request{
-		Model:        "deepseek-v4-flash",
+		Model:        "some-model",
 		Messages:     []Message{{Role: RoleUser, Content: "hi"}},
-		ProviderID:   ProviderOpenCodeGo,
+		ProviderID:   ProviderCustomOpenAI,
 		Capabilities: cacheExtensions,
 	})
 	if err != nil {
@@ -163,9 +147,7 @@ func TestChatCompletionsDialectBuildOmitsRetentionForCustomOpenAI(t *testing.T) 
 	if err != nil {
 		t.Fatalf("Build() error = %v, want nil", err)
 	}
-	if strings.Contains(string(body), "prompt_cache_retention") {
-		t.Errorf("custom-openai request leaked prompt_cache_retention: %s", body)
-	}
+	assertNoCacheMarkers(t, string(body))
 }
 
 func TestChatCompletionsDialectBuildSetsCacheControlOnMessageAndTool(t *testing.T) {
@@ -206,9 +188,7 @@ func TestChatCompletionsDialectBuildOmitsCacheControlByDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build() error = %v, want nil", err)
 	}
-	if strings.Contains(string(body), "cache_control") {
-		t.Errorf("unset cache_control leaked into body: %s", body)
-	}
+	assertNoCacheMarkers(t, string(body))
 }
 
 func TestChatCompletionsDialectBuildOmitsRetentionByDefault(t *testing.T) {
@@ -220,9 +200,7 @@ func TestChatCompletionsDialectBuildOmitsRetentionByDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build() error = %v, want nil", err)
 	}
-	if strings.Contains(string(body), "prompt_cache_retention") {
-		t.Errorf("default request leaked prompt_cache_retention: %s", body)
-	}
+	assertNoCacheMarkers(t, string(body))
 }
 
 func TestChatCompletionsDialectStreamAccumulatesToolCalls(t *testing.T) {
@@ -265,123 +243,15 @@ func jsonEqual(a, b any) bool {
 	return aerr == nil && berr == nil && string(ab) == string(bb)
 }
 
-// stampedBreakpoints reports the indexes of the messages a built body marks.
-func stampedBreakpoints(t *testing.T, body []byte) []int {
-	t.Helper()
-	var parsed struct {
-		Messages []map[string]any `json:"messages"`
-	}
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		t.Fatalf("body not JSON: %v", err)
-	}
-	var out []int
-	for i, m := range parsed.Messages {
-		if _, ok := m["cache_control"]; ok {
-			out = append(out, i)
-		}
-	}
-	return out
-}
-
-// A declared static prefix is what the caller says is byte-identical across runs,
-// so the breakpoint belongs on its last message; the volatile system message that
-// follows it must stay unmarked, or its per-run content lands in every cache hash.
-func TestChatCompletionsDialectBuildStampsStaticPrefixEndAndTail(t *testing.T) {
+// The Chat Completions wire takes a routing hint, never a breakpoint: a declared
+// static prefix must not produce a cache_control marker on any message.
+func TestChatCompletionsDialectBuildStampsNoBreakpoints(t *testing.T) {
 	t.Parallel()
 	body, err := NewChatCompletionsDialect().Build(Request{
-		Model:           "deepseek-v4-flash",
-		ProviderID:      ProviderOpenCodeGo,
+		Model:           "some-model",
+		ProviderID:      ProviderCustomOpenAI,
 		Capabilities:    cacheExtensions,
-		StaticPrefixLen: 3,
-		Messages: []Message{
-			{Role: RoleSystem, Content: "persona head"},
-			{Role: RoleSystem, Content: "skill index"},
-			{Role: RoleSystem, Content: "repo instructions"},
-			{Role: RoleSystem, Content: "per-run workspace directive"},
-			{Role: RoleUser, Content: "u1"},
-			{Role: RoleAssistant, Content: "a1"},
-			{Role: RoleTool, ToolCallID: "t1", Content: "tool result"},
-			{Role: RoleAssistant, Content: "a2"},
-			{Role: RoleUser, Content: "u3"},
-		},
-	})
-	if err != nil {
-		t.Fatalf("Build() error = %v, want nil", err)
-	}
-	got := stampedBreakpoints(t, body)
-	if want := []int{2, 8}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("breakpoints = %v, want %v (static prefix end, then the moving tail)", got, want)
-	}
-}
-
-// Without a declared prefix the leading run of system messages stands in for it.
-func TestChatCompletionsDialectBuildFallsBackToLeadingSystemMessages(t *testing.T) {
-	t.Parallel()
-	body, err := NewChatCompletionsDialect().Build(Request{
-		Model:        "deepseek-v4-flash",
-		ProviderID:   ProviderOpenCodeGo,
-		Capabilities: cacheExtensions,
-		Messages: []Message{
-			{Role: RoleSystem, Content: "s1"},
-			{Role: RoleSystem, Content: "s2"},
-			{Role: RoleUser, Content: "u1"},
-		},
-	})
-	if err != nil {
-		t.Fatalf("Build() error = %v, want nil", err)
-	}
-	if got, want := stampedBreakpoints(t, body), []int{1, 2}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("breakpoints = %v, want %v", got, want)
-	}
-}
-
-// A prefix covering the whole request leaves one breakpoint, not two on one message.
-func TestChatCompletionsDialectBuildStampsOnceWhenTailIsThePrefixEnd(t *testing.T) {
-	t.Parallel()
-	body, err := NewChatCompletionsDialect().Build(Request{
-		Model:           "deepseek-v4-flash",
-		ProviderID:      ProviderOpenCodeGo,
-		Capabilities:    cacheExtensions,
-		StaticPrefixLen: 1,
-		Messages: []Message{
-			{Role: RoleSystem, Content: "s1"},
-		},
-	})
-	if err != nil {
-		t.Fatalf("Build() error = %v, want nil", err)
-	}
-	if got, want := stampedBreakpoints(t, body), []int{0}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("breakpoints = %v, want %v", got, want)
-	}
-}
-
-// A declared prefix longer than the message list is a caller bug, not a crash:
-// stamp nothing rather than index past the end.
-func TestChatCompletionsDialectBuildIgnoresOutOfRangeStaticPrefix(t *testing.T) {
-	t.Parallel()
-	body, err := NewChatCompletionsDialect().Build(Request{
-		Model:           "deepseek-v4-flash",
-		ProviderID:      ProviderOpenCodeGo,
-		Capabilities:    cacheExtensions,
-		StaticPrefixLen: 9,
-		Messages: []Message{
-			{Role: RoleSystem, Content: "s1"},
-			{Role: RoleUser, Content: "u1"},
-		},
-	})
-	if err != nil {
-		t.Fatalf("Build() error = %v, want nil", err)
-	}
-	if strings.Contains(string(body), "cache_control") {
-		t.Errorf("out-of-range static prefix still stamped a breakpoint: %s", body)
-	}
-}
-
-func TestChatCompletionsDialectBuildNoBreakpointsForCustomOpenAI(t *testing.T) {
-	t.Parallel()
-	body, err := NewChatCompletionsDialect().Build(Request{
-		Model:      "some-model",
-		ProviderID: ProviderCustomOpenAI,
+		StaticPrefixLen: 2,
 		Messages: []Message{
 			{Role: RoleSystem, Content: "s1"},
 			{Role: RoleSystem, Content: "s2"},
@@ -393,64 +263,5 @@ func TestChatCompletionsDialectBuildNoBreakpointsForCustomOpenAI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build() error = %v, want nil", err)
 	}
-	if strings.Contains(string(body), "cache_control") {
-		t.Errorf("custom-openai request leaked cache_control markers: %s", body)
-	}
-}
-
-func TestChatCompletionsDialectBuildSkipsBreakpointsForGLM(t *testing.T) {
-	t.Parallel()
-	for _, model := range []string{"glm-4.5", "zhipu-glm-4.6", "glm-4.5-flash"} {
-		body, err := NewChatCompletionsDialect().Build(Request{
-			Model:        model,
-			ProviderID:   ProviderOpenCodeGo,
-			Capabilities: cacheExtensions,
-			Messages: []Message{
-				{Role: RoleSystem, Content: "s1"},
-				{Role: RoleSystem, Content: "s2"},
-				{Role: RoleUser, Content: "u1"},
-				{Role: RoleAssistant, Content: "a1"},
-				{Role: RoleUser, Content: "u2"},
-			},
-		})
-		if err != nil {
-			t.Fatalf("Build() error = %v, want nil", err)
-		}
-		if strings.Contains(string(body), "cache_control") {
-			t.Errorf("GLM model %q leaked cache_control markers: %s", model, body)
-		}
-	}
-}
-
-func TestChatCompletionsDialectBuildNoDoubleStamp(t *testing.T) {
-	t.Parallel()
-	marker := &CacheControl{Type: "ephemeral", TTL: "1h"}
-	// user message pre-stamped; the dialect must not add markers anywhere
-	body, err := NewChatCompletionsDialect().Build(Request{
-		Model:        "deepseek-v4-flash",
-		ProviderID:   ProviderOpenCodeGo,
-		Capabilities: cacheExtensions,
-		Messages: []Message{
-			{Role: RoleSystem, Content: "prefix", CacheControl: marker},
-			{Role: RoleUser, Content: "question"},
-		},
-	})
-	if err != nil {
-		t.Fatalf("Build() error = %v, want nil", err)
-	}
-	var parsed struct {
-		Messages []map[string]any `json:"messages"`
-	}
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		t.Fatalf("body not JSON: %v", err)
-	}
-	count := 0
-	for _, m := range parsed.Messages {
-		if _, ok := m["cache_control"]; ok {
-			count++
-		}
-	}
-	if count != 1 {
-		t.Errorf("got %d cache_control markers, want exactly 1 (the pre-stamped one)", count)
-	}
+	assertNoCacheMarkers(t, string(body), "prompt_cache_retention")
 }

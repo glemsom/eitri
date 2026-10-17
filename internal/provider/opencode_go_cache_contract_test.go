@@ -3,7 +3,6 @@ package provider
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -110,16 +109,8 @@ func assertOpenCodeGoPromptCacheTurn(t *testing.T, dialect openCodeGoDialect, na
 	if got := turn.IdentityHeaders.Get("X-Opencode-Session"); got != turn.SessionKey {
 		t.Errorf("%s X-Opencode-Session = %q, want %q", name, got, turn.SessionKey)
 	}
-	var body any
-	if err := json.Unmarshal([]byte(turn.Body), &body); err != nil {
-		t.Errorf("%s request body is not JSON: %v", name, err)
-	} else {
-		for _, extension := range []string{"prompt_cache_key", "prompt_cache_retention", "cache_control"} {
-			if jsonContainsKey(body, extension) {
-				t.Errorf("%s request emitted unverified %s extension: %s", name, extension, turn.Body)
-			}
-		}
-	}
+	// The gateway tunes caching itself, so any marker is an unverified extension.
+	assertNoCacheMarkers(t, turn.Body)
 	if turn.Usage == nil {
 		t.Errorf("%s provider omitted terminal streamed usage", name)
 		return
@@ -127,27 +118,6 @@ func assertOpenCodeGoPromptCacheTurn(t *testing.T, dialect openCodeGoDialect, na
 	if turn.Usage.PromptTokens < 0 || turn.Usage.CompletionTokens < 0 || turn.Usage.PromptCacheHitTokens < 0 || turn.Usage.PromptCacheMissTokens < 0 || turn.Usage.PromptCacheWriteTokens < 0 {
 		t.Errorf("%s terminal usage contains negative tokens: %+v", name, *turn.Usage)
 	}
-}
-
-func jsonContainsKey(value any, key string) bool {
-	switch value := value.(type) {
-	case map[string]any:
-		if _, ok := value[key]; ok {
-			return true
-		}
-		for _, child := range value {
-			if jsonContainsKey(child, key) {
-				return true
-			}
-		}
-	case []any:
-		for _, child := range value {
-			if jsonContainsKey(child, key) {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func logOpenCodeGoPromptCacheTurn(t *testing.T, name string, turn openCodeGoPromptCacheTurn) {

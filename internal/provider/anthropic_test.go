@@ -350,3 +350,150 @@ func TestAnthropicStopReason(t *testing.T) {
 		}
 	}
 }
+
+// buildAnthropicBody builds the Messages wire body for req.
+func buildAnthropicBody(t *testing.T, req Request) string {
+	t.Helper()
+	body, err := NewAnthropicDialect().Build(req)
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	return string(body)
+}
+
+// The static prefix is what the caller says is byte-identical across runs, so a
+// breakpoint belongs on its last message; the per-run directive after it must
+// stay unmarked, or its volatile content lands in every cache hash.
+func TestAnthropicDialectStampsStaticPrefixEndAndTail(t *testing.T) {
+	t.Parallel()
+	body := buildAnthropicBody(t, Request{
+		Model:           "some-model",
+		StaticPrefixLen: 3,
+		Capabilities:    ProviderCapabilities(ProviderCapabilityCacheControl),
+		Messages: []Message{
+			{Role: RoleSystem, Content: "persona head"},
+			{Role: RoleSystem, Content: "skill index"},
+			{Role: RoleSystem, Content: "repo instructions"},
+			{Role: RoleSystem, Content: "per-run workspace directive"},
+			{Role: RoleUser, Content: "u1"},
+			{Role: RoleAssistant, Content: "a1"},
+			{Role: RoleUser, Content: "u2"},
+		},
+	})
+	if got, want := anthropicCacheBlocks(t, body), []string{"system[2]", "messages[2].content[0]"}; !equalStrings(got, want) {
+		t.Fatalf("cache_control blocks = %v, want %v", got, want)
+	}
+}
+
+// Without a declared prefix the leading run of system messages stands in for it.
+func TestAnthropicDialectFallsBackToLeadingSystemMessages(t *testing.T) {
+	t.Parallel()
+	body := buildAnthropicBody(t, Request{
+		Capabilities: ProviderCapabilities(ProviderCapabilityCacheControl),
+		Messages: []Message{
+			{Role: RoleSystem, Content: "s1"},
+			{Role: RoleSystem, Content: "s2"},
+			{Role: RoleUser, Content: "u1"},
+		},
+	})
+	if got, want := anthropicCacheBlocks(t, body), []string{"system[1]", "messages[0].content[0]"}; !equalStrings(got, want) {
+		t.Fatalf("cache_control blocks = %v, want %v", got, want)
+	}
+}
+
+// A prefix covering the whole request leaves one breakpoint, not two on one block.
+func TestAnthropicDialectStampsOnceWhenTailIsThePrefixEnd(t *testing.T) {
+	t.Parallel()
+	body := buildAnthropicBody(t, Request{
+		Capabilities:    ProviderCapabilities(ProviderCapabilityCacheControl),
+		StaticPrefixLen: 1,
+		Messages:        []Message{{Role: RoleSystem, Content: "s1"}},
+	})
+	if got, want := anthropicCacheBlocks(t, body), []string{"system[0]"}; !equalStrings(got, want) {
+		t.Fatalf("cache_control blocks = %v, want %v", got, want)
+	}
+}
+
+// A declared prefix longer than the message list is a caller bug, not a crash:
+// skip it and still mark the tail.
+func TestAnthropicDialectIgnoresOutOfRangeStaticPrefix(t *testing.T) {
+	t.Parallel()
+	body := buildAnthropicBody(t, Request{
+		Capabilities:    ProviderCapabilities(ProviderCapabilityCacheControl),
+		StaticPrefixLen: 9,
+		Messages: []Message{
+			{Role: RoleSystem, Content: "s1"},
+			{Role: RoleUser, Content: "u1"},
+		},
+	})
+	if got, want := anthropicCacheBlocks(t, body), []string{"messages[0].content[0]"}; !equalStrings(got, want) {
+		t.Fatalf("cache_control blocks = %v, want %v", got, want)
+	}
+}
+
+// The last tool definition carries the breakpoint that makes the tools + system
+// prefix one cached span; earlier tools stay bare so only one span is written.
+func TestAnthropicDialectStampsLastToolOnly(t *testing.T) {
+	t.Parallel()
+	body := buildAnthropicBody(t, Request{
+		Capabilities: ProviderCapabilities(ProviderCapabilityCacheControl),
+		Messages:     []Message{{Role: RoleUser, Content: "u1"}},
+		Tools: []Tool{
+			{Type: "function", Function: ToolFunction{Name: "bash", Parameters: map[string]any{"type": "object"}}},
+			{Type: "function", Function: ToolFunction{Name: "read_file", Parameters: map[string]any{"type": "object"}}},
+		},
+		MaxOutputTokens: 64,
+	})
+	got := anthropicCacheBlocks(t, body)
+	if want := []string{"messages[0].content[0]", "tools[1]"}; !equalStrings(got, want) {
+		t.Fatalf("cache_control blocks = %v, want %v", got, want)
+	}
+}
+
+// Anthropic caps a request at four breakpoints, counting any the caller already
+// placed: the tool manifest is only stamped while the budget allows.
+func TestAnthropicDialectRespectsCacheBreakpointBudget(t *testing.T) {
+	t.Parallel()
+	marker := &CacheControl{Type: "ephemeral"}
+	for _, tc := range []struct {
+		name   string
+		marked []int
+		want   []string
+	}{
+		{
+			name:   "caller markers on head and tail leave room for the tool manifest",
+			marked: []int{0, 3},
+			want:   []string{"system[0]", "messages[2].content[0]", "tools[0]"},
+		},
+		{
+			name:   "four caller markers leave no room for the tool manifest",
+			marked: []int{0, 1, 2, 3},
+			want:   []string{"system[0]", "messages[0].content[0]", "messages[1].content[0]", "messages[2].content[0]"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			messages := []Message{
+				{Role: RoleSystem, Content: "s1"},
+				{Role: RoleUser, Content: "u1"},
+				{Role: RoleUser, Content: "u2"},
+				{Role: RoleUser, Content: "u3"},
+			}
+			for _, index := range tc.marked {
+				messages[index].CacheControl = marker
+			}
+			body := buildAnthropicBody(t, Request{
+				Capabilities:    ProviderCapabilities(ProviderCapabilityCacheControl),
+				StaticPrefixLen: 1,
+				Messages:        messages,
+				Tools:           []Tool{{Type: "function", Function: ToolFunction{Name: "bash"}}},
+			})
+			got := anthropicCacheBlocks(t, body)
+			if !equalStrings(got, tc.want) {
+				t.Fatalf("cache_control blocks = %v, want %v", got, tc.want)
+			}
+			if len(got) > anthropicMaxCacheBreakpoints {
+				t.Fatalf("%d breakpoints exceeds the Messages API cap of %d", len(got), anthropicMaxCacheBreakpoints)
+			}
+		})
+	}
+}

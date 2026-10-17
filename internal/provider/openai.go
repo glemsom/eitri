@@ -30,13 +30,17 @@ const eitriUserAgent = "Eitri/1.0.0"
 // NewOpenAICompatible returns a client for the given API key and base URL. A URL
 // pointing at an Anthropic Messages endpoint (…/messages) yields an anthropic-only
 // client; any other URL is treated as an OpenAI-compatible endpoint (the full
-// /chat/completions path or a prefix to which it is appended).
+// /chat/completions path or a prefix to which it is appended). The base URL also
+// picks the cache capability set: cache_control breakpoints on the Messages wire,
+// prompt_cache_key and prompt_cache_retention on the Chat Completions wire.
 func NewOpenAICompatible(apiKey, url string) *OpenAICompatible {
 	u := strings.TrimRight(url, "/")
 	if isAnthropicMessagesURL(u) {
-		return &OpenAICompatible{apiKey: apiKey, anthropicURL: u}
+		return &OpenAICompatible{apiKey: apiKey, anthropicURL: u,
+			capabilities: ProviderCapabilities(ProviderCapabilityCacheControl)}
 	}
-	return &OpenAICompatible{apiKey: apiKey, url: normalizeChatCompletionsURL(u)}
+	return &OpenAICompatible{apiKey: apiKey, url: normalizeChatCompletionsURL(u),
+		capabilities: ProviderCapabilities(ProviderCapabilityPromptCacheKey | ProviderCapabilityPromptCacheRetention)}
 }
 
 // NewOpenCodeGo returns an OpenCode Go client that identifies each Session to

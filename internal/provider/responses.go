@@ -10,27 +10,18 @@ import (
 
 // responsesBody is minimal OpenAI Responses request shape Eitri needs on the Copilot path for models unavailable on /chat/completions.
 type responsesBody struct {
-	Model              string               `json:"model"`
-	Input              []responsesInputItem `json:"input"`
-	Tools              []responsesTool      `json:"tools,omitempty"`
-	ToolChoice         any                  `json:"tool_choice,omitempty"`
-	Stream             bool                 `json:"stream"`
-	Reasoning          *responsesReasoning  `json:"reasoning,omitempty"`
-	MaxOutputTokens    int                  `json:"max_output_tokens,omitempty"`
-	PromptCacheKey     string               `json:"prompt_cache_key,omitempty"`
-	PromptCacheOptions *promptCacheOptions  `json:"prompt_cache_options,omitempty"`
+	Model           string               `json:"model"`
+	Input           []responsesInputItem `json:"input"`
+	Tools           []responsesTool      `json:"tools,omitempty"`
+	ToolChoice      any                  `json:"tool_choice,omitempty"`
+	Stream          bool                 `json:"stream"`
+	Reasoning       *responsesReasoning  `json:"reasoning,omitempty"`
+	MaxOutputTokens int                  `json:"max_output_tokens,omitempty"`
+	PromptCacheKey  string               `json:"prompt_cache_key,omitempty"`
 }
 
 type responsesReasoning struct {
 	Effort string `json:"effort,omitempty"`
-}
-
-type promptCacheOptions struct {
-	Mode string `json:"mode"`
-}
-
-type promptCacheBreakpoint struct {
-	Mode string `json:"mode"`
 }
 
 type responsesTool struct {
@@ -52,9 +43,8 @@ type responsesInputItem struct {
 }
 
 type responsesContentPart struct {
-	Type                  string                 `json:"type"`
-	Text                  string                 `json:"text"`
-	PromptCacheBreakpoint *promptCacheBreakpoint `json:"prompt_cache_breakpoint,omitempty"`
+	Type string `json:"type"`
+	Text string `json:"text"`
 }
 
 // ResponsesDialect is the Dialect implementation for the OpenAI Responses wire.
@@ -88,60 +78,16 @@ func (d *ResponsesDialect) Stream(r io.Reader) Stream {
 
 func marshalResponsesBody(req Request) ([]byte, error) {
 	body := responsesBody{
-		Model:              req.Model,
-		Input:              responsesInput(req.Messages),
-		Tools:              responsesTools(req),
-		ToolChoice:         responsesToolChoice(req.ToolChoice),
-		Stream:             true,
-		Reasoning:          responsesReasoningControl(req),
-		MaxOutputTokens:    maxOutputTokens(req),
-		PromptCacheKey:     promptCacheKey(req),
-		PromptCacheOptions: responsesPromptCacheOptions(req),
-	}
-	if body.PromptCacheOptions != nil {
-		body.Input = stampResponsesCacheBreakpoints(body.Input, req.StaticPrefixLen)
+		Model:           req.Model,
+		Input:           responsesInput(req.Messages),
+		Tools:           responsesTools(req),
+		ToolChoice:      responsesToolChoice(req.ToolChoice),
+		Stream:          true,
+		Reasoning:       responsesReasoningControl(req),
+		MaxOutputTokens: maxOutputTokens(req),
+		PromptCacheKey:  promptCacheKey(req),
 	}
 	return json.Marshal(body)
-}
-
-func responsesPromptCacheOptions(req Request) *promptCacheOptions {
-	if req.Capabilities.Supports(ProviderCapabilityPromptCacheOptions) && req.Capabilities.Supports(ProviderCapabilityPromptCacheBreakpoint) {
-		return &promptCacheOptions{Mode: "explicit"}
-	}
-	return nil
-}
-
-func stampResponsesCacheBreakpoints(input []responsesInputItem, staticPrefixLen int) []responsesInputItem {
-	head := staticPrefixEndResponses(input, staticPrefixLen)
-	tail := len(input) - 1
-	if head < 0 || tail < 0 {
-		return input
-	}
-	mark := func(index int) {
-		if len(input[index].Content) == 0 {
-			return
-		}
-		input[index].Content[len(input[index].Content)-1].PromptCacheBreakpoint = &promptCacheBreakpoint{Mode: "explicit"}
-	}
-	mark(head)
-	if tail != head {
-		mark(tail)
-	}
-	return input
-}
-
-func staticPrefixEndResponses(input []responsesInputItem, declared int) int {
-	if declared > 0 {
-		if declared > len(input) {
-			return -1
-		}
-		return declared - 1
-	}
-	n := 0
-	for n < len(input) && input[n].Role == string(RoleSystem) {
-		n++
-	}
-	return n - 1
 }
 
 func responsesInput(messages []Message) []responsesInputItem {

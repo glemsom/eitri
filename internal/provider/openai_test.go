@@ -220,12 +220,12 @@ func TestOpenAIOmitsToolSchemaEnforcementByDefault(t *testing.T) {
 	}
 }
 
-func TestOpenAICompatibleOmitsPromptCacheKey(t *testing.T) {
+func TestOpenAICompatibleOmitsPromptCacheKeyWithoutSessionKey(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		if strings.Contains(string(body), "prompt_cache_key") {
-			t.Errorf("custom compatible request leaked prompt_cache_key: %s", body)
+			t.Errorf("turn without a session key leaked prompt_cache_key: %s", body)
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		fixture, _ := os.ReadFile("testdata/usage-final.sse")
@@ -234,10 +234,8 @@ func TestOpenAICompatibleOmitsPromptCacheKey(t *testing.T) {
 	defer srv.Close()
 
 	s, err := NewOpenAICompatible("test-key", srv.URL+"/v1/chat/completions").Stream(context.Background(), Request{
-		Model:       "deepseek-v4-flash",
-		Messages:    []Message{{Role: RoleUser, Content: "hi"}},
-		SetCacheKey: true,
-		SessionKey:  "sess-123",
+		Model:    "deepseek-v4-flash",
+		Messages: []Message{{Role: RoleUser, Content: "hi"}},
 	})
 	if err != nil {
 		t.Fatalf("Stream() error = %v", err)
@@ -532,11 +530,9 @@ func TestCompatibleAdaptersScopeOpenCodeSessionIdentity(t *testing.T) {
 		{name: "messages", url: func(base string) string { return base + "/v1/messages" }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			var session, body string
+			var session string
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				session = r.Header.Get("X-Opencode-Session")
-				payload, _ := io.ReadAll(r.Body)
-				body = string(payload)
 				w.Header().Set("Content-Type", "text/event-stream")
 				if strings.HasSuffix(r.URL.Path, "/messages") {
 					_, _ = w.Write([]byte(anthropicHelloSSE))
@@ -560,11 +556,6 @@ func TestCompatibleAdaptersScopeOpenCodeSessionIdentity(t *testing.T) {
 			}
 			if session != "" {
 				t.Errorf("X-Opencode-Session = %q, want absent", session)
-			}
-			for _, extension := range []string{"prompt_cache_key", "prompt_cache_retention", "cache_control"} {
-				if strings.Contains(body, extension) {
-					t.Errorf("custom compatible request leaked %s: %s", extension, body)
-				}
 			}
 		})
 	}
