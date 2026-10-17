@@ -489,7 +489,7 @@ func liveReasoningFlowTranscript(reasoning string) *Transcript {
 		height:          12,
 		histFollow:      true,
 		histViewport:    newHistoryViewport(),
-		busy:            true,
+		pulse:           busyPulse(),
 		messages: []message{
 			{role: "you", content: "hi"},
 			{role: "eitri", reasoning: reasoning, streaming: true, thinkingRequested: true},

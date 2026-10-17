@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/glemsom/eitri/internal/tui/pulse"
 	"github.com/glemsom/eitri/internal/tui/telemetry"
 	"strings"
 	"time"
@@ -16,24 +17,20 @@ import (
 
 // Transcript is the single owner of the transcript region: the layout/scroll/follow/render concerns that used to live in the TUI Model god-object, and the only home of the transcript state.
 type Transcript struct {
-	theme         Theme
-	messages      []message
-	busy          bool
-	busyStartedAt time.Time
-	spinner       int
-	forgeFrame    int
-	busyPulse     int
-	// idleEmberFrame is the current idle-ember shimmer frame (0 is settled) and
-	// idleEmberRemaining is how many ticks are left in the bounded post-activity
-	// window. The pair mirrors the busy glint frame; the ember tick is its own
-	// timer so a run and an idle surface never arm the same state twice.
-	idleEmberFrame     int
-	idleEmberRemaining int
-	reasoningEffort    string
-	configTheme        string
-	log                toolLog
-	expandAll          bool
-	collapseAll        bool
+	theme    Theme
+	messages []message
+	// pulse owns the live turn's animation state: the busy flag and its elapsed
+	// clock, the spinner and forge frames, the tool-start glint, and the idle
+	// ember. It is shared with the model so the clock and the render never drift.
+	pulse *pulse.Pulse
+	// emberFrameSeen is the ember frame the empty welcome was last laid out with,
+	// so an ember tick only re-wraps the welcome when the shimmer actually moved.
+	emberFrameSeen  int
+	reasoningEffort string
+	configTheme     string
+	log             toolLog
+	expandAll       bool
+	collapseAll     bool
 	// cotExpanded and toolResultsExpanded are the render defaults flipped by
 	// hint/one-liner by default; true renders the full body by default.
 	cotExpanded         bool
@@ -104,8 +101,27 @@ type TranscriptConfig struct {
 	Telemetry                     *telemetry.Telemetry
 	Rail                          *Rail
 	RailWidth                     int
+	Pulse                         *pulse.Pulse
 	CoTCollapsedByDefault         bool
 	ToolResultsCollapsedByDefault bool
+}
+
+// orNewPulse returns the shared pulse when one is wired, else a private one so a
+// bare transcript (and its tests) still owns a working clock.
+func orNewPulse(p *pulse.Pulse) *pulse.Pulse {
+	if p != nil {
+		return p
+	}
+	return pulse.New(nil)
+}
+
+// ensurePulse gives a bare transcript its own pulse on first mutation, so a
+// zero-value Transcript behaves like a constructed one.
+func (t *Transcript) ensurePulse() *pulse.Pulse {
+	if t.pulse == nil {
+		t.pulse = pulse.New(nil)
+	}
+	return t.pulse
 }
 
 // NewTranscript is the single construction seam for the transcript.
@@ -117,6 +133,7 @@ func NewTranscript(cfg TranscriptConfig) *Transcript {
 		telemetry:           cfg.Telemetry,
 		rail:                cfg.Rail,
 		railWidth:           cfg.RailWidth,
+		pulse:               orNewPulse(cfg.Pulse),
 		histFollow:          true,
 		histViewport:        newHistoryViewport(),
 		layout:              transcriptLayout{dirty: true},
@@ -208,20 +225,21 @@ type TranscriptCompletion struct {
 
 // Project applies one typed Run observation to the transcript.
 func (t *Transcript) Project(outcome TranscriptOutcome) (bool, error) {
+	t.ensurePulse()
+	defer t.syncPulseHint()
 	if start := outcome.Start; start != nil {
 		t.flow.Reset()
 		t.curStream = -1
 		t.thinkingEnabled = start.ThinkingEnabled
 		t.AppendUserMsg(start.Prompt)
-		t.busy = true
-		t.busyStartedAt = time.Now()
+		t.pulse.Start()
 		t.log.SetAnchor(len(t.messages) - 1)
 		return false, nil
 	}
 	if complete := outcome.Complete; complete != nil {
 		return t.projectCompletion(*complete)
 	}
-	if stream := outcome.Stream; stream != nil && t.busy {
+	if stream := outcome.Stream; stream != nil && t.pulse.Busy() {
 		t.projectStream(*stream)
 	}
 	if tool := outcome.Tool; tool != nil {
@@ -303,20 +321,20 @@ func (t *Transcript) projectStream(stream StreamUpdate) {
 	t.messages = append(t.messages, message{role: "eitri", streaming: true, thinkingRequested: t.thinkingEnabled})
 	t.curStream = len(t.messages) - 1
 	t.syncStreamSnapshots(t.curStream, t.flow.Content(), t.flow.Reasoning())
-	t.busyPulse = 3
+	t.pulse.Arm()
 }
 func (t *Transcript) projectTool(u ToolUpdate) {
 	t.applyTool(u)
 	if kind, ok := toolEventKind(u); ok {
 		ev := TimelineEvent{Kind: kind, Start: u.Start, Result: u.Result}
-		if t.busy {
+		if t.pulse.Busy() {
 			t.flow.ObserveTool(ev)
 		} else {
 			t.attachToolToLastAssistant(ev)
 		}
 	}
 	if u.Start != nil && !t.thinkingEnabled && motionEnabled() {
-		t.busyPulse = 3
+		t.pulse.Arm()
 	}
 }
 func (t *Transcript) attachToolToLastAssistant(ev TimelineEvent) {
@@ -348,7 +366,8 @@ func (t *Transcript) Reset() {
 	t.committedUnitRenders = 0
 	t.viewportStale = false
 	t.histFollow = true
-	t.busy = false
+	t.pulse.Stop()
+	t.syncPulseHint()
 }
 
 // LiveTimeline returns the in-progress turn's arrival-ordered event log.
@@ -520,7 +539,7 @@ func (t *Transcript) viewWithRail(pane string, bandHeight int) string {
 	}
 	rw := t.layoutRailWidth()
 	height := t.RailMaxHeight(bandHeight)
-	content := t.rail.renderLiveWithTools(t.telemetry, t.theme, rw, t.phase(), t.spinner, &t.log)
+	content := t.rail.renderLiveWithTools(t.telemetry, t.theme, rw, t.phase(), t.pulse.Status().Frame, &t.log)
 	if content != t.railRenderInput || height != t.railRenderHeight || rw != t.railRenderWidth {
 		t.railRenderInput = content
 		t.railRenderHeight = height
@@ -566,6 +585,7 @@ func (t *Transcript) AppendUserMsg(content string) {
 	t.messages = append(t.messages, message{role: "you", content: content})
 	t.layout.dirty = true
 	t.busyPrefixDirty = true
+	t.syncPulseHint()
 }
 
 // SetRailWidth stores the rail width and marks the shared layout cache dirty,
@@ -600,7 +620,7 @@ func (t *Transcript) renderPane(band string) string {
 // their reading position holds without re-feeding the full transcript.
 func (t *Transcript) renderHistoryPane(reserved int) string {
 	vh := t.scrollRegionHeight(reserved)
-	if vh > 0 && t.busy && t.histFollow && !t.weaver.active {
+	if vh > 0 && t.pulse.Busy() && t.histFollow && !t.weaver.active {
 		t.histViewport.SetWidth(t.TranscriptWidth())
 		t.histViewport.SetHeight(vh)
 		t.viewportStale = true
@@ -609,7 +629,7 @@ func (t *Transcript) renderHistoryPane(reserved int) string {
 		}
 		return t.renderTailWindow(t.busyPrefixTail+t.renderLiveTail(), vh)
 	}
-	if vh > 0 && t.busy && !t.histFollow && !t.weaver.active && !t.viewportStale && !t.busyPrefixDirty {
+	if vh > 0 && t.pulse.Busy() && !t.histFollow && !t.weaver.active && !t.viewportStale && !t.busyPrefixDirty {
 		t.histViewport.SetWidth(t.TranscriptWidth())
 		t.histViewport.SetHeight(vh)
 		return t.histViewport.View()
@@ -643,7 +663,7 @@ func (t Transcript) turnFlowEvents(i int) ([]TimelineEvent, bool) {
 			return nil, false // the next turn began; this one left no log
 		case len(m.events) > 0:
 			return m.events, true
-		case t.busy && m.streaming && len(t.LiveTimeline()) > 0:
+		case t.pulse.Busy() && m.streaming && len(t.LiveTimeline()) > 0:
 			return t.LiveTimeline(), true
 		}
 	}
@@ -653,7 +673,7 @@ func (t Transcript) turnFlowEvents(i int) ([]TimelineEvent, bool) {
 // isLiveTurnPrompt reports whether user message i is the prompt of the turn
 // currently running: busy, and the last message in the transcript.
 func (t Transcript) isLiveTurnPrompt(i int) bool {
-	return t.busy && i == len(t.messages)-1
+	return t.pulse.Busy() && i == len(t.messages)-1
 }
 
 func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, msgRows *[]msgRowRange) {
@@ -666,7 +686,7 @@ func (t Transcript) renderHistory(b *strings.Builder, toolRows *[]toolRowRange, 
 // invalidated it. The live turn flows through renderMessageRange, so
 // committed-vs-live emission cannot drift and the bytes match a fresh render.
 func (t *Transcript) renderPaneContent() string {
-	if !t.busy {
+	if !t.pulse.Busy() {
 		t.ensureLayout()
 		return t.layout.rendered
 	}
@@ -969,12 +989,12 @@ func (t *Transcript) renderMessageRange(b *strings.Builder, toolRows *[]toolRowR
 		nl += strings.Count(s, "\n")
 	}
 	if withHeader {
-		if len(t.messages) == 0 && !t.busy {
-			emit(idleWelcome(t.theme, t.TranscriptWidth(), t.idleEmberFrame))
+		if len(t.messages) == 0 && !t.pulse.Busy() {
+			emit(idleWelcome(t.theme, t.TranscriptWidth(), t.pulse.Status().EmberFrame))
 		}
 	}
 	now := time.Time{}
-	if t.busy {
+	if t.pulse.Busy() {
 		now = time.Now()
 	}
 	anchor := -1 // the user-prompt index owning the current turn's tool entries
@@ -1003,7 +1023,7 @@ func (t *Transcript) renderMessageRange(b *strings.Builder, toolRows *[]toolRowR
 		msgStart := nl // content row where this message's block begins
 
 		switch {
-		case t.busy && msg.role == "you" && t.isLiveTurnPrompt(i):
+		case t.pulse.Busy() && msg.role == "you" && t.isLiveTurnPrompt(i):
 			// The running turn renders as a flat flow from the moment the prompt
 			// lands: its prompt card plus the in-progress timeline — tools appear
 			// at their arrival positions once events arrive; the pre-stream gap
@@ -1014,7 +1034,7 @@ func (t *Transcript) renderMessageRange(b *strings.Builder, toolRows *[]toolRowR
 			emit(card)
 			flow, _ := t.turnFlowEvents(i)
 			emitFlow(flow, anchor, i, message{})
-		case t.busy && msg.streaming && len(t.LiveTimeline()) > 0:
+		case t.pulse.Busy() && msg.streaming && len(t.LiveTimeline()) > 0:
 			// Live turn: walk the in-progress timeline as one continuous flow
 			// through the shared FlowRenderer emitter.
 			emitFlow(t.LiveTimeline(), anchor, i, msg)
@@ -1040,11 +1060,11 @@ func (t *Transcript) renderMessageRange(b *strings.Builder, toolRows *[]toolRowR
 		}
 	}
 
-	if withBusyLine && t.busy && t.telemetry == nil {
-		if t.busyPulse > 0 {
-			emit(t.theme.bandStatusStyle.Render(busyLine(t.spinner, t.phase())))
+	if st := t.Status(); withBusyLine && st.Busy && t.telemetry == nil {
+		if st.Pulse > 0 {
+			emit(t.theme.bandStatusStyle.Render(busyLine(st.Frame, st.Phase)))
 		} else {
-			emit(t.theme.statusStyle.Render(busyLine(t.spinner, t.phase())))
+			emit(t.theme.statusStyle.Render(busyLine(st.Frame, st.Phase)))
 		}
 		emit("\n")
 	}
@@ -1070,7 +1090,7 @@ func (t *Transcript) renderEventFlow(events []TimelineEvent, anchor int, msg mes
 		Theme:         t.theme,
 		ConfigTheme:   t.configTheme,
 		Width:         t.TranscriptWidth(),
-		Pulse:         t.busyPulse > 0,
+		Pulse:         t.pulse.Status().Pulse > 0,
 		Effort:        t.reasoningEffort,
 		Cfg:           t.expansionConfig(),
 		Now:           now,
@@ -1382,7 +1402,7 @@ func (t *Transcript) recordLayout() {
 	l.rows = l.rows[:0]
 	l.msgs = l.msgs[:0]
 
-	if t.busy {
+	if t.pulse.Busy() {
 		// The live tail (the running prompt's flow and its streaming reply) is
 		// not memoizable, so a busy record — forced by a mouse hit-test or drag
 		// while a turn runs — renders the whole current state through the
@@ -1398,7 +1418,7 @@ func (t *Transcript) recordLayout() {
 		t.ensureCommittedUnits(len(t.messages))
 		var hist strings.Builder
 		if len(t.messages) == 0 {
-			hist.WriteString(idleWelcome(t.theme, t.TranscriptWidth(), t.idleEmberFrame))
+			hist.WriteString(idleWelcome(t.theme, t.TranscriptWidth(), t.pulse.Status().EmberFrame))
 		}
 		row := 0
 		for i, u := range t.units {
@@ -1472,6 +1492,7 @@ func (t *Transcript) AppendAssistantMsg(content string) {
 	t.messages = append(t.messages, message{role: "eitri", content: content, events: synthAnswerLog(content)})
 	t.layout.dirty = true
 	t.busyPrefixDirty = true
+	t.syncPulseHint()
 }
 
 // synthAnswerLog builds the one-event answer log every assistant entry owns,
@@ -1517,7 +1538,7 @@ func (t Transcript) toolEntryIsCommitted(i int) bool {
 	if i < 0 || i >= len(t.log.entries) {
 		return false
 	}
-	if !t.busy {
+	if !t.pulse.Busy() {
 		return true
 	}
 	return t.log.entries[i].anchor < t.busyTailIndex()
@@ -1525,23 +1546,20 @@ func (t Transcript) toolEntryIsCommitted(i int) bool {
 
 // Status is the live turn's readout as one value: the busy flag and its phase,
 // the elapsed clock, the tool pulse remaining, and the animation frames the
-// composer and rail draw.
-type Status struct {
-	Busy           bool
-	Phase          Phase
-	Elapsed        time.Duration
-	Pulse          int
-	Frame          int
-	ForgeFrame     int
-	EmberFrame     int
-	EmberRemaining int
+// composer and rail draw. It is the pulse package's value, re-exported so the
+// composer and model keep reading it through the transcript.
+type Status = pulse.Status
+
+// phase returns the agent's current Phase, derived by the pulse from the busy
+// flag and the streaming assistant message the transcript feeds it.
+func (t Transcript) phase() pulse.Phase {
+	return t.pulse.Status().Phase
 }
 
-// phase returns the agent's current Phase, derived from the owned live turn state: the busy flag and the in-progress streaming assistant message (if any).
-func (t Transcript) phase() Phase {
-	if !t.busy {
-		return PhaseIdle
-	}
+// syncPulseHint pushes the live streaming signals to the pulse so its derived
+// Phase tracks the in-progress assistant message.
+func (t *Transcript) syncPulseHint() {
+	t.ensurePulse()
 	var streaming, hasReasoning, hasAnswer bool
 	for i := len(t.messages) - 1; i >= 0; i-- {
 		if m := t.messages[i]; m.streaming {
@@ -1551,34 +1569,21 @@ func (t Transcript) phase() Phase {
 			break
 		}
 	}
-	return derivePhase(t.busy, streaming, hasReasoning, hasAnswer)
+	t.pulse.NoteStream(streaming, hasReasoning, hasAnswer)
 }
 
 // Status reports the live turn's status. It is the single read of the pulse
 // state; the composer, the rail, and the model reach the busy flag, the
 // frames, and the idle ember through it rather than the fields.
 func (t Transcript) Status() Status {
-	var elapsed time.Duration
-	if !t.busyStartedAt.IsZero() {
-		elapsed = time.Since(t.busyStartedAt)
-	}
-	return Status{
-		Busy:           t.busy,
-		Phase:          t.phase(),
-		Elapsed:        elapsed,
-		Pulse:          t.busyPulse,
-		Frame:          t.spinner,
-		ForgeFrame:     t.forgeFrame,
-		EmberFrame:     t.idleEmberFrame,
-		EmberRemaining: t.idleEmberRemaining,
-	}
+	return t.pulse.Status()
 }
 
-// EndTurn clears the busy state after a completed turn and marks the shared layout cache dirty, so completion-time message finalization re-wraps without caller-side invalidation.
+// EndTurn clears the busy state after a completed turn and marks the shared
+// layout cache dirty, so completion-time message finalization re-wraps without
+// caller-side invalidation.
 func (t *Transcript) EndTurn() {
-	t.busy = false
-	t.spinner = 0
-	t.forgeFrame = 0
+	t.ensurePulse().EndTurn()
 	t.layout.dirty = true
 	t.busyPrefixDirty = true
 }
@@ -1587,93 +1592,44 @@ func (t *Transcript) EndTurn() {
 // skill-activation window shows the busy panel before the run itself starts the
 // clock through Project.
 func (t *Transcript) BeginBusy() {
-	t.busy = true
+	t.ensurePulse().BeginBusy()
 }
 
-// TickBusy advances the busy animation one 80 ms cadence and reports the next
-// tick; it parks the frames and stops the tick once the turn ends or motion is
-// off.
+// TickBusy advances the busy animation one cadence and reports the next tick.
 func (t *Transcript) TickBusy() tea.Cmd {
-	if !t.busy || !motionEnabled() {
-		t.spinner = 0
-		t.forgeFrame = 0
-		return nil
-	}
-	t.spinner = (t.spinner + 1) % len(busySpinnerFrames)
-	t.forgeFrame++
-	if t.busyPulse > 0 {
-		t.busyPulse--
-	}
-	return spinnerTick()
+	return t.ensurePulse().TickBusy()
 }
 
-// ArmEmber restarts the idle-ember window at its leading frame, extending the
-// bounded shimmer on activity. A busy surface, an open overlay, or reduced
-// motion never arms, and an already-running ember only has its window extended
-// so no second timer starts.
+// ArmEmber restarts the idle-ember window, extending the bounded shimmer on
+// activity; it marks the empty welcome's layout dirty when the shimmer moves.
 func (t *Transcript) ArmEmber(overlayOpen bool) tea.Cmd {
-	if t.busy || !motionEnabled() || overlayOpen {
-		return nil
-	}
-	running := t.idleEmberRemaining > 0
-	t.armIdleEmber()
-	if running {
-		return nil
-	}
-	return idleEmberTick()
+	cmd := t.ensurePulse().ArmEmber(overlayOpen)
+	t.syncEmberLayout()
+	return cmd
 }
 
-// TickEmber advances the idle ember one 140 ms cadence and reports the next
-// tick, settling the ember and stopping the tick when the window closes or a
-// busy surface, an open overlay, or reduced motion pauses it.
+// TickEmber advances the idle ember one cadence and reports the next tick.
 func (t *Transcript) TickEmber(overlayOpen bool) tea.Cmd {
-	if !t.busy && !overlayOpen && motionEnabled() && t.advanceIdleEmber() {
-		return idleEmberTick()
-	}
-	t.SettleIdleEmber()
-	return nil
+	cmd := t.ensurePulse().TickEmber(overlayOpen)
+	t.syncEmberLayout()
+	return cmd
 }
 
-// armIdleEmber restarts the idle-ember window at its leading frame, extending
-// the bounded shimmer after input or a new event.
-func (t *Transcript) armIdleEmber() {
-	t.setIdleEmberFrame(0)
-	t.idleEmberRemaining = idleEmberWindow
-}
-
-// SettleIdleEmber parks the ember on the static mark and closes the window, so
-// a busy turn, an overlay, or reduced motion stops the idle wakeup.
+// SettleIdleEmber parks the ember on the static mark and closes the window.
 func (t *Transcript) SettleIdleEmber() {
-	t.setIdleEmberFrame(0)
-	t.idleEmberRemaining = 0
+	t.ensurePulse().SettleIdleEmber()
+	t.syncEmberLayout()
 }
 
-// advanceIdleEmber steps the ember within the open window and reports whether
-// the window is still open (and so whether the tick should be re-armed). When
-// the window closes the frame settles back to the static mark.
-func (t *Transcript) advanceIdleEmber() bool {
-	if t.idleEmberRemaining <= 0 {
-		t.setIdleEmberFrame(0)
-		return false
-	}
-	t.setIdleEmberFrame(t.idleEmberFrame + 1)
-	t.idleEmberRemaining--
-	if t.idleEmberRemaining <= 0 {
-		t.setIdleEmberFrame(0)
-		return false
-	}
-	return true
-}
-
-// setIdleEmberFrame stores a new ember frame and dirties the cached layout when
-// the frame actually changed, so the shimmer reaches the rendered welcome.
-func (t *Transcript) setIdleEmberFrame(frame int) {
-	if t.idleEmberFrame == frame {
+// syncEmberLayout marks the empty welcome's layout dirty when the ember frame
+// actually moved, so a transcript with messages never pays a full re-layout on
+// every ember tick.
+func (t *Transcript) syncEmberLayout() {
+	frame := t.pulse.Status().EmberFrame
+	if frame == t.emberFrameSeen {
 		return
 	}
-	t.idleEmberFrame = frame
-	// Only the empty-transcript welcome draws the ember, so a transcript with
-	// messages must not pay a full re-layout on every ember tick.
+	t.emberFrameSeen = frame
 	if len(t.messages) == 0 {
 		t.layout.dirty = true
 	}
@@ -1813,7 +1769,7 @@ func (t Transcript) collapsibleBlocks() []collapsibleBlock {
 // live timeline while the message is the running turn's streaming reply, else
 // its committed event log.
 func (t Transcript) flowEventsFor(m message) []TimelineEvent {
-	if t.busy && m.streaming && len(t.LiveTimeline()) > 0 {
+	if t.pulse.Busy() && m.streaming && len(t.LiveTimeline()) > 0 {
 		return t.LiveTimeline()
 	}
 	return m.events

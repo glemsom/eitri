@@ -291,7 +291,7 @@ func busyWithCommittedToolTranscript() *Transcript {
 		height:       30,
 		histFollow:   true,
 		histViewport: newHistoryViewport(),
-		busy:         true,
+		pulse:        busyPulse(),
 		log:          log,
 	}
 	tx.messages = append(tx.messages,

@@ -29,7 +29,7 @@ func BenchmarkIdleEmberRender(b *testing.B) {
 			m.tx.ArmEmber(false)
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if mode.ember && !m.tx.advanceIdleEmber() {
+				if mode.ember && m.tx.TickEmber(false) == nil {
 					m.tx.ArmEmber(false)
 				}
 				_ = view(m)

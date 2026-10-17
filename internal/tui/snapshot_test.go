@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"github.com/glemsom/eitri/internal/tui/pulse"
 	"github.com/glemsom/eitri/internal/tui/telemetry"
 	"os"
 	"path/filepath"
@@ -92,7 +93,7 @@ func TestSnapshot_frames(t *testing.T) {
 	em = resizeTo(t, em, 120, 40)
 	em.tx.ArmEmber(false)
 	for range 6 {
-		em = upd(t, em, idleEmberTickMsg{})
+		em = upd(t, em, pulse.IdleEmberTickMsg{})
 	}
 	writeFrame(t, out, "01b_idle_ember", em)
 
@@ -176,7 +177,7 @@ func TestSnapshot_frames(t *testing.T) {
 		em = resizeTo(t, em, 130, 40)
 		em.tx.ArmEmber(false)
 		for range 6 {
-			em = upd(t, em, idleEmberTickMsg{})
+			em = upd(t, em, pulse.IdleEmberTickMsg{})
 		}
 		writeFrame(t, out, "10b_"+theme+"_ember", em)
 	}

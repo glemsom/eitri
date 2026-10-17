@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"github.com/glemsom/eitri/internal/tui/pulse"
 	"strings"
 	"testing"
 	"time"
@@ -21,13 +22,13 @@ func TestBusySpinner_animatesAndStops(t *testing.T) {
 		t.Fatalf("busy state must show the first spinner frame, got: %q", view(m))
 	}
 
-	nm, cmd := m.Update(spinnerTickMsg{})
+	nm, cmd := m.Update(pulse.SpinnerTickMsg{})
 	m = asModel(t, nm)
 	if cmd == nil {
 		t.Fatalf("spinner tick must re-issue while busy")
 	}
 	first := m.tx.Status().Frame
-	nm, _ = m.Update(spinnerTickMsg{})
+	nm, _ = m.Update(pulse.SpinnerTickMsg{})
 	m = asModel(t, nm)
 	if m.tx.Status().Frame != (first+1)%len(busySpinnerFrames) {
 		t.Fatalf("spinner frame did not advance: %d -> %d", first, m.tx.Status().Frame)
@@ -57,7 +58,7 @@ func TestBusySpinner_reducedMotionFallsBack(t *testing.T) {
 	if got := newestBusyLine(m); got != "… thinking" {
 		t.Fatalf("reduced-motion busy line = %q, want static %q", got, "… thinking")
 	}
-	nm, cmd := m.Update(spinnerTickMsg{})
+	nm, cmd := m.Update(pulse.SpinnerTickMsg{})
 	m = asModel(t, nm)
 	if cmd != nil {
 		t.Fatalf("spinner tick must not re-issue under reduced motion")
@@ -182,7 +183,7 @@ func TestToolPulse_decrementsOnTick(t *testing.T) {
 		t.Fatalf("tool start must arm the pulse to 3, got %d", m.tx.Status().Pulse)
 	}
 	for _, want := range []int{2, 1, 0} {
-		nm, _ := m.Update(spinnerTickMsg{})
+		nm, _ := m.Update(pulse.SpinnerTickMsg{})
 		m = asModel(t, nm)
 		if m.tx.Status().Pulse != want {
 			t.Fatalf("pulse after tick = %d, want %d", m.tx.Status().Pulse, want)
@@ -216,7 +217,7 @@ func TestToolPulse_runningEntryRendersAccent(t *testing.T) {
 	}
 
 	for i := 0; i < 3; i++ {
-		nm, _ := m.Update(spinnerTickMsg{})
+		nm, _ := m.Update(pulse.SpinnerTickMsg{})
 		m = asModel(t, nm)
 	}
 	if m.tx.Status().Pulse != 0 {
@@ -248,8 +249,7 @@ func TestToolPulse_busyBandFlashesWithCollapsedCoT(t *testing.T) {
 		reasoningEffort: "medium",
 		width:           100,
 		height:          12,
-		busy:            true,
-		spinner:         0,
+		pulse:           busyPulse(),
 		histFollow:      true,
 		histViewport:    newHistoryViewport(),
 		messages: []message{
@@ -261,7 +261,7 @@ func TestToolPulse_busyBandFlashesWithCollapsedCoT(t *testing.T) {
 		{Kind: EventReasoning, Seq: 0, Delta: "secret reasoning"},
 		{Kind: EventToolStart, Seq: 1, Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}},
 	})
-	tx.busyPulse = 3 // the tool start armed the pulse (model.applyToolUpdate)
+	tx.pulse.Arm() // the tool start armed the pulse (model.applyToolUpdate)
 
 	renderBand := func() string {
 		var hist strings.Builder
@@ -285,7 +285,9 @@ func TestToolPulse_busyBandFlashesWithCollapsedCoT(t *testing.T) {
 		t.Errorf("pulse-armed band must flash to the accent hue, got: %q", band)
 	}
 
-	tx.busyPulse = 0 // the pulse expired after its 3 ticks
+	for range 3 {
+		tx.TickBusy() // the pulse expired after its 3 ticks
+	}
 	settled := renderBand()
 	if strings.Contains(settled, accent) {
 		t.Errorf("band must fall back off the pulse once it expires, got: %q", settled)
@@ -363,25 +365,25 @@ func TestBusySpinner_pulseOnFirstDelta(t *testing.T) {
 		t.Fatalf("busyPulse after first delta = %d, want 3", m.tx.Status().Pulse)
 	}
 
-	nm, _ := m.Update(spinnerTickMsg{})
+	nm, _ := m.Update(pulse.SpinnerTickMsg{})
 	m = asModel(t, nm)
 	if m.tx.Status().Pulse != 2 {
 		t.Fatalf("busyPulse after 1st tick = %d, want 2", m.tx.Status().Pulse)
 	}
 
-	nm, _ = m.Update(spinnerTickMsg{})
+	nm, _ = m.Update(pulse.SpinnerTickMsg{})
 	m = asModel(t, nm)
 	if m.tx.Status().Pulse != 1 {
 		t.Fatalf("busyPulse after 2nd tick = %d, want 1", m.tx.Status().Pulse)
 	}
 
-	nm, _ = m.Update(spinnerTickMsg{})
+	nm, _ = m.Update(pulse.SpinnerTickMsg{})
 	m = asModel(t, nm)
 	if m.tx.Status().Pulse != 0 {
 		t.Fatalf("busyPulse after 3rd tick = %d, want 0", m.tx.Status().Pulse)
 	}
 
-	nm, _ = m.Update(spinnerTickMsg{})
+	nm, _ = m.Update(pulse.SpinnerTickMsg{})
 	m = asModel(t, nm)
 	if m.tx.Status().Pulse != 0 {
 		t.Fatalf("busyPulse after 4th tick = %d, want 0", m.tx.Status().Pulse)
@@ -405,7 +407,7 @@ func TestBusySpinner_pulseRendersBright(t *testing.T) {
 	}
 
 	for i := 0; i < 3; i++ {
-		nm, _ := m.Update(spinnerTickMsg{})
+		nm, _ := m.Update(pulse.SpinnerTickMsg{})
 		m = asModel(t, nm)
 	}
 	if m.tx.Status().Pulse != 0 {
@@ -439,9 +441,10 @@ func TestForgeTitle_glintMovesAndPreservesText(t *testing.T) {
 func TestForgeTitle_reducedMotionIsStatic(t *testing.T) {
 	t.Setenv("EITRI_NO_MOTION", "1")
 	m := newStreamingModel()
-	m.tx.forgeFrame = 0
 	first := m.forgeTitle()
-	m.tx.forgeFrame = 20
+	for range 20 {
+		m.tx.TickBusy()
+	}
 	second := m.forgeTitle()
 
 	if first != second {
@@ -454,8 +457,8 @@ func TestForgeTitle_reducedMotionIsStatic(t *testing.T) {
 
 func TestForgeTitle_carriesElapsedReadout(t *testing.T) {
 	m := newStreamingModel()
-	m.tx.BeginBusy()
-	m.tx.busyStartedAt = time.Now().Add(-time.Minute)
+	m.tx.pulse.Start()
+	m.tx.pulse.SetClock(func() time.Time { return time.Now().Add(time.Minute) })
 	if got := ansiStrip(m.forgeTitle()); !strings.Contains(got, "elapsed") {
 		t.Fatalf("forge title must carry the elapsed readout, got: %q", got)
 	}
@@ -464,7 +467,8 @@ func TestForgeTitle_carriesElapsedReadout(t *testing.T) {
 func TestForgeTitle_reducedMotionCarriesElapsedReadout(t *testing.T) {
 	t.Setenv("EITRI_NO_MOTION", "1")
 	m := newStreamingModel()
-	m.tx.busyStartedAt = time.Now().Add(-time.Minute)
+	m.tx.pulse.Start()
+	m.tx.pulse.SetClock(func() time.Time { return time.Now().Add(time.Minute) })
 	if got := ansiStrip(m.forgeTitle()); !strings.Contains(got, "elapsed") {
 		t.Fatalf("reduced-motion forge title must carry the elapsed readout, got: %q", got)
 	}

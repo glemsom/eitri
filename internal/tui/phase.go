@@ -1,52 +1,17 @@
 package tui
 
-// Phase is what the agent is doing right now, derived from the live turn state rather than stored.
-type Phase int
+import "github.com/glemsom/eitri/internal/tui/pulse"
+
+// The live-turn pulse — including the Phase derived from it — lives in the pulse
+// package. These aliases keep the render call sites (rail, composer, glyphs, the
+// transcript) reading the same names while the extraction settles.
+type Phase = pulse.Phase
 
 const (
-	PhaseIdle Phase = iota
-	PhaseReasoning
-	PhaseWorking
-	PhaseAnswering
+	PhaseIdle      = pulse.PhaseIdle
+	PhaseReasoning = pulse.PhaseReasoning
+	PhaseWorking   = pulse.PhaseWorking
+	PhaseAnswering = pulse.PhaseAnswering
 )
 
-// String is the stable wire name of a phase, used in logs and tests; the user-facing stage label rendered under the busy spinner is phaseVerb.
-func (p Phase) String() string {
-	switch p {
-	case PhaseReasoning:
-		return "reasoning"
-	case PhaseWorking:
-		return "working"
-	case PhaseAnswering:
-		return "answering"
-	default:
-		return "idle"
-	}
-}
-
-// derivePhase is the pure phase derivation from the bare live-turn signals: whether a turn is running (busy) and whether/which assistant text is streaming.
-func derivePhase(busy, streaming, hasReasoning, hasAnswer bool) Phase {
-	if !busy {
-		return PhaseIdle
-	}
-	if streaming {
-		if hasAnswer {
-			return PhaseAnswering
-		}
-		if hasReasoning {
-			return PhaseReasoning
-		}
-	}
-	return PhaseWorking
-}
-
-func phaseVerb(p Phase) string {
-	switch p {
-	case PhaseReasoning:
-		return "Reasoning"
-	case PhaseAnswering:
-		return "Answering"
-	default:
-		return "Working"
-	}
-}
+func phaseVerb(p Phase) string { return pulse.Verb(p) }

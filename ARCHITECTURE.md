@@ -22,7 +22,7 @@ flowchart TB
   provider --> config
 ```
 
-Arrows are imports, abridged: leaf-package edges (`constants`, `osc52`, `skillspack`, `livekey`, `telemetry`, `testutil`) and `tui --> config` are left out. The graph is acyclic and `app` is the only composition root: every other package is handed what it needs rather than constructing it. Note what is absent — the engine reaches the toolset through the injected `ToolExecutor` and takes it as a `[]provider.Tool` manifest, so `internal/tools` never enters the loop.
+Arrows are imports, abridged: leaf-package edges (`constants`, `osc52`, `skillspack`, `livekey`, `telemetry`, `pulse`, `testutil`) and `tui --> config` are left out. The graph is acyclic and `app` is the only composition root: every other package is handed what it needs rather than constructing it. Note what is absent — the engine reaches the toolset through the injected `ToolExecutor` and takes it as a `[]provider.Tool` manifest, so `internal/tools` never enters the loop.
 
 Startup resolves paths, loads configuration, opens the session store, verifies the declared runtime toolset, materializes builtin skills, and constructs the tool registry, provider, and engine. The app then starts batch mode or the TUI.
 
@@ -69,10 +69,10 @@ Stores GUID-named, append-only session directories under the data directory. Mes
 Bubble Tea terminal UI. It owns the composer, transcript view, right rail, settings, login, help, slash commands, and turn lifecycle. Three seams carry the turn:
 
 - `TurnRuntime` is the only caller-facing seam for a live Run. It dispatches and cancels the Run, drains the FIFO event feed, preserves event order, and rejects stale Run IDs.
-- `Transcript` is the sole owner of transcript projection state, receiving typed start, stream, tool, and completion outcomes, and its interface is the only way in: every production file in package `tui` reaches it through an exported member, never a field. Two private concerns sit behind that interface. The pulse owns the live turn's busy flag, elapsed clock, spinner and forge frames, and idle ember, behind `Status()` and the `TickBusy`/`TickEmber`/`ArmEmber`/`EndTurn`/`SettleIdleEmber` commands. Geometry owns how a frame fits the terminal: `Geometry()` reports the frame footprint (pane size, band width, the rail column, and rail visibility), `TranscriptWidth()` the column the history wraps at, `View(band, bandHeight)` composes the whole left surface, and `RailHeight(bandHeight)` and `RailMaxHeight(bandHeight)` answer the rail's row count and the rows its region may show.
+- `Transcript` is the sole owner of transcript projection state, receiving typed start, stream, tool, and completion outcomes, and its interface is the only way in: every production file in package `tui` reaches it through an exported member, never a field. The live turn's pulse — the busy flag and its elapsed clock, the spinner and forge frames, the tool-start glint, the idle ember, and the derived `Phase` — is extracted to the `pulse` sub-package; the transcript forwards to it, and the model shares the same instance so the clock and the render cannot drift. Its interface is `Status()` and the `TickBusy`/`TickEmber`/`ArmEmber`/`EndTurn`/`SettleIdleEmber` commands. Geometry still sits behind the transcript interface: it owns how a frame fits the terminal — `Geometry()` reports the frame footprint (pane size, band width, the rail column, and rail visibility), `TranscriptWidth()` the column the history wraps at, `View(band, bandHeight)` composes the whole left surface, and `RailHeight(bandHeight)` and `RailMaxHeight(bandHeight)` answer the rail's row count and the rows its region may show.
 - `TurnSession` supplies cancellable execution only.
 
-The TUI never calls a provider: it names provider kinds for the settings UI and receives every turn through the runtime seam. `livekey` and `telemetry` are already extracted sub-packages; the remaining leaves are tracked in [docs/agents/de-monolith-tui.md](docs/agents/de-monolith-tui.md).
+The TUI never calls a provider: it names provider kinds for the settings UI and receives every turn through the runtime seam. `livekey`, `telemetry`, and `pulse` are already extracted sub-packages; the remaining leaves are tracked in [docs/agents/de-monolith-tui.md](docs/agents/de-monolith-tui.md).
 
 ### Small packages
 

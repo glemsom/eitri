@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/glemsom/eitri/internal/tui/livekey"
+	"github.com/glemsom/eitri/internal/tui/pulse"
 	"github.com/glemsom/eitri/internal/tui/telemetry"
 	"io"
 	"strings"
@@ -577,10 +578,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m, cmd := m.drawFaceCmd()
 		return m, cmd
 
-	case spinnerTickMsg:
+	case pulse.SpinnerTickMsg:
 		return m, m.tx.TickBusy()
 
-	case idleEmberTickMsg:
+	case pulse.IdleEmberTickMsg:
 		return m, m.tx.TickEmber(m.overlayOpen())
 
 	case discoverDoneMsg:

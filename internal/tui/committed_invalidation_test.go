@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/glemsom/eitri/internal/tui/pulse"
 	"strings"
 	"testing"
 	"time"
@@ -30,7 +31,7 @@ func liveToolBusyTranscript() *Transcript {
 		height:       30,
 		histFollow:   true,
 		histViewport: newHistoryViewport(),
-		busy:         true,
+		pulse:        busyPulse(),
 	}
 	tx.messages = append(tx.messages,
 		message{role: "you", content: "turn one"},
@@ -147,7 +148,7 @@ func TestIdleAndTimerFramesDoNotRebuildCommittedPrefix(t *testing.T) {
 	// A clock tick and a spinner tick re-render the surface; neither touches the
 	// committed prefix.
 	m = asModel(t, mustUpdate(t, m, clockTickMsg{}))
-	m = asModel(t, mustUpdate(t, m, spinnerTickMsg{}))
+	m = asModel(t, mustUpdate(t, m, pulse.SpinnerTickMsg{}))
 
 	if m.tx.busyPrefixDirty {
 		t.Error("idle/timer/clock frames must not mark committed history for rebuild")

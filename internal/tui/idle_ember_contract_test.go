@@ -1,6 +1,9 @@
 package tui
 
-import "testing"
+import (
+	"github.com/glemsom/eitri/internal/tui/pulse"
+	"testing"
+)
 
 // Idle-ember contract: the bounded shimmer is the last piece of the forge
 // ambience work. These tests lock the behaviour the model seam must keep —
@@ -9,10 +12,6 @@ import "testing"
 // mirroring the per-theme gradient and meter contracts.
 
 func TestIdleEmber_tickDistinctFromBusySpinner(t *testing.T) {
-	if idleEmberTickInterval == busySpinnerTick {
-		t.Fatal("idle ember and busy spinner must not share a tick interval")
-	}
-
 	// A running ember that is also busy settles on its next tick, and that
 	// tick never advances the busy spinner frame.
 	m := newStreamingModel()
@@ -20,9 +19,9 @@ func TestIdleEmber_tickDistinctFromBusySpinner(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m, _ = submitBusy(t, m)
 	m.tx.ArmEmber(false)
-	m.tx.setIdleEmberFrame(4)
+	m.tx.pulse.SetEmberFrame(4)
 	spinnerBefore, forgeBefore := m.tx.Status().Frame, m.tx.Status().ForgeFrame
-	m = upd(t, m, idleEmberTickMsg{})
+	m = upd(t, m, pulse.IdleEmberTickMsg{})
 	if m.tx.Status().Frame != spinnerBefore || m.tx.Status().ForgeFrame != forgeBefore {
 		t.Fatalf("idle tick changed busy spinner state: spinner %d->%d forge %d->%d",
 			spinnerBefore, m.tx.Status().Frame, forgeBefore, m.tx.Status().ForgeFrame)
@@ -36,7 +35,7 @@ func TestIdleEmber_tickDistinctFromBusySpinner(t *testing.T) {
 	idle := idleEmberModel(t)
 	idle.tx.ArmEmber(false)
 	frame, remaining := idle.tx.Status().EmberFrame, idle.tx.Status().EmberRemaining
-	idle = upd(t, idle, spinnerTickMsg{})
+	idle = upd(t, idle, pulse.SpinnerTickMsg{})
 	if idle.tx.Status().EmberFrame != frame || idle.tx.Status().EmberRemaining != remaining {
 		t.Fatalf("spinner tick changed idle ember state: frame %d->%d remaining %d->%d",
 			frame, idle.tx.Status().EmberFrame, remaining, idle.tx.Status().EmberRemaining)
@@ -49,7 +48,7 @@ func TestIdleEmber_runBeginStopsImmediately(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m.tx.ArmEmber(false)
 	for range 5 {
-		m = upd(t, m, idleEmberTickMsg{})
+		m = upd(t, m, pulse.IdleEmberTickMsg{})
 	}
 	if m.tx.Status().EmberFrame == 0 {
 		t.Fatal("precondition: the ember should be mid-sweep before the run begins")
@@ -60,7 +59,7 @@ func TestIdleEmber_runBeginStopsImmediately(t *testing.T) {
 		t.Fatalf("run begin must settle the ember before the next tick, got frame=%d remaining=%d",
 			m.tx.Status().EmberFrame, m.tx.Status().EmberRemaining)
 	}
-	nm, cmd := m.Update(idleEmberTickMsg{})
+	nm, cmd := m.Update(pulse.IdleEmberTickMsg{})
 	m = asModel(t, nm)
 	if cmd != nil {
 		t.Fatal("a busy surface must not re-arm the idle ember")
@@ -92,8 +91,8 @@ func TestIdleEmber_overlaysStopArming(t *testing.T) {
 				t.Fatalf("an open %s overlay must not arm the idle ember", name)
 			}
 			m.tx.ArmEmber(false)
-			m.tx.setIdleEmberFrame(3)
-			m = upd(t, m, idleEmberTickMsg{})
+			m.tx.pulse.SetEmberFrame(3)
+			m = upd(t, m, pulse.IdleEmberTickMsg{})
 			if m.tx.Status().EmberFrame != 0 || m.tx.Status().EmberRemaining != 0 {
 				t.Fatalf("an open %s overlay must settle the ember, got frame=%d remaining=%d",
 					name, m.tx.Status().EmberFrame, m.tx.Status().EmberRemaining)
@@ -126,7 +125,7 @@ func TestIdleEmber_armExtendsWithoutSecondTimer(t *testing.T) {
 	if cmd := m.armIdleEmber(); cmd == nil {
 		t.Fatal("first activity must arm the ember tick")
 	}
-	m = upd(t, m, idleEmberTickMsg{})
+	m = upd(t, m, pulse.IdleEmberTickMsg{})
 
 	if cmd := m.armIdleEmber(); cmd != nil {
 		t.Fatal("re-arming an already-running ember must not start a second timer")

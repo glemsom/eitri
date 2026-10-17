@@ -25,7 +25,7 @@ func livePerDeltaTranscript(deltas []string) *Transcript {
 		height:          30,
 		histFollow:      true,
 		histViewport:    newHistoryViewport(),
-		busy:            true,
+		pulse:           busyPulse(),
 		messages: []message{
 			{role: "you", content: "p"},
 			{role: "eitri", streaming: true, thinkingRequested: true,
@@ -60,7 +60,7 @@ func livePerDeltaWithToolTranscript() *Transcript {
 		histFollow:      true,
 		histViewport:    newHistoryViewport(),
 		log:             log,
-		busy:            true,
+		pulse:           busyPulse(),
 		messages: []message{
 			{role: "you", content: "p"},
 			{role: "eitri", streaming: true, thinkingRequested: true,

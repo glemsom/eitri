@@ -1,6 +1,10 @@
 package tui
 
-import tea "charm.land/bubbletea/v2"
+import (
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/glemsom/eitri/internal/tui/pulse"
+)
 
 // TurnRuntime is the sole TUI-facing owner of one live Run: lifecycle, event
 // acceptance, event projection, and completion. TurnSession only executes
@@ -46,7 +50,7 @@ func (rt *TurnRuntime) Begin(prompt, payload string) tea.Cmd {
 	tx.Project(TranscriptOutcome{Start: &TranscriptStart{Prompt: prompt, ThinkingEnabled: rt.session.ThinkingEnabled()}})
 	cmd := rt.session.Dispatch(prompt, payload)
 	if rt.events != nil {
-		return tea.Batch(cmd, spinnerTick())
+		return tea.Batch(cmd, pulse.SpinnerTick())
 	}
 	return cmd
 }

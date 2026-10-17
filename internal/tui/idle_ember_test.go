@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/glemsom/eitri/internal/tui/pulse"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -19,7 +20,7 @@ func TestIdleEmber_tickAdvancesFrame(t *testing.T) {
 	if m.tx.Status().EmberRemaining != idleEmberWindow {
 		t.Fatalf("remaining = %d, want %d", m.tx.Status().EmberRemaining, idleEmberWindow)
 	}
-	m = upd(t, m, idleEmberTickMsg{})
+	m = upd(t, m, pulse.IdleEmberTickMsg{})
 	if m.tx.Status().EmberFrame != 1 {
 		t.Fatalf("idle ember frame = %d, want 1 after one tick", m.tx.Status().EmberFrame)
 	}
@@ -30,7 +31,7 @@ func TestIdleEmber_boundedWindowSettlesAndStops(t *testing.T) {
 	m.tx.ArmEmber(false)
 	var lastCmd tea.Cmd = func() tea.Msg { return nil }
 	for i := 0; i < idleEmberWindow; i++ {
-		nm, cmd := m.Update(idleEmberTickMsg{})
+		nm, cmd := m.Update(pulse.IdleEmberTickMsg{})
 		m = asModel(t, nm)
 		lastCmd = cmd
 	}
@@ -66,7 +67,7 @@ func TestIdleEmber_reducedMotionTickSettles(t *testing.T) {
 	t.Setenv("EITRI_NO_MOTION", "1")
 	m := idleEmberModel(t)
 	m.tx.ArmEmber(false)
-	m = upd(t, m, idleEmberTickMsg{})
+	m = upd(t, m, pulse.IdleEmberTickMsg{})
 	if m.tx.Status().EmberFrame != 0 || m.tx.Status().EmberRemaining != 0 {
 		t.Fatalf("reduced motion tick must settle, got frame=%d remaining=%d", m.tx.Status().EmberFrame, m.tx.Status().EmberRemaining)
 	}
@@ -76,7 +77,7 @@ func TestIdleEmber_busySettles(t *testing.T) {
 	m := idleEmberModel(t)
 	m.tx.ArmEmber(false)
 	m.tx.BeginBusy()
-	m = upd(t, m, idleEmberTickMsg{})
+	m = upd(t, m, pulse.IdleEmberTickMsg{})
 	if m.tx.Status().EmberFrame != 0 || m.tx.Status().EmberRemaining != 0 {
 		t.Fatalf("busy surface must settle the ember, got frame=%d remaining=%d", m.tx.Status().EmberFrame, m.tx.Status().EmberRemaining)
 	}
@@ -86,7 +87,7 @@ func TestIdleEmber_overlaySettles(t *testing.T) {
 	m := idleEmberModel(t)
 	m.tx.ArmEmber(false)
 	m.prompting = true
-	m = upd(t, m, idleEmberTickMsg{})
+	m = upd(t, m, pulse.IdleEmberTickMsg{})
 	if m.tx.Status().EmberFrame != 0 || m.tx.Status().EmberRemaining != 0 {
 		t.Fatalf("open overlay must settle the ember, got frame=%d remaining=%d", m.tx.Status().EmberFrame, m.tx.Status().EmberRemaining)
 	}
@@ -108,7 +109,7 @@ func TestIdleEmber_changesRenderedWelcome(t *testing.T) {
 	settled := view(m)
 	m.tx.ArmEmber(false)
 	for range 5 {
-		m = upd(t, m, idleEmberTickMsg{})
+		m = upd(t, m, pulse.IdleEmberTickMsg{})
 	}
 	ember := view(m)
 	if settled == ember {

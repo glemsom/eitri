@@ -20,7 +20,7 @@ func busyCacheTranscript(delta string) (*Transcript, *TurnSession) {
 		height:          30,
 		histFollow:      true,
 		histViewport:    newHistoryViewport(),
-		busy:            true,
+		pulse:           busyPulse(),
 	}
 	log := toolLog{}
 	log.SetAnchor(0)

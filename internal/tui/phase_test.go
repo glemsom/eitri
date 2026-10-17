@@ -3,7 +3,7 @@ package tui
 import "testing"
 
 func phaseTx(busy, streaming bool, reasoning, content string) Transcript {
-	tx := Transcript{busy: busy}
+	tx := Transcript{pulse: runPulse(busy)}
 	if streaming {
 		tx.messages = append(tx.messages, message{
 			role:      "eitri",
@@ -12,6 +12,7 @@ func phaseTx(busy, streaming bool, reasoning, content string) Transcript {
 			streaming: true,
 		})
 	}
+	tx.syncPulseHint()
 	return tx
 }
 
@@ -47,12 +48,13 @@ func TestPhase_answerPrecedesReasoningWhenBothPresent(t *testing.T) {
 
 func TestPhase_looksOnlyAtTheLiveStreamingMessage(t *testing.T) {
 	tx := Transcript{
-		busy: true,
+		pulse: busyPulse(),
 		messages: []message{
 			{role: "eitri", content: "a finished prior answer"},
 			{role: "eitri", reasoning: "live chain-of-thought", streaming: true},
 		},
 	}
+	tx.syncPulseHint()
 	if got := tx.phase(); got != PhaseReasoning {
 		t.Errorf("phase = %v, want reasoning from the live streaming message", got)
 	}

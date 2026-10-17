@@ -24,7 +24,7 @@ func liveAnswerFlow(t *testing.T, streaming, stopped bool, content string) *Tran
 		histFollow:      true,
 		histViewport:    newHistoryViewport(),
 		log:             toolLog{},
-		busy:            streaming && !stopped,
+		pulse:           runPulse(streaming && !stopped),
 		messages: []message{
 			{role: "you", content: "write a haiku"},
 			{

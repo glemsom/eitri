@@ -104,7 +104,7 @@ func TestTranscript_liveTurnRendersFromTimelineFlow(t *testing.T) {
 		histFollow:      true,
 		histViewport:    newHistoryViewport(),
 		log:             log,
-		busy:            true,
+		pulse:           busyPulse(),
 		messages: []message{
 			{role: "you", content: "read it"},
 			{role: "eitri", content: "It is alpha", reasoning: "Reading the file.", streaming: true, thinkingRequested: true},
@@ -246,7 +246,7 @@ func liveReasoningInterleaveTranscript() *Transcript {
 		histFollow:      true,
 		histViewport:    newHistoryViewport(),
 		log:             log,
-		busy:            true,
+		pulse:           busyPulse(),
 		messages: []message{
 			{role: "you", content: "p"},
 			{role: "eitri", reasoning: "reasoning one reasoning two", streaming: true, thinkingRequested: true},
@@ -510,7 +510,7 @@ func gapTranscript() *Transcript {
 		histFollow:   true,
 		histViewport: newHistoryViewport(),
 		log:          toolLog{},
-		busy:         true,
+		pulse:        busyPulse(),
 		messages:     []message{{role: "you", content: "run it"}},
 	}
 	return tx

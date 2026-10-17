@@ -22,7 +22,7 @@ func BenchmarkLiveTurnTimeline(b *testing.B) {
 		b.Run("events_"+strconv.Itoa(events), func(b *testing.B) {
 			th := themeFor(config.DefaultTheme)
 			tx := &Transcript{theme: th, configTheme: config.DefaultTheme, width: 120, height: 40,
-				histFollow: true, histViewport: newHistoryViewport(), busy: true}
+				histFollow: true, histViewport: newHistoryViewport(), pulse: busyPulse()}
 			tx.flow.Reset()
 			tx.messages = append(tx.messages, message{role: "you", content: "research task", events: synthAnswerLog("research task")})
 			tx.curStream = -1
