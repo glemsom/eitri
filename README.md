@@ -1,9 +1,15 @@
 # Eitri
 
+<p align="center">
+  <img src="docs/images/face.webp" alt="Eitri" width="170">
+</p>
+
 Eitri is a self-hosted AI coding agent for GNU/Linux — a single static Go binary
 that reads, edits, and runs code in a declared workspace through natural-language
 conversation with a local or hosted model provider. It is built to feel at home in
 your terminal.
+
+![Eitri's terminal UI: a live turn with its reasoning and tool transcript beside the right rail](docs/images/tui.png)
 
 ## What sets Eitri apart
 
