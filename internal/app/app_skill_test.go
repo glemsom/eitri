@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/glemsom/eitri/internal/config"
@@ -256,6 +257,7 @@ func TestTUISlashHiddenSkillThroughEngineSeamWithArgs(t *testing.T) {
 			return tui.TurnResult{Answer: "ok"}, nil
 		},
 		Skills: surface,
+		Tick:   appTestInstantTick,
 	})
 	m = appTestResize(t, m)
 	m = appTestTypeText(t, m, "/improve-codebase-architecture "+wantArgs)
@@ -273,6 +275,15 @@ func TestTUISlashHiddenSkillThroughEngineSeamWithArgs(t *testing.T) {
 		t.Fatalf("args message not rendered;\n%s", content)
 	}
 
+}
+
+// appTestInstantTick delivers a timer message the moment its command runs, so a
+// submitted turn advances the model's animation timers (spinner, idle ember,
+// clock, face draw) by executing the command rather than sleeping out their
+// real wall-clock cadence. The app package builds its own models, so it cannot
+// borrow internal/tui's test-only tick seam; it supplies its own here.
+func appTestInstantTick(_ time.Duration, fn func(time.Time) tea.Msg) tea.Cmd {
+	return func() tea.Msg { return fn(time.Time{}) }
 }
 
 func appTestResize(t *testing.T, m tui.Model) tui.Model {
@@ -379,6 +390,7 @@ func TestTUISlashArgsPutsSkillInProviderContext(t *testing.T) {
 	m := tui.NewModelCfg(tui.Dependencies{
 		Turn:   turn,
 		Skills: surface,
+		Tick:   appTestInstantTick,
 	})
 	m = appTestResize(t, m)
 	m = appTestTypeText(t, m, "/improve-codebase-architecture Let us improve this")
@@ -460,6 +472,7 @@ func TestTUISlashBarePutsSkillInProviderContext(t *testing.T) {
 	m := tui.NewModelCfg(tui.Dependencies{
 		Turn:   turn,
 		Skills: surface,
+		Tick:   appTestInstantTick,
 	})
 	m = appTestResize(t, m)
 	m = appTestTypeText(t, m, "/improve-codebase-architecture")
