@@ -223,6 +223,9 @@ func discoverScope(root string, c *Catalog, scope string, w SkillWarner) error {
 		}
 		name := entry.Name()
 		if !validSkillName(name) {
+			if w != nil {
+				w.Warnf("skill %q: skipping invalid name in scope %s: name must be lowercase alphanumeric with internal hyphens, 1..64 chars, and no leading or trailing hyphen", name, scope)
+			}
 			continue
 		}
 		packDir := filepath.Join(root, name)
@@ -319,9 +322,9 @@ func bundledResources(packDir, exclude string) []string {
 	return out
 }
 
-// validSkillName enforces the Agent Skills name rule (lowercase alphanumeric plus hyphens, 1..64 chars) cheaply at discovery so malformed dir names are excluded without being parsed.
+// validSkillName enforces the Agent Skills name rule (lowercase alphanumeric plus internal hyphens, 1..64 chars, no leading or trailing hyphen) cheaply at discovery so malformed dir names are excluded without being parsed.
 func validSkillName(s string) bool {
-	if len(s) == 0 || len(s) > 64 {
+	if len(s) == 0 || len(s) > 64 || s[0] == '-' || s[len(s)-1] == '-' {
 		return false
 	}
 	for i := 0; i < len(s); i++ {
