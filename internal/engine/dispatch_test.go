@@ -159,9 +159,9 @@ func (re *registryExecutor) Execute(ctx context.Context, name, argsJSON string) 
 		// particular returns combined stdout+stderr even on a non-zero exit, and
 		// dropping it would rob the model of diagnostic context (e.g. an ls(1)
 		// listing that partially succeeded before failing).
-		return ToolExecResult{Text: res.Text, Compressed: res.Compressed, Dropped: res.Dropped}, err
+		return ToolExecResult{Text: res.Text, Compressed: res.Compressed, Dropped: res.Dropped, Uncapped: res.Uncapped}, err
 	}
-	return ToolExecResult{Text: res.Text, Compressed: res.Compressed, Dropped: res.Dropped}, nil
+	return ToolExecResult{Text: res.Text, Compressed: res.Compressed, Dropped: res.Dropped, Uncapped: res.Uncapped}, nil
 }
 
 func jsonUnmarshal(data string, v any) error {

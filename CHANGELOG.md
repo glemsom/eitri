@@ -40,6 +40,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `latest stable release has no versioned Linux amd64 archive`; the installer
   now reads the asset's `browser_download_url`, whose surrounding GitHub JSON
   nests an `uploader` object that defeated the previous pattern.
+- Skill activation no longer truncates: the payload is delivered whole, exempt
+  from the generic tool-result byte cap and matching the human `/skillname`
+  path. The `skill` tool's description and already-active note now state that a
+  skill is active whether the tool activated it earlier or the user invoked it
+  with `/skillname`, and that the note appears only while the complete body is
+  present.
+- Skill discovery rejects a directory whose name begins or ends with a hyphen,
+  matching the Agent Skills name rule, and surfaces the drop through the same
+  warning path as an unparseable `SKILL.md` instead of accepting it silently.
 
 ## [0.1.1] - 2026-10-17
 

@@ -11,7 +11,7 @@ import (
 // skillToolDescription carries the activation mechanics that used to live in the
 // system prompt: the index, calling a skill by name, preferring the tool over
 // reading a SKILL.md, and re-activating only after compaction dropped the body.
-const skillToolDescription = "Activate one of the available skills by name. The skill index (an <available_skills> block) is re-sent each turn; pass a listed skill's exact name to load its full instructions and the absolute directory holding its bundled resources. Prefer this over reading a SKILL.md with bash. A skill already active in this conversation returns a short note instead of re-injecting its body, so re-activate only after compaction has dropped the instructions. Human-only skills cannot be activated."
+const skillToolDescription = "Activate one of the available skills by name. The skill index (an <available_skills> block) is re-sent each turn; pass a listed skill's exact name to load its full instructions and the absolute directory holding its bundled resources. Prefer this over reading a SKILL.md with bash. A skill is already active while its body is present in the conversation — activated by this tool earlier, or invoked by the user as /skillname — and returns a short note instead of re-injecting the body; a second same-named call in one turn likewise gets the note. The body is delivered whole and never truncated, so re-activate only after compaction drops it or in a new session. Human-only skills cannot be activated."
 
 // skillTool is the model-facing `skill` tool: it resolves a name against the
 // merged catalog, applies the model-invocability gate, and claims the name
@@ -51,14 +51,14 @@ func (s *skillTool) Run(ctx context.Context, args map[string]any) (compress.Tool
 		return compress.ToolResult{}, fmt.Errorf("skill %q is not available to the model", name)
 	}
 	if !skillindex.ClaimActivation(ctx, name) {
-		return compress.ToolResult{Text: alreadyActiveSkillNote(name, sk.Dir)}, nil
+		return compress.ToolResult{Text: alreadyActiveSkillNote(name, sk.Dir), Uncapped: true}, nil
 	}
-	return compress.ToolResult{Text: renderSkillPayload(name, sk)}, nil
+	return compress.ToolResult{Text: renderSkillPayload(name, sk), Uncapped: true}, nil
 }
 
 // alreadyActiveSkillNote is the short, non-error reply for a repeat activation:
 // it repeats the skill directory so the model can still reach bundled resources
 // without re-injecting the body.
 func alreadyActiveSkillNote(name, dir string) string {
-	return fmt.Sprintf("Skill %q is already active; its instructions are above. Directory: %s. Re-activate only after compaction drops the body.", name, dir)
+	return fmt.Sprintf("Skill %q is already active; its instructions are above in the conversation. Directory: %s. Re-activate only after compaction drops the body or in a new session.", name, dir)
 }

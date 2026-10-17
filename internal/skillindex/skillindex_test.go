@@ -2,6 +2,7 @@ package skillindex
 
 import (
 	"context"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -78,5 +79,33 @@ func TestWithActiveSkillsInstallsEmptySet(t *testing.T) {
 	}
 	if ClaimActivation(ctx, "tdd") {
 		t.Fatal("second ClaimActivation on an empty-seeded set = true, want false")
+	}
+}
+
+func TestActivationNamesReadsCompleteBlock(t *testing.T) {
+	t.Parallel()
+	content := ActivationOpen("tdd", "/skills/tdd") + "\nbody\n" + ActivationClose
+	if got := ActivationNames(content); !reflect.DeepEqual(got, []string{"tdd"}) {
+		t.Fatalf("ActivationNames = %v, want [tdd]", got)
+	}
+}
+
+func TestActivationNamesSkipsIncompleteBlock(t *testing.T) {
+	t.Parallel()
+	content := ActivationOpen("tdd", "/skills/tdd") + "\ntruncated body, no closing tag"
+	if got := ActivationNames(content); len(got) != 0 {
+		t.Fatalf("ActivationNames = %v, want none", got)
+	}
+}
+
+// TestActivationNamesReadsCompleteAfterIncomplete guards the scan against
+// mis-associating a name across an incomplete block boundary: a truncated block
+// yields no name and must not swallow the following complete block's.
+func TestActivationNamesReadsCompleteAfterIncomplete(t *testing.T) {
+	t.Parallel()
+	content := ActivationOpen("tdd", "/skills/tdd") + "\ntruncated body" +
+		ActivationOpen("res", "/skills/res") + "\nbody\n" + ActivationClose
+	if got := ActivationNames(content); !reflect.DeepEqual(got, []string{"res"}) {
+		t.Fatalf("ActivationNames = %v, want [res]", got)
 	}
 }

@@ -10,6 +10,7 @@ Activity is derived from the conversation, not stored: a skill is active while i
 - The activation block's marker and the active-set context handoff — including its claim-once dedup — live in `internal/skillindex`, beside the index marker, so the renderer (`internal/tools`), the history partitioner, and the engine's activity scan cannot drift.
 - `internal/engine` still does not import `internal/tools`: the active set rides the existing `ToolExecutor` context.
 - Batch mode and subagents share the registry, so the tool is available there without further wiring.
+- The activation payload is delivered whole: the `skill` tool marks its result uncapped at the tool-result seam, so the engine's generic 64 KiB byte cap leaves it intact — matching the human `/skillname` path. The exemption rides an explicit result flag, not a match on the payload's text, so a result that merely mentions the activation marker stays capped.
 
 ## Considered options
 
@@ -17,3 +18,10 @@ Activity is derived from the conversation, not stored: a skill is active while i
 - Store the active set in the tool or registry (rejected: it would survive compaction and `/new` incorrectly; the conversation is the source of truth).
 - Capitalize the tool as `Skill` to match Claude Code (rejected: Eitri's tools are lowercase and OpenCode uses `skill`).
 - Carry the directory only in a separate `<skill_resources>` attribute (rejected: the content tag is the block's anchor, and the model needs the directory even when a skill bundles no resources).
+
+## Deviations from Agent Skills guidance
+
+Two deviations from the published Agent Skills guidance are accepted as documented trade-offs; both are deliberately left in place.
+
+- **The `name` parameter is a free string, not an enum of valid skills.** The tool surface is fixed and registered before any catalog is known (`bash`, `skill`, `open_in_browser`); an enum would force a dynamic, per-catalog schema and diverge that fixed surface. Since the index is re-sent every turn and an unknown name returns a clear error, a free string is sufficient and simpler.
+- **The tool is registered even when no skills are available.** Skills are discovered per session from the user, project, and builtin roots; registering the tool unconditionally keeps the provider-facing surface stable and the descriptions discoverable, and a call with no skills returns `no skills available`.

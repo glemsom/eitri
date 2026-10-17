@@ -9,6 +9,7 @@ import (
 
 	"github.com/glemsom/eitri/internal/compress"
 	"github.com/glemsom/eitri/internal/provider"
+	"github.com/glemsom/eitri/internal/skillindex"
 )
 
 var mergedMarkerRe = regexp.MustCompile(`\+[0-9]+ more, \+[0-9]+ bytes truncated\n$`)
@@ -371,4 +372,53 @@ func hugeExecutor(results map[string]string) ToolExecutor {
 		}
 		return ToolExecResult{Text: "result:" + name}, nil
 	})
+}
+
+// TestAgentSkillMarkerAloneDoesNotExemptFromByteCap guards the exemption's
+// interface: only a tool that flags its result uncapped (the `skill` tool) skips
+// the byte cap. A result that merely contains the activation marker -- a bash
+// listing or a cat of a transcript -- is still capped.
+func TestAgentSkillMarkerAloneDoesNotExemptFromByteCap(t *testing.T) {
+	t.Parallel()
+	raw := skillindex.ActivationOpen("fake", "/skills/fake") + "\n" + hugeDraft("junk")
+	capLower := compress.DefaultByteCap
+
+	scripted := provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
+		var toolResults int
+		for _, m := range req.Messages {
+			if m.Role == provider.RoleTool {
+				toolResults++
+			}
+		}
+		if toolResults == 0 {
+			return provider.StreamFunc(provider.Chunk{FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{
+				{ID: "call_bash", Name: "bash", Arguments: `{"command":"cat transcript"}`},
+			}, Done: true}), nil
+		}
+		for _, m := range req.Messages {
+			if m.Role != provider.RoleTool {
+				continue
+			}
+			if len(m.Content) > capLower {
+				t.Errorf("tool message in history is %d bytes, exceeds %d-byte cap", len(m.Content), capLower)
+			}
+			if !strings.Contains(m.Content, " bytes truncated") {
+				t.Errorf("result that only contains the marker was not capped: %q", m.Content[len(m.Content)-40:])
+			}
+		}
+		return provider.StreamFunc(
+			provider.Chunk{Content: "done"},
+			provider.Chunk{FinishReason: "stop", Done: true,
+				Usage: &provider.Usage{PromptTokens: 1, CompletionTokens: 1}},
+		), nil
+	})
+
+	e := New(scripted, &mockTranscript{})
+	if _, err := e.RunAgent(context.Background(), RunRequest{Model: "m", Prompt: "go"}, AgentOptions{
+		Tools:    byteCapToolDefs(),
+		Executor: hugeExecutor(map[string]string{"bash": raw}),
+		MaxTurns: 5,
+	}); err != nil {
+		t.Fatalf("RunAgent() error = %v, want nil", err)
+	}
 }

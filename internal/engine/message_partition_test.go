@@ -70,3 +70,13 @@ func TestStoreSessionHistoryUsesSharedPartitionAndPreservesOrder(t *testing.T) {
 		t.Fatalf("sessionHistory = %#v, want %#v", got, want)
 	}
 }
+
+func TestActiveSkillNamesIgnoresIncompleteActivation(t *testing.T) {
+	t.Parallel()
+	truncated := provider.Message{Role: provider.RoleUser, Content: skillindex.ActivationOpen("tdd", "/skills/tdd") + "\ntruncated body, no closing tag"}
+	complete := provider.Message{Role: provider.RoleUser, Content: skillindex.ActivationOpen("res", "/skills/res") + "\nbody\n" + skillindex.ActivationClose}
+	got := activeSkillNames([]provider.Message{truncated, complete})
+	if want := []string{"res"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("activeSkillNames = %v, want %v", got, want)
+	}
+}

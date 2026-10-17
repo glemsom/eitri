@@ -265,6 +265,9 @@ type ToolExecResult struct {
 	// buffer) already rejected from the result's stream; the engine's byte cap
 	// folds it into the single authoritative truncation marker.
 	BytesDropped int
+
+	// Uncapped exempts the result from the byte cap; see compress.ToolResult.
+	Uncapped bool
 }
 
 // ToolExecutor executes an agent tool call.
@@ -588,7 +591,18 @@ func (e *Engine) dispatchToolCalls(ctx context.Context, opts AgentOptions, runID
 			break
 		}
 		result := outcomes[i].result
-		delivered, dropped := compress.CapBytes(result.Text, compress.DefaultByteCap, result.Dropped, result.BytesDropped)
+		var delivered string
+		var dropped int
+		if result.Uncapped {
+			// A skill activation payload is delivered whole: capping it would
+			// tail-truncate the body and its closing tag, so the activation scan
+			// below would call an unreachable skill active. The tool signals the
+			// exemption (rather than the engine matching on payload content) so a
+			// result that merely mentions the marker stays capped.
+			delivered = result.Text
+		} else {
+			delivered, dropped = compress.CapBytes(result.Text, compress.DefaultByteCap, result.Dropped, result.BytesDropped)
+		}
 		e.emit(newToolResultEvent(runID, turn, tc.ID, tc.Name, result, dropped))
 		*messages = append(*messages, provider.Message{
 			Role:       provider.RoleTool,

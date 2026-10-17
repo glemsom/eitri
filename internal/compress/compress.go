@@ -26,6 +26,11 @@ type ToolResult struct {
 	// buffer) already rejected from this result's stream; the engine's byte cap
 	// folds it into the single authoritative truncation marker.
 	BytesDropped int
+
+	// Uncapped exempts the result from the engine's byte cap. A skill activation
+	// payload sets it so its author-controlled body reaches the model whole,
+	// exactly as the human /skillname path injects it.
+	Uncapped bool
 }
 
 // stripTerminalControls removes ECMA-48 terminal controls while preserving ordinary text.
