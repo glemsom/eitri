@@ -15,6 +15,22 @@ func TestSystemPromptWithinTokenBudget(t *testing.T) {
 	}
 }
 
+// TestSystemPromptShedsSkillLoadingMechanics guards the trim: the activation
+// mechanics (the index shape, reading SKILL.md) belong to the skill tool's
+// description, while the two reach-for-skill pointers stay as a short hint.
+func TestSystemPromptShedsSkillLoadingMechanics(t *testing.T) {
+	t.Parallel()
+	content := SystemPromptContent()
+	for _, mech := range []string{"SKILL.md", "bracketed heading", "skill index is re-sent"} {
+		if strings.Contains(content, mech) {
+			t.Errorf("prompt still carries skill-loading mechanics %q; move them to the skill tool description", mech)
+		}
+	}
+	if !strings.Contains(content, "`web-access` skill") || !strings.Contains(content, "`subagents` skill") {
+		t.Error("prompt lost the reach-for-skill pointers")
+	}
+}
+
 // TestSystemPromptCarriesSubagentPointerOnly guards the subagents trim: the
 // prompt must point at the `subagents` skill instead of embedding the batch
 // recipe. The full guidance ships as the builtin skill (discoverable via the

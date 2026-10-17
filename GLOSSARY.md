@@ -79,8 +79,15 @@ _Avoid_: scratch space, tmpdir.
 **Skill**: a discovered, validated pack of instructions and resources. A skill may be human-invocable, model-invocable, or both.
 _Avoid_: plugin, prompt pack, command.
 
-**Skill activation**: the slash-command path that resolves a skill and injects its body into the next turn.
+**Skill root**: the directory holding the skill packs of one scope, e.g. `<workspace>/.agents/skills` or `~/.agents/skills`. The model-visible index groups skills under their root.
+
+**Skill directory**: the absolute path of one skill pack, `<skill root>/<name>`, holding its `SKILL.md` and bundled resources. Activation carries it so the reader can open bundled artifacts without guessing.
+
+**Skill activation**: resolving a skill and injecting its body into the conversation — by the human `/skillname` path, or by the model calling the `skill` tool. A skill is active while its body is present in the conversation.
 _Avoid_: invocation, execution.
+
+**Skill tool**: the model-facing `skill` tool that activates a skill by name. It returns the same payload as the human `/skillname` path, including the skill directory, and reports an already-active skill with a short note instead of re-injecting its body.
+_Avoid_: skill command, skill invocation.
 
 **Subagent**: a batch-mode Eitri process the agent launches in an isolated execution directory. Its result is the batch envelope's `answer` field, not parsed prose.
 _Avoid_: worker, child agent, task.

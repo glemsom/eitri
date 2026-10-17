@@ -60,7 +60,7 @@ func TestTUISlashSkillThroughEngineSeam(t *testing.T) {
 	if err != nil {
 		t.Fatalf("slash activation error = %v, want nil", err)
 	}
-	if !strings.Contains(payload, "<skill_content name=\"tui-skill\">") || !strings.Contains(payload, "Do the tui thing") {
+	if !strings.Contains(payload, "<skill_content name=\"tui-skill\" directory=\"") || !strings.Contains(payload, "Do the tui thing") {
 		t.Fatalf("slash activation payload wrong:\n%s", payload)
 	}
 }
@@ -155,7 +155,7 @@ func TestTUISlashListsHiddenSkill(t *testing.T) {
 	if err != nil {
 		t.Fatalf("slash activation error = %v, want nil", err)
 	}
-	if !strings.Contains(payload, "<skill_content name=\"improve-codebase-architecture\">") || !strings.Contains(payload, "Do the architecture thing") {
+	if !strings.Contains(payload, "<skill_content name=\"improve-codebase-architecture\" directory=\"") || !strings.Contains(payload, "Do the architecture thing") {
 		t.Fatalf("slash activation payload wrong:\n%s", payload)
 	}
 
@@ -266,7 +266,7 @@ func TestTUISlashHiddenSkillThroughEngineSeamWithArgs(t *testing.T) {
 	}
 
 	content := appTestANSIStrip(appTestView(m))
-	if strings.Contains(content, "<skill_content name=\"improve-codebase-architecture\">") {
+	if strings.Contains(content, "<skill_content name=\"improve-codebase-architecture\" directory=\"") {
 		t.Fatalf("skill activation payload must not be echoed as a note (single delivery via injection);\n%s", content)
 	}
 	if a := strings.Index(content, wantArgs); a < 0 {
@@ -401,7 +401,7 @@ func TestTUISlashArgsPutsSkillInProviderContext(t *testing.T) {
 	if msgs[3].Role != provider.RoleUser {
 		t.Errorf("Messages[3].Role = %q, want %q (slash skill in the high-priority user layer, not a second system message)", msgs[3].Role, provider.RoleUser)
 	}
-	if !strings.Contains(msgs[3].Content, "<skill_content name=\"improve-codebase-architecture\">") {
+	if !strings.Contains(msgs[3].Content, "<skill_content name=\"improve-codebase-architecture\" directory=\"") {
 		t.Errorf("Messages[3] lacks the skill_content payload:\n%s", msgs[3].Content)
 	}
 	if !strings.Contains(msgs[3].Content, "Do the architecture thing") {
@@ -481,7 +481,7 @@ func TestTUISlashBarePutsSkillInProviderContext(t *testing.T) {
 	if msgs[3].Role != provider.RoleUser {
 		t.Errorf("Messages[3].Role = %q, want %q (slash skill in the high-priority user layer, not a second system message)", msgs[3].Role, provider.RoleUser)
 	}
-	if !strings.Contains(msgs[3].Content, "<skill_content name=\"improve-codebase-architecture\">") {
+	if !strings.Contains(msgs[3].Content, "<skill_content name=\"improve-codebase-architecture\" directory=\"") {
 		t.Errorf("Messages[3] lacks the skill_content payload:\n%s", msgs[3].Content)
 	}
 	if !strings.Contains(msgs[3].Content, "apply the improve-codebase-architecture skill") {

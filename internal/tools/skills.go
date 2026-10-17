@@ -51,7 +51,8 @@ type Skipped struct {
 // Catalog is the filtered, trust-gated set of discoverable skills for a run.
 // It backs the human `/skillname` slash surface and, via RenderIndex, supplies
 // the model a name/path/description inventory of model-invocable skills. The
-// model still has no `skill` tool and loads pack bodies itself via `bash cat`.
+// model activates a catalogued skill by name through the `skill` tool, which
+// returns the same payload the human slash path renders.
 type Catalog struct {
 	skills  map[string]*Skill
 	scopes  map[string]string // skill name -> install scope ("builtin", "user", or "project")
@@ -580,18 +581,21 @@ func decodeBlockScalar(ind byte, chomp byte, block []string) (string, error) {
 }
 
 // renderSkillPayload builds the structured agentskills-io payload: the full
-// description and body wrapped in <skill_content name="..."> plus a
-// <skill_resources> listing of the bundled files. Activation always delivers the
-// full description, even when the catalog showed a short one.
+// description and body wrapped in a <skill_content> block carrying the skill
+// directory, plus a <skill_resources> listing of the bundled files. Activation
+// always delivers the full description, even when the catalog showed a short
+// one. Both the human `/skillname` path and the model `skill` tool render
+// through this one function, so the payload cannot diverge.
 func renderSkillPayload(name string, sk *Skill) string {
 	var b strings.Builder
 	b.WriteString("skill content for active session; tags: [\"skill\"]\n\n")
-	fmt.Fprintf(&b, `<skill_content name="%s">`+"\n", name)
+	b.WriteString(skillindex.ActivationOpen(name, sk.Dir))
+	b.WriteByte('\n')
 	if sk.Description != "" {
 		fmt.Fprintf(&b, "<skill_description>%s</skill_description>\n", sk.Description)
 	}
 	b.WriteString(sk.Body)
-	b.WriteString("\n</skill_content>\n")
+	b.WriteString("\n" + skillindex.ActivationClose + "\n")
 	if len(sk.Resources) > 0 {
 		fmt.Fprintf(&b, `<skill_resources name="%s">`+"\n", name)
 		for _, r := range sk.Resources {

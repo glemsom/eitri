@@ -83,15 +83,17 @@ func NewRegistry(d Deps) (*Registry, error) {
 	r.tools["bash"] = &bashTool{backend: r.bash, unsandboxed: d.Yolo}
 	r.tools["open_in_browser"] = &openInBrowserTool{br: d.Browser}
 
-	// Skills back the human /skillname slash surface and, via RenderIndex, feed
-	// the model a name/path/description index; the model has no `skill` tool and
-	// loads pack bodies itself via `bash cat` (see the system prompt).
+	// Skills back the human /skillname slash surface and feed the model a
+	// name/path/description index plus the `skill` tool, which activates a named
+	// skill through the same renderer the human path uses; the engine supplies
+	// the active set so a repeat activation short-circuits.
 	r.catalog = d.Skills
+	r.tools["skill"] = &skillTool{catalog: d.Skills}
 	return r, nil
 }
 
 func (r *Registry) Names() []string {
-	return []string{"bash", "open_in_browser"}
+	return []string{"bash", "open_in_browser", "skill"}
 }
 
 func (r *Registry) Workspace() string { return r.workspace }
@@ -140,9 +142,8 @@ func (r *Registry) Run(ctx context.Context, name string, args map[string]any) (c
 
 // ActivateSkill renders the named skill's payload for the TUI's human
 // `/skillname` slash surface. Every activation re-applies the full payload: a
-// human re-invoke is an explicit command, never short-circuited. The model has
-// no `skill` tool; it sees a name/path/description index and loads pack bodies
-// itself via `bash cat` (see the system prompt).
+// human re-invoke is an explicit command, never short-circuited. The model's
+// `skill` tool shares this renderer but applies the already-active policy.
 func (r *Registry) ActivateSkill(_ context.Context, name string) (compress.ToolResult, error) {
 	if r.catalog == nil || len(r.catalog.Names()) == 0 {
 		return compress.ToolResult{}, fmt.Errorf("no skills configured")

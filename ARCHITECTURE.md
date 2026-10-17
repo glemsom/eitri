@@ -28,7 +28,7 @@ Startup resolves paths, loads configuration, opens the session store, verifies t
 
 One run follows this path:
 
-1. The engine assembles the stable prompt head, skills, repository instructions, the per-run workspace directive, persisted history, and user prompt — static messages first, per-run state last, so the static prefix stays cacheable.
+1. The engine assembles the stable prompt head, skill index, repository instructions, the per-run workspace directive, persisted history, and user prompt — static messages first, per-run state last, so the static prefix stays cacheable.
 2. The provider translates canonical messages and tools into its wire dialect and streams the response.
 3. Tool calls go through the fixed tool registry and run concurrently within a turn; results are appended in the model's call order. Bash uses bubblewrap by default or the direct backend with `--yolo-unsafe`.
 4. Tool output is deterministically compressed before returning to the engine. Older history is compacted with an LLM when context requires it.
@@ -54,7 +54,7 @@ Defines canonical messages, tools, streams, usage, and errors. Dialects translat
 
 ### `internal/tools`
 
-Defines `bash` and `open_in_browser`. `sandbox.go` runs bash through bubblewrap; `direct.go` runs it directly for `--yolo-unsafe`. `skills.go` discovers and validates project, user, and builtin skills, with project > user > builtin shadowing.
+Defines `bash`, `open_in_browser`, and `skill`. `sandbox.go` runs bash through bubblewrap; `direct.go` runs it directly for `--yolo-unsafe`. `skills.go` discovers and validates project, user, and builtin skills, with project > user > builtin shadowing; the `skill` tool activates a model-invocable skill by name, short-circuiting one already present in the conversation.
 
 ### `internal/compress`
 
@@ -76,7 +76,7 @@ The TUI never calls a provider: it names provider kinds for the settings UI and 
 
 ### Small packages
 
-`internal/osc52` writes clipboard escape sequences; `internal/constants` holds cross-layer limits; `internal/skillindex` owns the model-visible skill index block's marker and the predicate that recognises it, shared by the renderer in `internal/tools` and its consumers in `internal/engine` so the engine need not import `internal/tools`; `internal/testutil` contains shared test helpers. The session temp is *named* by `internal/session` (`Session.TempDir`), *created* by the bash backends on first use, and owned by the tools registry as `TempHost`; the backends and the rail read it.
+`internal/osc52` writes clipboard escape sequences; `internal/constants` holds cross-layer limits; `internal/skillindex` owns the model-visible skill index block's marker, the activation block's marker, and the active-set context handoff, shared by the renderer in `internal/tools` and its consumers in `internal/engine` (compaction, history partitioning, and the dispatch-time activity scan) so the engine need not import `internal/tools`; `internal/testutil` contains shared test helpers. The session temp is *named* by `internal/session` (`Session.TempDir`), *created* by the bash backends on first use, and owned by the tools registry as `TempHost`; the backends and the rail read it.
 
 `internal/tools/memtmp` is the one exception to the package map: it is a `package main` scratch program, not a library, and nothing imports it.
 
@@ -103,7 +103,7 @@ The TUI never calls a provider: it names provider kinds for the settings UI and 
 | Sessions/transcripts | `internal/session`, `internal/provider/messagelog.go` |
 | TUI turn lifecycle | `internal/tui/turn_runtime.go` (caller seam), `turn_session.go` and `flowrender.go` (implementation), `internal/engine/events.go` |
 | Transcript projection | `internal/tui/transcript.go`, `flowrender.go` |
-| Skills | `internal/tools/skills.go`, `internal/engine/skillspack` |
+| Skills | `internal/tools/skills.go`, `tool_skill.go`, `internal/skillindex`, `internal/engine/skillspack`, [docs/adr/0003-skill-tool.md](docs/adr/0003-skill-tool.md) |
 | Batch contract | [docs/batch-mode.md](docs/batch-mode.md) |
 | Session commands | [docs/sessions.md](docs/sessions.md) |
 | Render diagnostics | [docs/render-diagnostics.md](docs/render-diagnostics.md) |
