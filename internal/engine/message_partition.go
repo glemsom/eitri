@@ -1,9 +1,8 @@
 package engine
 
 import (
-	"strings"
-
 	"github.com/glemsom/eitri/internal/provider"
+	"github.com/glemsom/eitri/internal/skillindex"
 )
 
 type messagePartition struct {
@@ -38,7 +37,21 @@ func partitionMessages(messages []provider.Message) messagePartition {
 }
 
 func isTransientMessage(message provider.Message) bool {
-	return message.Role == provider.RoleUser && strings.Contains(message.Content, "<skill_content")
+	return message.Role == provider.RoleUser && skillindex.IsContentBlock(message.Content)
+}
+
+// activeSkillNames returns the names of skills whose activation blocks appear in
+// messages, in order. Activity is derived from the conversation, not stored:
+// compaction drops a body and the skill becomes activatable again, and a new
+// session starts with none.
+func activeSkillNames(messages []provider.Message) []string {
+	var names []string
+	for _, m := range messages {
+		if skillindex.IsContentBlock(m.Content) {
+			names = append(names, skillindex.ContentNames(m.Content)...)
+		}
+	}
+	return names
 }
 
 func (p messagePartition) PersistedHistory() []provider.Message {

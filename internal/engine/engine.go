@@ -12,6 +12,7 @@ import (
 
 	"github.com/glemsom/eitri/internal/compress"
 	"github.com/glemsom/eitri/internal/provider"
+	"github.com/glemsom/eitri/internal/skillindex"
 )
 
 // ErrMaxTurns is returned when a tool-call loop exceeds the configured cap.
@@ -549,6 +550,13 @@ func (e *Engine) dispatchToolCalls(ctx context.Context, opts AgentOptions, runID
 	done := make([]chan struct{}, len(calls))
 	for i := range done {
 		done[i] = make(chan struct{})
+	}
+	// The active set is derived from the conversation at dispatch (the assistant
+	// tool-call message is already appended; this turn's results are not), so the
+	// skill tool can short-circuit a repeat activation and re-activate one whose
+	// body compaction dropped.
+	if active := activeSkillNames(*messages); len(active) > 0 {
+		ctx = skillindex.WithActiveSkills(ctx, active)
 	}
 	sem := make(chan struct{}, maxConcurrentToolCalls)
 	var wg sync.WaitGroup

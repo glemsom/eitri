@@ -11,6 +11,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
      describe user-visible behavior; record dependency and compatibility
      changes under Changed. -->
 
+### Added
+
+- A model-facing `skill` tool: the agent activates a listed skill by name and
+  receives its instructions and the absolute directory holding its bundled
+  resources, instead of translating the request into a `bash cat` of `SKILL.md`.
+
+### Changed
+
+- Skill activation is now derived from the conversation: a repeat activation of
+  a still-active skill returns a short note instead of re-injecting its body, a
+  body dropped by compaction can be re-activated, and a human `/skillname`
+  counts as active. The activation mechanics moved out of the system prompt and
+  into the `skill` tool's description.
+
 ### Fixed
 
 - Installing the latest stable release with `install.sh` no longer fails with
