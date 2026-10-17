@@ -403,11 +403,6 @@ func discoverSkills(dataDir, workspace string) *tools.Catalog {
 	return c
 }
 
-// dynamicSkillTopK bounds how many skills the dynamic selector injects per turn
-// when DynamicSkillCatalog is enabled; the rest stay reachable through the
-// "more exist" note and a plain `ls` under a declared root.
-const dynamicSkillTopK = 8
-
 // stderrWarner reports discovery warnings to stderr.
 type stderrWarner struct{}
 
@@ -430,9 +425,6 @@ func runAgent(ctx context.Context, e *engine.Engine, cfg config.Config, reg *too
 	var skillIndex *string
 	if catalog != nil {
 		idx := catalog.RenderIndex()
-		if cfg.DynamicSkillCatalog {
-			idx = catalog.SelectIndex(prompt, dynamicSkillTopK)
-		}
 		if idx != "" {
 			skillIndex = &idx
 		}

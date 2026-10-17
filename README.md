@@ -88,7 +88,7 @@ Sessions are append-only and can be inspected with the `session` commands. See [
 
 Skills are discovered in project `.agents/skills`, user `~/.agents/skills`, then builtin skills. A same-named skill in a higher-priority scope shadows lower-priority scopes. Builtins currently include `subagents` and `web-access`.
 
-Every model-visible skill is announced in a compact catalog that is re-sent each turn: each skill root is a bracketed heading, and its skills follow as one `<name>: <description>` line each. By default the whole catalog is sent. Set `dynamic_skill_catalog` to `true` in the config file to inject only the skills a deterministic lexical selector ranks relevant to the prompt, plus a note naming the roots so the model can `ls` the rest; leaving it `false` restores the full catalog. The model activates a listed skill with the `skill` tool, which loads its instructions and absolute directory (a skill already active in the conversation returns a short note instead of the body). A human can always force a skill into context with `/skillname`.
+Every model-visible skill is announced in a compact catalog that is re-sent each turn: each skill root is a bracketed heading, and its skills follow as one `<name>: <description>` line each. The whole catalog is sent every turn. The model activates a listed skill with the `skill` tool, which loads its instructions and absolute directory (a skill already active in the conversation returns a short note instead of the body). A human can always force a skill into context with `/skillname`.
 
 An `AGENTS.md` in the workspace root is loaded as repository instructions. [GLOSSARY.md](GLOSSARY.md) defines internal terms; [ARCHITECTURE.md](ARCHITECTURE.md) maps implementation boundaries.
 

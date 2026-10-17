@@ -26,6 +26,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   activation mechanics moved out of the system prompt and into the `skill`
   tool's description.
 
+### Removed
+
+- The `dynamic_skill_catalog` config setting and its per-prompt lexical
+  selector. The full skill catalog is always injected: keeping it byte-stable
+  is what lets the provider read it from the prompt cache across turns, and a
+  per-prompt subset broke that prefix. The setting defaulted off, so only an
+  explicit opt-in is affected.
+
 ### Fixed
 
 - Installing the latest stable release with `install.sh` no longer fails with

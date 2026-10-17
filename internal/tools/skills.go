@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/glemsom/eitri/internal/skillindex"
@@ -102,21 +101,7 @@ const maxDescriptionWidth = 100
 // the recogniser can never drift apart.
 func (c *Catalog) RenderIndex() string {
 	visible := c.ModelVisibleSkills()
-	return c.renderIndex(visible, c.roots(visible), 0)
-}
-
-// SelectIndex renders the catalog limited to the k model-visible skills most
-// relevant to prompt, plus a one-line note that omitted skills still exist and
-// how to list them. Selection is deterministic and side-effect-free; the
-// per-skill line shape is identical to RenderIndex, so only the catalogue's
-// contents narrow, never its format or the activation surface. Every visible
-// root appears as a heading, not just the chosen ones (a root whose skills are
-// all omitted shows an empty group), so the note's `ls` affordance reaches a
-// skill the selector missed.
-func (c *Catalog) SelectIndex(prompt string, k int) string {
-	visible := c.ModelVisibleSkills()
-	chosen := c.rankSkills(prompt, visible, k)
-	return c.renderIndex(chosen, c.roots(visible), len(visible)-len(chosen))
+	return c.renderIndex(visible, c.roots(visible))
 }
 
 // roots returns the distinct skill roots of names, in first-appearance order.
@@ -137,9 +122,8 @@ func (c *Catalog) roots(names []string) []string {
 // bracketed heading `[<root>]`, followed by its entries as `<name>: <desc>`
 // lines. Bracketing keeps a heading distinct from a skill line even when a path
 // contains spaces. roots must cover every entry's root; a root with no entries
-// still gets a heading (its group is empty). A "more exist" note is appended
-// when omitted > 0.
-func (c *Catalog) renderIndex(entries, roots []string, omitted int) string {
+// still gets a heading (its group is empty).
+func (c *Catalog) renderIndex(entries, roots []string) string {
 	if len(entries) == 0 {
 		return ""
 	}
@@ -158,70 +142,8 @@ func (c *Catalog) renderIndex(entries, roots []string, omitted int) string {
 			fmt.Fprintf(&b, "%s: %s\n", name, catalogDescription(catalogEntryText(sk)))
 		}
 	}
-	if omitted > 0 {
-		fmt.Fprintf(&b, "# %d more skill(s) exist; list them under a bracketed root above with `ls <root>/`.\n", omitted)
-	}
 	b.WriteString(skillindex.CloseTag)
 	return b.String()
-}
-
-// rankSkills ranks names against prompt by lexical overlap and returns the top k
-// (all names when k <= 0 or nothing is filtered). The ranking is deterministic:
-// name/description token overlap with a verbatim-name bonus, ties broken by
-// name, so identical inputs always yield identical subsets.
-func (c *Catalog) rankSkills(prompt string, names []string, k int) []string {
-	if k <= 0 || len(names) <= k {
-		return append([]string(nil), names...)
-	}
-	promptTokens := tokenize(prompt)
-	promptLower := strings.ToLower(prompt)
-	type ranked struct {
-		name  string
-		score int
-	}
-	scores := make([]ranked, 0, len(names))
-	for _, name := range names {
-		nameTokens := tokenize(strings.ReplaceAll(name, "-", " "))
-		descTokens := tokenize(catalogEntryText(c.skills[name]))
-		score := 0
-		if strings.Contains(promptLower, strings.ReplaceAll(name, "-", " ")) {
-			score += 10
-		}
-		for t := range promptTokens {
-			switch {
-			case nameTokens[t]:
-				score += 5
-			case descTokens[t]:
-				score++
-			}
-		}
-		scores = append(scores, ranked{name: name, score: score})
-	}
-	sort.SliceStable(scores, func(i, j int) bool {
-		if scores[i].score != scores[j].score {
-			return scores[i].score > scores[j].score
-		}
-		return scores[i].name < scores[j].name
-	})
-	out := make([]string, 0, k)
-	for _, r := range scores[:k] {
-		out = append(out, r.name)
-	}
-	return out
-}
-
-// tokenize lowercases text and splits it into the set of word tokens of three or
-// more characters, so selection ignores noise like "a", "to", and "of".
-func tokenize(text string) map[string]bool {
-	out := map[string]bool{}
-	for _, tok := range strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
-		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
-	}) {
-		if utf8.RuneCountInString(tok) >= 3 {
-			out[tok] = true
-		}
-	}
-	return out
 }
 
 // catalogEntryText is the text the catalog shows for a skill: its short
