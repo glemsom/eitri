@@ -66,6 +66,29 @@ func TestClaimActivationHonoursCarriedSet(t *testing.T) {
 	}
 }
 
+// TestIsSkillActiveReadsWithoutClaiming guards the read-only membership check:
+// it reports a seeded or already-claimed name, and reading does not reserve an
+// inactive one.
+func TestIsSkillActiveReadsWithoutClaiming(t *testing.T) {
+	t.Parallel()
+	if IsSkillActive(context.Background(), "tdd") {
+		t.Fatal("IsSkillActive without a carried set = true, want false")
+	}
+	ctx := WithActiveSkills(context.Background(), []string{"seeded"})
+	if !IsSkillActive(ctx, "seeded") {
+		t.Fatal("IsSkillActive(seeded) = false, want true")
+	}
+	if IsSkillActive(ctx, "fresh") {
+		t.Fatal("IsSkillActive(inactive name) = true, want false")
+	}
+	if !ClaimActivation(ctx, "fresh") {
+		t.Fatal("ClaimActivation(fresh) = false, want true")
+	}
+	if !IsSkillActive(ctx, "fresh") {
+		t.Fatal("IsSkillActive(claimed name) = false, want true")
+	}
+}
+
 // TestWithActiveSkillsInstallsEmptySet guards the engine's dispatch handoff: an
 // empty seed must still carry a claim set, otherwise same-turn calls on a
 // turn that starts with no active skill would each see no set and all deliver

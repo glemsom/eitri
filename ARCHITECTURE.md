@@ -54,7 +54,7 @@ Defines canonical messages, tools, streams, usage, and errors. Dialects translat
 
 ### `internal/tools`
 
-Defines `bash`, `open_in_browser`, and `skill`. `sandbox.go` runs bash through bubblewrap; `direct.go` runs it directly for `--yolo-unsafe`. `skills.go` discovers and validates project, user, and builtin skills, with project > user > builtin shadowing; the `skill` tool activates a model-invocable skill by name, short-circuiting one whose complete body is already present in the conversation or was already delivered earlier in the turn.
+Defines `bash`, `open_in_browser`, and `skill`. `sandbox.go` runs bash through bubblewrap; `direct.go` runs it directly for `--yolo-unsafe`. `skills.go` discovers and validates project, user, and builtin skills, with project > user > builtin shadowing; the `skill` tool activates a model-invocable skill by name, short-circuiting one whose complete body is already present in the conversation or was already delivered completely earlier in the turn.
 
 ### `internal/compress`
 

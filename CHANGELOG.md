@@ -37,10 +37,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - A skill whose instructions exceed the tool-result byte cap no longer blocks
-  its own reload: a capped activation is no longer read as active, so a later
-  `skill` call re-delivers the instructions (with the truncation marker)
-  instead of a note claiming the full body is already in context. The
-  already-active note is now returned only when the complete body is present.
+  its own reload: a capped activation is no longer read as active and is never
+  claimed, so a repeat `skill` call — across turns or within the same turn —
+  re-delivers the instructions (with the truncation marker) instead of a note
+  claiming the full body is already in context. The already-active note is now
+  returned only when the complete body is present.
 
 - Installing the latest stable release with `install.sh` no longer fails with
   `latest stable release has no versioned Linux amd64 archive`; the installer

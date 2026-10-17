@@ -17,7 +17,9 @@ const skillToolDescription = "Activate one of the available skills by name. The 
 // merged catalog, applies the model-invocability gate, and claims the name
 // against the turn's activation set (supplied by the engine through the context)
 // so a skill already present in the message history — or already delivered
-// earlier in the same turn — returns the short note instead of its body.
+// earlier in the same turn — returns the short note instead of its body. A body
+// larger than the tool-result byte cap is never claimed, because its capped
+// delivery can never be complete, so it re-activates instead of short-circuiting.
 type skillTool struct {
 	catalog *Catalog
 }
@@ -50,10 +52,23 @@ func (s *skillTool) Run(ctx context.Context, args map[string]any) (compress.Tool
 	if !sk.ModelInvocable {
 		return compress.ToolResult{}, fmt.Errorf("skill %q is not available to the model", name)
 	}
+	payload := renderSkillPayload(name, sk)
+	// A body larger than the tool-result byte cap cannot be fully present in
+	// context: the engine head-truncates it, dropping the closing tag and the
+	// instructions' tail. Such an activation must not claim the name, or a
+	// same-turn repeat would return the already-active note for a body that was
+	// never fully delivered; it still short-circuits when the complete body is
+	// already present (a human `/skillname` injection is not capped).
+	if len(payload) > compress.DefaultByteCap {
+		if skillindex.IsSkillActive(ctx, name) {
+			return compress.ToolResult{Text: alreadyActiveSkillNote(name, sk.Dir)}, nil
+		}
+		return compress.ToolResult{Text: payload}, nil
+	}
 	if !skillindex.ClaimActivation(ctx, name) {
 		return compress.ToolResult{Text: alreadyActiveSkillNote(name, sk.Dir)}, nil
 	}
-	return compress.ToolResult{Text: renderSkillPayload(name, sk)}, nil
+	return compress.ToolResult{Text: payload}, nil
 }
 
 // alreadyActiveSkillNote is the short, non-error reply for a repeat activation:

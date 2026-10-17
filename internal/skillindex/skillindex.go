@@ -74,12 +74,12 @@ func ActivationNames(content string) []string {
 		}
 		name := content[:k]
 		content = content[k+1:]
-		close := strings.Index(content, ActivationClose)
-		if close < 0 {
+		closeIdx := strings.Index(content, ActivationClose)
+		if closeIdx < 0 {
 			return names
 		}
 		names = append(names, name)
-		content = content[close+len(ActivationClose):]
+		content = content[closeIdx+len(ActivationClose):]
 	}
 }
 
@@ -117,6 +117,13 @@ func (s *ActivationSet) Claim(name string) bool {
 	return true
 }
 
+// Has reports whether name is in the set, without reserving it.
+func (s *ActivationSet) Has(name string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.names[name]
+}
+
 // WithActiveSkills returns a context carrying a fresh activation set seeded with
 // the skills already present in the conversation. The engine installs it once
 // per turn, before dispatching that turn's tool calls.
@@ -133,4 +140,14 @@ func ClaimActivation(ctx context.Context, name string) bool {
 		return true
 	}
 	return set.Claim(name)
+}
+
+// IsSkillActive reports whether name is already in the set carried by ctx,
+// without claiming it. A context without a set treats every name as inactive.
+func IsSkillActive(ctx context.Context, name string) bool {
+	set, _ := ctx.Value(activeSkillsKey{}).(*ActivationSet)
+	if set == nil {
+		return false
+	}
+	return set.Has(name)
 }

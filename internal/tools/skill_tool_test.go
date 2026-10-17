@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/glemsom/eitri/internal/compress"
 	"github.com/glemsom/eitri/internal/skillindex"
 )
 
@@ -102,6 +103,52 @@ func TestSkillToolShortCircuitsActiveSkill(t *testing.T) {
 	}
 	if !strings.Contains(out, sk.Dir) {
 		t.Fatalf("already-active note does not repeat the skill directory %q:\n%s", sk.Dir, out)
+	}
+}
+
+// TestSkillToolRedeliversOversizedBody guards the cap seam at the tool: a body
+// larger than the tool-result byte cap is head-truncated on delivery, so its
+// activation must never claim the name — a same-turn repeat re-delivers the
+// instructions rather than a note claiming they are already in context.
+func TestSkillToolRedeliversOversizedBody(t *testing.T) {
+	t.Parallel()
+	body := strings.Repeat("oversized instruction line\n", compress.DefaultByteCap/27+1)
+	catalog := discoverOne(t, "big", body, nil)
+	sk := catalog.Skill("big")
+	rd, _ := NewRegistry(testDeps(t, "", catalog))
+
+	ctx := skillindex.WithActiveSkills(context.Background(), nil)
+	for range 2 {
+		out, err := runSkill(t, rd, ctx, map[string]any{"name": "big"})
+		if err != nil {
+			t.Fatalf("skill tool error = %v, want nil", err)
+		}
+		if strings.Contains(out, "already active") {
+			t.Fatalf("oversized body short-circuited to the already-active note:\n%.200s", out)
+		}
+		if want := skillindex.ActivationOpen("big", sk.Dir); !strings.Contains(out, want) {
+			t.Fatalf("oversized body did not re-deliver its payload %q:\n%.200s", want, out)
+		}
+	}
+}
+
+// TestSkillToolHonoursCompleteOversizedBodyAlreadyActive guards the other side:
+// when a complete oversized body is genuinely present (a human injection is not
+// capped), the tool must still short-circuit rather than re-deliver it.
+func TestSkillToolHonoursCompleteOversizedBodyAlreadyActive(t *testing.T) {
+	t.Parallel()
+	body := strings.Repeat("oversized instruction line\n", compress.DefaultByteCap/27+1)
+	catalog := discoverOne(t, "big", body, nil)
+	sk := catalog.Skill("big")
+	rd, _ := NewRegistry(testDeps(t, "", catalog))
+
+	ctx := skillindex.WithActiveSkills(context.Background(), []string{"big"})
+	out, err := runSkill(t, rd, ctx, map[string]any{"name": "big"})
+	if err != nil {
+		t.Fatalf("skill tool error = %v, want nil", err)
+	}
+	if !strings.Contains(out, "already active") || !strings.Contains(out, sk.Dir) {
+		t.Fatalf("complete oversized body did not short-circuit with the directory note:\n%.200s", out)
 	}
 }
 
