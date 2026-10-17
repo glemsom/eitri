@@ -75,12 +75,12 @@ func ActivationNames(content string) []string {
 
 type activeSkillsKey struct{}
 
-// ActivationSet is one run's already-active skills, seeded from the
-// conversation's activation blocks and shared by every tool call in a turn. A
-// claim reserves a name for the run, so concurrent same-turn calls for one
-// skill resolve to exactly one full payload and the rest to the already-active
-// note. The set is rebuilt every turn from the conversation, so compaction-dropped
-// bodies re-activate and a fresh session starts empty.
+// ActivationSet is one turn's already-active skills, seeded from the message
+// history's activation blocks and shared by that turn's tool calls. A claim
+// reserves a name for the turn, so concurrent same-turn calls for one skill
+// resolve to exactly one full payload and the rest to the already-active note.
+// The set is rebuilt every turn from the history, so compaction-dropped bodies
+// re-activate and a fresh session starts empty.
 type ActivationSet struct {
 	mu    sync.Mutex
 	names map[string]bool
@@ -96,7 +96,7 @@ func NewActivationSet(names []string) *ActivationSet {
 }
 
 // Claim reports whether name was inactive; on true the caller has reserved it
-// for this run. A seeded or already-claimed name returns false.
+// for this turn. A seeded or already-claimed name returns false.
 func (s *ActivationSet) Claim(name string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()

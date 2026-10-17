@@ -15,9 +15,9 @@ const skillToolDescription = "Activate one of the available skills by name. The 
 
 // skillTool is the model-facing `skill` tool: it resolves a name against the
 // merged catalog, applies the model-invocability gate, and claims the name
-// against the run's activation set (supplied by the engine through the context)
-// so a skill already present in the conversation — or already delivered earlier
-// in the same turn — returns the short note instead of its body.
+// against the turn's activation set (supplied by the engine through the context)
+// so a skill already present in the message history — or already delivered
+// earlier in the same turn — returns the short note instead of its body.
 type skillTool struct {
 	catalog *Catalog
 }
