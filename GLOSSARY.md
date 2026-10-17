@@ -83,7 +83,7 @@ _Avoid_: plugin, prompt pack, command.
 
 **Skill directory**: the absolute path of one skill pack, `<skill root>/<name>`, holding its `SKILL.md` and bundled resources. Activation carries it so the reader can open bundled artifacts without guessing.
 
-**Skill activation**: resolving a skill and injecting its body into the conversation — by the human `/skillname` path, or by the model calling the `skill` tool. A skill is active while its body is present in the conversation.
+**Skill activation**: resolving a skill and injecting its body into the conversation — by the human `/skillname` path, or by the model calling the `skill` tool. A skill is active while its complete body is present in the conversation; a body truncated by the tool-result byte cap is not, so it re-activates.
 _Avoid_: invocation, execution.
 
 **Skill tool**: the model-facing `skill` tool that activates a skill by name. It returns the same payload as the human `/skillname` path, including the skill directory, and reports an already-active skill with a short note instead of re-injecting its body.

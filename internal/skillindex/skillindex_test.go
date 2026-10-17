@@ -80,3 +80,19 @@ func TestWithActiveSkillsInstallsEmptySet(t *testing.T) {
 		t.Fatal("second ClaimActivation on an empty-seeded set = true, want false")
 	}
 }
+
+// TestActivationNamesRequiresClosedBlock guards the activity predicate: only a
+// block closed by ActivationClose counts as active. A block head-truncated by
+// the tool-result byte cap keeps its opening tag but loses the closing tag, so
+// the skill must stay activatable rather than read as active.
+func TestActivationNamesRequiresClosedBlock(t *testing.T) {
+	t.Parallel()
+	complete := ActivationOpen("tdd", "/skills/tdd") + "\nbody\n" + ActivationClose + "\n"
+	if got := ActivationNames(complete); len(got) != 1 || got[0] != "tdd" {
+		t.Fatalf("ActivationNames(complete block) = %v, want [tdd]", got)
+	}
+	truncated := ActivationOpen("tdd", "/skills/tdd") + "\nbody head only\n+1234 bytes truncated\n"
+	if got := ActivationNames(truncated); len(got) != 0 {
+		t.Fatalf("ActivationNames(truncated block) = %v, want none", got)
+	}
+}

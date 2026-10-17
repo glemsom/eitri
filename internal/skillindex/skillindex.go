@@ -48,9 +48,13 @@ func HasActivation(content string) bool {
 	return strings.Contains(content, ActivationTag)
 }
 
-// ActivationNames returns the names of every skill activation block in content,
-// in order. The opening tag's name attribute is the only field read, so the scan
-// is insensitive to the body and to the directory attribute.
+// ActivationNames returns the names of every complete skill activation block in
+// content, in order. The opening tag's name attribute is the only field read, so
+// the scan is insensitive to the body and to the directory attribute. A block is
+// complete only when ActivationClose follows it: the tool-result byte cap
+// head-truncates an oversized body, keeping the opening tag while dropping the
+// close and the instructions' tail, and an unclosed block must not read as
+// active.
 func ActivationNames(content string) []string {
 	var names []string
 	for {
@@ -68,8 +72,14 @@ func ActivationNames(content string) []string {
 		if k < 0 {
 			return names
 		}
-		names = append(names, content[:k])
+		name := content[:k]
 		content = content[k+1:]
+		close := strings.Index(content, ActivationClose)
+		if close < 0 {
+			return names
+		}
+		names = append(names, name)
+		content = content[close+len(ActivationClose):]
 	}
 }
 
