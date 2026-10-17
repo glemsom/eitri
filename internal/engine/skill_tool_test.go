@@ -12,12 +12,10 @@ import (
 	"github.com/glemsom/eitri/internal/tools"
 )
 
-// TestDispatchSkillToolHandsOffActiveSet guards the run-loop seam end to end: the
-// `skill` tool returns the directory-tagged payload on first activation, and the
-// engine's scan of the conversation makes a second activation short-circuit to
-// the already-active note instead of re-injecting the body.
-func TestDispatchSkillToolHandsOffActiveSet(t *testing.T) {
-	t.Parallel()
+// skillTestRegistry builds a registry with one model-invocable `tdd` skill and
+// returns it with the skill directory.
+func skillTestRegistry(t *testing.T) (*tools.Registry, string) {
+	t.Helper()
 	workspace := t.TempDir()
 	projectRoot := filepath.Join(workspace, ".agents", "skills")
 	skillDir := filepath.Join(projectRoot, "tdd")
@@ -28,7 +26,6 @@ func TestDispatchSkillToolHandsOffActiveSet(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(md), 0o600); err != nil {
 		t.Fatalf("write SKILL.md: %v", err)
 	}
-
 	catalog, err := tools.Discover(t.TempDir(), projectRoot, t.TempDir(), nil)
 	if err != nil {
 		t.Fatalf("Discover error = %v, want nil", err)
@@ -45,6 +42,24 @@ func TestDispatchSkillToolHandsOffActiveSet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRegistry error = %v", err)
 	}
+	return reg, skillDir
+}
+
+func skillToolDef() []provider.Tool {
+	return []provider.Tool{{Type: "function", Function: provider.ToolFunction{Name: "skill", Parameters: map[string]any{
+		"type":       "object",
+		"properties": map[string]any{"name": map[string]any{"type": "string"}},
+		"required":   []any{"name"},
+	}}}}
+}
+
+// TestDispatchSkillToolHandsOffActiveSet guards the run-loop seam end to end: the
+// `skill` tool returns the directory-tagged payload on first activation, and the
+// engine's scan of the conversation makes a second activation short-circuit to
+// the already-active note instead of re-injecting the body.
+func TestDispatchSkillToolHandsOffActiveSet(t *testing.T) {
+	t.Parallel()
+	reg, skillDir := skillTestRegistry(t)
 
 	var toolResults []string
 	scripted := provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
@@ -69,12 +84,8 @@ func TestDispatchSkillToolHandsOffActiveSet(t *testing.T) {
 	})
 
 	e := New(scripted, &mockTranscript{})
-	_, err = e.RunAgent(context.Background(), RunRequest{Model: "m", Prompt: "go"}, AgentOptions{
-		Tools: []provider.Tool{{Type: "function", Function: provider.ToolFunction{Name: "skill", Parameters: map[string]any{
-			"type":       "object",
-			"properties": map[string]any{"name": map[string]any{"type": "string"}},
-			"required":   []any{"name"},
-		}}}},
+	_, err := e.RunAgent(context.Background(), RunRequest{Model: "m", Prompt: "go"}, AgentOptions{
+		Tools:    skillToolDef(),
 		Executor: executor(reg),
 		MaxTurns: 5,
 	})
@@ -84,7 +95,7 @@ func TestDispatchSkillToolHandsOffActiveSet(t *testing.T) {
 	if len(toolResults) != 2 {
 		t.Fatalf("tool results = %d, want 2:\n%v", len(toolResults), toolResults)
 	}
-	if want := skillindex.ContentOpen("tdd", skillDir); !strings.Contains(toolResults[0], want) {
+	if want := skillindex.ActivationOpen("tdd", skillDir); !strings.Contains(toolResults[0], want) {
 		t.Fatalf("first activation missing %q:\n%s", want, toolResults[0])
 	}
 	if !strings.Contains(toolResults[0], "UNIQUE-BODY-MARKER") {
@@ -95,5 +106,53 @@ func TestDispatchSkillToolHandsOffActiveSet(t *testing.T) {
 	}
 	if strings.Contains(toolResults[1], "UNIQUE-BODY-MARKER") {
 		t.Fatalf("second activation re-injected the body:\n%s", toolResults[1])
+	}
+}
+
+// TestDispatchSkillToolCountsHumanInjectionActive guards the human path's
+// activity: a skill pinned into the user layer by `/skillname` must make the
+// model's `skill` call short-circuit instead of duplicating the body.
+func TestDispatchSkillToolCountsHumanInjectionActive(t *testing.T) {
+	t.Parallel()
+	reg, skillDir := skillTestRegistry(t)
+	injected, err := reg.ActivateSkill(context.Background(), "tdd")
+	if err != nil {
+		t.Fatalf("ActivateSkill error = %v, want nil", err)
+	}
+	payload := injected.Text
+
+	var toolResults []string
+	scripted := provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
+		toolResults = toolResults[:0]
+		for _, m := range req.Messages {
+			if m.Role == provider.RoleTool {
+				toolResults = append(toolResults, m.Content)
+			}
+		}
+		if len(toolResults) == 0 {
+			return provider.StreamFunc(provider.Chunk{FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{
+				{ID: "c1", Name: "skill", Arguments: `{"name":"tdd"}`},
+			}, Done: true}), nil
+		}
+		return provider.StreamFunc(provider.Chunk{Content: "done", FinishReason: "stop", Done: true}), nil
+	})
+
+	e := New(scripted, &mockTranscript{})
+	_, err = e.RunAgent(context.Background(), RunRequest{Model: "m", Prompt: "go", SkillInject: &payload}, AgentOptions{
+		Tools:    skillToolDef(),
+		Executor: executor(reg),
+		MaxTurns: 5,
+	})
+	if err != nil {
+		t.Fatalf("RunAgent() error = %v, want nil", err)
+	}
+	if len(toolResults) != 1 {
+		t.Fatalf("tool results = %d, want 1:\n%v", len(toolResults), toolResults)
+	}
+	if !strings.Contains(toolResults[0], skillDir) || !strings.Contains(toolResults[0], "already active") {
+		t.Fatalf("human-pinned skill did not count as active:\n%s", toolResults[0])
+	}
+	if strings.Contains(toolResults[0], "UNIQUE-BODY-MARKER") {
+		t.Fatalf("human-pinned skill was re-injected by the tool:\n%s", toolResults[0])
 	}
 }

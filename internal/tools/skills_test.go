@@ -263,26 +263,6 @@ func TestActivateSkillReappliesEveryTime(t *testing.T) {
 	}
 }
 
-func TestSkillToolIsExposedToModel(t *testing.T) {
-	t.Parallel()
-	user := t.TempDir()
-	writeSkill(t, user, "s1", "first", "body", nil)
-	catalog, err := Discover(user, t.TempDir(), t.TempDir(), &warningSink{})
-	if err != nil {
-		t.Fatalf("Discover error = %v, want nil", err)
-	}
-	rd, _ := NewRegistry(testDeps(t, "", catalog))
-	if !contains(rd.Names(), "skill") {
-		t.Fatalf("skill tool not registered; names = %v", rd.Names())
-	}
-	for _, d := range rd.Definitions() {
-		if d.Name == "skill" {
-			return
-		}
-	}
-	t.Fatalf("skill definition not exposed to the provider: %v", rd.Definitions())
-}
-
 func TestModelInvocableDefaultTrue(t *testing.T) {
 	t.Parallel()
 	user := t.TempDir()

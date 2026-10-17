@@ -37,7 +37,7 @@ func partitionMessages(messages []provider.Message) messagePartition {
 }
 
 func isTransientMessage(message provider.Message) bool {
-	return message.Role == provider.RoleUser && skillindex.IsContentBlock(message.Content)
+	return message.Role == provider.RoleUser && skillindex.HasActivation(message.Content)
 }
 
 // activeSkillNames returns the names of skills whose activation blocks appear in
@@ -47,8 +47,8 @@ func isTransientMessage(message provider.Message) bool {
 func activeSkillNames(messages []provider.Message) []string {
 	var names []string
 	for _, m := range messages {
-		if skillindex.IsContentBlock(m.Content) {
-			names = append(names, skillindex.ContentNames(m.Content)...)
+		if skillindex.HasActivation(m.Content) {
+			names = append(names, skillindex.ActivationNames(m.Content)...)
 		}
 	}
 	return names

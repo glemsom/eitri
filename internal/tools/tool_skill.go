@@ -49,7 +49,7 @@ func (s *skillTool) Run(ctx context.Context, args map[string]any) (compress.Tool
 	if !sk.ModelInvocable {
 		return compress.ToolResult{}, fmt.Errorf("skill %q is not available to the model", name)
 	}
-	if skillindex.ActiveSkills(ctx)[name] {
+	if skillindex.IsSkillActive(ctx, name) {
 		return compress.ToolResult{Text: alreadyActiveSkillNote(name, sk.Dir)}, nil
 	}
 	return compress.ToolResult{Text: renderSkillPayload(name, sk)}, nil

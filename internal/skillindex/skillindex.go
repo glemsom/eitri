@@ -1,9 +1,9 @@
 // Package skillindex defines the model-visible skill index block's wire marker
-// and the predicate that recognises it, plus the skill activation block's marker
-// and the scan that derives the active set from the conversation. The renderer
-// (internal/tools) and its consumers (the engine's compaction, history
-// partitioning, and activity scan) share this single source, so the blocks'
-// identity is never re-derived from a repeated literal.
+// and the predicate that recognises it, plus the skill activation block's open
+// and close markers and the scan that derives the active set from the
+// conversation. The renderer (internal/tools) and its consumers (the engine's
+// compaction, history partitioning, and activity scan) share this single source,
+// so the blocks' identity is never re-derived from a repeated literal.
 package skillindex
 
 import (
@@ -20,40 +20,44 @@ const (
 	CloseTag = "</available_skills>"
 )
 
-// ContentTag opens one rendered skill activation block. Like OpenTag it is the
-// block's identity: the partitioner and the engine's active-set scan match on it,
-// so the renderer and its recognisers cannot drift apart.
-const ContentTag = "<skill_content"
+// ActivationTag and ActivationClose delimit one rendered skill activation block.
+// ActivationTag's literal is the block's identity: the partitioner and the
+// engine's active-set scan match on it, so the renderer and its recognisers
+// cannot drift apart.
+const (
+	ActivationTag   = "<skill_content"
+	ActivationClose = "</skill_content>"
+)
 
 // IsBlock reports whether content carries the rendered skill index block.
 func IsBlock(content string) bool {
 	return strings.Contains(content, OpenTag)
 }
 
-// ContentOpen renders a skill activation block's opening tag for name, carrying
-// the absolute skill directory so the model can reach bundled resources without
-// guessing a path.
-func ContentOpen(name, directory string) string {
-	return fmt.Sprintf(`%s name=%q directory=%q>`, ContentTag, name, directory)
+// ActivationOpen renders a skill activation block's opening tag for name,
+// carrying the absolute skill directory so the model can reach bundled
+// resources without guessing a path.
+func ActivationOpen(name, directory string) string {
+	return fmt.Sprintf(`%s name=%q directory=%q>`, ActivationTag, name, directory)
 }
 
-// IsContentBlock reports whether content carries at least one rendered skill
+// HasActivation reports whether content carries at least one rendered skill
 // activation block.
-func IsContentBlock(content string) bool {
-	return strings.Contains(content, ContentTag)
+func HasActivation(content string) bool {
+	return strings.Contains(content, ActivationTag)
 }
 
-// ContentNames returns the names of every skill activation block in content, in
-// order. The opening tag's name attribute is the only field read, so the scan is
-// insensitive to the body and to the directory attribute.
-func ContentNames(content string) []string {
+// ActivationNames returns the names of every skill activation block in content,
+// in order. The opening tag's name attribute is the only field read, so the scan
+// is insensitive to the body and to the directory attribute.
+func ActivationNames(content string) []string {
 	var names []string
 	for {
-		i := strings.Index(content, ContentTag)
+		i := strings.Index(content, ActivationTag)
 		if i < 0 {
 			return names
 		}
-		content = content[i+len(ContentTag):]
+		content = content[i+len(ActivationTag):]
 		j := strings.Index(content, `name="`)
 		if j < 0 {
 			return names
@@ -84,9 +88,8 @@ func WithActiveSkills(ctx context.Context, names []string) context.Context {
 	return context.WithValue(ctx, activeSkillsKey{}, set)
 }
 
-// ActiveSkills reports the active-skill set carried by ctx, or nil when none was
-// supplied.
-func ActiveSkills(ctx context.Context) map[string]bool {
+// IsSkillActive reports whether name rides the active set carried by ctx.
+func IsSkillActive(ctx context.Context, name string) bool {
 	set, _ := ctx.Value(activeSkillsKey{}).(map[string]bool)
-	return set
+	return set[name]
 }

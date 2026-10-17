@@ -589,13 +589,13 @@ func decodeBlockScalar(ind byte, chomp byte, block []string) (string, error) {
 func renderSkillPayload(name string, sk *Skill) string {
 	var b strings.Builder
 	b.WriteString("skill content for active session; tags: [\"skill\"]\n\n")
-	b.WriteString(skillindex.ContentOpen(name, sk.Dir))
+	b.WriteString(skillindex.ActivationOpen(name, sk.Dir))
 	b.WriteByte('\n')
 	if sk.Description != "" {
 		fmt.Fprintf(&b, "<skill_description>%s</skill_description>\n", sk.Description)
 	}
 	b.WriteString(sk.Body)
-	b.WriteString("\n</skill_content>\n")
+	b.WriteString("\n" + skillindex.ActivationClose + "\n")
 	if len(sk.Resources) > 0 {
 		fmt.Fprintf(&b, `<skill_resources name="%s">`+"\n", name)
 		for _, r := range sk.Resources {

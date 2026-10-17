@@ -75,7 +75,7 @@ func TestSkillToolActivatesModelInvocableSkill(t *testing.T) {
 	if err != nil {
 		t.Fatalf("skill tool error = %v, want nil", err)
 	}
-	if want := skillindex.ContentOpen("res", sk.Dir); !strings.Contains(out, want) {
+	if want := skillindex.ActivationOpen("res", sk.Dir); !strings.Contains(out, want) {
 		t.Fatalf("payload missing directory-tagged content block %q:\n%s", want, out)
 	}
 	if !strings.Contains(out, "use the script") || !strings.Contains(out, "scripts/run.sh") {
@@ -97,7 +97,7 @@ func TestSkillToolShortCircuitsActiveSkill(t *testing.T) {
 	if strings.Contains(out, "UNIQUE-BODY-MARKER") {
 		t.Fatalf("already-active activation re-injected the body:\n%s", out)
 	}
-	if skillindex.IsContentBlock(out) {
+	if skillindex.HasActivation(out) {
 		t.Fatalf("already-active activation returned a full content block:\n%s", out)
 	}
 	if !strings.Contains(out, sk.Dir) {
@@ -146,7 +146,7 @@ func TestSkillPayloadCarriesDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ActivateSkill error = %v, want nil", err)
 	}
-	if want := skillindex.ContentOpen("res", sk.Dir); !strings.Contains(res.Text, want) {
+	if want := skillindex.ActivationOpen("res", sk.Dir); !strings.Contains(res.Text, want) {
 		t.Fatalf("human activation payload missing %q:\n%s", want, res.Text)
 	}
 }

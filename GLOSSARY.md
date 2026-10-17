@@ -86,7 +86,7 @@ _Avoid_: plugin, prompt pack, command.
 **Skill activation**: resolving a skill and injecting its body into the conversation — by the human `/skillname` path, or by the model calling the `skill` tool. A skill is active while its body is present in the conversation.
 _Avoid_: invocation, execution.
 
-**Skill tool**: the model-facing `skill` tool that activates a skill by name. It returns the same payload as the human path plus the skill directory, and reports an already-active skill with a short note instead of re-injecting its body.
+**Skill tool**: the model-facing `skill` tool that activates a skill by name. It returns the same payload as the human `/skillname` path, including the skill directory, and reports an already-active skill with a short note instead of re-injecting its body.
 _Avoid_: skill command, skill invocation.
 
 **Subagent**: a batch-mode Eitri process the agent launches in an isolated execution directory. Its result is the batch envelope's `answer` field, not parsed prose.
