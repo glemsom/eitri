@@ -191,6 +191,80 @@ func TestSkillUnparseableOmittedFailClosed(t *testing.T) {
 	}
 }
 
+// TestSkillDiscoverEnforcesNameRule guards the Agent Skills name rule at
+// discovery: lowercase alphanumerics with internal hyphens up to 64 characters
+// are catalogued, while a leading/trailing hyphen (or any other name-rule
+// violation) is excluded and warned about rather than silently accepted. Each
+// pack's frontmatter name is kept valid so the directory name is the only
+// variable under test.
+func TestSkillDiscoverEnforcesNameRule(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		label string
+		dir   string
+		valid bool
+	}{
+		{label: "single letter", dir: "a", valid: true},
+		{label: "internal hyphens", dir: "valid-skill-name", valid: true},
+		{label: "64 chars", dir: strings.Repeat("a", 64), valid: true},
+		{label: "leading hyphen", dir: "-leading", valid: false},
+		{label: "trailing hyphen", dir: "trailing-", valid: false},
+		{label: "only hyphen", dir: "-", valid: false},
+		{label: "65 chars", dir: strings.Repeat("b", 65), valid: false},
+		{label: "uppercase", dir: "Upper", valid: false},
+		{label: "underscore", dir: "under_score", valid: false},
+		{label: "dot", dir: "dotted.name", valid: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.label, func(t *testing.T) {
+			t.Parallel()
+			user := t.TempDir()
+			writeParsableSkill(t, user, tc.dir)
+			warnings := &warningSink{}
+			catalog, err := Discover(user, t.TempDir(), t.TempDir(), warnings)
+			if err != nil {
+				t.Fatalf("Discover error = %v, want nil", err)
+			}
+			if got := catalog.Skill(tc.dir) != nil; got != tc.valid {
+				t.Fatalf("skill %q catalogued = %v, want %v; names = %v", tc.dir, got, tc.valid, catalog.Names())
+			}
+			if tc.valid {
+				if warnings.count != 0 {
+					t.Fatalf("valid skill %q warned: %v", tc.dir, warnings.warns)
+				}
+				return
+			}
+			if !warnedAbout(warnings, tc.dir) {
+				t.Fatalf("rejected skill %q produced no warning; warnings = %v", tc.dir, warnings.warns)
+			}
+		})
+	}
+}
+
+// writeParsableSkill writes a parseable SKILL.md into root/dir, keeping the
+// frontmatter name valid regardless of the directory name so tests can vary the
+// directory name alone.
+func writeParsableSkill(t *testing.T, root, dir string) {
+	t.Helper()
+	packDir := filepath.Join(root, dir)
+	if err := os.MkdirAll(packDir, 0o700); err != nil {
+		t.Fatalf("mkdir skill dir %s: %v", packDir, err)
+	}
+	content := "---\nname: edge\ndescription: desc\n---\n\nbody"
+	if err := os.WriteFile(filepath.Join(packDir, "SKILL.md"), []byte(content), 0o600); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+}
+
+func warnedAbout(w *warningSink, name string) bool {
+	for _, warning := range w.warns {
+		if strings.Contains(warning, fmt.Sprintf("%q", name)) {
+			return true
+		}
+	}
+	return false
+}
+
 func TestActivateSkillRendersStrippedPayload(t *testing.T) {
 	t.Parallel()
 	user := t.TempDir()
