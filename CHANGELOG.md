@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
      describe user-visible behavior; record dependency and compatibility
      changes under Changed. -->
 
+## [0.1.1] - 2026-10-17
+
 ### Added
 
 - A run-end record in the message-layer transcript (`messages.jsonl`): every

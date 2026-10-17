@@ -27,7 +27,7 @@ import (
 )
 
 // Version reports the Eitri build version tag, set at build time.
-var Version = "0.1.1-dev"
+var Version = "0.1.2-dev"
 
 // Environment variables honored at boot.
 const (

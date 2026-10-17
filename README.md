@@ -21,7 +21,7 @@ curl -fsSL https://raw.githubusercontent.com/glemsom/eitri/main/install.sh | bas
 For a deterministic installation, pin both the installer source and release archive version:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/glemsom/eitri/v0.1.0/install.sh | bash -s -- --version 0.1.0
+curl -fsSL https://raw.githubusercontent.com/glemsom/eitri/v0.1.1/install.sh | bash -s -- --version 0.1.1
 ```
 
 For the default path, the installer asks the GitHub Releases API for the latest stable release, then downloads that release's sole versioned `eitri_<version>_linux_amd64.tar.gz` asset. It does not require `jq`. The installer prints the `PATH` export to run when `~/.local/bin` is not already on `PATH`; it never changes shell configuration, prompts, or uses `sudo`.
