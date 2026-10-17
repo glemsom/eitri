@@ -109,6 +109,52 @@ func TestDispatchSkillToolHandsOffActiveSet(t *testing.T) {
 	}
 }
 
+// TestDispatchSkillToolDedupesSameTurnCalls guards same-turn dedup: two `skill`
+// calls for one skill in a single turn must yield exactly one full payload and
+// one already-active note. The active set is snapshotted from the conversation
+// before the turn's calls run, so without an intra-turn claim both calls deliver
+// the body and the instructions are injected twice.
+func TestDispatchSkillToolDedupesSameTurnCalls(t *testing.T) {
+	t.Parallel()
+	reg, skillDir := skillTestRegistry(t)
+
+	var toolResults []string
+	scripted := provider.NewScripted(func(_ context.Context, req provider.Request) (provider.Stream, error) {
+		toolResults = toolResultContents(req.Messages)
+		if len(toolResults) == 0 {
+			return provider.StreamFunc(provider.Chunk{FinishReason: "tool_calls", ToolCalls: []provider.ToolCall{
+				{ID: "c1", Name: "skill", Arguments: `{"name":"tdd"}`},
+				{ID: "c2", Name: "skill", Arguments: `{"name":"tdd"}`},
+			}, Done: true}), nil
+		}
+		return provider.StreamFunc(provider.Chunk{Content: "done", FinishReason: "stop", Done: true}), nil
+	})
+
+	e := New(scripted, &mockTranscript{})
+	if _, err := e.RunAgent(context.Background(), RunRequest{Model: "m", Prompt: "go"}, AgentOptions{
+		Tools:    skillToolDef(),
+		Executor: executor(reg),
+		MaxTurns: 5,
+	}); err != nil {
+		t.Fatalf("RunAgent() error = %v, want nil", err)
+	}
+	if len(toolResults) != 2 {
+		t.Fatalf("tool results = %d, want 2:\n%v", len(toolResults), toolResults)
+	}
+	payloads, notes := 0, 0
+	for _, r := range toolResults {
+		switch {
+		case strings.Contains(r, "UNIQUE-BODY-MARKER"):
+			payloads++
+		case strings.Contains(r, skillDir) && strings.Contains(r, "already active"):
+			notes++
+		}
+	}
+	if payloads != 1 || notes != 1 {
+		t.Fatalf("same-turn duplicate calls: payloads = %d, notes = %d, want 1 and 1:\n%v", payloads, notes, toolResults)
+	}
+}
+
 // TestDispatchSkillToolCountsHumanInjectionActive guards the human path's
 // activity: a skill pinned into the user layer by `/skillname` must make the
 // model's `skill` call short-circuit instead of duplicating the body.

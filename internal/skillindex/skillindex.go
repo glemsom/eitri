@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 )
 
 // OpenTag and CloseTag delimit the rendered model-visible skill index block.
@@ -74,22 +75,52 @@ func ActivationNames(content string) []string {
 
 type activeSkillsKey struct{}
 
-// WithActiveSkills returns a context carrying the set of skills already present
-// in the conversation, so the skill tool can short-circuit a repeat activation.
-// An empty set returns ctx unchanged.
-func WithActiveSkills(ctx context.Context, names []string) context.Context {
-	if len(names) == 0 {
-		return ctx
-	}
-	set := make(map[string]bool, len(names))
-	for _, name := range names {
-		set[name] = true
-	}
-	return context.WithValue(ctx, activeSkillsKey{}, set)
+// ActivationSet is one run's already-active skills, seeded from the
+// conversation's activation blocks and shared by every tool call in a turn. A
+// claim reserves a name for the run, so concurrent same-turn calls for one
+// skill resolve to exactly one full payload and the rest to the already-active
+// note. The set is rebuilt every turn from the conversation, so compaction-dropped
+// bodies re-activate and a fresh session starts empty.
+type ActivationSet struct {
+	mu    sync.Mutex
+	names map[string]bool
 }
 
-// IsSkillActive reports whether name rides the active set carried by ctx.
-func IsSkillActive(ctx context.Context, name string) bool {
-	set, _ := ctx.Value(activeSkillsKey{}).(map[string]bool)
-	return set[name]
+// NewActivationSet returns a set seeded with the given active skill names.
+func NewActivationSet(names []string) *ActivationSet {
+	set := &ActivationSet{names: make(map[string]bool, len(names))}
+	for _, name := range names {
+		set.names[name] = true
+	}
+	return set
+}
+
+// Claim reports whether name was inactive; on true the caller has reserved it
+// for this run. A seeded or already-claimed name returns false.
+func (s *ActivationSet) Claim(name string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.names[name] {
+		return false
+	}
+	s.names[name] = true
+	return true
+}
+
+// WithActiveSkills returns a context carrying a fresh activation set seeded with
+// the skills already present in the conversation. The engine installs it once
+// per turn, before dispatching that turn's tool calls.
+func WithActiveSkills(ctx context.Context, names []string) context.Context {
+	return context.WithValue(ctx, activeSkillsKey{}, NewActivationSet(names))
+}
+
+// ClaimActivation claims name against the set carried by ctx, reporting whether
+// the skill was inactive. A context without a set (the tool run outside the
+// engine) treats every name as inactive.
+func ClaimActivation(ctx context.Context, name string) bool {
+	set, _ := ctx.Value(activeSkillsKey{}).(*ActivationSet)
+	if set == nil {
+		return true
+	}
+	return set.Claim(name)
 }

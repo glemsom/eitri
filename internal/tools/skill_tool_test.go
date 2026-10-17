@@ -105,6 +105,31 @@ func TestSkillToolShortCircuitsActiveSkill(t *testing.T) {
 	}
 }
 
+func TestSkillToolClaimsNameOncePerContext(t *testing.T) {
+	t.Parallel()
+	catalog := discoverOne(t, "res", "UNIQUE-BODY-MARKER", nil)
+	sk := catalog.Skill("res")
+	rd, _ := NewRegistry(testDeps(t, "", catalog))
+
+	ctx := skillindex.WithActiveSkills(context.Background(), nil)
+	var payloads, notes int
+	for range 2 {
+		out, err := runSkill(t, rd, ctx, map[string]any{"name": "res"})
+		if err != nil {
+			t.Fatalf("skill tool error = %v, want nil", err)
+		}
+		switch {
+		case strings.Contains(out, "UNIQUE-BODY-MARKER"):
+			payloads++
+		case strings.Contains(out, sk.Dir) && strings.Contains(out, "already active"):
+			notes++
+		}
+	}
+	if payloads != 1 || notes != 1 {
+		t.Fatalf("same-turn claims: payloads = %d, notes = %d, want 1 and 1", payloads, notes)
+	}
+}
+
 func TestSkillToolRejectsHumanOnlySkill(t *testing.T) {
 	t.Parallel()
 	user := t.TempDir()

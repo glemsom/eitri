@@ -54,7 +54,7 @@ Defines canonical messages, tools, streams, usage, and errors. Dialects translat
 
 ### `internal/tools`
 
-Defines `bash`, `open_in_browser`, and `skill`. `sandbox.go` runs bash through bubblewrap; `direct.go` runs it directly for `--yolo-unsafe`. `skills.go` discovers and validates project, user, and builtin skills, with project > user > builtin shadowing; the `skill` tool activates a model-invocable skill by name, short-circuiting one already present in the conversation.
+Defines `bash`, `open_in_browser`, and `skill`. `sandbox.go` runs bash through bubblewrap; `direct.go` runs it directly for `--yolo-unsafe`. `skills.go` discovers and validates project, user, and builtin skills, with project > user > builtin shadowing; the `skill` tool activates a model-invocable skill by name, short-circuiting one already present in the conversation or already delivered earlier in the turn.
 
 ### `internal/compress`
 
@@ -76,7 +76,7 @@ The TUI never calls a provider: it names provider kinds for the settings UI and 
 
 ### Small packages
 
-`internal/osc52` writes clipboard escape sequences; `internal/constants` holds cross-layer limits; `internal/skillindex` owns the model-visible skill index block's marker, the activation block's marker, and the active-set context handoff, shared by the renderer in `internal/tools` and its consumers in `internal/engine` (compaction, history partitioning, and the dispatch-time activity scan) so the engine need not import `internal/tools`; `internal/testutil` contains shared test helpers. The session temp is *named* by `internal/session` (`Session.TempDir`), *created* by the bash backends on first use, and owned by the tools registry as `TempHost`; the backends and the rail read it.
+`internal/osc52` writes clipboard escape sequences; `internal/constants` holds cross-layer limits; `internal/skillindex` owns the model-visible skill index block's marker, the activation block's marker, and the active-set context handoff with its per-turn claim dedup, shared by the renderer in `internal/tools` and its consumers in `internal/engine` (compaction, history partitioning, and the dispatch-time activity scan) so the engine need not import `internal/tools`; `internal/testutil` contains shared test helpers. The session temp is *named* by `internal/session` (`Session.TempDir`), *created* by the bash backends on first use, and owned by the tools registry as `TempHost`; the backends and the rail read it.
 
 `internal/tools/memtmp` is the one exception to the package map: it is a `package main` scratch program, not a library, and nothing imports it.
 
