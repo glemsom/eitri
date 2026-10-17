@@ -5,9 +5,6 @@ that reads, edits, and runs code in a declared workspace through natural-languag
 conversation with a local or hosted model provider. It is built to feel at home in
 your terminal.
 
-<!-- Rendered from internal/tui/testdata/frame_golden with a truecolor ANSI→PNG pass. -->
-![Eitri's TUI: a prompt, an expanded reasoning pane, a bash tool call with output, and a streamed answer beside the right rail](docs/images/tui-session.png)
-
 ## What sets Eitri apart
 
 - **A terminal surface worth staring at.** A forge-themed TUI — gradient wordmark
@@ -34,8 +31,6 @@ your terminal.
 - **Skills and subagents.** Eitri speaks the Agent Skills ecosystem — project,
   user, and builtin skills behind one invocable `skill` tool — and ships the
   `subagents` and `web-access` builtins.
-
-![Eitri's idle surface: the gradient brand, the composer, and the right rail](docs/images/tui-idle.png)
 
 ## Install and run
 
