@@ -30,7 +30,7 @@ One run follows this path:
 
 1. The engine assembles the stable prompt head, skills, repository instructions, the per-run workspace directive, persisted history, and user prompt — static messages first, per-run state last, so the static prefix stays cacheable.
 2. The provider translates canonical messages and tools into its wire dialect and streams the response.
-3. Tool calls go through the fixed tool registry. Bash uses bubblewrap by default or the direct backend with `--yolo-unsafe`.
+3. Tool calls go through the fixed tool registry and run concurrently within a turn; results are appended in the model's call order. Bash uses bubblewrap by default or the direct backend with `--yolo-unsafe`.
 4. Tool output is deterministically compressed before returning to the engine. Older history is compacted with an LLM when context requires it.
 5. Typed engine events drive the TUI; requests and responses are appended to the session transcript.
 

@@ -21,7 +21,7 @@ Eitri is a self-hosted, single-binary AI coding agent for GNU/Linux. It reads, w
 **Turn**: one provider request/response cycle, including any tool calls it streams.
 _Avoid_: cycle, iteration.
 
-**Run**: one bounded turn-loop execution, ending in a final answer, the turn cap, or a user stop.
+**Run**: one bounded turn-loop execution, ending in a final answer, the turn cap, a user stop, or a failure.
 A run is a sequence of turns, projected in the TUI as a single live turn and, once settled, a single committed turn.
 _Avoid_: invocation, request.
 

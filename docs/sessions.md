@@ -11,7 +11,7 @@ loading whole sessions into its context window.
 
 | File | Content |
 |---|---|
-| `transcript.md` | Human-readable trail: prompts and final answers only (legacy, always written). |
+| `transcript.md` | Human-readable trail: prompts and final answers only (legacy; not written for a failed run). |
 | `messages.jsonl` | **Message-layer transcript**: one JSON line per provider request/response turn, plus one run-end record per run — the exact messages sent to and received from the model, and why each run ended. |
 | `trace-request.http`, `trace-response.http` | Raw HTTP bodies; written only in debug mode (`-d`). |
 

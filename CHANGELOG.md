@@ -16,7 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A run-end record in the message-layer transcript (`messages.jsonl`): every
   run now appends one `{"dir":"end","reason":…}` line naming why it ended
   (`completed`, `max_turns`, `stopped`, or `error`), so a run that looped to
-  the turn cap, was stopped, and failed are distinguishable after the fact;
+  the turn cap, one that was stopped, and one that failed are distinguishable
+  after the fact;
   `session show` prints it as a trailing `end=<reason>` line and
   `session stats` reports it as `outcome`.
 - `eitri session stats [guid|all]`: aggregate per-session statistics — turns,
@@ -32,17 +33,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wall-clock approaches its slowest call rather than the sum of the calls;
   tool results and events are still emitted and appended in the model's call
   order, leaving the next provider request byte-identical.
-- The model-visible skill catalog is now one compact line per skill with each
-  skill root declared once in a header, replacing the per-skill XML and the
-  repeated absolute path; descriptions are capped in width, and a skill may
-  declare a `short-description` one-liner that the catalog shows in place of its
-  full description (the full text still arrives on activation).
+- The model-visible skill catalog is now one compact line per skill, grouped
+  under a bracketed `[<root>]` heading so each root path appears once, replacing
+  the per-skill XML and the repeated absolute path; descriptions are capped in
+  width, and a skill may declare a `short-description` one-liner that the catalog
+  shows in place of its full description (the full text still arrives on
+  activation).
 - New `dynamic_skill_catalog` config setting: when enabled, only the skills a
   deterministic selector ranks relevant to the prompt are injected, plus a note
   that more exist; it defaults off (the full catalog).
 - Bumped `charm.land/bubbletea/v2` to v2.0.10.
 - Tightened the system prompt: reworked the read guidance into an
-  explicit read-shape menu and trimmed duplicated or contradictory rules.
+  explicit read-shape menu, nudged toward issuing independent tool calls in one
+  turn, and trimmed duplicated or contradictory rules.
 
 ### Fixed
 
