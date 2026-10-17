@@ -15,36 +15,39 @@ func TestSystemPromptWithinTokenBudget(t *testing.T) {
 	}
 }
 
-// TestSystemPromptShedsSkillLoadingMechanics guards the trim: the activation
-// mechanics (the index shape, reading SKILL.md) belong to the skill tool's
-// description, while the two reach-for-skill pointers stay as a short hint.
-func TestSystemPromptShedsSkillLoadingMechanics(t *testing.T) {
+// TestSystemPromptDefersSkillDiscoveryToTheIndex guards the trim: both the
+// skill-loading mechanics (the index shape, reading SKILL.md) and per-skill
+// reach-for pointers duplicate what the skill index already carries — each
+// entry ships its own "when to use" description and is re-injected each turn.
+// The prompt keeps only the behavioural nudge to consult that index.
+func TestSystemPromptDefersSkillDiscoveryToTheIndex(t *testing.T) {
 	t.Parallel()
 	content := SystemPromptContent()
-	for _, mech := range []string{"SKILL.md", "bracketed heading", "skill index is re-sent"} {
-		if strings.Contains(content, mech) {
-			t.Errorf("prompt still carries skill-loading mechanics %q; move them to the skill tool description", mech)
+	for _, restated := range []string{
+		"SKILL.md",
+		"bracketed heading",
+		"skill index is re-sent",
+		"`web-access` skill",
+		"`subagents` skill",
+	} {
+		if strings.Contains(content, restated) {
+			t.Errorf("prompt restates %q, which the skill index already carries; drop it", restated)
 		}
 	}
-	if !strings.Contains(content, "`web-access` skill") || !strings.Contains(content, "`subagents` skill") {
-		t.Error("prompt lost the reach-for-skill pointers")
+	if !strings.Contains(content, "Consult the index") {
+		t.Error("prompt lost the nudge to consult the skill index")
 	}
 }
 
-// TestSystemPromptCarriesSubagentPointerOnly guards the subagents trim: the
-// prompt must point at the `subagents` skill instead of embedding the batch
-// recipe. The full guidance ships as the builtin skill (discoverable via the
-// skill index), and the one-line pointer is the fallback trigger when the
-// skill cannot be materialized.
-func TestSystemPromptCarriesSubagentPointerOnly(t *testing.T) {
+// TestSystemPromptOmitsSubagentRecipe guards that the prompt defers subagent
+// discovery to the skill index rather than embedding the batch recipe, which
+// ships as the builtin `subagents` skill.
+func TestSystemPromptOmitsSubagentRecipe(t *testing.T) {
 	t.Parallel()
 	content := SystemPromptContent()
-	if !strings.Contains(content, "`subagents` skill") {
-		t.Error("prompt lost the subagents pointer")
-	}
 	for _, recipe := range []string{"mktemp -d", "agent_settled", "TMPDIR/subagent"} {
 		if strings.Contains(content, recipe) {
-			t.Errorf("prompt still embeds the subagents recipe (%q); the full guidance lives in the `subagents` skill", recipe)
+			t.Errorf("prompt embeds the subagents recipe (%q); the full guidance lives in the `subagents` skill", recipe)
 		}
 	}
 }
