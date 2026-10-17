@@ -14,9 +14,10 @@ import (
 const skillToolDescription = "Activate one of the available skills by name. The skill index (an <available_skills> block) is re-sent each turn; pass a listed skill's exact name to load its full instructions and the absolute directory holding its bundled resources. Prefer this over reading a SKILL.md with bash. A skill already active in this conversation returns a short note instead of re-injecting its body, so re-activate only after compaction has dropped the instructions. Human-only skills cannot be activated."
 
 // skillTool is the model-facing `skill` tool: it resolves a name against the
-// merged catalog, applies the model-invocability gate, and short-circuits a
-// skill whose activation block is already in the conversation (the active set is
-// supplied by the engine through the context).
+// merged catalog, applies the model-invocability gate, and claims the name
+// against the turn's activation set (supplied by the engine through the context)
+// so a skill already present in the message history — or already delivered
+// earlier in the same turn — returns the short note instead of its body.
 type skillTool struct {
 	catalog *Catalog
 }
@@ -49,7 +50,7 @@ func (s *skillTool) Run(ctx context.Context, args map[string]any) (compress.Tool
 	if !sk.ModelInvocable {
 		return compress.ToolResult{}, fmt.Errorf("skill %q is not available to the model", name)
 	}
-	if skillindex.IsSkillActive(ctx, name) {
+	if !skillindex.ClaimActivation(ctx, name) {
 		return compress.ToolResult{Text: alreadyActiveSkillNote(name, sk.Dir)}, nil
 	}
 	return compress.ToolResult{Text: renderSkillPayload(name, sk)}, nil

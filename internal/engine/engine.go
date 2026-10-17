@@ -552,12 +552,11 @@ func (e *Engine) dispatchToolCalls(ctx context.Context, opts AgentOptions, runID
 		done[i] = make(chan struct{})
 	}
 	// The active set is derived from the conversation at dispatch (the assistant
-	// tool-call message is already appended; this turn's results are not), so the
-	// skill tool can short-circuit a repeat activation and re-activate one whose
-	// body compaction dropped.
-	if active := activeSkillNames(*messages); len(active) > 0 {
-		ctx = skillindex.WithActiveSkills(ctx, active)
-	}
+	// tool-call message is already appended; this turn's results are not) and
+	// installed even when empty, so the skill tool can claim a name once per turn:
+	// a repeat activation short-circuits and two same-turn calls for one skill
+	// cannot both deliver the body. Compaction dropping a body re-activates it.
+	ctx = skillindex.WithActiveSkills(ctx, activeSkillNames(*messages))
 	sem := make(chan struct{}, maxConcurrentToolCalls)
 	var wg sync.WaitGroup
 	for i, tc := range calls {
