@@ -4,7 +4,7 @@ Guidance for AI coding agents working in this repository.
 
 ## Domain docs
 
-`CONTEXT.md` is the domain glossary; `ARCHITECTURE.md` maps how modules are wired and borrows that terminology rather than redefining it; decisions live in `docs/adr/`. Read [docs/agents/domain.md](docs/agents/domain.md) before naming a domain concept, and write with the glossary's vocabulary rather than the synonyms it avoids.
+`GLOSSARY.md` is the domain glossary; `ARCHITECTURE.md` maps how modules are wired and borrows that terminology rather than redefining it; decisions live in `docs/adr/`. Read [docs/agents/domain.md](docs/agents/domain.md) before naming a domain concept, and write with the glossary's vocabulary rather than the synonyms it avoids.
 
 ## Issue tracker
 

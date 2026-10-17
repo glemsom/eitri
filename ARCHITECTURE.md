@@ -1,6 +1,6 @@
 # Eitri architecture
 
-This document maps implementation boundaries for maintainers and agents. User-facing behavior belongs in [README.md](README.md); domain terminology belongs in [CONTEXT.md](CONTEXT.md). Detailed operational contracts live under `docs/`.
+This document maps implementation boundaries for maintainers and agents. User-facing behavior belongs in [README.md](README.md); domain terminology belongs in [GLOSSARY.md](GLOSSARY.md). Detailed operational contracts live under `docs/`.
 
 ## Runtime flow
 

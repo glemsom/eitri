@@ -90,7 +90,7 @@ Skills are discovered in project `.agents/skills`, user `~/.agents/skills`, then
 
 Every model-visible skill is announced in a compact catalog that is re-sent each turn: each skill root is a bracketed heading, and its skills follow as one `<name>: <description>` line each. By default the whole catalog is sent. Set `dynamic_skill_catalog` to `true` in the config file to inject only the skills a deterministic lexical selector ranks relevant to the prompt, plus a note naming the roots so the model can `ls` the rest; leaving it `false` restores the full catalog.
 
-An `AGENTS.md` in the workspace root is loaded as repository instructions. [CONTEXT.md](CONTEXT.md) defines internal terms; [ARCHITECTURE.md](ARCHITECTURE.md) maps implementation boundaries.
+An `AGENTS.md` in the workspace root is loaded as repository instructions. [GLOSSARY.md](GLOSSARY.md) defines internal terms; [ARCHITECTURE.md](ARCHITECTURE.md) maps implementation boundaries.
 
 ## Build and test
 
