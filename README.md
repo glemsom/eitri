@@ -173,15 +173,6 @@ sudo apt install bubblewrap bash ripgrep curl lynx patch python3 git jq xdg-util
 Fedora and Arch provide the same package names. Core utilities such as `sed`,
 `awk`, and `diff` are assumed.
 
-## Benchmark
-
-In one 10-task run with `gpt-6-luna`, Eitri and OpenCode both completed every
-task; Eitri averaged 17.86 seconds per task versus OpenCode’s 77.20 seconds.
-This is a single, directional comparison—not a general performance claim: the
-run used different agent harnesses and a dirty source snapshot, and token
-accounting may overlap provider categories. See the [full report](docs/research/eitri-opencode-gpt-6-luna-benchmark.md)
-and its [interactive HTML version](docs/research/eitri-opencode-gpt-6-luna-benchmark.html).
-
 ## Documentation
 
 - [GLOSSARY.md](GLOSSARY.md) — the domain vocabulary.
