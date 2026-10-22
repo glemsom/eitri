@@ -16,8 +16,12 @@ Triage has five canonical roles whose label strings are fixed; use them verbatim
 
 Only add comments in Go source if the comment will add information the code does not already tell; references to spec sections or issues alone are never sufficient.
 
-`internal/tui` is being de-monolithed one package at a time; read [docs/agents/de-monolith-tui.md](docs/agents/de-monolith-tui.md) before moving files in there.
-
 ## Operational docs
 
-Contracts a change can break, each beside the code that owns it: [docs/batch-mode.md](docs/batch-mode.md) (piped stdin, the `--format json` envelope, exit codes), [docs/sandbox.md](docs/sandbox.md) (the `bash` sandbox, the writable set, `extra_writable_paths`), [docs/sessions.md](docs/sessions.md) (transcript layout, `session` subcommands), [docs/render-diagnostics.md](docs/render-diagnostics.md) (render contracts and their guards), [docs/adr/0002-emoji-identity-tier.md](docs/adr/0002-emoji-identity-tier.md) (glyph and icon tiers).
+Load the relevant docs when working in these areas:
+
+- [docs/batch-mode.md](docs/batch-mode.md) — batch mode, piped stdin, the `--format json` envelope, and exit codes.
+- [docs/sandbox.md](docs/sandbox.md) — the `bash` sandbox, writable paths, and `extra_writable_paths`.
+- [docs/sessions.md](docs/sessions.md) — session transcripts and the `session` subcommands.
+- [docs/render-diagnostics.md](docs/render-diagnostics.md) — TUI rendering behavior, render contracts, and their guards.
+- [docs/adr/0002-emoji-identity-tier.md](docs/adr/0002-emoji-identity-tier.md) — glyphs, icons, and where emoji may be used in the UI.
