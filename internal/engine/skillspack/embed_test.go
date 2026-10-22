@@ -80,22 +80,43 @@ func TestEmbeddedSubagentsPackBodyContract(t *testing.T) {
 
 	// The recipe scaffolding ports verbatim from the prompt sections.
 	for _, want := range []string{
-		`agent_dir=$(mktemp -d "$TMPDIR/subagent.XXXXXX")`,
+		`agent_dir="$sa_dir/$task_number"`,
 		`parent_config="${EITRI_CONFIG:-${EITRI_DIR:-$HOME/.eitri}/config.json}"`,
 		`EITRI_DIR="$agent_dir" EITRI_CONFIG="$parent_config"`,
 		`wait "${pids[`,
 		"--format json",
 		"jq -r .answer",
+		`| tee "$sa_dir/$task_number.md"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing verbatim recipe fragment %q", want)
 		}
+	}
+	if strings.Contains(body, "mktemp -d") {
+		t.Fatal("launch dirs must be named for their task: a random dir leaves no way to tell which run holds which report")
 	}
 
 	// Subagent results are read from the --format json envelope's answer field,
 	// never parsed out of prose stdout (no agent_settled marker hunting).
 	if strings.Contains(body, "agent_settled") {
 		t.Fatal("body still parses prose stdout for settled markers; read the answer field from the --format json envelope instead")
+	}
+
+	// A subagent's stdout is compressed on the way back, so the body must send
+	// the deliverable through the answer field with a word budget, and must name
+	// the timeout and the per-failure response; each of these was a measured loss.
+	for _, want := range []string{
+		"under ~800 words",
+		"never a report rendered through stdout",
+		"timeout: 3600",
+		"means the shell call was cut",
+		"means the answer overran",
+		"Retry once",
+		"$TMPDIR/sa/N.md",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("body missing handoff rule fragment %q", want)
+		}
 	}
 
 	// The one clause the default and yolo prompt sections differ on becomes a

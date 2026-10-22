@@ -29,6 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   compaction can be re-activated, and a human `/skillname` counts as active. The
   activation mechanics moved out of the system prompt and into the `skill`
   tool's description.
+- The builtin `subagents` skill now names the failure modes that cost a real
+  session: the deliverable must be the subagent's answer under a word budget
+  (stdout is compressed on the way back, so a report printed there arrives as a
+  pointer), launches take a deterministic `$TMPDIR/sa/N` run directory with the
+  answer teed to `$TMPDIR/sa/N.md` for later `rg` instead of a random
+  `mktemp -d` name, open-ended launches pass `timeout: 3600`, and each failure
+  in `.err` carries its own response — retry once, then do the slice inline.
 
 ### Removed
 

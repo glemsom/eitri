@@ -18,32 +18,36 @@ session and sandbox, launched from the parent's Bash tool call.
 
 **Launch** each subagent into its own execution directory, then **collect** it —
 wait, and read the answer — inside the same Bash tool call. The subagent takes
-its own data directory and the parent's config:
+its own data directory and the parent's config, and both the directory and the
+envelope are named for the task, so run N and report N are the same task:
 ```sh
 # Resolve the parent's config before repointing EITRI_DIR: assigned in the same
 # command, EITRI_DIR would make this fallback resolve to the fresh agent dir.
 parent_config="${EITRI_CONFIG:-${EITRI_DIR:-$HOME/.eitri}/config.json}"
+sa_dir="$TMPDIR/sa"
+mkdir -p "$sa_dir"
 for task_number in 1 2; do
   task="<task $task_number>"
-  agent_dir=$(mktemp -d "$TMPDIR/subagent.XXXXXX")
+  agent_dir="$sa_dir/$task_number"
+  mkdir -p "$agent_dir"
   EITRI_DIR="$agent_dir" EITRI_CONFIG="$parent_config" \
-    eitri -b "$task" --format json > "$TMPDIR/sa-$task_number.json" 2> "$TMPDIR/sa-$task_number.err" &
+    eitri -b "$task" --format json > "$sa_dir/$task_number.json" 2> "$sa_dir/$task_number.err" &
   pids[$task_number]=$!
 done
 for task_number in 1 2; do
   status=0
   wait "${pids[$task_number]}" || status=$?
-  if [ "$status" -eq 0 ] && jq -e .answer "$TMPDIR/sa-$task_number.json" >/dev/null; then
+  if [ "$status" -eq 0 ] && jq -e .answer "$sa_dir/$task_number.json" >/dev/null; then
     echo "=== subagent $task_number ==="
-    jq -r .answer "$TMPDIR/sa-$task_number.json"
+    jq -r .answer "$sa_dir/$task_number.json" | tee "$sa_dir/$task_number.md"
   else
     echo "=== subagent $task_number failed (exit $status) ===" >&2
-    head -n 5 "$TMPDIR/sa-$task_number.err" >&2
+    head -n 5 "$sa_dir/$task_number.err" >&2
   fi
 done
 ```
 
-For a single subagent, set both ranges to `1`. In sandboxed mode the sandbox
+For a single subagent, use `1` in both ranges. In sandboxed mode the sandbox
 terminates child processes when the tool call returns; elsewhere uncollected
 runs merely keep running, their answers unread. Collect inside that call.
 
@@ -51,6 +55,27 @@ Each run prints one `--format json` envelope, whose `answer` field is the
 result; a failed run prints no envelope and exits non-zero. Bare `jq -r` on
 that empty file prints nothing while exiting 0, so a crash would read as an
 empty answer — the script's `jq -e .answer` gate is what tells them apart.
+
+## The answer is the deliverable
+
+The `answer` field is the only part of a run that comes back intact, so put the
+word budget in the task prompt: **the whole deliverable in the final answer,
+under ~800 words, never a report rendered through stdout.** Stdout is
+compressed on the way back — long content loses a truncation-marked tail — so a
+subagent that `cat`s its report answers with a pointer to text nobody can read.
+Dense bullets, not prose.
+
+## Time and failure
+
+Give a research or sweep launch `timeout: 3600`. The default of 120 seconds
+bounds the shell call, and when it fires the sandbox kills the subagent
+mid-run, leaving an empty envelope.
+
+Read `.err` before re-running: empty or `timed out` means the shell call was cut
+short and took the subagent with it, so raise the timeout rather than shrinking
+the task; `stream truncated` means the answer overran, so retry with a tighter
+word cap; a provider or credential error means the parent's config didn't reach
+it. Retry once; then do the slice inline.
 
 ## Handoff
 
@@ -65,9 +90,14 @@ its launch directory as its workspace. Launch from the workspace, never from
 read-write, silently, with no failed write to show for it. Pass workspace paths
 in the task prompt for anything crossing the boundary.
 
-Each run leaves its session trail at `$agent_dir`, a directory minted per run,
-its layout an implementation detail. Replay a run with `eitri session show`
-pointed at the data directory that run used:
+Reports land at `$TMPDIR/sa/N.md`, outside the subagent's workspace: the answer
+is already in hand, and the file serves the later turn that needs one verbatim
+passage — `rg` it rather than re-reading a whole report.
+
+Each run also leaves its session trail at `$TMPDIR/sa/N`, whose layout is an
+implementation detail except for replay:
 ```sh
-EITRI_DIR="$agent_dir" eitri session show "$(jq -r .session "$TMPDIR/sa-1.json")"
+EITRI_DIR="$TMPDIR/sa/1" eitri session show "$(jq -r .session "$TMPDIR/sa/1.json")"
 ```
+Replay is a last resort: a lost deliverable is cheaper to re-earn with a
+tighter word cap than to excavate from a raw transcript.
