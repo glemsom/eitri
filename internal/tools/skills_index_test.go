@@ -57,25 +57,49 @@ func TestRenderIndexDeclaresEachRootOnce(t *testing.T) {
 }
 
 // TestRenderIndexCapsDescriptionWidth guards the width bound: a verbose
-// description is truncated to one capped line rather than bloating every turn.
+// description is truncated to one capped line rather than bloating every turn,
+// and the cut lands between words so the pointer never reads as corruption.
 func TestRenderIndexCapsDescriptionWidth(t *testing.T) {
 	c := &Catalog{
 		skills: map[string]*Skill{"verbose": {Dir: "/s/verbose", Description: strings.Repeat("word ", 100), ModelInvocable: true}},
 		order:  []string{"verbose"},
 	}
-	var line string
-	for _, l := range strings.Split(c.RenderIndex(), "\n") {
-		if strings.HasPrefix(l, "verbose: ") {
-			line = l
-		}
-	}
-	desc := strings.TrimPrefix(line, "verbose: ")
-	if !strings.HasSuffix(desc, "…") {
+	desc := renderedDescription(t, c, "verbose")
+	if !strings.HasSuffix(desc, "\u2026") {
 		t.Fatalf("over-wide description not truncated: %q", desc)
 	}
 	if got := len([]rune(desc)); got > maxDescriptionWidth {
 		t.Fatalf("capped description is %d runes, want <= %d", got, maxDescriptionWidth)
 	}
+	if head := strings.TrimSuffix(desc, "\u2026"); strings.HasSuffix(head, "wor") {
+		t.Fatalf("description truncated mid-word: %q", desc)
+	}
+}
+
+// TestRenderIndexKeepsDescriptionUnderCap guards the other side of the bound: a
+// description that fits arrives whole, so widening the cap buys the trigger
+// clause rather than only moving the ellipsis.
+func TestRenderIndexKeepsDescriptionUnderCap(t *testing.T) {
+	exact := strings.Repeat("a", maxDescriptionWidth)
+	c := &Catalog{
+		skills: map[string]*Skill{"exact": {Dir: "/s/exact", Description: exact, ModelInvocable: true}},
+		order:  []string{"exact"},
+	}
+	if got := renderedDescription(t, c, "exact"); got != exact {
+		t.Fatalf("description at the cap was altered: %d runes, want %d", len([]rune(got)), len([]rune(exact)))
+	}
+}
+
+// renderedDescription returns the catalog line's description for name.
+func renderedDescription(t *testing.T, c *Catalog, name string) string {
+	t.Helper()
+	for _, l := range strings.Split(c.RenderIndex(), "\n") {
+		if strings.HasPrefix(l, name+": ") {
+			return strings.TrimPrefix(l, name+": ")
+		}
+	}
+	t.Fatalf("no catalog line for %q", name)
+	return ""
 }
 
 // TestRenderIndexFlattensMultiLineDescription guards the one-line-per-skill

@@ -1,50 +1,38 @@
 ---
 name: web-access
-description: "Fetch and read web content — pages, API/JSON data, downloads. Use whenever the task needs something from the web: looking up docs, calling an API, checking a URL, or reading an article — even if the user doesn't mention 'the web', 'curl', or a browser."
+description: "Fetch, download, or read a URL: pages, docs, API/JSON, pagination — via curl, lynx, jq."
 model-invocable: true
 ---
 
 ## Web Access
 
-Two default fetch paths. Pick by content type, not by convenience — piping
-JSON through lynx mangles it, and dumping raw HTML on a JS-heavy page yields
-garbage.
+Pick the fetch path by content type: JSON through lynx is mangled, and raw HTML read as prose is noise.
 
 ### Web pages (human-readable HTML)
 
-Pipe through lynx to read the rendered text:
 ```sh
 curl -sS --fail -L --max-time 30 "$URL" | lynx -dump -nolist -stdin
 ```
 
 ### API / JSON data
 
-Fetch raw — never through lynx — and filter with jq only when you need to
-filter or pretty-print:
+Fetch raw, and filter with jq only for a field or a pretty print:
+
 ```sh
 curl -sS --fail -L --max-time 30 "$URL" | jq .
 ```
 
+### Downloads
+
+```sh
+curl -sS --fail -L --max-time 30 -o "$TMPDIR/name" "$URL" && file "$TMPDIR/name"
+```
+
 ## Gotchas
 
-- **Curl noise**: `-sS` keeps curl quiet on success — its progress meter
-  dumps ~half a KB to stderr on every fetch — while `-S` still prints the
-  error `--fail` relies on. Never bare `-s`: that would swallow the reason.
-- **JS-rendered page**: lynx shows an empty or skeleton page. Try the
-  underlying JSON/XHR endpoint (check for an API path or `?format=json`);
-  fall back to asking the user or a headless renderer if available.
-- **HTML arrives when JSON was expected**: the URL is probably a human page
-  (login wall, redirect) — switch paths, don't force jq.
-- **Non-2xx status**: `--fail` makes curl exit non-zero and print no body, so a
-  404 never feeds an error page into lynx/jq. But a pipe's status is the *last*
-  command's — `curl -f … | jq` still exits 0 on a 404 — so lead with
-  `set -o pipefail` when the fetch's outcome decides the pipeline. To read the
-  error, re-fetch *without* `--fail` — many APIs return the reason as JSON.
-- **Auth**: pass headers explicitly, `curl -sS -H "Authorization: Bearer $TOKEN"`
-  — never paste secrets into URLs.
-- **File download**: `curl -sS --fail -L --max-time 30 -o "$TMPDIR/name" "$URL"` —
-  no lynx, no jq. Verify with `file` before use.
-- **Paginated API**: loop with a page/offset variable, accumulate with
-  `jq -s`, stop on an empty result set.
-- **Slow endpoint**: `--max-time 30` is the ceiling; raise it only for
-  known-slow endpoints, never as a habit.
+- **`-sS`, never bare `-s`**: `-s` silences the progress meter and the error that `--fail` relies on; `-S` keeps the message.
+- **A pipe hides curl's status.** `curl -f … | jq` exits 0 on a 404, because a pipeline reports its last command. When the fetch's outcome decides the result, lead with `set -o pipefail`.
+- **Reading the failure**: `--fail` suppresses the body, so a 4xx looks empty. Many APIs return the reason as JSON — re-fetch without `--fail` to read it.
+- **HTML where JSON was expected**: a login wall or redirect put you on a human page. Switch paths instead of forcing jq.
+- **Empty or skeleton page**: lynx cannot run JavaScript. Look for an underlying JSON/XHR endpoint (`?format=json`, a path in the page source) before concluding the page has no content.
+- **Paginated API**: loop `per_page=100&page=N`, stop when a page returns `[]`, count with `jq -s length`; or read the `Link: rel="last"` header for the page total.

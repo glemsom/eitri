@@ -80,13 +80,13 @@ func TestEmbeddedSubagentsPackBodyContract(t *testing.T) {
 
 	// The recipe scaffolding ports verbatim from the prompt sections.
 	for _, want := range []string{
-		`agent_dir="$sa_dir/$task_number"`,
 		`parent_config="${EITRI_CONFIG:-${EITRI_DIR:-$HOME/.eitri}/config.json}"`,
-		`EITRI_DIR="$agent_dir" EITRI_CONFIG="$parent_config"`,
-		`wait "${pids[`,
+		`EITRI_DIR="$sa/$i" EITRI_CONFIG="$parent_config"`,
+		`</dev/null`,
+		`wait "${pids[$i]}"`,
 		"--format json",
 		"jq -r .answer",
-		`| tee "$sa_dir/$task_number.md"`,
+		`| tee "$sa/$i.md"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing verbatim recipe fragment %q", want)
@@ -102,17 +102,15 @@ func TestEmbeddedSubagentsPackBodyContract(t *testing.T) {
 		t.Fatal("body still parses prose stdout for settled markers; read the answer field from the --format json envelope instead")
 	}
 
-	// A subagent's stdout is compressed on the way back, so the body must send
-	// the deliverable through the answer field with a word budget, and must name
-	// the timeout and the per-failure response; each of these was a measured loss.
+	// A subagent's stdout is compressed on the way back, so the body must bound
+	// the answer and name the timeout and the per-failure response; each of these
+	// was a measured loss.
 	for _, want := range []string{
-		"under ~800 words",
-		"never a report rendered through stdout",
-		"timeout: 3600",
-		"means the shell call was cut",
-		"means the answer overran",
-		"Retry once",
-		"$TMPDIR/sa/N.md",
+		"empty context",
+		"under 400 words",
+		"raise the call's `timeout`",
+		"retry once, then do that slice inline",
+		"1 MiB",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing handoff rule fragment %q", want)
@@ -123,9 +121,9 @@ func TestEmbeddedSubagentsPackBodyContract(t *testing.T) {
 	// mode-agnostic invariant: wait and read within the same Bash call covers
 	// both a terminating sandbox and nothing terminating at all.
 	for _, want := range []string{
-		"same Bash tool call",
-		"terminates child processes when the tool call returns",
-		"merely keep running",
+		"same bash call",
+		"--die-with-parent",
+		"unsandboxed",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing mode-agnostic invariant fragment %q", want)

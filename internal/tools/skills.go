@@ -6,15 +6,17 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"unicode/utf8"
+	"unicode"
 
 	"github.com/glemsom/eitri/internal/skillindex"
 )
 
-// MaxSkillIndexTokens is the hard ceiling on the model-visible skill index's
-// per-turn token estimate (chars/4), measured against the reference catalogue in
-// the tests. The index rides in every request, so its format is guarded by a
-// budget rather than left to drift.
+// MaxSkillIndexTokens is the ceiling on the model-visible skill index's per-turn
+// token estimate (chars/4), measured against the reference catalogue in the
+// tests. The index rides in every request, so its format is guarded by a budget
+// rather than left to drift. The catalogue's own size — not this budget — is what
+// dominates a real installation: every installed skill adds a line, and each
+// line may run to maxDescriptionWidth.
 const MaxSkillIndexTokens = 450
 
 // SkillWarner receives lenient-discovery warnings so a caller can surface them (log/stderr) without failing the run.
@@ -83,10 +85,11 @@ func (c *Catalog) ModelVisibleSkills() []string {
 }
 
 // maxDescriptionWidth bounds the width (in runes) of the description shown in
-// the catalog, so one verbose skill cannot bloat every turn. Longer text is
-// truncated on a rune boundary with an ellipsis; the full description arrives
-// only on activation.
-const maxDescriptionWidth = 100
+// the catalog, so one verbose skill cannot bloat every turn. It fits a summary
+// plus the branches that should trigger the skill, which is the part a
+// truncation would otherwise cut. Longer text is truncated at the last word
+// boundary with an ellipsis; the full description arrives on activation.
+const maxDescriptionWidth = 256
 
 // RenderIndex renders the model-visible skill inventory as a compact plain-text
 // block. Each distinct skill root is a bracketed heading, `[<root>]`, and its
@@ -156,13 +159,19 @@ func catalogEntryText(sk *Skill) string {
 }
 
 // catalogDescription flattens a description to a single line and caps its width,
-// so one skill's prose cannot grow the per-turn catalog.
+// so one skill's prose cannot grow the per-turn catalog. The cut lands on a word
+// boundary: a pointer half-way through a word reads as corruption, and the lost
+// fragment is the trigger the reader came for.
 func catalogDescription(desc string) string {
 	desc = strings.Join(strings.Fields(desc), " ")
-	if utf8.RuneCountInString(desc) <= maxDescriptionWidth {
+	runes := []rune(desc)
+	if len(runes) <= maxDescriptionWidth {
 		return desc
 	}
-	return string([]rune(desc)[:maxDescriptionWidth-1]) + "\u2026"
+	head := strings.TrimRightFunc(string(runes[:maxDescriptionWidth-1]), func(r rune) bool {
+		return r == ' ' || unicode.IsPunct(r)
+	})
+	return head + "\u2026"
 }
 
 func (c *Catalog) Scope(name string) string {

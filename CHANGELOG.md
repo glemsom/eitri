@@ -29,13 +29,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   compaction can be re-activated, and a human `/skillname` counts as active. The
   activation mechanics moved out of the system prompt and into the `skill`
   tool's description.
-- The builtin `subagents` skill now names the failure modes that cost a real
-  session: the deliverable must be the subagent's answer under a word budget
-  (stdout is compressed on the way back, so a report printed there arrives as a
-  pointer), launches take a deterministic `$TMPDIR/sa/N` run directory with the
-  answer teed to `$TMPDIR/sa/N.md` for later `rg` instead of a random
-  `mktemp -d` name, open-ended launches pass `timeout: 3600`, and each failure
-  in `.err` carries its own response — retry once, then do the slice inline.
+- The skill index now shows up to 256 runes of a description instead of 100, and
+  truncates at the last word boundary rather than mid-word. Descriptions commonly
+  put their `Use when …` clause past the old cap, so the trigger was the part
+  that got cut; the cost is a longer always-resident index line per installed
+  skill.
+- The builtin skill packs' descriptions now lead with the words a request
+  actually uses — `fetch`, `download`, `offload`, `delegate`, `parallelize` —
+  since that leading clause is all the index can carry.
+- The builtin `subagents` skill now briefs the subagent as a fresh context —
+  absolute paths, the goal, the answer's shape — caps the answer's length, sends
+  bulky results to a workspace file, gives each task its own `EITRI_DIR` under
+  `$TMPDIR/sa/N`, redirects stdin from `/dev/null`, raises the launching bash
+  call's timeout, and on a failed envelope reads `.err`, retries once, then does
+  that slice inline.
+- The builtin `web-access` skill picks its path by content type (lynx for pages,
+  raw fetch for JSON, `-o` for downloads) and names the failures that actually
+  bite: bare `-s` hiding `--fail`'s error, a pipeline reporting the last
+  command's status, `--fail` swallowing a 4xx body, HTML where JSON was
+  expected, a JS-only page, and pagination.
 
 ### Removed
 
