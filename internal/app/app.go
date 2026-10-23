@@ -343,22 +343,56 @@ func Run(opts Options) error {
 
 // batchEnvelope is the single machine-parseable object --format json prints at
 // run end: the answer plus run metadata a script needs that exit codes alone
-// don't carry (turns, stopped).
+// don't carry (turns, stopped, and the run's own model, wall clock, tool call
+// count, and token usage).
 type batchEnvelope struct {
-	Answer  string `json:"answer"`
-	Session string `json:"session"`
-	Turns   int    `json:"turns"`
-	Stopped bool   `json:"stopped"`
+	Answer     string        `json:"answer"`
+	Session    string        `json:"session"`
+	Turns      int           `json:"turns"`
+	Stopped    bool          `json:"stopped"`
+	Model      string        `json:"model,omitempty"`
+	DurationMs int64         `json:"duration_ms"`
+	ToolCalls  int           `json:"tool_calls"`
+	Usage      *runUsageJSON `json:"usage,omitempty"`
+}
+
+// runUsageJSON is the envelope's token usage, matching `eitri session stats
+// --format json` field for field so both surfaces read alike.
+type runUsageJSON struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	CacheHitTokens   int `json:"cache_hit_tokens,omitempty"`
+	CacheMissTokens  int `json:"cache_miss_tokens,omitempty"`
+	CacheWriteTokens int `json:"cache_write_tokens,omitempty"`
+}
+
+// envelopeUsage projects the run's accumulated usage, nil when the provider
+// reported none so "no data" stays distinguishable from "zero tokens".
+func envelopeUsage(u *provider.Usage) *runUsageJSON {
+	if u == nil {
+		return nil
+	}
+	return &runUsageJSON{
+		PromptTokens:     u.PromptTokens,
+		CompletionTokens: u.CompletionTokens,
+		CacheHitTokens:   u.PromptCacheHitTokens,
+		CacheMissTokens:  u.PromptCacheMissTokens,
+		CacheWriteTokens: u.PromptCacheWriteTokens,
+	}
 }
 
 func writeBatchEnvelope(out io.Writer, sessionGUID string, res engine.Result) error {
-	// Marshal cannot fail for a struct of string/int/bool fields; only the write
-	// can.
+	// Envelope fields are plain strings, numbers and booleans, so Marshal cannot
+	// fail here; only the write can.
 	env, _ := json.Marshal(batchEnvelope{
-		Answer:  res.Answer,
-		Session: sessionGUID,
-		Turns:   res.Turns,
-		Stopped: res.Stopped,
+		Answer:     res.Answer,
+		Session:    sessionGUID,
+		Turns:      res.Turns,
+		Stopped:    res.Stopped,
+		Model:      res.Model,
+		DurationMs: res.DurationMs,
+		ToolCalls:  res.ToolCalls,
+		Usage:      envelopeUsage(res.Usage),
 	})
 	_, err := fmt.Fprintln(out, string(env))
 	return err

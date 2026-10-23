@@ -97,7 +97,13 @@ _Avoid_: worker, child agent, task.
 **Batch mode**: one `Run` from a prompt on the command line, then exit. Piped non-TTY stdin is appended after the prompt as fenced context — input, never instructions.
 _Avoid_: non-interactive, CLI mode.
 
-**Batch envelope**: the single machine-readable object a batch run emits at end: answer, session, turns, stopped.
+**Batch envelope**: the single machine-readable object a batch run emits at end: `answer`, `session`, `turns`, `stopped`, `model`, `duration_ms`, `tool_calls`, `usage`.
+`answer` is the run's final answer; `session` is the session GUID, usable with `eitri session show`;
+`turns` counts the turns the run performed; `stopped` marks a user stop rather than a normal completion;
+`model` is the run's own model, omitted when none was configured; `duration_ms` is the run's wall clock;
+`tool_calls` counts the tool calls the run dispatched and executed; `usage` carries the run's token totals,
+summed across every turn so they are billed input rather than the context size of any one turn, and is
+omitted entirely when the provider reported no usage.
 _Avoid_: result JSON, output object.
 
 **Debug mode**: records raw provider HTTP request and response bodies in the session.

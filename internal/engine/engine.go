@@ -9,6 +9,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/glemsom/eitri/internal/compress"
 	"github.com/glemsom/eitri/internal/provider"
@@ -144,7 +145,10 @@ type RunRequest struct {
 type Result struct {
 	Answer    string
 	Reasoning string
-	Usage     *provider.Usage
+
+	// Usage is the run's accumulated token usage, summed over every turn. Nil
+	// when the provider reported no usage for any turn.
+	Usage *provider.Usage
 
 	// Turns is how many provider request/response pairs the run performed, tool-calling turns included.
 	Turns int
@@ -152,6 +156,17 @@ type Result struct {
 	// Stopped reports whether the run ended in a user stop (ErrStopped) rather
 	// than a normal completion or a failure.
 	Stopped bool
+
+	// Model is the model that answered the run, empty when none was configured.
+	Model string
+
+	// DurationMs is the run's own wall clock in milliseconds, measured from the
+	// start of RunAgent to its final answer.
+	DurationMs int64
+
+	// ToolCalls is how many tool calls the run dispatched and executed; calls
+	// abandoned because the run stopped mid-dispatch are not counted.
+	ToolCalls int
 }
 
 // systemPromptHead returns the byte-stable embedded Eitri system prompt as the
@@ -293,8 +308,11 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		return Result{}, errors.New("declared tools require a tool executor")
 	}
 	runID := e.claimRunID()
+	start := time.Now()
 	tr := &runTranscript{writer: e.transcript}
 	defer func() {
+		final.Model = req.Model
+		final.DurationMs = time.Since(start).Milliseconds()
 		if e.runEnd != nil {
 			e.runEnd.LogRunEnd(runEndReason(runErr))
 		}
@@ -333,10 +351,14 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 		stopReasoning string
 	)
 	totalTurns := 0
+	totalToolCalls := 0
 	stopped := false
+	var runUsage *provider.Usage
 	defer func() {
 		final.Turns = totalTurns
+		final.ToolCalls = totalToolCalls
 		final.Stopped = stopped
+		final.Usage = runUsage
 	}()
 
 	enforceSchema := false
@@ -358,6 +380,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 	for turn := 0; ; turn++ {
 		totalTurns++
 		var content, reasoning strings.Builder
+		var turnUsage *provider.Usage
 		if ctx.Err() != nil {
 			stopped = true
 			final.Answer = stopContent
@@ -466,7 +489,7 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 				e.emit(StreamEvent{RunID: runID, Turn: turn, Kind: ReasoningStream, Delta: c.ReasoningContent})
 			}
 			if c.Usage != nil {
-				final.Usage = c.Usage
+				turnUsage = c.Usage
 				opts.lastUsage = c.Usage
 			}
 			done = c
@@ -475,12 +498,15 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 				break
 			}
 		}
-		// Report token usage once per turn (the final/last usage chunk), matching the
-		// message-layer transcript's last-wins record. Streaming gateways attach a cumulative
-		// usage object to every SSE chunk, so summing a UsageEvent per chunk would heavily
-		// over-count: telemetry must see one event per turn, not one per chunk.
-		if final.Usage != nil {
-			e.emit(UsageEvent{RunID: runID, Turn: turn, Usage: *final.Usage})
+		// Report the turn's own token usage once per turn (the final/last usage chunk),
+		// matching the message-layer transcript's last-wins record. Streaming gateways attach
+		// a cumulative usage object to every SSE chunk, so summing a UsageEvent per chunk
+		// would heavily over-count: telemetry must see one event per turn, not one per chunk.
+		// The event carries the turn alone — the live cache/context meter must not become a
+		// running sum of the run.
+		if turnUsage != nil {
+			e.emit(UsageEvent{RunID: runID, Turn: turn, Usage: *turnUsage})
+			runUsage = addUsage(runUsage, turnUsage)
 		}
 		e.emit(TurnEvent{RunID: runID, Turn: turn, EndReason: done.FinishReason})
 
@@ -508,7 +534,9 @@ func (e *Engine) RunAgent(ctx context.Context, req RunRequest, opts AgentOptions
 
 		assistant.ToolCalls = done.ToolCalls
 		messages = append(messages, assistant)
-		if e.dispatchToolCalls(ctx, opts, runID, turn, done.ToolCalls, &messages) {
+		dispatchStopped, ranCalls := e.dispatchToolCalls(ctx, opts, runID, turn, done.ToolCalls, &messages)
+		totalToolCalls += ranCalls
+		if dispatchStopped {
 			stopped = true
 			stopContent += content.String()
 			stopReasoning += reasoning.String()
@@ -532,14 +560,18 @@ const maxConcurrentToolCalls = 8
 // maxConcurrentToolCalls, then drains them on the calling goroutine so tool
 // events and provider messages are appended strictly in the model's call order:
 // the following provider request is byte-identical to the serial version's. It
-// reports whether a stop cut the turn short; already-dispatched calls are joined
-// before it returns, so no tool goroutine outlives the run.
-func (e *Engine) dispatchToolCalls(ctx context.Context, opts AgentOptions, runID, turn int, calls []provider.ToolCall, messages *[]provider.Message) (stopped bool) {
+// reports whether a stop cut the turn short and how many calls the executor
+// actually ran; already-dispatched calls are joined before it returns, so no
+// tool goroutine outlives the run.
+func (e *Engine) dispatchToolCalls(ctx context.Context, opts AgentOptions, runID, turn int, calls []provider.ToolCall, messages *[]provider.Message) (stopped bool, ran int) {
 	type outcome struct {
 		result ToolExecResult
 		ran    bool
 	}
-	outcomes := make([]outcome, len(calls))
+	// A nil slot means the call's goroutine never reached execution (the run
+	// stopped while it waited for a slot); a non-nil slot carries that call's
+	// result and whether the executor ran it.
+	outcomes := make([]*outcome, len(calls))
 	done := make([]chan struct{}, len(calls))
 	for i := range done {
 		done[i] = make(chan struct{})
@@ -566,7 +598,8 @@ func (e *Engine) dispatchToolCalls(ctx context.Context, opts AgentOptions, runID
 			if ctx.Err() != nil {
 				return
 			}
-			outcomes[i] = outcome{result: execToolCall(ctx, opts, tc), ran: true}
+			result, executed := execToolCall(ctx, opts, tc)
+			outcomes[i] = &outcome{result: result, ran: executed}
 		}(i, tc)
 	}
 	for i, tc := range calls {
@@ -576,7 +609,7 @@ func (e *Engine) dispatchToolCalls(ctx context.Context, opts AgentOptions, runID
 		}
 		e.emit(ToolCallEvent{RunID: runID, Turn: turn, ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments})
 		<-done[i]
-		if !outcomes[i].ran {
+		if outcomes[i] == nil {
 			stopped = true
 			break
 		}
@@ -601,7 +634,12 @@ func (e *Engine) dispatchToolCalls(ctx context.Context, opts AgentOptions, runID
 		})
 	}
 	wg.Wait()
-	return stopped
+	for _, o := range outcomes {
+		if o != nil && o.ran {
+			ran++
+		}
+	}
+	return stopped, ran
 }
 
 func declaredTool(tools []provider.Tool, name string) (provider.Tool, bool) {
@@ -613,22 +651,22 @@ func declaredTool(tools []provider.Tool, name string) (provider.Tool, bool) {
 	return provider.Tool{}, false
 }
 
-// execToolCall runs one tool call through the hardened dispatch path: it parses and validates the arguments against the tool's strict schema, then executes only when valid.
-func execToolCall(ctx context.Context, opts AgentOptions, tc provider.ToolCall) ToolExecResult {
+// execToolCall runs one tool call through the hardened dispatch path: it parses and validates the arguments against the tool's strict schema, then executes only when valid. The bool reports whether the executor was invoked; a call rejected by validation returns false.
+func execToolCall(ctx context.Context, opts AgentOptions, tc provider.ToolCall) (ToolExecResult, bool) {
 	tool, ok := declaredTool(opts.Tools, tc.Name)
 	if !ok {
-		return ToolExecResult{Text: fmt.Sprintf("error executing tool: undeclared tool %q", tc.Name)}
+		return ToolExecResult{Text: fmt.Sprintf("error executing tool: undeclared tool %q", tc.Name)}, false
 	}
 	var parsed map[string]any
 	if err := validateToolCallArgs(tool.Function.Parameters, tc.Arguments, &parsed); err != nil {
 		if errors.Is(err, errInvalidJSON) {
 			b, jerr := json.Marshal(map[string]string{"INVALID_JSON": tc.Arguments})
 			if jerr != nil {
-				return ToolExecResult{Text: `{"INVALID_JSON":"unserializable"}`}
+				return ToolExecResult{Text: `{"INVALID_JSON":"unserializable"}`}, false
 			}
-			return ToolExecResult{Text: string(b)}
+			return ToolExecResult{Text: string(b)}, false
 		}
-		return ToolExecResult{Text: "invalid tool arguments: " + err.Error()}
+		return ToolExecResult{Text: "invalid tool arguments: " + err.Error()}, false
 	}
 	result, err := opts.Executor.Execute(ctx, tc.Name, tc.Arguments)
 	if err != nil {
@@ -641,9 +679,9 @@ func execToolCall(ctx context.Context, opts AgentOptions, tc provider.ToolCall) 
 		if result.Text != "" {
 			msg += "\n" + result.Text
 		}
-		return ToolExecResult{Text: msg, Compressed: result.Compressed, Dropped: result.Dropped, BytesDropped: result.BytesDropped}
+		return ToolExecResult{Text: msg, Compressed: result.Compressed, Dropped: result.Dropped, BytesDropped: result.BytesDropped}, true
 	}
-	return result
+	return result, true
 }
 
 func (e *Engine) sessionHistory(sessionKey string) []provider.Message {

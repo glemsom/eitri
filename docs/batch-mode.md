@@ -56,8 +56,11 @@ The rules a pipeline can rely on:
 JSON object** at run end:
 
 ```json
-{"answer":"Hello world","session":"16e7bf03b41ff71636c0e08956c59673","turns":1,"stopped":false}
+{"answer":"Hi","session":"1f5d0ee45f3b89b33f6ac6fe8362dc78","turns":1,"stopped":false,"model":"deepseek-v4-flash","duration_ms":0,"tool_calls":0,"usage":{"prompt_tokens":100,"completion_tokens":2,"cache_hit_tokens":90,"cache_miss_tokens":10}}
 ```
+
+Fields appear in exactly that order; `model` and `usage` are omitted when they do
+not apply, so a caller must not assume a fixed key count.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
@@ -65,6 +68,15 @@ JSON object** at run end:
 | `session` | string | The run's session GUID — names the session directory under `sessions/` in the data directory, usable with `eitri session show <guid>`. A run that overrode `EITRI_DIR` needs the same override to replay: read against the default data directory it reports no records and still exits 0. |
 | `turns` | number | Provider request/response turns the run performed (tool-calling turns included). |
 | `stopped` | bool | Whether the run ended in a user stop rather than a normal completion. Batch binds no stop, so an envelope printed by a batch run always has `stopped: false`; an interrupted or failed run exits non-zero and prints no envelope. |
+| `model` | string | The model that answered the run. Omitted entirely when the run had no configured model, so its absence means "no model recorded", never an empty name. |
+| `duration_ms` | number | The run's own wall clock in milliseconds, measured from the start of the run to its final answer. Always present, and `0` is a truthful value for a run that finished inside a millisecond. |
+| `tool_calls` | number | Tool calls the run dispatched and executed, `0` for a run that called no tool. Always present, so `0` and "absent" never blur. |
+| `usage` | object | The run's token totals, omitted entirely when the provider reported no usage — its absence means "no data", never "zero tokens". Its fields are `prompt_tokens` and `completion_tokens`, always present, plus `cache_hit_tokens`, `cache_miss_tokens`, and `cache_write_tokens`, each omitted when zero. The names match `eitri session stats --format json` field for field. |
+
+The `usage` totals are accumulated across turns: every turn's reported usage is
+summed into one run total, so `prompt_tokens` is the billed input across the
+whole run, not the context size of any single turn. The TUI's live meter shows
+per-turn context and is not this running sum.
 
 Stdout carries nothing but this envelope — no banner, no progress, no thinking.
 Everything else routes to stderr:
@@ -97,7 +109,9 @@ printing the usage text to stderr and exiting 2 — so `$?` is one of `0`
 started: bad usage).
 
 For callers that need more than exit codes, a successful JSON envelope carries
-`turns` and `stopped`.
+`answer`, `session`, `turns`, `stopped`, `model` (omitted when the run had no
+configured model), `duration_ms`, `tool_calls`, and `usage` (omitted when the
+provider reported no usage, with token totals summed across every turn).
 
 ## Pipe examples
 

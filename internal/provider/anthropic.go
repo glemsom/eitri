@@ -488,10 +488,11 @@ func parseAnthropicEvent(data string, as *anthropicStream) (Chunk, error) {
 				miss = 0
 			}
 			chunk.Usage = &Usage{
-				PromptTokens:          as.usage.InputTokens,
-				CompletionTokens:      as.usage.OutputTokens,
-				PromptCacheHitTokens:  hit,
-				PromptCacheMissTokens: miss,
+				PromptTokens:           as.usage.InputTokens,
+				CompletionTokens:       as.usage.OutputTokens,
+				PromptCacheHitTokens:   hit,
+				PromptCacheMissTokens:  miss,
+				PromptCacheWriteTokens: as.usage.CacheCreationInputTokens,
 			}
 			chunk.Usage.cacheHitAssigned = true
 			chunk.Usage.cacheMissAssigned = true

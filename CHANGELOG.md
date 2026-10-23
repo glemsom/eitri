@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A model-facing `skill` tool: the agent activates a listed skill by name and
   receives its instructions and the absolute directory holding its bundled
   resources, instead of translating the request into a `bash cat` of `SKILL.md`.
+- The batch `--format json` envelope now reports what a run cost as well as what
+  it did: the run's `model`, its `duration_ms`, the `tool_calls` it dispatched
+  and executed, and a nested `usage` object with the prompt, completion, and
+  prompt-cache hit/miss/write token totals summed across the run's turns. Each
+  run's envelope is now a self-contained ledger entry, so a fan-out supervisor
+  can sum its children without reading N session transcripts.
 
 ### Changed
 

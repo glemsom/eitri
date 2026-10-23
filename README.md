@@ -89,9 +89,11 @@ eitri --version
 
 Batch mode accepts only piped, non-TTY stdin and appends it as fenced context.
 Input is limited to 1 MiB and refused, never truncated. `--format json` emits one
-object containing `answer`, `session`, `turns`, and `stopped`; `-v` sends reasoning
-to stderr. See [docs/batch-mode.md](docs/batch-mode.md) for the input, output, and
-exit-code contract.
+object carrying the answer, the session GUID, the run's turns, whether a user
+stop or a normal completion ended it, its model, wall clock, tool call count, and
+its token usage summed across turns; `-v` sends reasoning to stderr. See
+[docs/batch-mode.md](docs/batch-mode.md) for the input, output, and exit-code
+contract.
 
 Useful flags:
 

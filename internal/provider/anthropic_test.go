@@ -276,6 +276,48 @@ data: {"type":"message_stop"}
 	}
 }
 
+// TestAnthropicStreamMapsCacheCreationToPromptCacheWrite covers the dialect's
+// cache-write telemetry: Anthropic reports cache creation tokens on its own
+// wire key, and the adapter has to carry them into the shared Usage field so
+// the envelope and session stats see them.
+func TestAnthropicStreamMapsCacheCreationToPromptCacheWrite(t *testing.T) {
+	t.Parallel()
+	sse := `event: message_start
+data: {"type":"message_start","message":{"id":"msg_w","type":"message","role":"assistant","model":"qwen3.8-flash","content":[],"usage":{"input_tokens":40,"output_tokens":0,"cache_creation_input_tokens":12,"cache_read_input_tokens":30}}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":4}}
+
+event: message_stop
+data: {"type":"message_stop"}
+`
+	_, usage, err := consume(NewAnthropicDialect().Stream(strings.NewReader(sse)))
+	if err != nil {
+		t.Fatalf("consume() error = %v", err)
+	}
+	if usage == nil {
+		t.Fatal("usage nil, want telemetry")
+	}
+	if usage.PromptCacheWriteTokens != 12 {
+		t.Errorf("PromptCacheWriteTokens = %d, want 12 from cache_creation_input_tokens", usage.PromptCacheWriteTokens)
+	}
+	if usage.PromptCacheHitTokens != 30 || usage.PromptCacheMissTokens != 10 {
+		t.Errorf("cache hit/miss = %d/%d, want 30/10", usage.PromptCacheHitTokens, usage.PromptCacheMissTokens)
+	}
+	if usage.PromptTokens != 40 || usage.CompletionTokens != 4 {
+		t.Errorf("tokens = %d in/%d out, want 40/4", usage.PromptTokens, usage.CompletionTokens)
+	}
+}
+
 func TestAnthropicStreamTextOnlyEndTurn(t *testing.T) {
 	t.Parallel()
 	sse := `event: message_start

@@ -64,6 +64,24 @@ type UsageEvent struct {
 	Usage provider.Usage
 }
 
+// addUsage folds one turn's usage into the run total. The total stays nil until
+// a turn reports usage, so a run with no reported usage has no total at all
+// rather than a zero-valued one.
+func addUsage(total, turn *provider.Usage) *provider.Usage {
+	if turn == nil {
+		return total
+	}
+	if total == nil {
+		total = &provider.Usage{}
+	}
+	total.PromptTokens += turn.PromptTokens
+	total.CompletionTokens += turn.CompletionTokens
+	total.PromptCacheHitTokens += turn.PromptCacheHitTokens
+	total.PromptCacheMissTokens += turn.PromptCacheMissTokens
+	total.PromptCacheWriteTokens += turn.PromptCacheWriteTokens
+	return total
+}
+
 // CompactedEvent fires when context overflow recovery summarized or evicted older history before retrying the provider request.
 type CompactedEvent struct {
 	RunID int

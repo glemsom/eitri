@@ -79,3 +79,41 @@ func TestRunAgentMarksStoppedResult(t *testing.T) {
 		t.Fatal("Stopped = false, want true for a stopped run")
 	}
 }
+
+// TestRunAgentCountsOnlyExecutedToolCalls pins the meaning of Result.ToolCalls:
+// work the executor performed. A call rejected during validation never reaches
+// the executor, so the undeclared call in this turn must not be counted.
+func TestRunAgentCountsOnlyExecutedToolCalls(t *testing.T) {
+	t.Parallel()
+	turn := 0
+	scripted := provider.NewScripted(func(_ context.Context, _ provider.Request) (provider.Stream, error) {
+		turn++
+		if turn == 1 {
+			return provider.StreamFunc(
+				provider.Chunk{FinishReason: "tool_calls", Done: true, ToolCalls: []provider.ToolCall{
+					{ID: "call_ghost", Type: "function", Name: "undeclared", Arguments: `{}`},
+					{ID: "call_bash", Type: "function", Name: "bash", Arguments: `{"command":"ls"}`},
+				}},
+			), nil
+		}
+		return provider.StreamFunc(
+			provider.Chunk{Content: "final answer", FinishReason: "stop", Done: true},
+		), nil
+	})
+
+	e := New(scripted, &mockTranscript{})
+	res, err := e.RunAgent(context.Background(), RunRequest{Model: "deepseek-v4-flash", Prompt: "go"}, AgentOptions{
+		Tools:    strictToolDefs(),
+		Executor: &mockToolRecorder{},
+		MaxTurns: 5,
+	})
+	if err != nil {
+		t.Fatalf("RunAgent() error = %v, want nil", err)
+	}
+	if res.ToolCalls != 1 {
+		t.Fatalf("ToolCalls = %d, want 1 (the executed bash call, not the rejected undeclared one)", res.ToolCalls)
+	}
+	if res.Stopped {
+		t.Fatal("Stopped = true, want false: a rejected call is not a stop")
+	}
+}

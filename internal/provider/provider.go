@@ -243,11 +243,12 @@ type Usage struct {
 // UnmarshalJSON decodes a Usage blob from either cache shape the OpenCode/DeepSeek gateway emits: the DeepSeek prompt_cache_* keys, or the OpenAI prompt_tokens_details.cached_tokens shape. It records which cache key was present so finalize can tell an absent cache shape from an explicit hit=miss=0 one.
 func (u *Usage) UnmarshalJSON(data []byte) error {
 	type usageWire struct {
-		PromptTokens          int `json:"prompt_tokens"`
-		CompletionTokens      int `json:"completion_tokens"`
-		PromptCacheHitTokens  int `json:"prompt_cache_hit_tokens"`
-		PromptCacheMissTokens int `json:"prompt_cache_miss_tokens"`
-		PromptTokensDetails   *struct {
+		PromptTokens           int `json:"prompt_tokens"`
+		CompletionTokens       int `json:"completion_tokens"`
+		PromptCacheHitTokens   int `json:"prompt_cache_hit_tokens"`
+		PromptCacheMissTokens  int `json:"prompt_cache_miss_tokens"`
+		PromptCacheWriteTokens int `json:"prompt_cache_write_tokens"`
+		PromptTokensDetails    *struct {
 			CachedTokens int `json:"cached_tokens"`
 		} `json:"prompt_tokens_details"`
 	}
@@ -263,6 +264,7 @@ func (u *Usage) UnmarshalJSON(data []byte) error {
 	u.CompletionTokens = w.CompletionTokens
 	u.PromptCacheHitTokens = w.PromptCacheHitTokens
 	u.PromptCacheMissTokens = w.PromptCacheMissTokens
+	u.PromptCacheWriteTokens = w.PromptCacheWriteTokens
 	_, u.cacheHitAssigned = raw["prompt_cache_hit_tokens"]
 	_, u.cacheMissAssigned = raw["prompt_cache_miss_tokens"]
 	if w.PromptTokensDetails != nil && w.PromptTokensDetails.CachedTokens > 0 {

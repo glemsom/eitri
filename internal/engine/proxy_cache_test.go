@@ -83,8 +83,12 @@ func TestRunAgentKeepsByteIdenticalHeadThroughProxy(t *testing.T) {
 	if res.Usage == nil {
 		t.Fatal("recorded proxy usage not propagated to Result")
 	}
-	if res.Usage.PromptCacheHitTokens != 112 {
-		t.Errorf("proxy turn-2 cache hit = %d, want 112 (recorded fixture)", res.Usage.PromptCacheHitTokens)
+	// Run totals: the fixtures report 120/18 (hit 110, miss 10) then 122/8 (hit 112, miss 10).
+	if res.Usage.PromptTokens != 242 || res.Usage.CompletionTokens != 26 {
+		t.Errorf("proxy run tokens = %d in/%d out, want 242 in/26 out (recorded fixtures summed)", res.Usage.PromptTokens, res.Usage.CompletionTokens)
+	}
+	if res.Usage.PromptCacheHitTokens != 222 || res.Usage.PromptCacheMissTokens != 20 {
+		t.Errorf("proxy run cache = %d hit/%d miss, want 222 hit/20 miss (recorded fixtures summed)", res.Usage.PromptCacheHitTokens, res.Usage.PromptCacheMissTokens)
 	}
 
 	if len(h.bodies) != 2 {

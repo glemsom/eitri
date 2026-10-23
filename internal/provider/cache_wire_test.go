@@ -369,3 +369,17 @@ func TestUsageFinalizeReportsNonZeroCacheHit(t *testing.T) {
 		})
 	}
 }
+
+// A persisted response's usage blob is decoded back on read (session stats sums
+// it), so every cache field the wire carried has to survive the round trip.
+func TestUsageUnmarshalKeepsCacheWriteTokens(t *testing.T) {
+	t.Parallel()
+	var usage Usage
+	blob := `{"prompt_tokens":100,"completion_tokens":5,"prompt_cache_hit_tokens":80,"prompt_cache_miss_tokens":20,"prompt_cache_write_tokens":15}`
+	if err := json.Unmarshal([]byte(blob), &usage); err != nil {
+		t.Fatalf("unmarshal usage: %v", err)
+	}
+	if usage.PromptCacheWriteTokens != 15 {
+		t.Fatalf("PromptCacheWriteTokens = %d, want 15", usage.PromptCacheWriteTokens)
+	}
+}

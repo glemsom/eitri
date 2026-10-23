@@ -104,10 +104,13 @@ func TestRunAgentPropagatesPromptCacheUsage(t *testing.T) {
 		t.Fatalf("RunAgent error = %v, want nil", err)
 	}
 	if res.Usage == nil {
-		t.Fatal("final usage not propagated to Result")
+		t.Fatal("run usage not propagated to Result")
 	}
-	if res.Usage.PromptCacheHitTokens != 100 || res.Usage.PromptCacheMissTokens != 10 {
-		t.Fatalf("final cache usage = hit=%d miss=%d, want hit=100 miss=10", res.Usage.PromptCacheHitTokens, res.Usage.PromptCacheMissTokens)
+	if res.Usage.PromptTokens != 210 || res.Usage.CompletionTokens != 5 {
+		t.Fatalf("run tokens = %d in/%d out, want 210 in/5 out", res.Usage.PromptTokens, res.Usage.CompletionTokens)
+	}
+	if res.Usage.PromptCacheHitTokens != 190 || res.Usage.PromptCacheMissTokens != 20 {
+		t.Fatalf("run cache usage = hit=%d miss=%d, want hit=190 miss=20", res.Usage.PromptCacheHitTokens, res.Usage.PromptCacheMissTokens)
 	}
 }
 
