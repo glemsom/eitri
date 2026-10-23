@@ -407,3 +407,40 @@ func TestResolveCompactionReturnsExplicitModes(t *testing.T) {
 		t.Fatalf("ResolveCompaction(enabled) = (%v, %v), want supported config", enabled, err)
 	}
 }
+
+func TestCompactionGateReadsLastTurnUsageNotRunTotal(t *testing.T) {
+	t.Parallel()
+	e := New(provider.NewScripted(func(_ context.Context, _ provider.Request) (provider.Stream, error) {
+		return provider.StreamFunc(provider.Chunk{Done: true}), nil
+	}), &mockTranscript{})
+
+	messages := []provider.Message{
+		{Role: provider.RoleSystem, Content: SystemPromptContent()},
+		{Role: provider.RoleUser, Content: "first prompt"},
+		{Role: provider.RoleAssistant, Content: "first answer"},
+		{Role: provider.RoleUser, Content: "second prompt"},
+		{Role: provider.RoleAssistant, Content: "second answer"},
+		{Role: provider.RoleUser, Content: "third prompt"},
+	}
+
+	// The threshold sits between one turn's prompt tokens and two turns' sum:
+	// 0.9 × 1000 = 900, so ~600 misses and ~1200 trips.
+	cfg := compactCfg()
+	cfg.ContextWindow = 1000
+	cfg.Fraction = 0.9
+	cfg.KeepRecentTokens = 4
+
+	if _, ok := e.maybeCompact(context.Background(), RunRequest{}, AgentOptions{
+		Compaction: cfg,
+		lastUsage:  &provider.Usage{PromptTokens: 600},
+	}, messages, false, 2); ok {
+		t.Fatal("compaction fired on a run whose last turn read 600 prompt tokens; the gate must read the last turn, not the run's accumulated total")
+	}
+
+	if _, ok := e.maybeCompact(context.Background(), RunRequest{}, AgentOptions{
+		Compaction: cfg,
+		lastUsage:  &provider.Usage{PromptTokens: 1200},
+	}, messages, false, 2); !ok {
+		t.Fatal("compaction did not fire at 1200 prompt tokens, so the threshold does not sit between one turn and two turns")
+	}
+}

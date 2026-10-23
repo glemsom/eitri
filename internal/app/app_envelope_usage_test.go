@@ -151,3 +151,29 @@ func TestRunBatchJSONEnvelopeUsageMatchesSessionStats(t *testing.T) {
 		}
 	}
 }
+
+func TestRunBatchJSONEnvelopeOmitsZeroCacheSubFields(t *testing.T) {
+	dataDir, cfgPath := writeBatchConfig(t, "grok-2")
+	line := strings.TrimSpace(runBatchJSON(t, Options{
+		DataDir:    dataDir,
+		ConfigPath: cfgPath,
+		Provider: provider.NewScripted(func(context.Context, provider.Request) (provider.Stream, error) {
+			return provider.StreamFunc(
+				provider.Chunk{Content: "ok"},
+				provider.Chunk{FinishReason: "stop", Done: true, Usage: &provider.Usage{
+					PromptTokens: 1000, CompletionTokens: 20,
+					PromptCacheHitTokens: 0, PromptCacheMissTokens: 1000,
+				}},
+			), nil
+		}),
+	}))
+
+	raw, ok := envelopeRawValue(t, line, "usage")
+	if !ok {
+		t.Fatalf("envelope %q has no usage object, want the run's token totals", line)
+	}
+	want := `{"prompt_tokens":1000,"completion_tokens":20,"cache_miss_tokens":1000}`
+	if raw != want {
+		t.Fatalf("envelope usage = %s, want %s (zero cache hit and cache write omitted)", raw, want)
+	}
+}

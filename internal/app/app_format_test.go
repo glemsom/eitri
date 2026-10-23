@@ -130,8 +130,8 @@ func TestRunBatchTextFormatByteIdentical(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run(batch --format text) error = %v, want nil", err)
 	}
-	if strings.TrimSpace(out.String()) != "Hello world" {
-		t.Fatalf("text stdout = %q, want the final answer only", out.String())
+	if out.String() != "Hello world\n" {
+		t.Fatalf("text stdout = %q, want %q: the answer and nothing else", out.String(), "Hello world\n")
 	}
 }
 
