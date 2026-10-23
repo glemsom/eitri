@@ -181,7 +181,7 @@ func systemPromptHead() []provider.Message {
 // system prompt), so they are generated at request-build time from the live
 // workspace and registry rather than baked into prompt.md.
 func workspaceDirective(workspace string, writable []string) string {
-	d := "## Working directory\nYou are operating in the workspace `" + workspace + "`. Resolve all relative paths against it."
+	d := "## Working directory\nYou are operating in the workspace `" + workspace + "`. Every bash call is a fresh shell already started there, so relative paths resolve against it without a `cd`."
 	if len(writable) == 0 {
 		return d
 	}

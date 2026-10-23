@@ -50,6 +50,29 @@ func TestWorkspaceDirectiveOmitsWriteSectionWhenUnconfined(t *testing.T) {
 	}
 }
 
+// TestWorkspaceDirectiveStatesWhereTheShellStarts guards the cwd statement. This
+// directive is the only model-facing text placing a bash call's shell, and the
+// tool schema names no working directory, so without it the model hedges with
+// `cd <workspace> && …` on every command — a redundant absolute path replayed
+// for the rest of the session. The sentence must state shell state (where it
+// starts), not merely how relative paths resolve, and must survive both the
+// confined and unconfined forms.
+func TestWorkspaceDirectiveStatesWhereTheShellStarts(t *testing.T) {
+	t.Parallel()
+	for name, writable := range map[string][]string{
+		"confined":   {"/srv/work", "/srv/work/tmp"},
+		"unconfined": nil,
+	} {
+		got := workspaceDirective("/srv/work", writable)
+		folded := strings.ToLower(got)
+		for _, want := range []string{"fresh shell", "started there", "cd"} {
+			if !strings.Contains(folded, want) {
+				t.Errorf("%s directive must state that every bash call is a fresh shell already started in the workspace, and that no cd is needed; missing %q: %q", name, want, got)
+			}
+		}
+	}
+}
+
 // TestRunAgentOrdersPerRunDirectiveAfterTheStaticSystemLayer guards the cache
 // layout: a provider cache write covers everything up to its breakpoint, so the
 // per-run directive — whose text carries the session temp path and the resolved

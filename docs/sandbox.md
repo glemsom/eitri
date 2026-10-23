@@ -74,7 +74,7 @@ working-directory statement:
 
 ```text
 ## Working directory
-You are operating in the workspace `/srv/work`. Resolve all relative paths against it.
+You are operating in the workspace `/srv/work`. Every bash call is a fresh shell already started there, so relative paths resolve against it without a `cd`.
 
 ## Write permissions
 Writes are confined to `/srv/work`, `/home/you/.eitri/sessions/<guid>/tmp`, `/home/you/.kube`. Every other path is read-only.

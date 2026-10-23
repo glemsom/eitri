@@ -65,6 +65,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The run's working-directory directive now says that every `bash` call is a
+  fresh shell already started in the workspace, so the model stops prefixing
+  commands with a redundant `cd <workspace> && …`. Nothing else in the request
+  places the shell — the `bash` schema names no working directory — so the old
+  sentence ("resolve relative paths against it") left the model hedging, and the
+  spent absolute path was replayed in the transcript for the rest of the session.
 - Installing the latest stable release with `install.sh` no longer fails with
   `latest stable release has no versioned Linux amd64 archive`; the installer
   now reads the asset's `browser_download_url`, whose surrounding GitHub JSON
