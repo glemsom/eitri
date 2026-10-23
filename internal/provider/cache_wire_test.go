@@ -14,8 +14,8 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// wireCapture records the last request body a provider client put on the wire,
-// so a test can assert what the cache capability declaration actually emitted.
+// wireCapture records the last request body put on the wire, so a test can see
+// what the cache capability declaration actually emitted.
 type wireCapture struct {
 	mu     sync.Mutex
 	path   string
@@ -36,7 +36,6 @@ func (c *wireCapture) last() (path, body string) {
 	return c.path, c.body
 }
 
-// chatSSEServer answers every turn with a streamed Chat Completions reply and records its request body.
 func chatSSEServer(t *testing.T, capture *wireCapture) *httptest.Server {
 	t.Helper()
 	fixture, err := os.ReadFile("testdata/usage-cache.sse")
@@ -180,8 +179,8 @@ func TestCustomOpenAIAnthropicWireStampsCacheBreakpoints(t *testing.T) {
 	}
 }
 
-// anthropicBodyBlocks lists every cacheable Anthropic block — system blocks,
-// message content blocks, and tool definitions — with a readable name.
+// anthropicBodyBlocks names every cacheable Anthropic block: system blocks,
+// message content blocks, and tool definitions.
 type anthropicBlock struct {
 	name  string
 	value map[string]any
@@ -345,7 +344,7 @@ func TestCopilotEmitsNoCacheMarkersOnEitherWire(t *testing.T) {
 }
 
 // A follow-up turn's usage blob is what proves a cache hit, whether or not Eitri
-// emitted a marker: both gateway shapes must surface a non-zero hit count.
+// emitted a marker.
 func TestUsageFinalizeReportsNonZeroCacheHit(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {

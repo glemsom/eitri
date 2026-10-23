@@ -51,8 +51,6 @@ func TestRunAgentReportsTurnCount(t *testing.T) {
 	}
 }
 
-// TestRunAgentMarksStoppedResult verifies a canceled run reports Stopped so the
-// envelope can carry it to a caller.
 func TestRunAgentMarksStoppedResult(t *testing.T) {
 	t.Parallel()
 	e := New(provider.NewScripted(func(_ context.Context, _ provider.Request) (provider.Stream, error) {

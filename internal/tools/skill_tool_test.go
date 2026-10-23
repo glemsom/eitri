@@ -9,7 +9,6 @@ import (
 	"github.com/glemsom/eitri/internal/skillindex"
 )
 
-// discoverOne builds a catalog with a single model-invocable skill named name.
 func discoverOne(t *testing.T, name, body string, files map[string]string) *Catalog {
 	t.Helper()
 	user := t.TempDir()

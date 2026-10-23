@@ -17,7 +17,6 @@ func arrowHistoryModel(t *testing.T) Model {
 	return m
 }
 
-// pushHistory submits the given drafts, populating the model's record ring.
 func pushHistory(t *testing.T, m Model, prompts ...string) Model {
 	t.Helper()
 	for _, p := range prompts {
@@ -49,7 +48,7 @@ func TestArrowRecall_upDownCycle(t *testing.T) {
 
 	m = keypress(t, m, "up")
 	m = keypress(t, m, "up")
-	m = keypress(t, m, "up") // a again: recalling the oldest stays put
+	m = keypress(t, m, "up")
 	if v := m.composer.Value(); v != "a" {
 		t.Fatalf("further up beyond oldest should keep oldest, got %q", v)
 	}
@@ -64,7 +63,7 @@ func TestArrowRecall_downFromNeutralDoesNothing(t *testing.T) {
 	m := arrowHistoryModel(t)
 	m = pushHistory(t, m, "saved")
 	m = typeText(t, m, "draft")
-	m = keypress(t, m, "down") // not recalling: down must not clobber the draft
+	m = keypress(t, m, "down")
 	if v := m.composer.Value(); v != "draft" {
 		t.Fatalf("down outside recall must leave the draft alone, got %q", v)
 	}
@@ -76,11 +75,11 @@ func TestArrowRecall_downRestoresDraft(t *testing.T) {
 	m = pushHistory(t, m, "saved")
 	m = typeText(t, m, "draft")
 
-	m = keypress(t, m, "up") // recall "saved" into the draft
+	m = keypress(t, m, "up")
 	if v := m.composer.Value(); v != "saved" {
 		t.Fatalf("up should overwrite the draft with the recalled prompt, got %q", v)
 	}
-	m = keypress(t, m, "down") // down past the newest returns to the draft under recall
+	m = keypress(t, m, "down")
 	if v := m.composer.Value(); v != "draft" {
 		t.Fatalf("down should restore the pre-recall draft, got %q", v)
 	}
@@ -152,7 +151,6 @@ func TestArrowRecall_slashLineRecalledInert(t *testing.T) {
 	if v := m.composer.Value(); v != "/review" {
 		t.Fatalf("up should recall the recorded /skill line, got %q", v)
 	}
-	// inert: must not route until Enter
 	if m.skillPending {
 		t.Fatalf("recalled /skill line must be inert until Enter")
 	}
@@ -211,7 +209,7 @@ func TestArrowRecall_editingEndsRecall(t *testing.T) {
 	if v := m.composer.Value(); v != "newer" {
 		t.Fatalf("up should recall newest, got %q", v)
 	}
-	m = typeText(t, m, "x") // editing cancels recall
+	m = typeText(t, m, "x")
 	m = keypress(t, m, "up")
 	if v := m.composer.Value(); v != "newer" {
 		t.Fatalf("editing then up should recall newest again, got %q", v)
@@ -227,7 +225,6 @@ func TestArrowRecall_escapeEndsRecall(t *testing.T) {
 		t.Fatalf("up should recall newest, got %q", v)
 	}
 	m = keypress(t, m, "esc")
-	// esc ends the recall cursor without touching the recalled draft.
 	if v := m.composer.Value(); v != "newer" {
 		t.Fatalf("esc should leave the recalled draft intact, got %q", v)
 	}
@@ -241,7 +238,7 @@ func TestArrowRecall_notRecordedItself(t *testing.T) {
 	t.Parallel()
 	m := arrowHistoryModel(t)
 	m = pushHistory(t, m, "prior")
-	m = keypress(t, m, "up") // recall "prior" but do not submit
+	m = keypress(t, m, "up")
 	if v := m.composer.Value(); v != "prior" {
 		t.Fatalf("up should recall, got %q", v)
 	}

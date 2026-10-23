@@ -10,10 +10,8 @@ import (
 
 var bytesMarkerRe = regexp.MustCompile(`(?:\+[0-9]+ more, )?\+[0-9]+ bytes truncated\n$`)
 
-// bytesCountRe captures the byte count of a plain tail byte-cap marker.
 var bytesCountRe = regexp.MustCompile(`\+([0-9]+) bytes truncated\n$`)
 
-// mergedBytesCountRe captures the two counts of a merged "+N more, +M bytes truncated" tail marker.
 var mergedBytesCountRe = regexp.MustCompile(`\+([0-9]+) more, \+([0-9]+) bytes truncated\n$`)
 
 func TestCapBytesUnderBudgetUnchanged(t *testing.T) {

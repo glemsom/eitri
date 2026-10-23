@@ -13,8 +13,6 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// TestRunBatchJSONEnvelope verifies --format json prints exactly one JSON object
-// {answer, session, turns, stopped} and nothing else to stdout.
 func TestRunBatchJSONEnvelope(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -56,7 +54,6 @@ func TestRunBatchJSONEnvelope(t *testing.T) {
 	if env.Stopped {
 		t.Fatal("envelope stopped = true, want false for a normal batch run")
 	}
-	// stdout carries nothing but the single envelope: exactly one JSON value.
 	if !json.Valid([]byte(out.String())) {
 		t.Fatalf("stdout %q is not valid JSON", out.String())
 	}
@@ -65,8 +62,6 @@ func TestRunBatchJSONEnvelope(t *testing.T) {
 	}
 }
 
-// TestRunBatchJSONVerboseStreamsThinkingToStderr verifies -v thinking goes to
-// stderr under --format json, keeping stdout parseable as the single envelope.
 func TestRunBatchJSONVerboseStreamsThinkingToStderr(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -95,8 +90,6 @@ func TestRunBatchJSONVerboseStreamsThinkingToStderr(t *testing.T) {
 	}
 }
 
-// TestRunBatchTextVerboseStreamsThinkingToStderr verifies -v thinking moves to
-// stderr under the default text format too, so stdout stays a clean answer.
 func TestRunBatchTextVerboseStreamsThinkingToStderr(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -124,8 +117,6 @@ func TestRunBatchTextVerboseStreamsThinkingToStderr(t *testing.T) {
 	}
 }
 
-// TestRunBatchTextFormatByteIdentical verifies --format text output is
-// byte-identical to the pre-feature behavior: the streamed final answer only.
 func TestRunBatchTextFormatByteIdentical(t *testing.T) {
 	var out bytes.Buffer
 	err := Run(Options{
@@ -144,7 +135,6 @@ func TestRunBatchTextFormatByteIdentical(t *testing.T) {
 	}
 }
 
-// TestValidateFormatRejectsUnknown verifies format validation dies before boot.
 func TestValidateFormatRejectsUnknown(t *testing.T) {
 	err := ValidateFormat("xml")
 	if err == nil {
@@ -161,8 +151,6 @@ func TestValidateFormatRejectsUnknown(t *testing.T) {
 	}
 }
 
-// TestRunBatchUnknownFormatFailsBeforeBoot verifies Run refuses an unknown
-// format before any data directory is created.
 func TestRunBatchUnknownFormatFailsBeforeBoot(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), ".eitri")
 	var out bytes.Buffer
@@ -187,9 +175,6 @@ func TestRunBatchUnknownFormatFailsBeforeBoot(t *testing.T) {
 	}
 }
 
-// TestRunBatchTextNoticeForSkippedSkills verifies that a --format text batch
-// run surfaces a lenient skill-discovery drop as an explicit notice on stderr
-// (naming the skipped pack) while stdout stays a clean, byte-stable answer.
 func TestRunBatchTextNoticeForSkippedSkills(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -222,8 +207,6 @@ func TestRunBatchTextNoticeForSkippedSkills(t *testing.T) {
 	}
 }
 
-// TestRunBatchJSONNoSkipNoticeOnStdout verifies under --format json a skipped
-// skill is surfaced only on stderr and never pollutes the stdout envelope.
 func TestRunBatchJSONNoSkipNoticeOnStdout(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -254,11 +237,8 @@ func TestRunBatchJSONNoSkipNoticeOnStdout(t *testing.T) {
 	}
 }
 
-// TestRunBatchJSONEnvelopeStoppedOnInterrupt verifies the first SIGINT/SIGTERM
-// returns ErrBatchInterrupted, prints no envelope, and leaves stdout empty so
-// a script cannot misread an interrupted run as a successful answer. The
-// already-cancelled context stands in for the first signal without signalling
-// the test process.
+// TestRunBatchJSONEnvelopeStoppedOnInterrupt stands in an already-cancelled
+// context for the first signal instead of signalling the test process.
 func TestRunBatchJSONEnvelopeStoppedOnInterrupt(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -283,9 +263,6 @@ func TestRunBatchJSONEnvelopeStoppedOnInterrupt(t *testing.T) {
 	}
 }
 
-// TestRunBatchTextOnInterruptEmitsNothing verifies an interrupted text run
-// returns ErrBatchInterrupted and prints nothing to stdout so a shell script
-// cannot misread it as a successful empty answer.
 func TestRunBatchTextOnInterruptEmitsNothing(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

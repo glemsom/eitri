@@ -61,7 +61,6 @@ func TestYoloBashDescriptionOmitsSandboxClaim(t *testing.T) {
 	}
 }
 
-// fakeBackend stubs the sandbox boundary so a bash tool run is testable without bwrap.
 type fakeBackend struct {
 	out *Output
 	err error

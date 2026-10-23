@@ -16,8 +16,8 @@ type expansionKey struct {
 // disagree with how the block rendered.
 type expansionConfig struct {
 	mode         viewMode
-	cotExpanded  bool // reasoning blocks render expanded by default
-	toolExpanded bool // tool-result entries render expanded by default
+	cotExpanded  bool
+	toolExpanded bool
 }
 
 // reasoningWholeID is the ExpansionState id a turn's whole-block reasoning
@@ -90,7 +90,6 @@ func (e *ExpansionState) clearForcesOf(forceValue bool) {
 	}
 }
 
-// set pins a single block's expansion decision with an explicit force.
 func (e *ExpansionState) set(kind blockKind, id int, expanded bool) {
 	if e.forces == nil {
 		e.forces = map[expansionKey]bool{}
@@ -98,7 +97,6 @@ func (e *ExpansionState) set(kind blockKind, id int, expanded bool) {
 	e.forces[expansionKey{kind, id}] = expanded
 }
 
-// clear drops one block's force so it returns to the mode/default decision.
 func (e *ExpansionState) clear(kind blockKind, id int) {
 	delete(e.forces, expansionKey{kind, id})
 }

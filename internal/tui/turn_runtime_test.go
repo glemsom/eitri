@@ -6,8 +6,6 @@ import (
 	"testing"
 )
 
-// TurnRuntime.OnTurnStart records the engine-reported run ID, and Accept only
-// admits events matching it.
 func TestTurnRuntimeRecordsRunIDAndAcceptsMatching(t *testing.T) {
 	rt := NewTurnRuntime(NewTurnSession(stubTurn("ok", nil)), nil)
 	rt.OnTurnStart(7)
@@ -16,7 +14,6 @@ func TestTurnRuntimeRecordsRunIDAndAcceptsMatching(t *testing.T) {
 	}
 }
 
-// TurnRuntime.Accept rejects events whose run ID does not match the current run.
 func TestTurnRuntimeIgnoresZeroTurnStartRunID(t *testing.T) {
 	rt := NewTurnRuntime(NewTurnSession(stubTurn("ok", nil)), nil)
 	rt.OnTurnStart(7)
@@ -68,7 +65,6 @@ func TestTurnRuntimeBeginDrainsEventFeed(t *testing.T) {
 	}
 }
 
-// Observe grows the streaming assistant message by one answer delta.
 func TestTurnRuntimeObserveGrowsStreamingMessage(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	rt := NewTurnRuntime(s, nil)
@@ -84,7 +80,6 @@ func TestTurnRuntimeObserveGrowsStreamingMessage(t *testing.T) {
 	}
 }
 
-// Observe updates the live reasoning snapshot on the streaming message.
 func TestTurnRuntimeObserveUpdatesLiveReasoning(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	rt := NewTurnRuntime(s, nil)
@@ -115,8 +110,6 @@ func TestTurnRuntimeObserveDropsStreamWhenIdle(t *testing.T) {
 	}
 }
 
-// Observe preserves stream/tool arrival order and exposes the resulting timeline
-// through TurnRuntime rather than requiring callers to coordinate projection.
 func TestTurnRuntimeObservePreservesMixedTimelineOrder(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	rt := NewTurnRuntime(s, nil)
@@ -140,7 +133,6 @@ func TestTurnRuntimeObservePreservesMixedTimelineOrder(t *testing.T) {
 	}
 }
 
-// Observe folds a tool observation into the transcript's tool log.
 func TestTurnRuntimeObserveFoldsToolIntoLog(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	rt := NewTurnRuntime(s, nil)
@@ -172,7 +164,6 @@ func TestTurnRuntimeObserveArmsPulseOnToolStartWhenThinkingOff(t *testing.T) {
 	}
 }
 
-// Observe does not arm the busy pulse on a tool start when thinking is on.
 func TestTurnRuntimeObserveSkipsPulseOnToolStartWhenThinkingOn(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	s.SetThinkingEnabled(true)
@@ -188,15 +179,11 @@ func TestTurnRuntimeObserveSkipsPulseOnToolStartWhenThinkingOn(t *testing.T) {
 	}
 }
 
-// newTestRuntime builds a TurnRuntime with its fold bound to its own session,
-// the shape callers always use outside of tests.
 func newTestRuntime(answer string, err error) *TurnRuntime {
 	s := NewTurnSession(stubTurn(answer, err))
 	return NewTurnRuntime(s, nil)
 }
 
-// Commit reconciles a streamed success into the streaming assistant message
-// and clears busy/live-timeline state, driven entirely through TurnRuntime.
 func TestTurnRuntimeCommitSuccessStreaming(t *testing.T) {
 	rt := newTestRuntime("", nil)
 	tx := newTestTx()
@@ -262,7 +249,6 @@ func TestTurnRuntimeCommitSuccessNoStreaming(t *testing.T) {
 	}
 }
 
-// Commit marks a streamed turn stopped and keeps its live partial content.
 func TestTurnRuntimeCommitStoppedStreaming(t *testing.T) {
 	rt := newTestRuntime("", nil)
 	tx := newTestTx()
@@ -280,7 +266,6 @@ func TestTurnRuntimeCommitStoppedStreaming(t *testing.T) {
 	}
 }
 
-// Commit appends a failure message and reports the error for a failed turn.
 func TestTurnRuntimeCommitError(t *testing.T) {
 	rt := newTestRuntime("", nil)
 	tx := newTestTx()
@@ -354,9 +339,6 @@ func TestTurnRuntimeCommitErrorPreservesPartialOutput(t *testing.T) {
 	}
 }
 
-// Stop cancels the in-flight turn started through Begin, so the turn's
-// cancelable context observes cancellation.
-// Stop before Begin is harmless and must not poison the next run's context.
 func TestTurnRuntimeStopBeforeBeginDoesNotAffectLaterRun(t *testing.T) {
 	started := make(chan struct{})
 	rt := NewTurnRuntime(NewTurnSession(func(ctx context.Context, _ string, _ string) (TurnResult, error) {
@@ -391,8 +373,6 @@ func TestTurnRuntimeStopCancelsBegunTurn(t *testing.T) {
 	}
 }
 
-// SetThinkingEnabled/ThinkingEnabled round-trip through the runtime, which is
-// the shape turn-created messages read.
 func TestTurnRuntimeThinkingEnabledRoundTrips(t *testing.T) {
 	rt := NewTurnRuntime(NewTurnSession(stubTurn("ok", nil)), nil)
 	rt.SetThinkingEnabled(true)

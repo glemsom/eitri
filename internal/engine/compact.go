@@ -9,7 +9,6 @@ import (
 	"github.com/glemsom/eitri/internal/skillindex"
 )
 
-// CompactionConfig configures the unified session compaction engine.
 type CompactionConfig struct {
 	Fraction         float64
 	ContextWindow    int
@@ -19,7 +18,6 @@ type CompactionConfig struct {
 	Prune            bool
 }
 
-// defaults fills zero fields with the defaults.
 func (c *CompactionConfig) defaults() {
 	if c.Fraction <= 0 {
 		c.Fraction = constants.DefaultCompactionFraction
@@ -159,7 +157,7 @@ func (e *Engine) generateSummary(ctx context.Context, req RunRequest, cfg *Compa
 		ProviderID:      req.ProviderID,
 	})
 	if err != nil {
-		return "" // fail-safe skip
+		return ""
 	}
 
 	var out strings.Builder
@@ -209,7 +207,6 @@ func isRepoInstructionMessage(m provider.Message) bool {
 	return m.Role == provider.RoleSystem && strings.Contains(m.Content, "## Repository instructions (AGENTS.md)")
 }
 
-// renderBody serializes the evicted body messages into a flat transcript the summary model can consume.
 func renderBody(messages []provider.Message) string {
 	var b strings.Builder
 	for _, m := range messages {
@@ -231,7 +228,8 @@ func estimateTokens(m provider.Message) int {
 	return estimateString(m.Content) + estimateString(m.ReasoningContent)
 }
 
-// estimateString approximates token count of text as chars/4 (stable, deterministic, and sufficient for the compaction budget).
+// estimateString approximates a token count as chars/4, the same deterministic
+// yardstick estimateTokens uses so budgeting stays stable across runs.
 func estimateString(text string) int {
 	return (len(text) + 3) / 4
 }

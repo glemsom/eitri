@@ -17,10 +17,6 @@ import (
 // site: it takes the varying inputs as one config and owns its own defaults
 // (follow on, a fresh history viewport, a dirty layout).
 
-// TestNewTranscriptAppliesConfigAndInvariants drives the constructor with a
-// distinct theme and asserts the name reaches both the stored theme and the
-// raw config-theme, and that the invariant defaults are set from the
-// constructor alone.
 func TestNewTranscriptAppliesConfigAndInvariants(t *testing.T) {
 	cfg := TranscriptConfig{
 		Theme:           "tokyo-night",
@@ -53,7 +49,6 @@ func TestNewTranscriptAppliesConfigAndInvariants(t *testing.T) {
 	if !tx.cotExpanded || !tx.toolResultsExpanded {
 		t.Error("NewTranscript must default the collapse flags to expanded when not told collapsed")
 	}
-	// Invariant defaults owned by the constructor.
 	if !tx.histFollow {
 		t.Error("NewTranscript must default follow on")
 	}
@@ -66,8 +61,6 @@ func TestNewTranscriptAppliesConfigAndInvariants(t *testing.T) {
 	}
 }
 
-// TestNewTranscriptCollapseFlagsByDefault flips the two collapse-by-default
-// inputs and asserts the constructor stores the inverse render defaults.
 func TestNewTranscriptCollapseFlagsByDefault(t *testing.T) {
 	tx := NewTranscript(TranscriptConfig{
 		CoTCollapsedByDefault:         true,
@@ -81,9 +74,6 @@ func TestNewTranscriptCollapseFlagsByDefault(t *testing.T) {
 	}
 }
 
-// TestApplySettingsAppliesReasoningEffort locks the settings seam: a settings
-// save routes the reasoning-effort value through ApplySettings on the same
-// path the rest of the config uses.
 func TestApplySettingsAppliesReasoningEffort(t *testing.T) {
 	tx := NewTranscript(TranscriptConfig{ReasoningEffort: "low"})
 	tx.ApplySettings(config.Config{ReasoningEffort: "high"})
@@ -92,9 +82,6 @@ func TestApplySettingsAppliesReasoningEffort(t *testing.T) {
 	}
 }
 
-// TestThemeQueriesReportResolvedPalette locks the theme read seam: Theme is the
-// resolved palette the transcript renders with, ConfigTheme the configured
-// name, and a settings save moves both together.
 func TestThemeQueriesReportResolvedPalette(t *testing.T) {
 	tx := NewTranscript(TranscriptConfig{Theme: "dracula"})
 	if got := tx.ConfigTheme(); got != "dracula" {
@@ -113,9 +100,6 @@ func TestThemeQueriesReportResolvedPalette(t *testing.T) {
 	}
 }
 
-// TestPlainLinesQueryReturnsCopySpace locks the copy-space read: PlainLines is
-// the history content stripped of styling, one row per rendered row, which is
-// the space drag selection maps into.
 func TestPlainLinesQueryReturnsCopySpace(t *testing.T) {
 	tx := newTestTx()
 	tx.SetSize(100, 30)
@@ -136,8 +120,6 @@ func TestPlainLinesQueryReturnsCopySpace(t *testing.T) {
 	}
 }
 
-// historyRowIndex returns the index of the first plain history row carrying
-// marker, failing the test when no row does.
 func historyRowIndex(t *testing.T, lines []string, marker string) int {
 	t.Helper()
 	for i, line := range lines {
@@ -149,9 +131,6 @@ func historyRowIndex(t *testing.T, lines []string, marker string) int {
 	return -1
 }
 
-// TestToolCardAtQueryResolvesTheEntry locks the tool-card hit-test: every
-// content row the entry draws resolves to that entry, ordinary answer text
-// resolves to none, and the index names the entry a click toggles.
 func TestToolCardAtQueryResolvesTheEntry(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(context.Context, string, string) (TurnResult, error) {
@@ -188,9 +167,6 @@ func TestToolCardAtQueryResolvesTheEntry(t *testing.T) {
 	}
 }
 
-// TestRenderedLineQueryCarriesHyperlink locks the rendered read: the row the
-// query returns is the same content row as the plain copy space, and it still
-// carries the OSC 8 target a Ctrl+click resolves.
 func TestRenderedLineQueryCarriesHyperlink(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(context.Context, string, string) (TurnResult, error) {
@@ -221,10 +197,6 @@ func TestRenderedLineQueryCarriesHyperlink(t *testing.T) {
 // selection, scroll, focus and expansion state through these commands instead of
 // writing the fields, so the interaction state has one owner.
 
-// TestPointerCommandsResolveDragToCopyText locks the drag-select half of the
-// pointer commands: the press anchors the drag, the motion extends it, and the
-// release hands back the plain text it covered — the payload the clipboard seam
-// copies — leaving no drag behind.
 func TestPointerCommandsResolveDragToCopyText(t *testing.T) {
 	tx := newTestTx()
 	tx.SetSize(100, 30)
@@ -263,9 +235,6 @@ func TestPointerCommandsResolveDragToCopyText(t *testing.T) {
 	}
 }
 
-// TestPointerCommandsResolveToolCardClick locks the tool-card half: a press and
-// release on one cell of a card resolves to that entry, which the caller toggles,
-// while a click on answer text resolves nothing.
 func TestPointerCommandsResolveToolCardClick(t *testing.T) {
 	m := NewModelCfg(Dependencies{
 		Turn: func(context.Context, string, string) (TurnResult, error) {
@@ -301,9 +270,6 @@ func TestPointerCommandsResolveToolCardClick(t *testing.T) {
 	}
 }
 
-// TestPointerCancelDropsTheDrag locks the two pointer events that resolve
-// nothing: a motion with no press behind it, and the press outside the history
-// region that drops the drag instead of anchoring it.
 func TestPointerCancelDropsTheDrag(t *testing.T) {
 	tx := newTestTx()
 	tx.SetSize(100, 30)
@@ -326,10 +292,6 @@ func TestPointerCancelDropsTheDrag(t *testing.T) {
 	}
 }
 
-// TestScrollCommandsPauseAndResumeFollow locks the two scroll commands the key
-// and mouse handlers route through: a page or wheel toward older output hands
-// back follow off, reaching the newest output hands it back on, and a wheel
-// outside the scroll region leaves the reading position and follow alone.
 func TestScrollCommandsPauseAndResumeFollow(t *testing.T) {
 	tx := transcriptScrollModel(t)
 	start := tx.histViewport.YOffset()
@@ -370,9 +332,6 @@ func TestScrollCommandsPauseAndResumeFollow(t *testing.T) {
 	}
 }
 
-// TestResumeFollowCommandReEngagesFollow locks the submit path's command: a new
-// prompt re-engages auto-follow so the turn it starts stays in view, without
-// moving the reading position the user left behind.
 func TestResumeFollowCommandReEngagesFollow(t *testing.T) {
 	tx := transcriptScrollModel(t)
 	tx.NavigateHistory("pgup")
@@ -450,9 +409,6 @@ func TestToggleExpandedModeCommandFlipsTheGlobalModes(t *testing.T) {
 // of package tui makes. Each is exported, so a caller reaches the transcript
 // only through its interface.
 
-// TestAppendAssistantMsgSeamAppendsANote locks the note-append command: a call
-// site outside the transcript appends an assistant note, and the transcript owns
-// the entry's synthesized one-event answer log.
 func TestAppendAssistantMsgSeamAppendsANote(t *testing.T) {
 	tx := newTestTx()
 
@@ -473,9 +429,6 @@ func TestAppendAssistantMsgSeamAppendsANote(t *testing.T) {
 	}
 }
 
-// TestRailWidthSeamReportsThroughGeometry locks the rail-width seam: the
-// transcript reports the width in effect through Geometry, and SetRailWidth
-// stores a new width that Geometry then reports.
 func TestRailWidthSeamReportsThroughGeometry(t *testing.T) {
 	tx := NewTranscript(TranscriptConfig{Rail: &Rail{}})
 	if got := tx.Geometry().RailWidth; got != defaultRailWidth {
@@ -488,10 +441,6 @@ func TestRailWidthSeamReportsThroughGeometry(t *testing.T) {
 	}
 }
 
-// TestTranscriptWidthSeamShrinksForTheRail locks the wrap-width read: the
-// transcript reports the column width its history wraps at, narrower than the
-// band once the rail carves a column beside it, and re-reads it after a rail
-// resize.
 func TestTranscriptWidthSeamShrinksForTheRail(t *testing.T) {
 	tx := NewTranscript(TranscriptConfig{Rail: &Rail{}, RailWidth: defaultRailWidth})
 	tx.SetSize(120, 30)
@@ -509,9 +458,6 @@ func TestTranscriptWidthSeamShrinksForTheRail(t *testing.T) {
 	}
 }
 
-// TestRailMaxHeightSeamBoundsTheRailRegion locks the rail-region read: the rail
-// may occupy at most the history region's visible rows, so the bound drops as
-// the fixed bottom band grows.
 func TestRailMaxHeightSeamBoundsTheRailRegion(t *testing.T) {
 	tx := NewTranscript(TranscriptConfig{Rail: &Rail{}})
 	tx.SetSize(120, 40)
@@ -524,10 +470,6 @@ func TestRailMaxHeightSeamBoundsTheRailRegion(t *testing.T) {
 	}
 }
 
-// TestSettleIdleEmberSeamParksTheShimmer locks the settle command: once the
-// window is open and the shimmer advanced, SettleIdleEmber parks the ember on
-// the static mark and closes the window, so a caller outside the transcript
-// stops the idle wakeup.
 func TestSettleIdleEmberSeamParksTheShimmer(t *testing.T) {
 	tx := NewTranscript(TranscriptConfig{})
 	if cmd := tx.ArmEmber(false); cmd == nil {

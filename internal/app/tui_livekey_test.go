@@ -37,7 +37,7 @@ func TestRunEngineTurnReadsLiveSessionKey(t *testing.T) {
 		t.Fatalf("turn 1 SessionKey = %q, want %q", got, "sess-a")
 	}
 
-	key.Set("sess-b") // `/new` re-mints the session key
+	key.Set("sess-b")
 	if _, err := turn(context.Background(), "second", ""); err != nil {
 		t.Fatalf("turn error = %v", err)
 	}

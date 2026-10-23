@@ -32,7 +32,6 @@ type cachedMarkdownRenderer struct {
 
 var markdownRendererCache sync.Map
 
-// RenderMarkdown converts Markdown source to ANSI-styled terminal output at the given width, using the given theme.
 func RenderMarkdown(md string, width int, theme string) (string, error) {
 	md = sanitizeTerminalText(md)
 	if width <= 0 {
@@ -75,7 +74,6 @@ func markdownRendererFor(key markdownRendererCacheKey) (*cachedMarkdownRenderer,
 	return actual.(*cachedMarkdownRenderer), nil
 }
 
-// glamourStyleFor maps a supported theme to the glamour style that renders its markdown body.
 func glamourStyleFor(theme string) string {
 	switch theme {
 	case "nord", "gruvbox", "solarized", "dark-daltonized":

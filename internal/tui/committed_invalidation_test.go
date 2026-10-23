@@ -49,10 +49,6 @@ func liveToolBusyTranscript() *Transcript {
 	return tx
 }
 
-// TestLiveToolStartDoesNotInvalidateCommittedPrefix locks AC1: a tool
-// observation landing while the running turn streams must not mark committed
-// history for rebuild, and the busy-path output stays byte-identical to a fresh
-// full render (the live tail picks the tool up without re-rendering the prefix).
 func TestLiveToolStartDoesNotInvalidateCommittedPrefix(t *testing.T) {
 	tx := liveToolBusyTranscript()
 	tx.renderPaneContent()
@@ -61,7 +57,6 @@ func TestLiveToolStartDoesNotInvalidateCommittedPrefix(t *testing.T) {
 	}
 	prefix := tx.busyPrefix
 
-	// A live tool observation lands while the running turn streams.
 	tx.applyTool(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
 	// Pin the in-progress entry's clock far from a whole-second boundary so the
 	// elapsed timer (a live-clock decoration) cannot flip between the two renders
@@ -78,7 +73,6 @@ func TestLiveToolStartDoesNotInvalidateCommittedPrefix(t *testing.T) {
 		t.Error("the committed-prefix cache must stay byte-stable across a live tool observation")
 	}
 
-	// The concatenated busy render stays byte-identical to a fresh full render.
 	got := tx.renderPaneContent()
 	var full strings.Builder
 	tx.renderHistory(&full, nil, nil)
@@ -87,9 +81,6 @@ func TestLiveToolStartDoesNotInvalidateCommittedPrefix(t *testing.T) {
 	}
 }
 
-// TestLiveToolResultDoesNotInvalidateCommittedPrefix locks the trailing half of
-// AC1: the tool's result landing while the turn still streams is equally
-// live-only and must not rebuild the committed prefix.
 func TestLiveToolResultDoesNotInvalidateCommittedPrefix(t *testing.T) {
 	tx := liveToolBusyTranscript()
 	tx.applyTool(ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
@@ -116,17 +107,10 @@ func TestLiveToolResultDoesNotInvalidateCommittedPrefix(t *testing.T) {
 	}
 }
 
-// TestIdleAndTimerFramesDoNotRebuildCommittedPrefix locks AC4: an idle render
-// plus the timer/clock frames the TUI emits each second (clockTickMsg) and each
-// spinner tick advance the live indicator without ever marking the committed
-// history for rebuild — so an idle or animated long session keeps its cached
-// prefix and consumes no committed-history work.
 func TestIdleAndTimerFramesDoNotRebuildCommittedPrefix(t *testing.T) {
 	m := newStreamingModel()
 	m = resize(t, m)
 
-	// Commit one turn so committed history sits above the live tail, then start
-	// a second live turn and stream one delta into it.
 	m = typeText(t, m, "first")
 	m, _ = submitBusy(t, m)
 	m = applyReasoningDelta(t, m, "first reasoning")
@@ -135,7 +119,6 @@ func TestIdleAndTimerFramesDoNotRebuildCommittedPrefix(t *testing.T) {
 	m, _ = submitBusy(t, m)
 	m = applyReasoningDelta(t, m, "second reasoning")
 
-	// Build and pin the busy prefix cache for the committed history.
 	_ = view(m)
 	if m.tx.busyPrefixDirty {
 		t.Fatal("precondition: fresh prefix cache is clean")
@@ -145,8 +128,6 @@ func TestIdleAndTimerFramesDoNotRebuildCommittedPrefix(t *testing.T) {
 		t.Fatalf("prefix must carry the committed history, got %q", ansiStrip(prefix))
 	}
 
-	// A clock tick and a spinner tick re-render the surface; neither touches the
-	// committed prefix.
 	m = asModel(t, mustUpdate(t, m, clockTickMsg{}))
 	m = asModel(t, mustUpdate(t, m, pulse.SpinnerTickMsg{}))
 

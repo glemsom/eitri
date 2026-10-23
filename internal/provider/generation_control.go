@@ -8,7 +8,6 @@ import (
 // GenerationControl identifies one provider-side generation control a special turn may request on the wire.
 type GenerationControl string
 
-// The three generation controls a provider can declare support for and a special turn can request.
 const (
 	GenerationControlGenerationBudget      GenerationControl = "generation_budget"
 	GenerationControlToolSchemaEnforcement GenerationControl = "tool_schema_enforcement"
@@ -73,7 +72,6 @@ func NegotiateGenerationControls(ctx context.Context, p Provider, reqs []Control
 	return honored, nil
 }
 
-// setOf builds a membership set from a slice of generation controls.
 func setOf(controls []GenerationControl) map[GenerationControl]bool {
 	m := make(map[GenerationControl]bool, len(controls))
 	for _, c := range controls {

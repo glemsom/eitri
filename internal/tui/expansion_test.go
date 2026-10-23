@@ -2,16 +2,12 @@ package tui
 
 import "testing"
 
-// expansionForce is one per-block expansion force fed to the ExpansionState
-// table test: the block kind, its id, and the expanded state the force pins.
 type expansionForce struct {
 	kind  blockKind
 	id    int
 	value bool
 }
 
-// stateFrom builds an ExpansionState from compact table inputs: just the
-// per-block forces, since the module stores nothing else.
 func stateFrom(forces ...expansionForce) ExpansionState {
 	var s ExpansionState
 	for _, f := range forces {
@@ -20,9 +16,6 @@ func stateFrom(forces ...expansionForce) ExpansionState {
 	return s
 }
 
-// TestExpansionState_expandedDecisions locks the module's state machine with a
-// table of (mode × defaults × per-block forces) → open/collapsed, driven
-// entirely through the explicit config bundle.
 func TestExpansionState_expandedDecisions(t *testing.T) {
 	const reasoningID = 1
 	const toolID = 2
@@ -67,9 +60,6 @@ func TestExpansionState_expandedDecisions(t *testing.T) {
 	}
 }
 
-// TestExpansionState_forceBeatsConfig locks the precedence rule of the pure
-// decision query: a per-block force wins over whatever config bundle is passed,
-// while unforced blocks follow the bundle alone.
 func TestExpansionState_forceBeatsConfig(t *testing.T) {
 	s := stateFrom(expansionForce{blockReasoning, 1, true})
 	collapseCfg := expansionConfig{mode: viewCollapseAll}
@@ -83,20 +73,16 @@ func TestExpansionState_forceBeatsConfig(t *testing.T) {
 		t.Errorf("toggle against expand-all config must flip the force to collapsed")
 	}
 
-	// an unforced block under the same expand-all bundle expands.
 	if !s.expanded(blockTool, 1, cfg) {
 		t.Errorf("unforced blocks must follow the config bundle (expand-all), got collapsed")
 	}
 }
 
-// TestExpansionState_toggleFlipsOneBlock only pins the interaction contract:
-// Enter on a focused block forces it to the opposite of how it currently
-// renders, and never touches a sibling block's decision.
 func TestExpansionState_toggleFlipsOneBlock(t *testing.T) {
 	var s ExpansionState
 
 	cfg := expansionConfig{mode: viewDefault}
-	s.toggle(blockTool, 2, cfg) // collapsed → force-expand entry 2
+	s.toggle(blockTool, 2, cfg)
 	if !s.expanded(blockTool, 2, cfg) {
 		t.Errorf("toggle must force-expand a collapsed entry, got collapsed")
 	}
@@ -104,14 +90,12 @@ func TestExpansionState_toggleFlipsOneBlock(t *testing.T) {
 		t.Errorf("toggling entry 2 must not affect sibling entry 3")
 	}
 
-	s.toggle(blockTool, 2, cfg) // expanded → force-collapse entry 2 again
+	s.toggle(blockTool, 2, cfg)
 	if s.expanded(blockTool, 2, cfg) {
 		t.Errorf("toggle must flip back to force-collapsed, got expanded")
 	}
 }
 
-// TestExpansionState_setAndClear pins the explicit-force operations: set pins a
-// block's decision and clear returns it to the module-level default.
 func TestExpansionState_setAndClear(t *testing.T) {
 	var s ExpansionState
 

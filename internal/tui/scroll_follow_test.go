@@ -9,8 +9,7 @@ import (
 )
 
 // longStreamModel is a busy turn streaming far more content than the viewport
-// can hold — the exact "long stream" a T06 user watches while the flow of
-// reasoning, tool calls, and answer keeps growing well below the fold.
+// can hold, so the flow keeps growing well below the fold.
 func longStreamModel(t *testing.T) Model {
 	t.Helper()
 	m := busyStreamingModel(t)
@@ -21,8 +20,8 @@ func longStreamModel(t *testing.T) Model {
 	return m
 }
 
-// a long stream the viewport stays on the active content — every appended delta,
-// not just the first few, keeps the newest output pinned to the bottom of the
+// TestScrollFollow_longStreamViewportStaysPinned: every appended delta, not
+// just the first few, keeps the newest output pinned to the bottom of the
 // history region while auto-follow is on.
 func TestScrollFollow_longStreamViewportStaysPinned(t *testing.T) {
 	t.Parallel()
@@ -92,7 +91,7 @@ func TestScrollFollow_scrollUpPausesAndHoldsWhileStreaming(t *testing.T) {
 		}
 	}
 
-	// A keypress resumes follow to the newest content.
+	// End resumes follow to the newest content.
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyEnd})
 	if !m.tx.histFollow {
 		t.Fatalf("End must re-engage auto-follow after a pause")
@@ -103,10 +102,9 @@ func TestScrollFollow_scrollUpPausesAndHoldsWhileStreaming(t *testing.T) {
 	}
 }
 
-// TestScrollFollow_wheelUpPausesAndEndResumesDuringStream covers the AC2 pause /
-// resume flow through the mouse-wheel seam: wheel up pauses auto-follow mid
-// stream and End resumes it, while staying inside the scroll region the whole
-// time.
+// TestScrollFollow_wheelUpPausesAndEndResumesDuringStream drives pause/resume
+// through the mouse-wheel seam rather than a key: wheel up pauses auto-follow
+// mid stream and End resumes it, staying inside the scroll region throughout.
 func TestScrollFollow_wheelUpPausesAndEndResumesDuringStream(t *testing.T) {
 	t.Parallel()
 	m := longStreamModel(t)
@@ -127,9 +125,8 @@ func TestScrollFollow_wheelUpPausesAndEndResumesDuringStream(t *testing.T) {
 	}
 }
 
-// TestScrollFollow_newTurnResumesAfterPause covers the AC2 resume-on-new-turn
-// leg: after the user pauses by scrolling up, the turn completes and a fresh
-// turn re-engages follow to the newest output.
+// TestScrollFollow_newTurnResumesAfterPause: a pause survives the turn's
+// completion, but a fresh turn re-engages follow.
 func TestScrollFollow_newTurnResumesAfterPause(t *testing.T) {
 	t.Parallel()
 	m := longStreamModel(t)

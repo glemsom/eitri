@@ -261,7 +261,7 @@ func TestToolPulse_busyBandFlashesWithCollapsedCoT(t *testing.T) {
 		{Kind: EventReasoning, Seq: 0, Delta: "secret reasoning"},
 		{Kind: EventToolStart, Seq: 1, Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}},
 	})
-	tx.pulse.Arm() // the tool start armed the pulse (model.applyToolUpdate)
+	tx.pulse.Arm()
 
 	renderBand := func() string {
 		var hist strings.Builder
@@ -286,7 +286,7 @@ func TestToolPulse_busyBandFlashesWithCollapsedCoT(t *testing.T) {
 	}
 
 	for range 3 {
-		tx.TickBusy() // the pulse expired after its 3 ticks
+		tx.TickBusy()
 	}
 	settled := renderBand()
 	if strings.Contains(settled, accent) {

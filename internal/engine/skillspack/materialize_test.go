@@ -12,8 +12,6 @@ import (
 	"github.com/glemsom/eitri/internal/engine/skillspack"
 )
 
-// collectWarnings drains a Materialize run's non-fatal warnings into *out so
-// tests can assert both the absence and the content of warnings.
 func collectWarnings(out *[]string) skillspack.Warnf {
 	return func(format string, args ...any) {
 		*out = append(*out, fmt.Sprintf(format, args...))

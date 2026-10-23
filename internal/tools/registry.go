@@ -27,14 +27,12 @@ type Tool interface {
 	Run(ctx context.Context, args map[string]any) (compress.ToolResult, error)
 }
 
-// Definition is a tool's provider-facing definition: name, description, and a minimal JSON-Schema parameters object (strict-shaped).
 type Definition struct {
 	Name        string
 	Description string
 	Parameters  map[string]any
 }
 
-// Definitions returns the registry's fixed tool surface as provider-facing definitions (name/description/JSON-Schema).
 func (r *Registry) Definitions() []Definition {
 	names := r.Names()
 	out := make([]Definition, 0, len(names))
@@ -60,7 +58,6 @@ type Registry struct {
 // here because the registry is built once per process from the launch flag.
 func (r *Registry) Yolo() bool { return r.yolo }
 
-// NewRegistry builds the registry for one session from Deps.
 func NewRegistry(d Deps) (*Registry, error) {
 	if d.Browser == nil {
 		d.Browser = xdgBrowser{}
@@ -113,9 +110,6 @@ func (r *Registry) WritablePaths() []string {
 	return append(out, r.sandbox.extraWritable...)
 }
 
-// SetTempHost rewires the per-session temp directory used by the bash backend
-// (the bwrap sandbox, or the direct runner in an unsandboxed --yolo-unsafe
-// session).
 func (r *Registry) SetTempHost(tempHost string) error {
 	if tempHost == "" {
 		return fmt.Errorf("session temp path is empty")
@@ -128,10 +122,8 @@ func (r *Registry) SetTempHost(tempHost string) error {
 	return nil
 }
 
-// TempHost returns the per-session temp directory used by sandboxed tools.
 func (r *Registry) TempHost() string { return r.sandbox.tempHost }
 
-// Run executes the named tool with the given decoded args, returning its result string plus whether the result is the line-compressor's compressed form.
 func (r *Registry) Run(ctx context.Context, name string, args map[string]any) (compress.ToolResult, error) {
 	tool, ok := r.tools[name]
 	if !ok {

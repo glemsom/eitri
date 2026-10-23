@@ -56,7 +56,7 @@ type liveMarkdownCacheKey struct {
 }
 
 // liveMarkdownPaneIDs enumerate the distinct pane bodies the cache may hold,
-// mirroring the theme's pane variants used by the reasoning/answer flow.
+// mirroring the theme's pane variants.
 type liveMarkdownPaneID int
 
 const (
@@ -92,21 +92,6 @@ func (th Theme) paneStyleFor(id liveMarkdownPaneID) lipgloss.Style {
 	return th.thinkingPaneStyle
 }
 
-// renderPaneBody returns the pane-wrapped markdown body for the given windowed
-// text, using cache when the installed key matches (same text+strip+theme+pane).
-// When no cache is provided (committed/legacy paths) it renders directly, so the
-// cached and fresh output cannot drift.
-//
-// throttle controls the re-render throttle: when true, this is a live streaming
-// window (a long reasoning/answer block whose trailing text re-parses each
-// frame) and the expensive glamour re-render is bound to
-// liveMarkdownMinRenderInterval. It is passed explicitly from the caller rather
-// than derived from the text length because the caller trims the window to the
-// first newline (see liveStreamingText), so a throttled window's length lands
-// under liveStreamingMarkdownWindow and a length-based gate would never fire.
-// Small non-throttled blocks still render per frame, so routine short reasoning
-// and model tests see each delta immediately.
-//
 // now returns the cache's clock source: c.clock when injected for tests, else
 // time.Now.
 func (c *liveMarkdownCache) now() time.Time {
@@ -117,16 +102,18 @@ func (c *liveMarkdownCache) now() time.Time {
 }
 
 // renderPaneBody returns the pane-wrapped markdown body for the given windowed
-// text, using cache when the installed key matches (same text+strip+theme+pane).
-// When no cache is provided (committed/legacy paths) it renders directly, so the
-// cached and fresh output cannot drift.
+// text, using cache when the installed key matches. A nil cache renders
+// directly, so the cached and fresh paths cannot drift.
 //
-// A changed window is the only path that re-parses markdown. That render is
-// throttled to liveMarkdownMinRenderInterval: if the window changed but the
-// last fresh render is recent, the previous body is returned (its hits counter
-// still advances) and the whole change batch is absorbed into the next allowed
-// render. This bounds goldmark+glamour cost during a fast stream while keeping
-// the visible tail live — the window slides, never drops bytes.
+// A changed window is the only path that re-parses markdown, and that render is
+// throttled to liveMarkdownMinRenderInterval: if the window changed but the last
+// fresh render is recent, the previous body is returned (its hits counter still
+// advances) and the whole change batch is absorbed into the next allowed render.
+//
+// throttle is passed explicitly rather than derived from text length because the
+// caller trims the window to the first newline (see liveStreamingText), so a
+// throttled window's length lands under liveStreamingMarkdownWindow and a
+// length-based gate would never fire.
 func (c *liveMarkdownCache) renderPaneBody(text string, width int, theme string, paneID liveMarkdownPaneID, th Theme, throttle bool, throttleKey string) string {
 	if c == nil {
 		return renderPaneBodyFresh(text, width, theme, paneID, th)
@@ -136,15 +123,10 @@ func (c *liveMarkdownCache) renderPaneBody(text string, width int, theme string,
 		c.hits++
 		return c.out
 	}
-	// Throttle: hold the previous render when the expensive re-render would run
-	// too soon after the last one for the same streaming block. Only throttled streaming windows are held:
-	// small blocks render so cheaply that live per-frame updates are worth it,
-	// and model tests and routine short reasoning depend on seeing each delta
-	// immediately. Once a block crosses the window, rendering it from scratch
-	// each frame is what pins a core, so the stale body (the prior window) is
-	// served between intervals. The stream briefly lags at most
-	// liveMarkdownMinRenderInterval behind; it is never dropped, and coalescing
-	// turns a burst of deltas into one render.
+	// Hold the previous render when the expensive re-render would run too soon
+	// after the last one for the same streaming block. Only throttled windows are
+	// held: small blocks render cheaply enough that per-delta updates are worth
+	// it, and the stream lags at most one interval behind — never losing bytes.
 	if c.valid && liveMarkdownMinRenderInterval > 0 && throttle && c.throttleKey == throttleKey &&
 		c.now().Sub(c.lastFresh) < liveMarkdownMinRenderInterval {
 		c.hits++ // a cheap slot hit: the bytes drawn are slightly stale, but no re-parse
@@ -186,8 +168,8 @@ func renderPaneBodyFresh(text string, width int, theme string, paneID liveMarkdo
 	return pane.Render(trimBody(md))
 }
 
-// trimBody trims leading and trailing newlines the way the pane callers did, so
-// the cached pane body matches a fresh render byte-for-byte.
+// trimBody trims the leading and trailing newlines the pane callers expect, so a
+// cached pane body matches a fresh render byte-for-byte.
 func trimBody(md string) string {
 	return strings.Trim(md, "\n")
 }

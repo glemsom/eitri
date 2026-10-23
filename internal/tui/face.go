@@ -33,7 +33,6 @@ func kittyFaceFile() string {
 		if _, err := os.Stat(kittyFacePath); err == nil {
 			return kittyFacePath
 		}
-		// A prior CleanupKittyFace removed the file; recreate on next use.
 	}
 	img, err := png.Decode(bytes.NewReader(eitriFacePNG))
 	if err != nil {

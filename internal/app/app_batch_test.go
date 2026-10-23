@@ -132,8 +132,6 @@ func TestRunBatchRefusesWhenXDGOpenMissing(t *testing.T) {
 	}
 }
 
-// lookPathExcept stubs the executable-lookup seam like okLookPath but reports
-// the single named executable as absent, for boot-gate tests.
 func lookPathExcept(missing string) func(string) (string, error) {
 	return func(name string) (string, error) {
 		if name == missing {
@@ -252,8 +250,6 @@ func TestRunBatchSubscribesForSecondSignalBeforeGracefulCancellation(t *testing.
 	}
 }
 
-// TestRunBatchCompletionReleasesSecondSignalSubscription verifies normal completion
-// releases the pre-armed second-interrupt subscription.
 func TestRunBatchCompletionReleasesSecondSignalSubscription(t *testing.T) {
 	orig := batchSecondSignal
 	armed := 0

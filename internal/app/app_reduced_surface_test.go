@@ -85,7 +85,6 @@ func bashHeredocSedTurn(t *testing.T) *provider.Scripted {
 				}, Done: true},
 			), nil
 		}
-		// Count prior bash tool calls to sequence write → sed -i.
 		bashCalls := 0
 		for i := len(req.Messages) - 1; i >= 0; i-- {
 			m := req.Messages[i]
@@ -105,7 +104,6 @@ func bashHeredocSedTurn(t *testing.T) *provider.Scripted {
 				}, Done: true},
 			), nil
 		}
-		// After the sed -i edit, the round-trip is asserted on the workspace file.
 		return provider.StreamFunc(
 			provider.Chunk{Content: "edited ok", FinishReason: "stop", Done: true},
 		), nil

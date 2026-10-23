@@ -70,7 +70,6 @@ type CompactedEvent struct {
 	Turn  int
 }
 
-// newToolResultEvent builds the UI-facing event from a tool result without reparsing its rendered text.
 func newToolResultEvent(runID, turn int, id, name string, result ToolExecResult, bytesDropped int) ToolResultEvent {
 	lines := 0
 	if result.Text != "" {

@@ -394,7 +394,6 @@ func TestRenderIndexBlock(t *testing.T) {
 	t.Parallel()
 	user := t.TempDir()
 	proj := t.TempDir()
-	// hidden skill omitted
 	writeSkillMeta(t, user, "hidden", "h", "body", nil, []string{"model-invocable: false"})
 	writeSkill(t, user, "zeta", "z skill\nsecond line desc", "z", nil)
 	// project shadows user on name collision
@@ -639,7 +638,6 @@ func TestSkillDiscoverFoldedDescription(t *testing.T) {
 func TestSkillDiscoverRecordsSkippedSurface(t *testing.T) {
 	t.Parallel()
 	user := t.TempDir()
-	// One valid skill so the catalog is non-trivially populated, one broken.
 	writeSkill(t, user, "good", "a good skill", "body", nil)
 	bad := filepath.Join(user, "broken")
 	if err := os.MkdirAll(bad, 0o700); err != nil {

@@ -62,8 +62,6 @@ func normalizeChatCompletionsURL(raw string) string {
 	return u + "/chat/completions"
 }
 
-// isAnthropicMessagesURL reports whether a base URL points at an Anthropic
-// Messages endpoint (the path ends in /messages, the canonical /v1/messages route).
 func isAnthropicMessagesURL(u string) bool {
 	return strings.HasSuffix(u, "/messages")
 }
@@ -82,7 +80,9 @@ func openCodeAnthropicModel(model string) bool {
 	}
 }
 
-// Models implements ModelLister: it GETs the provider's /models endpoint and returns the discovered model catalog. An anthropic-only endpoint (custom-openai Messages URL) has no OpenAI-style /models route, so discovery reports ErrNoDiscovery.
+// Models implements ModelLister by GETting the provider's /models endpoint. An
+// anthropic-only endpoint has no OpenAI-style /models route, so discovery
+// reports ErrNoDiscovery.
 func (o *OpenAICompatible) Models(ctx context.Context) ([]ModelInfo, error) {
 	if o.url == "" {
 		return nil, ErrNoDiscovery
@@ -186,7 +186,6 @@ func normalizeEndpoint(s string) EndpointKind {
 	}
 }
 
-// Stream implements Provider with an HTTP Chat-Completions request shaped and parsed by the Chat-Completions dialect.
 func (o *OpenAICompatible) Stream(ctx context.Context, req Request) (Stream, error) {
 	req.Capabilities = o.capabilities
 	if o.anthropicURL != "" && (o.url == "" || o.onAnthropicWire(req.Model)) {
@@ -205,7 +204,6 @@ func (o *OpenAICompatible) onAnthropicWire(model string) bool {
 	return openCodeAnthropicModel(model)
 }
 
-// streamChat sends the turn over the Chat-Completions wire to o.url.
 func (o *OpenAICompatible) streamChat(ctx context.Context, req Request) (Stream, error) {
 	body, err := chatDialect.Build(req)
 	if err != nil {
@@ -269,13 +267,11 @@ func (o *OpenAICompatible) SupportedGenerationControls(context.Context) ([]Gener
 	return chatDialect.Capabilities(), nil
 }
 
-// HTTPError reports a non-2xx provider response.
 type HTTPError struct {
 	Code int
 	Body string
 }
 
-// Error describes the failed provider response.
 func (e *HTTPError) Error() string {
 	if e.Body == "" {
 		return fmt.Sprintf("provider returned HTTP %d", e.Code)

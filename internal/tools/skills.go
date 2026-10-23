@@ -24,7 +24,6 @@ type SkillWarner interface {
 	Warnf(format string, args ...any)
 }
 
-// Skill is one discovered, validated skill pack.
 type Skill struct {
 	Description string
 	// ShortDescription is the optional always-resident one-liner the catalog
@@ -149,8 +148,6 @@ func (c *Catalog) renderIndex(entries, roots []string) string {
 	return b.String()
 }
 
-// catalogEntryText is the text the catalog shows for a skill: its short
-// description when it declares one, else its full description.
 func catalogEntryText(sk *Skill) string {
 	if sk.ShortDescription != "" {
 		return sk.ShortDescription

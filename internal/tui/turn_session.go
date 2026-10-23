@@ -16,12 +16,10 @@ type TurnSession struct {
 	thinkingEnabled bool
 }
 
-// NewTurnSession creates a disarmed session for the given turn function.
 func NewTurnSession(turn func(context.Context, string, string) (TurnResult, error)) *TurnSession {
 	return &TurnSession{turn: turn}
 }
 
-// Dispatch executes a provider call using a fresh cancellable context.
 func (s *TurnSession) Dispatch(prompt, payload string) tea.Cmd {
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	return tea.Cmd(func() tea.Msg {
@@ -42,7 +40,6 @@ func (s *TurnSession) Context() context.Context { return s.ctx }
 
 func (s *TurnSession) ThinkingEnabled() bool { return s.thinkingEnabled }
 
-// Stop cancels the armed turn's context, if any.
 func (s *TurnSession) Stop() {
 	if s.cancel != nil {
 		s.cancel()

@@ -187,7 +187,6 @@ func TestRunSessionCmdStatsToolsRejectBadArgs(t *testing.T) {
 	}
 }
 
-// writeStatsFixtureWithEnd adds a run-end record to the first stats session.
 func writeStatsFixtureWithEnd(t *testing.T, dataDir, reason string) {
 	t.Helper()
 	writeStatsFixture(t, dataDir)

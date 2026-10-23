@@ -14,7 +14,6 @@ type LoginCode struct {
 	VerificationURI string
 }
 
-// startLogin runs the built-in `/login` command through the interactive login seam and renders its code/result as assistant notes.
 func (m Model) startLogin() (tea.Model, tea.Cmd) {
 	m.tx.AppendUserMsg("/login")
 	if m.deps.Login == nil {
@@ -24,7 +23,6 @@ func (m Model) startLogin() (tea.Model, tea.Cmd) {
 	return m, loginCmd(m.deps.Login)
 }
 
-// loginCmd runs the interactive login seam off the main loop.
 func loginCmd(login func(ctx context.Context, onCode func(LoginCode)) (config.Config, error)) tea.Cmd {
 	ch := make(chan tea.Msg, 2)
 	go func() {

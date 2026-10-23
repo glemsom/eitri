@@ -10,7 +10,6 @@ import (
 	"testing"
 )
 
-// compile-time proof that the Chat-Completions dialect implements the Dialect seam.
 var _ Dialect = (*ChatCompletionsDialect)(nil)
 
 var cacheExtensions = ProviderCapabilities(ProviderCapabilityPromptCacheKey | ProviderCapabilityPromptCacheRetention | ProviderCapabilityCacheControl)
@@ -236,7 +235,6 @@ func TestChatCompletionsDialectStreamAccumulatesToolCalls(t *testing.T) {
 	}
 }
 
-// jsonEqual reports whether a and b are JSON-equivalent values.
 func jsonEqual(a, b any) bool {
 	ab, aerr := json.Marshal(a)
 	bb, berr := json.Marshal(b)

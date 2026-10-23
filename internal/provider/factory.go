@@ -8,7 +8,6 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// Default endpoints for the non-default provider families.
 const (
 	DefaultCopilotURL  = "https://api.githubcopilot.com/chat/completions"
 	DefaultOpenCodeURL = "https://opencode.ai/zen/go/v1/chat/completions"

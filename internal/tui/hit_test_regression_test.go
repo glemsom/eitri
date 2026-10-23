@@ -5,14 +5,12 @@ import (
 	"testing"
 )
 
-// a full turn projected onto the transcript, followed by
-// non-turn message appends and a resize, must leave the row->tool-entry /
-// row->message hit-test correct — rebuilt lazily by ensureLayout alone, with
-// no test or caller code writing the dirty flag anywhere in the path.
-//
-// Each mutation phase is followed by a hit-test query that drains the stale
-// flag, so every later phase's internal invalidation is load-bearing: drop
-// any one dirty-marking and the corresponding assertion fails.
+// TestMutationsKeepHitTestCorrectWithoutCallerInvalidation drives a full turn
+// plus non-turn appends and a resize, with no test or caller code writing the
+// dirty flag: the row->tool-entry / row->message mapping must rebuild lazily
+// from ensureLayout alone. Each phase ends in a query that drains the stale
+// flag, so every phase's internal invalidation is load-bearing — drop one
+// dirty-marking and the corresponding assertion fails.
 func TestMutationsKeepHitTestCorrectWithoutCallerInvalidation(t *testing.T) {
 	s := NewTurnSession(stubTurn("final answer", nil))
 	tx := newTestTx()
@@ -38,7 +36,6 @@ func TestMutationsKeepHitTestCorrectWithoutCallerInvalidation(t *testing.T) {
 		return -1
 	}
 
-	// Phase 1: start projection appends the user prompt.
 	cmd := beginTurn(s, &tx, "run the thing", "")
 	plain := rebuild("after start projection")
 	userLine := findLine(plain, "run the thing")
@@ -46,7 +43,6 @@ func TestMutationsKeepHitTestCorrectWithoutCallerInvalidation(t *testing.T) {
 		t.Errorf("after start projection: messageAtLine(%d) = (%d,%v), want message 0", userLine, idx, ok)
 	}
 
-	// Phase 2: projections stream the answer and record tool observations.
 	projectStream(&tx, AnswerStream, "final answer")
 	projectTool(&tx, ToolUpdate{Start: &ToolStart{Name: "bash", Args: `{"command":"ls"}`}})
 	projectTool(&tx, ToolUpdate{Result: &ToolResult{Name: "bash", Result: "a.go\nb.go", Lines: 2}})
@@ -56,7 +52,6 @@ func TestMutationsKeepHitTestCorrectWithoutCallerInvalidation(t *testing.T) {
 		t.Errorf("after projections: messageAtLine(%d) = (%d,%v), want streaming message 1", answerLine, idx, ok)
 	}
 
-	// Phase 3: completion projection finalizes the streamed assistant message.
 	msg := cmd().(turnDoneMsg)
 	if _, err := projectDone(&tx, msg); err != nil {
 		t.Fatalf("completion projection returned err %v", err)
@@ -66,8 +61,6 @@ func TestMutationsKeepHitTestCorrectWithoutCallerInvalidation(t *testing.T) {
 	if idx, ok := tx.messageAtLine(answerLine); !ok || idx != 1 {
 		t.Errorf("after completion projection: messageAtLine(%d) = (%d,%v), want assistant message 1", answerLine, idx, ok)
 	}
-	// Phase 4: mutate outside any turn — two appends plus a resize — and
-	// check the whole mapping survives with indexes shifted by the appends.
 	tx.AppendUserMsg("help me")
 	tx.AppendAssistantMsg("a standalone note")
 	tx.SetSize(80, 30)

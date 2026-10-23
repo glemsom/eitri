@@ -13,7 +13,5 @@ package skillspack
 
 import "embed"
 
-// FS is the embedded builtin skill packs, one directory per skill.
-//
 //go:embed subagents web-access
 var FS embed.FS

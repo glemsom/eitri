@@ -7,7 +7,6 @@ import (
 	"testing"
 )
 
-// skillSpec is a name/description pair for building deterministic test catalogs.
 type skillSpec struct{ name, desc string }
 
 // catalogFromSpecs builds a Catalog in-package with fixed Dirs under one root so
@@ -21,7 +20,6 @@ func catalogFromSpecs(specs []skillSpec) *Catalog {
 	return c
 }
 
-// fixedCatalog is the small fixed set the golden test pins.
 func fixedCatalog() *Catalog {
 	return catalogFromSpecs([]skillSpec{
 		{"subagents", "Outsource part of your own workload to a subagent — a batch run with its own session and sandbox."},
@@ -90,7 +88,6 @@ func TestRenderIndexKeepsDescriptionUnderCap(t *testing.T) {
 	}
 }
 
-// renderedDescription returns the catalog line's description for name.
 func renderedDescription(t *testing.T, c *Catalog, name string) string {
 	t.Helper()
 	for _, l := range strings.Split(c.RenderIndex(), "\n") {

@@ -21,7 +21,7 @@ func TestRailReflectsMutableSessionKey(t *testing.T) {
 		t.Fatalf("rail CONTEXT missing initial session id, got: %q", view)
 	}
 
-	live.Set("eitri-2") // `/new` re-mints the session key
+	live.Set("eitri-2")
 	view = r.render(telemetry.NewTelemetry("deepseek-v4-flash", "high", true, 250), defaultTheme, defaultRailWidth)
 	if !strings.Contains(view, "session eitri-2") {
 		t.Errorf("rail CONTEXT did not refresh to new session id after live key changed, got: %q", view)

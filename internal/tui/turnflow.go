@@ -13,7 +13,6 @@ type TurnFlow struct {
 	turnSeq   int
 }
 
-// Observe records one streamed text observation. Empty deltas are ignored.
 func (f *TurnFlow) Observe(kind StreamKind, delta string) bool {
 	if delta == "" {
 		return false
@@ -29,24 +28,19 @@ func (f *TurnFlow) Observe(kind StreamKind, delta string) bool {
 	return true
 }
 
-// ObserveTool records one tool start/result observation in the same
-// arrival-ordered event log as the streamed reasoning/answer observations,
-// stamping it with the next turn sequence number. Tool observations carry no
-// text snapshot of their own, so Content and Reasoning stay untouched; they
-// only delimit the reasoning/answer fragments around them in the log.
+// ObserveTool stamps ev with the next turn sequence number and appends it to the
+// same arrival-ordered log as the streamed text, leaving Content and Reasoning
+// untouched so tool events only delimit the text fragments around them.
 func (f *TurnFlow) ObserveTool(ev TimelineEvent) {
 	ev.Seq = f.turnSeq
 	f.turnSeq++
 	f.events = append(f.events, ev)
 }
 
-// Events returns the ordered streamed text observations.
 func (f *TurnFlow) Events() []TimelineEvent { return f.events }
 
-// Content returns the live answer snapshot derived from observed deltas.
 func (f *TurnFlow) Content() string { return f.content }
 
-// Reasoning returns the live reasoning snapshot derived from observed deltas.
 func (f *TurnFlow) Reasoning() string { return f.reasoning }
 
 // Finalize reconciles the committed snapshots with the streamed ones: completed
@@ -56,7 +50,6 @@ func (f *TurnFlow) Finalize(answer, reasoning string, stopped bool) (content, co
 	return finalizeFlowSnapshot(answer, f.content, stopped), finalizeFlowSnapshot(reasoning, f.reasoning, stopped)
 }
 
-// Reset clears the flow for the next turn.
 func (f *TurnFlow) Reset() {
 	f.events = nil
 	f.content = ""

@@ -84,7 +84,6 @@ func TestModel_thinkingCollapsible(t *testing.T) {
 		t.Errorf("reasoning body should be collapsed by default, got: %q", content)
 	}
 
-	// Tab focuses the reasoning block; Enter expands it (per-block expand).
 	m = keypress(t, m, "tab")
 	m = keypress(t, m, "enter")
 	expanded := view(m)
@@ -115,7 +114,6 @@ func TestModel_thinkingLongReasoningWraps(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m = submitAndWait(t, m)
 
-	// Tab focuses the reasoning block; Enter expands it.
 	m = keypress(t, m, "tab")
 	m = keypress(t, m, "enter")
 	content := view(m)
@@ -148,7 +146,6 @@ func TestModel_thinkingMarkdownStructure(t *testing.T) {
 	m = typeText(t, m, "hi")
 	m = submitAndWait(t, m)
 
-	// Tab focuses the reasoning block; Enter expands it.
 	m = keypress(t, m, "tab")
 	m = keypress(t, m, "enter")
 	rows := reasoningPaneRows(t, view(m))

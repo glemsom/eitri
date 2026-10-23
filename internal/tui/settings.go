@@ -18,7 +18,6 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// Field indexes for the settings form, in display/cycle order.
 const (
 	fieldProvider = iota
 	fieldModel
@@ -38,7 +37,6 @@ const (
 	fieldCount
 )
 
-// settingVals are the option lists for cycle-style setters.
 var (
 	providerFams = []string{"opencode-go", "github-copilot", "custom-openai"}
 	effortTiers  = []string{"low", "medium", "high", "max"}
@@ -53,7 +51,6 @@ const (
 	discoverError
 )
 
-// settingsForm is the pure state behind the TUI Settings surface.
 type settingsForm struct {
 	theme               Theme
 	cfg                 config.Config
@@ -73,7 +70,6 @@ type settingsForm struct {
 	discardSelected     bool
 }
 
-// newSettingsForm seeds the form with the loaded config and the discovered model list.
 func newSettingsForm(cfg config.Config, models []string) settingsForm {
 	f := settingsForm{cfg: cfg, original: cfg, models: models, field: 0, theme: defaultTheme}
 	if len(models) == 0 {
@@ -283,10 +279,8 @@ func (f *settingsForm) confirmTextInput() {
 
 func (f *settingsForm) draft() config.Config { return f.cfg }
 
-// onSave reports whether the focused field is the Save button.
 func (f settingsForm) onSave() bool { return f.field == fieldSave }
 
-// onCancel reports whether the focused field is the Cancel button.
 func (f settingsForm) onCancel() bool { return f.field == fieldCancel }
 
 func (f settingsForm) dirty() bool {
@@ -311,7 +305,6 @@ func configsEqual(a, b config.Config) bool {
 	return true
 }
 
-// thinkingModeLabel renders the reasoning mode value (on/off) for the Settings panel, reflecting the thinking_enabled config.
 func thinkingModeLabel(on bool) string {
 	if on {
 		return lookup("on") + " on"
@@ -359,7 +352,6 @@ func settingsHelp(f settingsForm) string {
 	}
 }
 
-// cycle moves v through vals by d (wrap); unknown v starts at the first entry.
 func cycle(v string, vals []string, d int) string {
 	if len(vals) == 0 {
 		return v
@@ -532,9 +524,6 @@ func openSettingsOverlay(cfg config.Config, models []string, theme Theme, thinki
 	return o, discoverCmd(o.discover, o.cfg)
 }
 
-// Key routes one key press into the overlay. It returns what the caller
-// should do next plus any follow-up command (model discovery after a
-// provider change, or folder picker after Add folder).
 func (o *SettingsOverlay) Key(k tea.KeyPressMsg) (settingsKeyOutcome, tea.Cmd) {
 	s := &o.settingsForm
 	if s.confirmDiscard {
@@ -642,8 +631,6 @@ func (o *SettingsOverlay) keyAddPath(k tea.KeyPressMsg) (settingsKeyOutcome, tea
 	return outcomeContinue, cmd
 }
 
-// selectHighlightedFolder adds the folder under the picker cursor as a
-// writable path and closes the picker without opening it.
 func (s *settingsForm) selectHighlightedFolder() {
 	p := s.picker.HighlightedPath()
 	if p == "" {
@@ -656,10 +643,6 @@ func (s *settingsForm) selectHighlightedFolder() {
 	s.addPath(p)
 }
 
-// settingsResult reports the outcome of one message routed into the open
-// overlay: what the caller should do next, any follow-up command, and — when
-// the outcome is a save — the accepted config plus its status line, and for
-// discovery results the refreshed model list.
 type settingsResult struct {
 	outcome settingsKeyOutcome
 	handled bool
@@ -711,7 +694,6 @@ func (o *SettingsOverlay) Handle(msg tea.Msg) settingsResult {
 	}
 }
 
-// View renders the open Settings surface.
 func (o *SettingsOverlay) View() string {
 	view := settingsView(o.settingsForm)
 	if o.status != "" {
@@ -732,8 +714,6 @@ func (o *SettingsOverlay) View() string {
 	return strings.Join(append(lines[:bodyRows], lines[len(lines)-footerRows:]...), "\n")
 }
 
-// beginDiscovery arms the loading state for the draft config and returns the
-// discovery command; nil when discovery is unavailable.
 func (o *SettingsOverlay) beginDiscovery() tea.Cmd {
 	if o.discover == nil {
 		return nil
@@ -760,9 +740,6 @@ func (o *SettingsOverlay) ApplyDiscovery(msg discoverDoneMsg) {
 	}
 }
 
-// Save persists the draft via the save seams and reports the resulting status
-// message alongside the accepted config; the caller applies the config to the
-// live session.
 func (o *SettingsOverlay) Save() (config.Config, string, bool) {
 	cfg := o.draft()
 	var status string
@@ -788,7 +765,6 @@ func (o *SettingsOverlay) Save() (config.Config, string, bool) {
 	return cfg, status, applied
 }
 
-// settingsView renders the Settings surface: a focused row per settable knob, the focused row highlighted, a Save/Cancel footer.
 func settingsView(f settingsForm) string {
 	th := f.theme
 	if f.confirmDiscard {
@@ -953,7 +929,6 @@ func settingsView(f settingsForm) string {
 	return b.String()
 }
 
-// startSettings opens the Settings surface and returns the command to run.
 func (m Model) startSettings() (tea.Model, tea.Cmd) {
 	o, cmd := openSettingsOverlay(m.deps.Config, m.deps.Models, m.tx.Theme(), m.deps.ThinkingSuppression, m.deps)
 	g := m.tx.Geometry()
@@ -963,7 +938,6 @@ func (m Model) startSettings() (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// updateSettings routes one message through the open Settings overlay and applies its outcome.
 func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 	res := m.settings.Handle(msg)
 	switch res.outcome {
@@ -1004,7 +978,6 @@ func (m Model) updateSettings(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, res.cmd
 }
 
-// discoverCmd runs one on-demand provider model discovery off the main loop and reports its result .
 func discoverCmd(discover func(ctx context.Context, cfg config.Config) ([]string, error), cfg config.Config) tea.Cmd {
 	return tea.Cmd(func() tea.Msg {
 		ctx, cancel := context.WithCancel(context.Background())

@@ -8,10 +8,8 @@ import (
 	"slices"
 )
 
-// errInvalidJSON marks tool-call arguments that are not parseable JSON.
 var errInvalidJSON = errors.New("tool arguments are not valid JSON")
 
-// validateToolCallArgs parses rawJSON and validates it against the tool's strict-shaped JSON-Schema (Parameters).
 func validateToolCallArgs(schema map[string]any, rawJSON string, parsed *map[string]any) error {
 	var out map[string]any
 	if err := json.Unmarshal([]byte(rawJSON), &out); err != nil {
@@ -74,7 +72,6 @@ func requiredList(required any) []string {
 	}
 }
 
-// checkValue verifies v against a single property schema.
 func checkValue(prop, v any) error {
 	switch p := prop.(type) {
 	case []any: // nullable union, e.g. ["integer", "null"]
@@ -113,7 +110,9 @@ func checkValue(prop, v any) error {
 	return nil
 }
 
-// typeMatches reports whether a Go-typed value satisfies a JSON-Schema type keyword. number accepts both integer and float64 (JSON numbers decode as float64 unless integral).
+// typeMatches reports whether a Go-typed value satisfies a JSON-Schema type
+// keyword. integer accepts an integral float64, since JSON numbers decode as
+// float64 unless the decoder is configured otherwise.
 func typeMatches(t string, v any) bool {
 	switch t {
 	case "string":

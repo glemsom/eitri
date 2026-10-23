@@ -151,7 +151,6 @@ func TestModel_mentionDescendsIntoFolderToFullPath(t *testing.T) {
 	if !m.mention.isOpen() {
 		t.Fatalf("dropdown should open on @")
 	}
-	// move the selection to the src/ folder and descend into it
 	for m.mention.SelectedCandidate() != "src/" {
 		m = keypress(t, m, "down")
 	}
@@ -159,11 +158,9 @@ func TestModel_mentionDescendsIntoFolderToFullPath(t *testing.T) {
 	if got := m.composer.Value(); got != "@src/" {
 		t.Fatalf("after descend draft = %q, want @src/", got)
 	}
-	// the dropdown now lists the folder's children
 	if got := m.mention.SelectedCandidate(); got != "src/util.go" {
 		t.Fatalf("child candidate = %q, want src/util.go", got)
 	}
-	// selecting the file completes the full path and closes the dropdown
 	m = keypress(t, m, "enter")
 	if got := m.composer.Value(); got != "src/util.go" {
 		t.Errorf("after file select draft = %q, want src/util.go", got)
@@ -323,7 +320,6 @@ func TestModel_mentionCaretFollowsFolderDescend(t *testing.T) {
 		t.Fatalf("expected src/ candidate, got %q", got)
 	}
 
-	// the @-keeping descend keeps the dropdown open and the caret after @src/
 	m = keypress(t, m, "enter")
 	if got := m.composer.Value(); got != "see @src/ for refs" {
 		t.Errorf("after folder descend draft = %q, want @src/ kept", got)
@@ -336,7 +332,6 @@ func TestModel_mentionCaretFollowsFolderDescend(t *testing.T) {
 		t.Errorf("caret column after descend = %d, want %d (right after @src/)", c, wantCol)
 	}
 
-	// the file completion closes it with the caret after the full path
 	m = keypress(t, m, "enter")
 	if got := m.composer.Value(); got != "see src/util.go for refs" {
 		t.Errorf("after file select draft = %q, want completed path", got)

@@ -198,12 +198,13 @@ func TestSnapshot_frames(t *testing.T) {
 	ex := scriptedChat(t, config.Config{
 		Theme: "dark", Provider: "deepseek", Model: "deepseek-v4-flash", ReasoningEffort: "high",
 	}, 120, 40)
-	ex = upd(t, ex, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl}) // Ctrl+E: expanded view mode on
+	ex = upd(t, ex, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
 	writeFrame(t, out, "13_expanded", ex)
 
 	_ = context.Background // keep the import honest
 
-	// flow — the empty pre-stream gap while busy, and the instant-error turn.
+	// The two frames the empty-transcript flow still needs: the pre-stream gap
+	// while busy, and the instant-error turn.
 	gm := scriptedChat(t, config.Config{
 		Theme: "dark", Provider: "deepseek", Model: "deepseek-v4-flash", ReasoningEffort: "high",
 	}, 120, 40)

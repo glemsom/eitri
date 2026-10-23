@@ -14,10 +14,8 @@ import (
 // The gate disables all animation when the user opts out (EITRI_NO_MOTION).
 const SpinnerTickInterval = 80 * time.Millisecond
 
-// SpinnerFrames is the OpenCode-style braille frame set.
 var SpinnerFrames = []rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
 
-// SpinnerTickMsg advances the busy spinner one frame.
 type SpinnerTickMsg struct{}
 
 // TickFunc schedules a timer message to arrive after d elapses, returning the
@@ -26,17 +24,14 @@ type SpinnerTickMsg struct{}
 // time.
 type TickFunc func(d time.Duration, fn func(time.Time) tea.Msg) tea.Cmd
 
-// RealTick is the production timer schedule: a real bubbletea tick.
 func RealTick(d time.Duration, fn func(time.Time) tea.Msg) tea.Cmd {
 	return tea.Tick(d, fn)
 }
 
-// SpinnerTick reports the next busy-spinner tick on this pulse's schedule.
 func (p *Pulse) SpinnerTick() tea.Cmd {
 	return p.tick(SpinnerTickInterval, func(time.Time) tea.Msg { return SpinnerTickMsg{} })
 }
 
-// MotionEnabled reports whether animated indicators may run.
 func MotionEnabled() bool {
 	return os.Getenv("EITRI_NO_MOTION") == ""
 }
@@ -51,10 +46,8 @@ const EmberTickInterval = 140 * time.Millisecond
 // surface settles to the static brand mark.
 const EmberWindow = 24
 
-// IdleEmberTickMsg advances the idle ember one frame.
 type IdleEmberTickMsg struct{}
 
-// idleEmberTick reports the next idle-ember tick on this pulse's schedule.
 func (p *Pulse) idleEmberTick() tea.Cmd {
 	return p.tick(EmberTickInterval, func(time.Time) tea.Msg { return IdleEmberTickMsg{} })
 }

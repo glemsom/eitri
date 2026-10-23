@@ -12,12 +12,10 @@ type sseEvent struct {
 	data string
 }
 
-// sse reads Server-Sent Events from a stream.
 type sse struct {
 	r *bufio.Reader
 }
 
-// newSSE wraps r in an SSE reader.
 func newSSE(r io.Reader) *sse {
 	return &sse{r: bufio.NewReader(r)}
 }
@@ -37,7 +35,6 @@ func (s *sse) Next() (sseEvent, error) {
 		if !strings.HasPrefix(line, "data:") {
 			continue
 		}
-		// Gather contiguous data: lines into one event.
 		var lines []string
 		for {
 			lines = append(lines, strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
@@ -56,7 +53,6 @@ func (s *sse) Next() (sseEvent, error) {
 	}
 }
 
-// readLine returns the next line without its trailing newline.
 func readLine(r *bufio.Reader) (string, error) {
 	line, err := r.ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {

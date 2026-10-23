@@ -2,9 +2,6 @@ package tui
 
 import "testing"
 
-// TestCollapseFocus_NoBlocksStaysOff locks the no-op edge: with an empty
-// collapsible-block list the cursor must never activate, regardless of how many
-// times Tab is pressed.
 func TestCollapseFocus_NoBlocksStaysOff(t *testing.T) {
 	var f collapseFocus
 	f.focusNext(0)
@@ -17,8 +14,6 @@ func TestCollapseFocus_NoBlocksStaysOff(t *testing.T) {
 	}
 }
 
-// TestCollapseFocus_FirstTabActivatesCursor locks the activation rule: the
-// first Tab turns the cross off and lands the cursor on the first block.
 func TestCollapseFocus_FirstTabActivatesCursor(t *testing.T) {
 	var f collapseFocus
 	if _, ok := f.focusedIndex(2); ok {
@@ -31,8 +26,6 @@ func TestCollapseFocus_FirstTabActivatesCursor(t *testing.T) {
 	}
 }
 
-// TestCollapseFocus_CyclesAndWraps locks the Tab traversal: each focusNext
-// advances the cursor by one and, past the last block, wraps back to the first.
 func TestCollapseFocus_CyclesAndWraps(t *testing.T) {
 	var f collapseFocus
 	f.focusNext(3)
@@ -54,16 +47,15 @@ func TestCollapseFocus_CyclesAndWraps(t *testing.T) {
 // panicking or wrapping unexpectedly.
 func TestCollapseFocus_InvalidCursorWhenListShrinks(t *testing.T) {
 	var f collapseFocus
-	f.focusNext(3) // cursor lands on 0
-	f.focusNext(3) // cursor lands on 1
-	f.focusNext(3) // cursor lands on 2
+	f.focusNext(3)
+	f.focusNext(3)
+	f.focusNext(3)
 	if _, ok := f.focusedIndex(2); ok {
 		t.Fatalf("cursor 2 must be invalid for a 2-block list, got ok=%v", ok)
 	}
 	if f.focusedIs(2, 2) {
 		t.Fatalf("focusedIs must be false for an out-of-range block, got true")
 	}
-	// A subsequent Tab re-clamps to a valid position within the new list.
 	f.focusNext(2)
 	if idx, ok := f.focusedIndex(2); !ok || idx != 1 {
 		t.Fatalf("Tab after shrink must re-clamp to a valid block, got idx=%d ok=%v", idx, ok)

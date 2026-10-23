@@ -1674,7 +1674,7 @@ func (t *Transcript) setExpandAll(v bool) {
 		t.collapseAll = false
 		t.clearCollapseForces()
 	}
-	t.layout.dirty = true // showing/hiding blocks re-wraps the transcript
+	t.layout.dirty = true
 	t.busyPrefixDirty = true
 	t.invalidateCommittedMemo()
 }
@@ -1689,7 +1689,7 @@ func (t *Transcript) setCollapseAll(v bool) {
 		t.expandAll = false
 		t.clearExpandForces()
 	}
-	t.layout.dirty = true // collapsing/hiding blocks re-wraps the transcript
+	t.layout.dirty = true
 	t.busyPrefixDirty = true
 	t.invalidateCommittedMemo()
 }
@@ -1811,7 +1811,6 @@ func reasoningFragments(events []TimelineEvent) []string {
 	return out
 }
 
-// focused returns the block currently under the focus cursor.
 func (t Transcript) focused() (collapsibleBlock, bool) {
 	blocks := t.collapsibleBlocks()
 	idx, ok := t.focus.focusedIndex(len(blocks))

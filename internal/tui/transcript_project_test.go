@@ -2,8 +2,6 @@ package tui
 
 import "testing"
 
-// Stream outcomes grow the assistant message and append arrival-ordered live
-// timeline events with sequence numbers.
 func TestTranscriptProjectStreamGrowsMessageAndTimeline(t *testing.T) {
 	tx := newTestTx()
 	tx.BeginBusy()
@@ -32,7 +30,6 @@ func TestTranscriptProjectStreamGrowsMessageAndTimeline(t *testing.T) {
 	}
 }
 
-// An empty stream outcome changes nothing: no message appended, no timeline event.
 func TestTranscriptProjectEmptyStreamNoop(t *testing.T) {
 	tx := newTestTx()
 	tx.BeginBusy()
@@ -44,8 +41,6 @@ func TestTranscriptProjectEmptyStreamNoop(t *testing.T) {
 	}
 }
 
-// A turn that starts after a committed streaming message appends a fresh
-// streaming message rather than growing the old one.
 func TestTranscriptProjectNewTurnAppendsFreshStreamingMessage(t *testing.T) {
 	tx := newTestTx()
 	tx.BeginBusy()
@@ -65,7 +60,6 @@ func TestTranscriptProjectNewTurnAppendsFreshStreamingMessage(t *testing.T) {
 	}
 }
 
-// Tool outcomes update both the tool log and the live timeline in arrival order.
 func TestTranscriptProjectToolRoutesToLogAndTimeline(t *testing.T) {
 	tx := newTestTx()
 	tx.BeginBusy()

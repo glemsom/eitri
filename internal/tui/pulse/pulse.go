@@ -1,8 +1,5 @@
 package pulse
 
-// Package pulse owns the live turn's animation pulse: the busy flag and its
-// elapsed clock, the braille spinner and forge frames, the tool-start glint,
-// the idle ember, and the Phase derived from the streaming assistant message.
 import (
 	"time"
 
@@ -24,8 +21,6 @@ type Pulse struct {
 	hasAnswer          bool
 }
 
-// New builds a pulse reading wall-clock time and ticking on real timers; a nil
-// clock uses time.Now.
 func New(clock func() time.Time) *Pulse {
 	if clock == nil {
 		clock = time.Now
@@ -51,7 +46,6 @@ func (p *Pulse) BeginBusy() {
 	p.busy = true
 }
 
-// Start marks a turn busy and starts its elapsed clock.
 func (p *Pulse) Start() {
 	if p == nil {
 		return
@@ -60,7 +54,6 @@ func (p *Pulse) Start() {
 	p.busyStartedAt = p.clock()
 }
 
-// EndTurn clears the busy state and parks the animation frames.
 func (p *Pulse) EndTurn() {
 	if p == nil {
 		return
@@ -78,8 +71,6 @@ func (p *Pulse) Stop() {
 	p.busy = false
 }
 
-// NoteStream records which assistant text is streaming, so Status derives Phase
-// from it alongside the busy flag.
 func (p *Pulse) NoteStream(streaming, hasReasoning, hasAnswer bool) {
 	if p == nil {
 		return
@@ -97,7 +88,6 @@ func (p *Pulse) Arm() {
 	p.busyPulse = 3
 }
 
-// Status reads the whole pulse as one value.
 func (p *Pulse) Status() Status {
 	if p == nil {
 		return Status{Phase: PhaseIdle}
@@ -167,8 +157,9 @@ func (p *Pulse) TickEmber(overlayOpen bool) tea.Cmd {
 	return nil
 }
 
-// SettleIdleEmber parks the ember on the static mark and closes the window, so
-// a busy turn, an overlay, or reduced motion stops the idle wakeup.
+// SettleIdleEmber closes the idle-ember window so no further wakeup is scheduled:
+// a busy turn, an overlay, or reduced motion must stop the idle animation rather
+// than let a stray tick keep it alive.
 func (p *Pulse) SettleIdleEmber() {
 	if p == nil {
 		return
@@ -177,15 +168,11 @@ func (p *Pulse) SettleIdleEmber() {
 	p.idleEmberRemaining = 0
 }
 
-// armIdleEmber restarts the idle-ember window at its leading frame.
 func (p *Pulse) armIdleEmber() {
 	p.setIdleEmberFrame(0)
 	p.idleEmberRemaining = EmberWindow
 }
 
-// advanceIdleEmber steps the ember within the open window and reports whether
-// the window is still open, settling the frame back to the static mark when it
-// closes.
 func (p *Pulse) advanceIdleEmber() bool {
 	if p.idleEmberRemaining <= 0 {
 		p.setIdleEmberFrame(0)
@@ -200,7 +187,6 @@ func (p *Pulse) advanceIdleEmber() bool {
 	return true
 }
 
-// setIdleEmberFrame stores the ember frame when it actually changes.
 func (p *Pulse) setIdleEmberFrame(frame int) {
 	if p.idleEmberFrame == frame {
 		return
@@ -208,8 +194,6 @@ func (p *Pulse) setIdleEmberFrame(frame int) {
 	p.idleEmberFrame = frame
 }
 
-// SetEmberFrame places the idle ember on a given frame, a seam for tests and
-// renderers that need a specific shimmer position.
 func (p *Pulse) SetEmberFrame(frame int) {
 	if p == nil {
 		return
@@ -217,7 +201,6 @@ func (p *Pulse) SetEmberFrame(frame int) {
 	p.setIdleEmberFrame(frame)
 }
 
-// SetClock swaps the clock read, a seam for tests that assert the elapsed readout.
 func (p *Pulse) SetClock(clock func() time.Time) {
 	if p == nil {
 		return
@@ -228,9 +211,6 @@ func (p *Pulse) SetClock(clock func() time.Time) {
 	p.clock = clock
 }
 
-// SetTick swaps the timer schedule the spinner and idle ember arm, a seam for
-// tests that advance the ticks deterministically; a nil schedule restores the
-// real timers.
 func (p *Pulse) SetTick(tick TickFunc) {
 	if p == nil {
 		return

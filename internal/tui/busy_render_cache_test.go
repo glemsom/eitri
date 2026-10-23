@@ -7,8 +7,6 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// busyCacheTranscript builds a busy transcript with a committed history followed
-// by a running live turn: committed turns plus one in-progress streaming turn.
 func busyCacheTranscript(delta string) (*Transcript, *TurnSession) {
 	s := NewTurnSession(nil)
 	th := themeFor(config.DefaultTheme)
@@ -35,7 +33,6 @@ func busyCacheTranscript(delta string) (*Transcript, *TurnSession) {
 		message{role: "eitri", content: "answer two", events: synthAnswerLog("answer two")},
 	)
 
-	// The live turn's prompt + its streaming reply.
 	tx.messages = append(tx.messages,
 		message{role: "you", content: "live prompt"},
 		message{role: "eitri", streaming: true, thinkingRequested: true,
@@ -49,15 +46,11 @@ func busyCacheTranscript(delta string) (*Transcript, *TurnSession) {
 	return tx, s
 }
 
-// TestBusyRender_concatenatedMatchesFullRender locks the byte-identical
-// requirement: the busy-path concatenation (cached prefix + live
-// tail) must equal a fresh full render of the same state, every delta.
 func TestBusyRender_concatenatedMatchesFullRender(t *testing.T) {
 	tx, s := busyCacheTranscript("")
 	_ = s
 
 	for i := 0; i < 3; i++ {
-		// Grow the live turn by one reasoning delta, as a stream would.
 		reasoning := tx.messages[4].reasoning + string(rune('a'+i))
 		tx.syncStreamSnapshots(4, "", reasoning)
 		tx.flow.Observe(ReasoningStream, string(rune('a'+i)))
@@ -71,10 +64,6 @@ func TestBusyRender_concatenatedMatchesFullRender(t *testing.T) {
 	}
 }
 
-// TestBusyRender_prefixCachedAcrossDeltas locks the performance requirement:
-// once the committed prefix is rendered, per-delta frames re-render only the
-// live tail, never the whole committed history. The prefix string is stable
-// across stream deltas.
 func TestBusyRender_prefixCachedAcrossDeltas(t *testing.T) {
 	tx, s := busyCacheTranscript("")
 	_ = s
@@ -88,7 +77,6 @@ func TestBusyRender_prefixCachedAcrossDeltas(t *testing.T) {
 		t.Fatalf("prefix must contain the committed history, got %q", ansiStrip(prefix))
 	}
 
-	// A stream delta must not invalidate the cached prefix.
 	tx.syncStreamSnapshots(4, "", "more reasoning")
 	if tx.busyPrefixDirty {
 		t.Error("a stream delta must not dirty the committed-prefix cache")
@@ -99,10 +87,6 @@ func TestBusyRender_prefixCachedAcrossDeltas(t *testing.T) {
 	}
 }
 
-// TestBusyRender_committedMutationInvalidatesPrefix locks that a committed-history
-// change (a tool observation appended to the committed log) invalidates the
-// prefix so the next busy frame re-renders it rather than serving stale bytes,
-// and that the rebuilt concatenation stays byte-identical to a full render.
 func TestBusyRender_committedMutationInvalidatesPrefix(t *testing.T) {
 	tx, s := busyCacheTranscript("")
 	_ = s
@@ -112,7 +96,6 @@ func TestBusyRender_committedMutationInvalidatesPrefix(t *testing.T) {
 		t.Fatal("precondition: fresh cache is clean")
 	}
 
-	// A committed-history mutation must invalidate the prefix and change its bytes.
 	tx.applyTool(ToolUpdate{Start: &ToolStart{Name: "read", Args: `{"path":"b.txt"}`}})
 	if !tx.busyPrefixDirty {
 		t.Error("a committed-history change must invalidate the prefix")

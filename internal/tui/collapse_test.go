@@ -70,8 +70,6 @@ func TestTranscript_largeCoTCollapsesToHintWhileToolsStayVisible(t *testing.T) {
 	}
 }
 
-// TestTranscript_coTExpandedByDefaultShowsBody flips the Settings toggle:
-// CoT collapsed by default OFF means the reasoning body renders on its own.
 func TestTranscript_coTExpandedByDefaultShowsBody(t *testing.T) {
 	tx := largeCotFlowTranscript()
 	tx.cotExpanded = true // the "CoT collapsed by default" setting is off
@@ -85,8 +83,6 @@ func TestTranscript_coTExpandedByDefaultShowsBody(t *testing.T) {
 	}
 }
 
-// TestTranscript_toolResultsExpandedByDefaultShowsResult flips the Settings
-// toggle: tool results collapsed by default OFF means the result body renders.
 func TestTranscript_toolResultsExpandedByDefaultShowsResult(t *testing.T) {
 	tx := largeCotFlowTranscript()
 	tx.toolResultsExpanded = true // the "tool results collapsed by default" setting is off
@@ -103,18 +99,14 @@ func TestTranscript_toolResultsExpandedByDefaultShowsResult(t *testing.T) {
 	}
 }
 
-// TestTranscript_blockFocusCyclesAndToggles exercises the per-block focus:
-// Tab cycles the focus through the collapsible blocks (CoT, then tools) and
-// Enter toggles the focused block between hint and full body.
 func TestTranscript_blockFocusCyclesAndToggles(t *testing.T) {
-	tx := flowTranscript()                                           // reasoning + tool + answer, collapsed by default
+	tx := flowTranscript()
 	tx.messages[1].expansion.clear(blockReasoning, reasoningWholeID) // flowTranscript seeds it expanded; clear the per-block state
 
 	if got := len(tx.collapsibleBlocks()); got != 2 {
 		t.Fatalf("collapsibleBlocks() = %d, want 2 (reasoning + tool)", got)
 	}
 
-	// Focus has not been entered yet: toggling must be a no-op.
 	tx.ToggleFocused()
 	var before strings.Builder
 	tx.renderHistory(&before, nil, nil)
@@ -122,7 +114,6 @@ func TestTranscript_blockFocusCyclesAndToggles(t *testing.T) {
 		t.Fatalf("premature toggle must not expand the CoT, got:\n%s", before.String())
 	}
 
-	// Tab -> focus the reasoning block; Enter expands it.
 	tx.FocusNext()
 	blk, ok := tx.focused()
 	if !ok || blk.kind != blockReasoning {
@@ -135,7 +126,6 @@ func TestTranscript_blockFocusCyclesAndToggles(t *testing.T) {
 		t.Errorf("Enter on the focused reasoning block must reveal the full CoT, got:\n%s", expanded.String())
 	}
 
-	// Enter again collapses it back to the hint.
 	tx.ToggleFocused()
 	var recollapsed strings.Builder
 	tx.renderHistory(&recollapsed, nil, nil)
@@ -143,7 +133,6 @@ func TestTranscript_blockFocusCyclesAndToggles(t *testing.T) {
 		t.Errorf("Enter on an expanded reasoning block must collapse it back to the hint, got:\n%s", recollapsed.String())
 	}
 
-	// Tab -> focus the tool entry; Enter reveals the tool result.
 	tx.FocusNext()
 	blk, ok = tx.focused()
 	if !ok || blk.kind != blockTool || blk.toolIdx != 0 {
@@ -156,7 +145,6 @@ func TestTranscript_blockFocusCyclesAndToggles(t *testing.T) {
 		t.Errorf("Enter on the focused tool block must reveal the result, got:\n%s", toolExpanded.String())
 	}
 
-	// Tab wraps back to the reasoning block.
 	tx.FocusNext()
 	blk, ok = tx.focused()
 	if !ok || blk.kind != blockReasoning {
@@ -164,11 +152,9 @@ func TestTranscript_blockFocusCyclesAndToggles(t *testing.T) {
 	}
 }
 
-// TestTranscript_focusedBlockRendersMarker shows the focused block's hint line
-// carries the focus marker so the user can see where Enter will land.
 func TestTranscript_focusedBlockRendersMarker(t *testing.T) {
 	tx := flowTranscript()
-	tx.FocusNext() // focus the reasoning header
+	tx.FocusNext()
 
 	var hist strings.Builder
 	tx.renderHistory(&hist, nil, nil)
@@ -179,9 +165,6 @@ func TestTranscript_focusedBlockRendersMarker(t *testing.T) {
 	}
 }
 
-// TestTranscript_eExpandsAllECollapsesToHints exercises the global keys: e
-// expands every collapsible block, E collapses every collapsible block back to
-// its hint/one-liner.
 func TestTranscript_eExpandsAllECollapsesToHints(t *testing.T) {
 	tx := flowTranscript()
 
@@ -253,9 +236,6 @@ func TestModel_eExpandsAllECollapseAllHints(t *testing.T) {
 	}
 }
 
-// TestModel_tabFocusesEnterTogglesBlock drives the Tab/Enter per-block
-// interaction through the Model: Tab with an empty composer cycles the focus,
-// Enter toggles the focused block.
 func TestModel_tabFocusesEnterTogglesBlock(t *testing.T) {
 	t.Parallel()
 	feed := NewEventFeed()
@@ -281,7 +261,6 @@ func TestModel_tabFocusesEnterTogglesBlock(t *testing.T) {
 		t.Errorf("Enter on the focused reasoning block must reveal the CoT, got: %q", afterCoT.String())
 	}
 
-	// Tab focuses the tool block; Enter expands its result.
 	m = keypress(t, m, "tab")
 	m = keypress(t, m, "enter")
 	var afterTool strings.Builder

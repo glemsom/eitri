@@ -48,10 +48,6 @@ func renderFlow(t *testing.T, tx *Transcript) string {
 	return hist.String()
 }
 
-// TestRenderFlow_liveAnswerDeemphasizedWhileStreaming locks the first half of
-// T04: while a turn is live (its answer still streaming on the merged flow) the
-// answer must render in the dimmed streaming pane, not the full accent used by
-// a completed turn.
 func TestRenderFlow_liveAnswerDeemphasizedWhileStreaming(t *testing.T) {
 	th := themeFor(config.DefaultTheme)
 
@@ -74,10 +70,8 @@ func TestRenderFlow_liveAnswerDeemphasizedWhileStreaming(t *testing.T) {
 	}
 }
 
-// TestRenderFlow_stopRevealsPartialAnswer locks the third half of T04: stopping
-// mid-answer keeps whatever text already streamed, framed by the stopped pane
-// (accent-dimmed) and marked with the stopped marker — never lost, never an
-// error.
+// TestRenderFlow_stopRevealsPartialAnswer locks that stopping mid-answer keeps
+// whatever text already streamed — never lost, never surfaced as an error.
 func TestRenderFlow_stopRevealsPartialAnswer(t *testing.T) {
 	th := themeFor(config.DefaultTheme)
 
@@ -95,9 +89,6 @@ func TestRenderFlow_stopRevealsPartialAnswer(t *testing.T) {
 	}
 }
 
-// TestRenderFlow_stopNotMisreadAsError guards that a stopped turn is not
-// restyled as an error: the partial answer must keep the stopped (accent-dimmed)
-// pane and never the error panes, which would read the stop as a failure.
 func TestRenderFlow_stopNotMisreadAsError(t *testing.T) {
 	th := themeFor(config.DefaultTheme)
 

@@ -8,7 +8,6 @@ import (
 	"testing"
 )
 
-// compile-time proof that the Responses dialect implements the Dialect seam.
 var _ Dialect = (*ResponsesDialect)(nil)
 
 func TestResponsesDialectCapabilities(t *testing.T) {

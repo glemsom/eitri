@@ -35,8 +35,6 @@ var declaredDependencies = []dependency{
 	{name: "xdg-open", pkgName: "xdg-utils"},
 }
 
-// distroInstallers maps each supported distro family to its package install
-// command prefix, so the refusal message can carry a per-distro hint.
 var distroInstallers = []struct {
 	distro string
 	cmd    string
@@ -46,9 +44,6 @@ var distroInstallers = []struct {
 	{"Arch", "sudo pacman -S"},
 }
 
-// ErrMissingDependencies is the sentinel wrapped by *DependencyError when one
-// or more declared dependencies are absent at boot: Eitri refuses to run
-// because its prompt promises these tools unconditionally.
 var ErrMissingDependencies = errors.New("missing declared dependencies")
 
 // DependencyError reports every declared dependency that failed the boot
@@ -58,8 +53,6 @@ type DependencyError struct {
 	Missing []string
 }
 
-// Error renders one line per missing tool, naming the executable, its distro
-// package when they differ, and the install command for each distro family.
 func (e *DependencyError) Error() string {
 	var b strings.Builder
 	b.WriteString("missing required tools — Eitri refuses to run unless its declared toolset is installed:")
@@ -84,13 +77,8 @@ func (e *DependencyError) Error() string {
 	return b.String()
 }
 
-// Unwrap exposes the ErrMissingDependencies sentinel to errors.Is.
 func (e *DependencyError) Unwrap() error { return ErrMissingDependencies }
 
-// checkDependencies resolves every declared dependency through the injectable
-// executable-lookup seam and returns a *DependencyError naming every miss, or
-// nil when the full declared toolset is present. In an unsandboxed (--yolo-unsafe)
-// session the yolo-exempt substrate (bwrap) is not required and is skipped.
 func checkDependencies(lookPath func(name string) (string, error), yolo bool) error {
 	var missing []string
 	for _, d := range declaredDependencies {

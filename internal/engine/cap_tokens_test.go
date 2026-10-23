@@ -40,7 +40,7 @@ func TestCapTokensHandlesNonMultiplesOfFour(t *testing.T) {
 	t.Parallel()
 	in := "abcdefghijklmno"
 	got := capTokens(in, 3)
-	want := "abcdefghijkl" // first 12 bytes
+	want := "abcdefghijkl"
 	if got != want {
 		t.Fatalf("capTokens(%q, 3) = %q, want %q", in, got, want)
 	}

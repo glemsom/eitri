@@ -19,9 +19,6 @@ func canonicalDefs() []DialectDefinition {
 	}
 }
 
-// TestDialectManifestChatReExpressesCanonicalTools verifies the Chat-Completions
-// dialect folds canonical tool definitions into its function manifest through
-// the shared Dialect seam.
 func TestDialectManifestChatReExpressesCanonicalTools(t *testing.T) {
 	t.Parallel()
 	tools := NewChatCompletionsDialect().Manifest(canonicalDefs()).([]Tool)
@@ -38,9 +35,6 @@ func TestDialectManifestChatReExpressesCanonicalTools(t *testing.T) {
 	}
 }
 
-// TestDialectManifestResponsesReExpressesCanonicalTools verifies the Responses
-// dialect folds canonical tool definitions into its own tool manifest through
-// the shared Dialect seam.
 func TestDialectManifestResponsesReExpressesCanonicalTools(t *testing.T) {
 	t.Parallel()
 	manifest := NewResponsesDialect().Manifest(canonicalDefs())

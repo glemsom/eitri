@@ -8,13 +8,11 @@ import (
 	"strings"
 )
 
-// ErrMalformed is returned when an SSE event's data is not valid JSON on a wire that requires it.
 var ErrMalformed = errors.New("malformed Chat Completions SSE event")
 
 // ErrContextOverflow is returned by a provider when the request would overflow the context window (a 400/context-overflow below the proactive threshold).
 var ErrContextOverflow = errors.New("context window overflow")
 
-// ErrNoDiscovery is returned by the provider model-discovery seam when the configured provider has no ModelLister capability (or none is set).
 var ErrNoDiscovery = errors.New("provider does not support model discovery")
 
 // IsContextOverflow reports whether err is a context-overflow signal that should trigger emergency compaction: the ErrContextOverflow sentinel, or a provider response whose error body names a context-limit condition (the DeepSeek/OpenCode context-overflow surface).
@@ -31,7 +29,6 @@ func IsContextOverflow(err error) bool {
 	return false
 }
 
-// contextOverflowBody reports whether a provider error body names a context-length / token-limit overflow condition.
 func contextOverflowBody(body string) bool {
 	b := strings.ToLower(body)
 	signals := []string{
@@ -153,7 +150,6 @@ type ToolCall struct {
 	Arguments string
 }
 
-// toolCallWire is the deterministic wire shape for a resubmitted assistant tool call: id/type at the top level, name+arguments nested under function.
 type toolCallWire struct {
 	ID       string `json:"id,omitempty"`
 	Type     string `json:"type,omitempty"`
@@ -163,7 +159,6 @@ type toolCallWire struct {
 	} `json:"function"`
 }
 
-// MarshalJSON serializes a ToolCall into the Chat Completions assistant tool_calls element shape.
 func (t ToolCall) MarshalJSON() ([]byte, error) {
 	w := toolCallWire{ID: t.ID, Type: t.Type}
 	w.Function.Name = t.Name
@@ -180,7 +175,6 @@ const (
 	ProviderCustomOpenAI ProviderID = "custom-openai"
 )
 
-// ProviderCapability is an extension a Provider explicitly supports on one or more dialects.
 type ProviderCapability uint8
 
 const (
@@ -190,7 +184,6 @@ const (
 	ProviderCapabilityOpenCodeSessionHeader
 )
 
-// ProviderCapabilities declares the extensions a Provider permits Eitri to emit.
 type ProviderCapabilities uint8
 
 func (c ProviderCapabilities) Supports(capability ProviderCapability) bool {
@@ -221,12 +214,10 @@ type Request struct {
 	ToolSchemaEnforcement bool
 }
 
-// NormalizeReasoningEffort forwards reasoning-effort tiers to the wire, passing low, medium, high and max through unchanged.
 func NormalizeReasoningEffort(effort string) string {
 	return effort
 }
 
-// Chunk is one parsed piece of a streamed turn.
 type Chunk struct {
 	Content          string
 	ReasoningContent string
@@ -238,7 +229,6 @@ type Chunk struct {
 	ToolCalls         []ToolCall
 }
 
-// Usage is per-turn token telemetry, parsed at the provider seam.
 type Usage struct {
 	PromptTokens           int `json:"prompt_tokens"`
 	CompletionTokens       int `json:"completion_tokens"`
@@ -333,7 +323,6 @@ type ModelLister interface {
 	Models(ctx context.Context) ([]ModelInfo, error)
 }
 
-// UnmarshalJSON decodes a ToolCall from the Chat Completions wire shape (id/type at top level, name+arguments nested under function), mirroring MarshalJSON.
 func (t *ToolCall) UnmarshalJSON(data []byte) error {
 	var w toolCallWire
 	if err := json.Unmarshal(data, &w); err != nil {

@@ -122,7 +122,6 @@ type LoggingProvider struct {
 	sink  MessageLogSink
 }
 
-// NewLoggingProvider wraps p with message-layer logging to sink.
 func NewLoggingProvider(p Provider, sink MessageLogSink) *LoggingProvider {
 	return &LoggingProvider{inner: p, sink: sink}
 }

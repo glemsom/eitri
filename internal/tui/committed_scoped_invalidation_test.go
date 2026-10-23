@@ -237,7 +237,6 @@ func TestCommittedToolObservationRerendersOnlyItsUnit(t *testing.T) {
 		t.Fatalf("precondition: busy memo must hold the committed turn's 2 units, got %d", base)
 	}
 
-	// The committed turn's tool result lands while the live turn streams.
 	tx.applyTool(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "a.go\nb.go", Lines: 2}})
 	tx.renderPaneContent()
 

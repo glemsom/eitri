@@ -154,8 +154,6 @@ func (th Theme) gradientRuns(start, end, width int) string {
 	return result
 }
 
-// gradientRunKey identifies a cached rule run: the palette, total width, and
-// the [start,end) column window.
 type gradientRunKey struct {
 	palette           gradientKey
 	width, start, end int
@@ -170,7 +168,6 @@ var (
 // title widths cannot grow it without limit.
 const gradientRunsCacheCap = 256
 
-// styledRuleRun renders n rule glyphs in one SGR run.
 func styledRuleRun(c color.Color, n int) string {
 	return styledGlyph(c, strings.Repeat(lookup("hr"), n))
 }
@@ -182,7 +179,6 @@ func styledGlyph(c color.Color, glyph string) string {
 	return fmt.Sprintf("\x1b[38;2;%d;%d;%dm%s\x1b[m", r>>8, g>>8, b>>8, glyph)
 }
 
-// colorKey packs a color's 24-bit RGB for use as a cache key.
 func colorKey(c color.Color) uint32 {
 	r, g, b, _ := c.RGBA()
 	return uint32(r>>8)<<16 | uint32(g>>8)<<8 | uint32(b>>8)

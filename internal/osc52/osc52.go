@@ -18,7 +18,6 @@ type fdWriter interface {
 	Fd() uintptr
 }
 
-// Writer turns plain text into an OSC 52 clipboard sequence and writes it to an underlying output writer.
 type Writer struct {
 	w io.Writer
 }
@@ -27,7 +26,6 @@ func New(w io.Writer) *Writer {
 	return &Writer{w: w}
 }
 
-// Write encodes text as base64 and writes the OSC 52 clipboard sequence (`ESC ] 52 ; c ; <base64> BEL`) to the underlying writer.
 func (wr *Writer) Write(text string) error {
 	if f, ok := wr.w.(fdWriter); ok && !term.IsTerminal(int(f.Fd())) {
 		return ErrNotTerminal

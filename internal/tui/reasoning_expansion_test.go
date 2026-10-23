@@ -20,21 +20,14 @@ func expansionWithReasoningForces(forceExpand, forceCollapse bool) ExpansionStat
 	return e
 }
 
-// migration: the whole-block and per-fragment reasoning forces live on the
-// message's ExpansionState seam, and the open/collapsed decision reads through
-// it rather than from scattered leaf flags. A pinned whole-block force beats
-// any global mode; a per-fragment force beats the whole-block decision.
 func TestThinkingExpandedForFrag_OwnsForcesOnSeam(t *testing.T) {
 	t.Parallel()
 
-	// Whole-block force-expand beats the collapse-all mode and the
-	// collapsed-by-default flag.
 	msg := message{expansion: expansionWithReasoningForces(true, false)}
 	if !thinkingExpandedForFrag(msg, 0, expansionConfig{mode: viewCollapseAll}) {
 		t.Errorf("whole-block force-expand must win over collapse-all, got collapsed")
 	}
 
-	// No force: the mode and collapsed-by-default flag decide.
 	msg = message{}
 	if thinkingExpandedForFrag(msg, 0, expansionConfig{mode: viewCollapseAll, cotExpanded: true}) {
 		t.Errorf("collapse-all must collapse a force-less block despite the expanded default")
@@ -43,7 +36,6 @@ func TestThinkingExpandedForFrag_OwnsForcesOnSeam(t *testing.T) {
 		t.Errorf("expand-all must expand a force-less block despite the collapsed default")
 	}
 
-	// A per-fragment force beats the whole-block force for its own fragment.
 	msg = message{expansion: expansionWithReasoningForces(false, true)} // whole-block force-collapse
 	msg.expansion.set(blockReasoning, 0, true)                          // fragment 0 pinned force-expand
 	if !thinkingExpandedForFrag(msg, 0, expansionConfig{mode: viewDefault}) {

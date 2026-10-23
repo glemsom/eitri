@@ -179,7 +179,6 @@ func (m Model) band() (string, int) {
 	return s, lineCount(s)
 }
 
-// bandHeight returns how many terminal rows the band occupies.
 func (m Model) bandHeight() int {
 	_, h := m.band()
 	return h

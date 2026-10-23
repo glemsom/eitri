@@ -289,7 +289,6 @@ func thinkingSuppression(p provider.Provider) func() bool {
 	}
 }
 
-// runProgram launches a Bubble Tea program.
 var runProgram = func(m tui.Model) error {
 	p := tea.NewProgram(m)
 	_, err := p.Run()

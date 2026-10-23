@@ -13,7 +13,6 @@ type Fake struct {
 	path string
 }
 
-// NewFake returns a fake provider that replays the SSE fixture at path.
 func NewFake(path string) *Fake {
 	return &Fake{path: path}
 }
@@ -30,7 +29,6 @@ func (f *Fake) Stream(_ context.Context, _ Request) (Stream, error) {
 	return &fakeStream{ev: newSSE(bytes.NewReader(data)), acc: newToolAccumulator()}, nil
 }
 
-// fakeModels is the deterministic model catalog the Fake surfaces, standing in for provider model discovery at the engine/app test seam.
 var fakeModels = []ModelInfo{
 	{ID: "deepseek-v4-flash", EndpointKind: EndpointChatCompletions},
 	{ID: "deepseek-v4", EndpointKind: EndpointChatCompletions},
@@ -38,7 +36,6 @@ var fakeModels = []ModelInfo{
 	{ID: "kimi", EndpointKind: EndpointChatCompletions},
 }
 
-// Models implements the optional ModelLister capability, returning the fixture model catalog so discovery is testable without a network.
 func (f *Fake) Models(_ context.Context) ([]ModelInfo, error) {
 	return append([]ModelInfo(nil), fakeModels...), nil
 }

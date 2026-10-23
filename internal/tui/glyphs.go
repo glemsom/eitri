@@ -51,7 +51,7 @@ var glyphInventory = map[string]glyph{
 	"cursor":              {"┃", "glyph"},
 }
 
-// lookup returns the mark's UTF-8 form. Panics if name is not in the inventory so a typo is caught immediately during development/testing.
+// lookup panics on an unknown name so a mistyped glyph key fails immediately in development.
 func lookup(name string) string {
 	ent, ok := glyphInventory[name]
 	if !ok {
@@ -60,13 +60,11 @@ func lookup(name string) string {
 	return ent.utf8
 }
 
-// failurePrefix is the error-shaped assistant content prefix ("⚠ ").
 func failurePrefix() string { return lookup("warning") + " " }
 
-// stoppedMarker returns the suffix marking a user-stopped turn's partial output ("⏹ stopped"). renderHistory appends it under the stopped message's pane so the aborted turn reads as deliberately stopped, never as an error.
+// stoppedMarker is appended under a stopped turn's pane so the aborted output reads as deliberately stopped, never as an error.
 func stoppedMarker() string { return lookup("stopped") + " stopped" }
 
-// toolIcon maps a tool name to its per-tool icon.
 func toolIcon(name string) string {
 	switch name {
 	case "bash":
@@ -79,16 +77,12 @@ func toolIcon(name string) string {
 	return lookup("toolGeneric")
 }
 
-// userRoleMark returns the 🧑 user role icon.
 func userRoleMark() string { return lookup("userRole") }
 
-// assistantRoleMark returns the ⚒️ assistant role icon.
 func assistantRoleMark() string { return lookup("assistantRole") }
 
-// brandMark returns the ⚒️ brand icon.
 func brandMark() string { return lookup("brand") }
 
-// phaseIcon returns the static phase badge for the forge busy panel.
 func phaseIcon(p Phase) string {
 	switch p {
 	case PhaseReasoning:
@@ -103,10 +97,8 @@ func phaseIcon(p Phase) string {
 // focusMarker returns the ▸ cursor glyph prefixing a focused collapsible block's hint/head line.
 func focusMarker() string { return lookup("focus") }
 
-// hr returns a horizontal-rule separator (──).
 func hr() string { return lookup("hr") + lookup("hr") }
 
-// hrWidth returns a horizontal-rule separator repeated to the given width.
 func hrWidth(w int) string {
 	if w < 1 {
 		return ""
@@ -114,7 +106,6 @@ func hrWidth(w int) string {
 	return strings.Repeat(lookup("hr"), w)
 }
 
-// keyHint returns the ⌨ glyph for the keybinding hint line.
 func keyHint() string { return lookup("keyHint") }
 
 func categoryEmoji(name string) string {

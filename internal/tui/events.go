@@ -68,8 +68,6 @@ type EventFeed struct {
 	outstanding atomic.Int32
 }
 
-// NewEventFeed builds a live merged feed ready to be handed to a Model via
-// Dependencies.
 func NewEventFeed() *EventFeed {
 	return &EventFeed{updates: make(chan Event, 256)}
 }

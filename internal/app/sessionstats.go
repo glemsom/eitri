@@ -1,5 +1,3 @@
-// Package app — sessionstats.go: read-only aggregate and tool-call views over
-// the message-layer transcript (`session stats`, `session tools`).
 package app
 
 import (
@@ -17,8 +15,6 @@ import (
 	"github.com/glemsom/eitri/internal/session"
 )
 
-// turnToolCall is one recorded assistant tool call joined to the result that
-// answers it: the unit the `session tools` view renders.
 type turnToolCall struct {
 	Turn      int
 	Name      string
@@ -28,8 +24,6 @@ type turnToolCall struct {
 	Err       bool
 }
 
-// sessionAgg is what one session's turns reduce to. Both `session stats` and
-// `session tools` derive their output from it.
 type sessionAgg struct {
 	GUID             string
 	ModTime          time.Time
@@ -151,7 +145,6 @@ func readAllSessions(dataDir string) ([]sessionAgg, error) {
 	return aggs, nil
 }
 
-// readOneSession aggregates a single session by GUID.
 func readOneSession(dataDir, guid string) (sessionAgg, error) {
 	if err := session.ValidateGUID(guid); err != nil {
 		return sessionAgg{}, err
@@ -331,7 +324,6 @@ func writeStatsDetail(b *strings.Builder, a sessionAgg) {
 	}
 }
 
-// toolCountJSON is the per-tool roll-up shared by both commands' JSON output.
 type toolCountJSON struct {
 	Name   string `json:"name"`
 	Calls  int    `json:"calls"`

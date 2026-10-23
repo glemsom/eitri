@@ -15,9 +15,6 @@ type directRunner struct {
 	run       Runner
 }
 
-// Run executes the shell command cmd directly as the current user and returns
-// its output. It mirrors the sandbox's environment contract (workspace cwd,
-// session temp as TMPDIR/TEMP/TMP) while skipping the sandbox entirely.
 func (d *directRunner) Run(ctx context.Context, cmd string) (*Output, error) {
 	if err := os.MkdirAll(d.tempHost, 0o700); err != nil {
 		return nil, err

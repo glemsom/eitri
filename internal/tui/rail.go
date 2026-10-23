@@ -30,7 +30,6 @@ type Rail struct {
 	sessionKey *livekey.LiveSessionKey
 }
 
-// NewRail builds the right-context rail seeded with the run's static session state (provider, model, effort, thinking, session id, session temp path).
 func NewRail(provider, model, effort string, thinking bool, sessionID, sessionTemp string) *Rail {
 	return &Rail{
 		provider:    provider,
@@ -87,7 +86,6 @@ func (r *Rail) truncateCellWidth(s string, budget int) string {
 	return sb.String()
 }
 
-// railKeyWidth returns the key column width for aligned rail rows at a given rail width.
 func railKeyWidth(railWidth int) int {
 	switch {
 	case railWidth >= 55:
@@ -128,7 +126,6 @@ func (r *Rail) lineAligned(b *strings.Builder, key, val string, keyWidth, railWi
 	b.WriteString(r.truncateRow(s, railWidth) + "\n")
 }
 
-// keyColWidth returns the actual column width for a padded key column.
 func keyColWidth(keyWidth int) int {
 	if keyWidth < 8 {
 		return 8
@@ -155,7 +152,6 @@ func (r *Rail) render(te *telemetry.Telemetry, th Theme, railWidth int) string {
 	return r.renderLive(te, th, railWidth, PhaseIdle, 0)
 }
 
-// renderLive returns the rail's rendered STATS/CONTEXT/MODEL block, each section tinted with its per-section hue from the theme palette — the header bold, the body lines in the same hue — so the sections read apart at a glance.
 func (r *Rail) renderLive(te *telemetry.Telemetry, th Theme, railWidth int, phase Phase, spinner int) string {
 	return r.renderLiveWithTools(te, th, railWidth, phase, spinner, nil)
 }
@@ -170,7 +166,6 @@ func (r *Rail) renderLiveWithTools(te *telemetry.Telemetry, th Theme, railWidth 
 	return b.String()
 }
 
-// renderStats renders the STATS section: the live usage picture from the telemetry surface as numeric lines only — cache hit %, turns, elapsed session time, and token in/out.
 func (r *Rail) renderStats(te *telemetry.Telemetry, th Theme, railWidth int) string {
 	var b strings.Builder
 	b.WriteString(th.railHeader(railStats, "STATS") + "\n")
@@ -241,7 +236,6 @@ func (r *Rail) currentSessionTemp(sessionID string) string {
 	return r.sessionTemp
 }
 
-// renderContext renders the CONTEXT section: the active session surface.
 func (r *Rail) renderContext(th Theme, railWidth int) string {
 	var b strings.Builder
 	b.WriteString(th.railHeader(railContext, "CONTEXT") + "\n")
@@ -266,8 +260,6 @@ func (r *Rail) renderContext(th Theme, railWidth int) string {
 	return b.String() + th.railBody(railContext, strings.TrimRight(body.String(), "\n"))
 }
 
-// sandboxLabel renders the CONTEXT "sandbox" value: the bubblewrap sandbox by
-// default, or a warning-marked "unsafe (--yolo)" when the launch opted out.
 func (r *Rail) sandboxLabel() string {
 	if r.unsafe {
 		return lookup("warning") + " unsafe (--yolo)"
@@ -275,7 +267,6 @@ func (r *Rail) sandboxLabel() string {
 	return "bubblewrap"
 }
 
-// renderModel renders the MODEL section with provider/model hierarchy and compact mode badges.
 func (r *Rail) renderModel(th Theme, railWidth int) string {
 	var b strings.Builder
 	b.WriteString(th.railHeader(railModel, "MODEL") + "\n")
@@ -307,7 +298,6 @@ func formatTokens(n int) string {
 	}
 }
 
-// renderStatsCtxLine builds the single STATS ctx line for the live per-turn context-window size.
 func renderStatsCtxLine(r *Rail, th Theme, liveCtx, railWidth int) string {
 	var b strings.Builder
 	kw := railKeyWidth(railWidth)
@@ -377,7 +367,6 @@ func (m *Model) adjustRailWidth(delta int) {
 	// the new geometry.
 }
 
-// persistRailWidth writes the current rail width into deps.Config and persists it via the Save seam so the width round-trips across sessions.
 func (m *Model) persistRailWidth() {
 	m.deps.Config.RailWidth = m.tx.Geometry().RailWidth
 	if m.deps.Save != nil {
@@ -385,7 +374,6 @@ func (m *Model) persistRailWidth() {
 	}
 }
 
-// styledRail frames the rail's rendered sections into a fixed-width right column with a left border, so it reads as a distinct state pane alongside the transcript.
 func styledRail(content string, maxHeight, railWidth int) string {
 	// Lipgloss imposes a four-column minimum for this border and padding.
 	// Below that, retain a clipped rail marker rather than overflowing the

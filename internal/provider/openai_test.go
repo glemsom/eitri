@@ -590,8 +590,6 @@ func TestOpenCodeGoSendsStableSessionHeader(t *testing.T) {
 func TestOpenAICompatibleSendsEitriUserAgent(t *testing.T) {
 	t.Parallel()
 
-	// Verify the identity User-Agent is stamped on both the streaming chat
-	// call and model discovery, not just one path.
 	var mu sync.Mutex
 	var chatUA, modelsUA string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

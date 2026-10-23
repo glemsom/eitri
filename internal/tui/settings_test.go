@@ -575,8 +575,6 @@ func TestSettingsOverlay_FilePickerCanNavigateBackToParent(t *testing.T) {
 	}
 }
 
-// startAddPathPicker opens the add-folder picker over dir and loads dir's
-// listing so the picker has a deterministic highlight (its first entry).
 func startAddPathPicker(t *testing.T, o *SettingsOverlay, dir string) {
 	t.Helper()
 	o.field = fieldPaths
@@ -590,7 +588,6 @@ func startAddPathPicker(t *testing.T, o *SettingsOverlay, dir string) {
 	}
 }
 
-// makeChildDir returns a fresh temp dir containing a single child dir.
 func makeChildDir(t *testing.T) (dir, child string) {
 	t.Helper()
 	dir = t.TempDir()

@@ -25,7 +25,6 @@ type idleWatchdog struct {
 	timeout time.Duration
 }
 
-// watchForIdle wraps body with the idle-stall watchdog.
 func watchForIdle(body io.ReadCloser) io.ReadCloser {
 	return &idleWatchdog{body: body, timeout: streamIdleTimeout}
 }

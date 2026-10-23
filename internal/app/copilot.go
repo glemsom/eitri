@@ -14,10 +14,8 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// copilotTokenURL is GitHub's Copilot OAuth access-token endpoint: the same host as the device-flow handshake, reused for the non-interactive refresh path batch may take.
 var copilotTokenURL = "https://github.com/login/oauth/access_token"
 
-// copilotRefresh returns a provider.RefreshFunc that renews a Copilot credential from a refresh token via GitHub's OAuth token endpoint.
 func copilotRefresh(httpc *http.Client, traceSink provider.HTTPTraceSink) func(ctx context.Context, refreshToken string) (config.CopilotConfig, error) {
 	return func(ctx context.Context, refreshToken string) (config.CopilotConfig, error) {
 		form := url.Values{}
@@ -63,7 +61,6 @@ func copilotRefresh(httpc *http.Client, traceSink provider.HTTPTraceSink) func(c
 	}
 }
 
-// CopilotConnect runs the TUI-side GitHub device-flow handshake end to end: it starts the flow, presents the user code + verification URI to stdErr, polls to completion, and persists the fresh token set to config.
 var newDeviceFlow = provider.NewDeviceFlow
 
 func CopilotConnect(ctx context.Context, cfgPath string, httpc *http.Client, traceSink provider.HTTPTraceSink, onCode func(provider.DeviceCode)) (config.Config, error) {
@@ -109,7 +106,6 @@ func CopilotConnect(ctx context.Context, cfgPath string, httpc *http.Client, tra
 	return cfg, nil
 }
 
-// tracedHTTPClient returns httpc with raw HTTP body tracing when traceSink is enabled.
 func tracedHTTPClient(httpc *http.Client, traceSink provider.HTTPTraceSink) *http.Client {
 	if httpc == nil {
 		httpc = http.DefaultClient

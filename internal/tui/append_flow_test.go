@@ -30,9 +30,6 @@ func TestAppendAssistantMsg_synthesizesAnswerEventLog(t *testing.T) {
 	}
 }
 
-// TestAppendAssistantMsg_rendersPixelIdenticalThroughFlow locks identical rendering for
-// help, login, and failure notes: the history render of an appended note must
-// equal exactly what the shared answer emitter produces for it.
 func TestAppendAssistantMsg_rendersPixelIdenticalThroughFlow(t *testing.T) {
 	th := themeFor(config.DefaultTheme)
 	notes := []string{

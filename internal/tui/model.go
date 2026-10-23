@@ -25,8 +25,6 @@ import (
 // in-memory prompt-history ring retains.
 const defaultPromptHistoryCap = 100
 
-// TurnResult reports one completed agent turn: the final answer snapshot, its
-// chain-of-thought, and whether the user stopped the turn early.
 type TurnResult struct {
 	Answer    string
 	Reasoning string
@@ -60,7 +58,6 @@ type turnDoneMsg struct {
 	stopped   bool
 }
 
-// telemetryUpdateMsg carries one queued live telemetry update from the engine seam into the UI loop.
 type telemetryUpdateMsg struct {
 	update telemetry.TelemetryUpdate
 }
@@ -80,7 +77,6 @@ type loginCodeMsg struct {
 	next <-chan tea.Msg
 }
 
-// loginDoneMsg reports the result of one built-in `/login` command.
 type loginDoneMsg struct {
 	cfg config.Config
 	err error
@@ -233,8 +229,6 @@ type Model struct {
 	tick pulse.TickFunc
 }
 
-// newModelHistory builds the Model's prompt-history ring: file-backed when a
-// HistoryPath is wired, else a plain in-memory ring.
 func newModelHistory(path string) *PromptHistory {
 	if path == "" {
 		return NewPromptHistory(defaultPromptHistoryCap)
@@ -242,7 +236,6 @@ func newModelHistory(path string) *PromptHistory {
 	return NewPersistedPromptHistory(defaultPromptHistoryCap, path)
 }
 
-// NewModelCfg builds a TUI model wired to the given dependencies.
 func NewModelCfg(d Dependencies) Model {
 	comp := textarea.New()
 	comp.Prompt = lookup("cursor") + " "
@@ -306,20 +299,16 @@ func NewModelCfg(d Dependencies) Model {
 	return m
 }
 
-// newHistoryViewport builds the persisted history scroll component as a plain
-// bubbletea/viewport value.
 func newHistoryViewport() viewport.Model {
 	v := viewport.New()
 	v.MouseWheelEnabled = false
 	return v
 }
 
-// SetTurnSession replaces the live Run implementation owned by TurnRuntime.
 func (m *Model) SetTurnSession(ts *TurnSession) {
 	m.runtime.SetSession(ts)
 }
 
-// ContinueHook returns the interactive continuation hook wired to this Model's prompt channels.
 func (m Model) ContinueHook() func() bool {
 	return func() bool { return internalContinue(m.continueReq, m.continueResp) }
 }
@@ -346,7 +335,6 @@ const (
 // tests swap it for an immediate schedule so a submitted turn never sleeps.
 var defaultTick pulse.TickFunc = pulse.RealTick
 
-// clockTick returns the command that delivers the next one-second clock tick.
 func (m Model) clockTick() tea.Cmd {
 	return m.tick(clockTickInterval, func(time.Time) tea.Msg { return clockTickMsg{} })
 }
@@ -355,7 +343,6 @@ func (m Model) faceDrawTick() tea.Cmd {
 	return m.tick(faceDrawTickInterval, func(time.Time) tea.Msg { return faceDrawMsg{} })
 }
 
-// Init returns any startup commands.
 func (m Model) Init() tea.Cmd {
 	var cmds []tea.Cmd
 	if cmd := m.queueFaceDrawCmd(); cmd != nil {
@@ -374,7 +361,6 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-// Update handles a UI event and returns the next state plus any commands.
 func normalizeShiftPrintable(msg tea.KeyPressMsg) tea.KeyPressMsg {
 	if msg.Text == "" && msg.Mod == tea.ModShift && msg.Code >= 'a' && msg.Code <= 'z' {
 		msg.Text = strings.ToUpper(string(rune(msg.Code)))
@@ -669,7 +655,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// updatePrompt handles a keypress while a continuation prompt is pending.
 func (m Model) updatePrompt(msgi tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msgi.String() {
 	case "y", "Y", "enter":
@@ -705,8 +690,6 @@ func (m *Model) mintNewSession() {
 	}
 }
 
-// newGUID returns a fresh session GUID for `/new`: the injected Dependencies
-// mint when present, else the session package's random hex mint.
 func (m Model) newGUID() string {
 	if m.deps.NewGUID != nil {
 		return m.deps.NewGUID()
@@ -896,7 +879,6 @@ func (m Model) startSkillActivation(name, args string) (tea.Model, tea.Cmd) {
 	return m, skillCmdWithContext(ctx, m.deps.Skills.Activate, name, args, m.skillSeq)
 }
 
-// stopTurn cancels the in-flight turn through TurnRuntime.
 func (m *Model) stopTurn() {
 	if m.skillPending {
 		if m.skillCancel != nil {
@@ -948,7 +930,6 @@ func (m Model) selectMention() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// completeSlashCommand accepts highlighted slash completion into composer.
 func (m *Model) completeSlashCommand() {
 	m.slash.Complete(func(candidate string) {
 		// SetValue's insert already trails the caret after the pasted candidate,
@@ -959,7 +940,6 @@ func (m *Model) completeSlashCommand() {
 	})
 }
 
-// View renders the conversation plus composer as a tea.View (bubbletea v2).
 func (m Model) View() tea.View {
 	content := m.viewString()
 	v := tea.NewView(content)
@@ -973,7 +953,6 @@ func (m Model) View() tea.View {
 	return v
 }
 
-// viewString renders the surface content string (the tea.View content).
 func (m Model) viewString() string {
 	if m.settings != nil {
 		return m.settings.View()
@@ -989,7 +968,6 @@ func (m Model) viewString() string {
 	return m.tx.View(bandStr, bandHeight)
 }
 
-// telemetryWait returns a command that blocks until the next live telemetry update arrives on the engine seam channel, then delivers it to the UI loop as a telemetryUpdateMsg.
 func telemetryWait(te *telemetry.Telemetry) tea.Cmd {
 	return func() tea.Msg {
 		u, ok := <-te.Updates()

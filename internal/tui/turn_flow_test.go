@@ -147,7 +147,6 @@ func TestTranscript_flatFlowCollapsesReasoningOnCompletion(t *testing.T) {
 	if !strings.Contains(plain, "tok") {
 		t.Errorf("collapsed reasoning must keep the ≡ N tok hint, got:\n%s", plain)
 	}
-	// The tool entry and answer must still render after the reasoning hint.
 	if !strings.Contains(plain, "🐚️ bash") || !strings.Contains(plain, "Done.") {
 		t.Errorf("collapsed turn must still render tool and answer, got:\n%s", plain)
 	}
@@ -371,7 +370,6 @@ func TestRenderHistory_liveInterleavedReasoningRespectsThinkingGate(t *testing.T
 	if strings.Contains(plain, "reasoning one") || strings.Contains(plain, "reasoning two") {
 		t.Errorf("thinking-off live turn must hide interleaved reasoning, got:\n%s", plain)
 	}
-	// The tools and answer still render on a thinking-off turn.
 	if !strings.Contains(plain, "read  a.txt") || !strings.Contains(plain, "final answer text") {
 		t.Errorf("thinking-off live turn must still render tools and answer, got:\n%s", plain)
 	}

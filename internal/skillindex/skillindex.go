@@ -30,7 +30,6 @@ const (
 	ActivationClose = "</skill_content>"
 )
 
-// IsBlock reports whether content carries the rendered skill index block.
 func IsBlock(content string) bool {
 	return strings.Contains(content, OpenTag)
 }
@@ -99,7 +98,6 @@ type ActivationSet struct {
 	names map[string]bool
 }
 
-// NewActivationSet returns a set seeded with the given active skill names.
 func NewActivationSet(names []string) *ActivationSet {
 	set := &ActivationSet{names: make(map[string]bool, len(names))}
 	for _, name := range names {

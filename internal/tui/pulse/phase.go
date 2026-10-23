@@ -24,7 +24,6 @@ func (p Phase) String() string {
 	}
 }
 
-// Verb is the user-facing stage label rendered beside the busy spinner.
 func Verb(p Phase) string {
 	switch p {
 	case PhaseReasoning:
@@ -36,7 +35,6 @@ func Verb(p Phase) string {
 	}
 }
 
-// derivePhase is the pure phase derivation from the bare live-turn signals: whether a turn is running (busy) and whether/which assistant text is streaming.
 func derivePhase(busy, streaming, hasReasoning, hasAnswer bool) Phase {
 	if !busy {
 		return PhaseIdle

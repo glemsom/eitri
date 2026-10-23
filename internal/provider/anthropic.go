@@ -46,7 +46,6 @@ func (d *AnthropicDialect) Stream(r io.Reader) Stream {
 	return &anthropicStream{ev: newSSE(r), acc: newAnthropicToolAccumulator()}
 }
 
-// anthropicBody is the minimal Anthropic Messages request shape Eitri needs.
 type anthropicBody struct {
 	Model      string             `json:"model"`
 	MaxTokens  int                `json:"max_tokens"`
@@ -104,7 +103,6 @@ func anthropicCacheMarker() *CacheControl {
 // in one request.
 const anthropicMaxCacheBreakpoints = 4
 
-// marshalAnthropicBody builds the Anthropic Messages request body from a turn.
 func marshalAnthropicBody(req Request) ([]byte, error) {
 	messages, tools := req.Messages, req.Tools
 	if req.Capabilities.Supports(ProviderCapabilityCacheControl) {
@@ -270,8 +268,6 @@ func toolInput(args string) any {
 	return input
 }
 
-// anthropicToolManifest re-expresses canonical tool definitions into the
-// Anthropic tool manifest (name, description, input_schema).
 func anthropicToolManifest(defs []DialectDefinition) []anthropicTool {
 	out := make([]anthropicTool, 0, len(defs))
 	for _, def := range defs {
@@ -323,8 +319,6 @@ func anthropicToolChoice(tc any) any {
 	return map[string]any{"type": "auto"}
 }
 
-// anthropicStream adapts Anthropic Messages SSE events into the Stream seam,
-// accumulating text / thinking deltas and tool_use fragments across blocks.
 type anthropicStream struct {
 	ev                *sse
 	acc               *anthropicToolAccumulator
@@ -344,8 +338,6 @@ func (as *anthropicStream) Next() (Chunk, error) {
 	return parseAnthropicEvent(e.data, as)
 }
 
-// anthropicToolAccumulator reassembles streamed tool_use input JSON fragments
-// into complete ToolCalls, keyed by content-block index.
 type anthropicToolAccumulator struct {
 	calls map[int]*ToolCall
 	order []int
@@ -391,7 +383,6 @@ func (a *anthropicToolAccumulator) finish() []ToolCall {
 	return out
 }
 
-// anthropicEvent is the union envelope across the SSE event types Eitri consumes.
 type anthropicEvent struct {
 	Type         string             `json:"type"`
 	Index        int                `json:"index"`
@@ -421,7 +412,6 @@ type anthropicSSEDelta struct {
 	StopReason  string `json:"stop_reason"`
 }
 
-// parseAnthropicEvent turns one Anthropic SSE data payload into provider chunks.
 func parseAnthropicEvent(data string, as *anthropicStream) (Chunk, error) {
 	var ev anthropicEvent
 	if err := json.Unmarshal([]byte(data), &ev); err != nil {
@@ -512,8 +502,6 @@ func parseAnthropicEvent(data string, as *anthropicStream) (Chunk, error) {
 	return Chunk{}, nil
 }
 
-// anthropicStopReason maps the Anthropic stop_reason vocabulary onto Eitri's
-// finish-reason strings.
 func anthropicStopReason(anthropic string) string {
 	switch anthropic {
 	case "max_tokens":

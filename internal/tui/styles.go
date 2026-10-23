@@ -28,31 +28,29 @@ type Theme struct {
 	agentPaneStyle             lipgloss.Style // left-bordered pane framing assistant answers
 	thinkingPaneStyle          lipgloss.Style // left-bordered pane framing reasoning (muted reasoning hue, italic)
 	streamingThinkingPaneStyle lipgloss.Style // muted-border italic variant; the style-free live reasoning body is de-emphasized by the pane border, never body SGR
-	errorPaneStyle             lipgloss.Style // the same pane with the error-colored border
-	stoppedPaneStyle           lipgloss.Style // the same pane with the stopped (accent-dimmed) border
-	streamingPaneStyle         lipgloss.Style // left-bordered pane for messages still being streamed (neutral muted color)
-	streamingErrorPaneStyle    lipgloss.Style // left-bordered pane for streaming error-prefix messages (neutral muted color)
+	errorPaneStyle             lipgloss.Style
+	stoppedPaneStyle           lipgloss.Style
+	streamingPaneStyle         lipgloss.Style
+	streamingErrorPaneStyle    lipgloss.Style
 	userBubbleStyle            lipgloss.Style // the carded background fill for user prompts
-	thinkingStyle              lipgloss.Style // the reasoning header marker (≡ collapsed, 🧠 expanded)
-	toolStyle                  lipgloss.Style // the 🧰 tool-entry line (uncategorized fallback)
-	toolShellStyle             lipgloss.Style // the 🐚 tool-entry line, shell category
-	toolWebStyle               lipgloss.Style // the 🌐 tool-entry line, web category
-	toolSkillStyle             lipgloss.Style // the ✨ tool-entry line, skill category
-	outcomeOKStyle             lipgloss.Style // the ✓ tool-outcome tag
-	outcomeErrStyle            lipgloss.Style // the ✗ tool-outcome tag
-	slashSelectStyle           lipgloss.Style // the selected slash-completion candidate
-	focusStyle                 lipgloss.Style // the focused collapsible block's head/hint marker
-	bandSeparatorStyle         lipgloss.Style // the border style for bottom-band panels
+	thinkingStyle              lipgloss.Style
+	toolStyle                  lipgloss.Style
+	toolShellStyle             lipgloss.Style
+	toolWebStyle               lipgloss.Style
+	toolSkillStyle             lipgloss.Style
+	outcomeOKStyle             lipgloss.Style
+	outcomeErrStyle            lipgloss.Style
+	slashSelectStyle           lipgloss.Style
+	focusStyle                 lipgloss.Style
+	bandSeparatorStyle         lipgloss.Style
 	bandStatusStyle            lipgloss.Style
 
 	railHeaderStyles [3]lipgloss.Style
 	railBodyStyles   [3]lipgloss.Style
 }
 
-// defaultTheme is the default (dark) theme: exactly the pre-seam palette and derived styles.
 var defaultTheme = newDefaultTheme()
 
-// newDefaultTheme builds the default theme: the styling identity — a restrained dark palette with a single agent accent — as a palette registry plus the derived styles that draw from it.
 func newDefaultTheme() Theme {
 	return newTheme(
 		lipgloss.Color("#7AA2F7"),
@@ -74,7 +72,6 @@ func newDefaultTheme() Theme {
 	)
 }
 
-// newDraculaTheme is the second curated chrome palette: the canonical dracula hues — purple accent, red error, green ok — built on the same constructor pattern as the default, proving a new palette is a registry addition with no consumer change.
 func newDraculaTheme() Theme {
 	return newTheme(
 		lipgloss.Color("#BD93F9"),
@@ -96,7 +93,7 @@ func newDraculaTheme() Theme {
 	)
 }
 
-// newTokyoNightTheme is the curated tokyo-night chrome palette: the canonical tokyo-night hues — purple accent (glamour's heading color for the theme), red error, green ok — so choosing tokyo-night for Markdown also re-skins the chrome with the same family instead of inheriting the default.
+// newTokyoNightTheme matches the glamour tokyo-night heading hue, so choosing that Markdown theme re-skins the chrome with the same family instead of inheriting the default.
 func newTokyoNightTheme() Theme {
 	return newTheme(
 		lipgloss.Color("#BB9AF7"),
@@ -118,7 +115,7 @@ func newTokyoNightTheme() Theme {
 	)
 }
 
-// newPinkTheme is the curated pink chrome palette: the glamour pink theme's hot-pink heading hue as the accent, with a crimson error and a soft green ok that keep ✓/✗ outcomes and the error pane distinguishable from the pink accent.
+// newPinkTheme uses the glamour pink heading hue as accent, with a crimson error and soft green ok that keep ✓/✗ outcomes distinguishable from the pink accent.
 func newPinkTheme() Theme {
 	return newTheme(
 		lipgloss.Color("#FF87D7"),
@@ -140,7 +137,7 @@ func newPinkTheme() Theme {
 	)
 }
 
-// newLightTheme is the curated light chrome palette: hues readable on a light terminal background — the glamour light theme's heading blue as the accent, with a dark red error and a dark teal-green ok, each contrast-checked against white (≥ 4.5:1).
+// newLightTheme is contrast-checked against a white background (≥ 4.5:1) for accent, error, and ok.
 func newLightTheme() Theme {
 	return newTheme(
 		lipgloss.Color("#005FFF"),
@@ -162,7 +159,6 @@ func newLightTheme() Theme {
 	)
 }
 
-// newNordTheme is the curated nord chrome palette: the polar-night family — frosted blue accent, nord red error, nord green ok — with the secondary hues (yellow, frost, aurora purple, orange) for the tool categories.
 func newNordTheme() Theme {
 	return newTheme(
 		lipgloss.Color("#88C0D0"), // accent (frost)
@@ -184,7 +180,6 @@ func newNordTheme() Theme {
 	)
 }
 
-// newGruvboxTheme is the curated gruvbox chrome palette: the dark-medium family — gruv blue accent, bright red error, bright green ok — with the secondary hues (yellow, aqua, purple, orange) for the tool categories.
 func newGruvboxTheme() Theme {
 	return newTheme(
 		lipgloss.Color("#83A598"), // accent (gruv blue)
@@ -206,7 +201,6 @@ func newGruvboxTheme() Theme {
 	)
 }
 
-// newSolarizedTheme is the curated solarized chrome palette: the dark family — solarized blue accent, red error, green ok — with the secondary hues (yellow, cyan, violet, magenta) for the tool categories.
 func newSolarizedTheme() Theme {
 	return newTheme(
 		lipgloss.Color("#268BD2"), // accent (blue)
@@ -228,7 +222,7 @@ func newSolarizedTheme() Theme {
 	)
 }
 
-// newDarkDaltonizedTheme is the curated deuteranopia/protanopia-safe dark chrome palette, built on the Okabe-Ito colorblind-safe set: error is a vermillion orange and ok a bluish green, so the ✓/✗ outcomes and the diff added/removed fills stay distinguishable without red-green hue alone (the pair most commonly confused).
+// newDarkDaltonizedTheme is built on the Okabe-Ito colorblind-safe set: error is a vermillion orange and ok a bluish green, so ✓/✗ outcomes and the diff added/removed fills stay distinguishable without relying on the red-green pairing deuteranopes and protanopes most commonly confuse.
 func newDarkDaltonizedTheme() Theme {
 	return newTheme(
 		lipgloss.Color("#56B4E9"), // accent (sky blue)
@@ -250,7 +244,7 @@ func newDarkDaltonizedTheme() Theme {
 	)
 }
 
-// newLightDaltonizedTheme is the light-terminal variant of the daltonized palette: the same Okabe-Ito hues (already ≥4.5:1 on white for the semantic pair) with a near-white bubble tint.
+// newLightDaltonizedTheme keeps the Okabe-Ito hues (already ≥4.5:1 on white for the semantic pair) with a near-white bubble tint.
 func newLightDaltonizedTheme() Theme {
 	return newTheme(
 		lipgloss.Color("#0072B2"), // accent (Okabe-Ito blue, dark on light)
@@ -305,7 +299,6 @@ func themeFor(name string) Theme {
 	return newDefaultTheme()
 }
 
-// newTheme builds a Theme from its palette entries and rail hues; the derived styles draw from them.
 func newTheme(accent, err, ok, shell, file, web, skill, thinking, text, bubble, selectionBg color.Color, rail [3]color.Color) Theme {
 	// Live panes use a neutral muted color so their contrast is consistent
 	// across accent palettes and remains readable against dark backgrounds.
@@ -364,7 +357,6 @@ const (
 	railModel
 )
 
-// railHeader renders a rail section header in its section's hue.
 func (th Theme) railHeader(s railSection, text string) string {
 	icon := ""
 	switch s {
@@ -378,7 +370,6 @@ func (th Theme) railHeader(s railSection, text string) string {
 	return th.railHeaderStyles[s].Render(icon + text)
 }
 
-// railBody renders a rail section's body lines in its section's hue.
 func (th Theme) railBody(s railSection, text string) string {
 	return th.railBodyStyles[s].Render(text)
 }
@@ -398,8 +389,7 @@ func dimmed(c color.Color, f float64) color.Color {
 		uint8(float64(r>>8)*f), uint8(float64(g>>8)*f), uint8(float64(b>>8)*f)))
 }
 
-// answerPane builds the shared assistant answer style with one-cell left padding
-// and the given accent color, without adding copy-hostile border glyphs.
+// answerPane deliberately adds no border glyphs: a drag-selected answer must copy out without stray box-drawing characters.
 func answerPane(c color.Color) lipgloss.Style {
 	return lipgloss.NewStyle().
 		Foreground(c).
@@ -407,7 +397,6 @@ func answerPane(c color.Color) lipgloss.Style {
 		PaddingLeft(1)
 }
 
-// borderedPane builds the shared reasoning pane style with one-cell left padding and the given accent color.
 func borderedPane(c color.Color) lipgloss.Style {
 	return lipgloss.NewStyle().
 		Border(lipgloss.Border{Left: "│"}).
@@ -416,7 +405,6 @@ func borderedPane(c color.Color) lipgloss.Style {
 		PaddingLeft(1)
 }
 
-// toolCategoryStyle returns the theme style for a tool category: the per-category hue for shell/file/web/skill, and the generic faint tool line for anything else.
 func (th Theme) toolCategoryStyle(cat toolCategory) lipgloss.Style {
 	switch cat {
 	case catShell:

@@ -55,7 +55,7 @@ func TestHighlightRange_cellSpaceWithEmoji(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			const wantCells = 10 // mouse drag over display cells [0,10)
+			const wantCells = 10
 			from := colToRuneIndex(tc.line, 0)
 			to := colToRuneIndex(tc.line, wantCells-1)
 			hl := highlightRange(tc.line, from, to, testSel)

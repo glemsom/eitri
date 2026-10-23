@@ -12,7 +12,6 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// TestMessageLogWritesJSONL verifies the message-layer sink appends valid JSON lines to messages.jsonl and survives Close/reopen semantics within a session.
 func TestMessageLogWritesJSONL(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -54,8 +53,6 @@ func TestMessageLogWritesJSONL(t *testing.T) {
 	}
 }
 
-// TestLogRunEndAppendsEndRecord verifies the run-end sink writes one "end"
-// record naming the reason after the run's turn records.
 func TestLogRunEndAppendsEndRecord(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

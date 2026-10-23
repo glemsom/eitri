@@ -1,4 +1,3 @@
-// Package app — sessionentry.go: entry point for the `eitri session <subcommand>` CLI family.
 package app
 
 import (

@@ -8,7 +8,6 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// A fresh session owns no live execution until Dispatch arms it; Stop before Dispatch is a no-op.
 func TestTurnSessionStopBeforeDispatchNoop(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	s.Stop() // must not panic
@@ -17,7 +16,6 @@ func TestTurnSessionStopBeforeDispatchNoop(t *testing.T) {
 	}
 }
 
-// Dispatch installs a fresh cancelable context and its command cancels it when the turn completes.
 func TestTurnSessionDispatchArmsCancelableContext(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	tx := newTestTx()
@@ -40,7 +38,6 @@ func TestTurnSessionDispatchArmsCancelableContext(t *testing.T) {
 	}
 }
 
-// Stop cancels the armed turn so an in-flight provider stream dies.
 func TestTurnSessionStopCancelsArmedTurn(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	tx := newTestTx()
@@ -54,7 +51,6 @@ func TestTurnSessionStopCancelsArmedTurn(t *testing.T) {
 	}
 }
 
-// End disarms the session so a later Stop does not touch a finished turn's context.
 func TestTurnSessionEndDisarms(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	tx := newTestTx()
@@ -69,7 +65,6 @@ func TestTurnSessionEndDisarms(t *testing.T) {
 	}
 }
 
-// The session owns the thinking-enabled flag for messages it creates.
 func TestTurnSessionThinkingFlag(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	if s.thinkingEnabled {
@@ -81,7 +76,6 @@ func TestTurnSessionThinkingFlag(t *testing.T) {
 	}
 }
 
-// Start projection appends the user message to the transcript.
 func TestTranscriptProjectStartAppendsUserMessage(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	tx := newTestTx()
@@ -99,7 +93,6 @@ func TestTranscriptProjectStartAppendsUserMessage(t *testing.T) {
 	}
 }
 
-// Start projection marks the transcript busy and lays it out dirty.
 func TestTranscriptProjectStartSetsBusyAndDirty(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	tx := newTestTx()
@@ -114,7 +107,6 @@ func TestTranscriptProjectStartSetsBusyAndDirty(t *testing.T) {
 	}
 }
 
-// Start projection resets the live-turn state: stream cursor, per-turn timeline, and arrival counter.
 func TestTranscriptProjectStartResetsLiveTurnState(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	tx := newTestTx()
@@ -130,7 +122,6 @@ func TestTranscriptProjectStartResetsLiveTurnState(t *testing.T) {
 	}
 }
 
-// Start projection anchors the tool log to the newly appended user message.
 func TestTranscriptProjectStartSetsAnchor(t *testing.T) {
 	s := NewTurnSession(stubTurn("ok", nil))
 	tx := newTestTx()
@@ -142,7 +133,6 @@ func TestTranscriptProjectStartSetsAnchor(t *testing.T) {
 	}
 }
 
-// A turn whose context dies comes back through the dispatch command as a stopped turn with partial output preserved.
 func TestTurnSessionStoppedTurnKeepsPartialOutput(t *testing.T) {
 	s := NewTurnSession(func(_ context.Context, _, _ string) (TurnResult, error) {
 		return TurnResult{Answer: "partial"}, context.Canceled
@@ -161,7 +151,6 @@ func TestTurnSessionStoppedTurnKeepsPartialOutput(t *testing.T) {
 	}
 }
 
-// A failed turn comes back through the dispatch command carrying the error.
 func TestTurnSessionFailedTurnCarriesError(t *testing.T) {
 	s := NewTurnSession(stubTurn("", errors.New("boom")))
 	tx := newTestTx()

@@ -29,13 +29,11 @@ import (
 // Version reports the Eitri build version tag, set at build time.
 var Version = "0.1.2-dev"
 
-// Environment variables honored at boot.
 const (
 	DataDirEnv = "EITRI_DIR"
 	ConfigEnv  = "EITRI_CONFIG"
 )
 
-// ErrTUINotInteractive is returned when the interactive TUI cannot render into the host terminal — stdout is not a TTY, TERM is unset or "dumb", or the window is below the minimum width.
 var ErrTUINotInteractive = errors.New("the interactive TUI requires an interactive terminal: stdout must be a TTY, TERM must be set (not \"dumb\"), and the window must be at least 80 columns wide; run in batch mode instead: eitri -b \"<prompt>\"")
 
 // ErrBatchInterrupted is returned when a batch run is cancelled by the first
@@ -44,8 +42,6 @@ var ErrTUINotInteractive = errors.New("the interactive TUI requires an interacti
 // genuine failure (exit 1).
 var ErrBatchInterrupted = errors.New("batch run interrupted")
 
-// BatchInterruptedExitCode is the Unix exit code (128 + SIGINT) returned when
-// a batch run is interrupted by SIGINT or SIGTERM.
 const BatchInterruptedExitCode = 130
 
 // minTUIWidth is the narrowest terminal (in columns) the full-screen TUI renders into; below it the transcript is squeezed unusably, so the TUI is refused in favor of batch mode.
@@ -58,7 +54,6 @@ type tuiEnv struct {
 	width     int
 }
 
-// currentTUIEnv reads the host-terminal facts from os.Stdout, TERM, and the terminal size.
 var currentTUIEnv = func() tuiEnv {
 	fi, err := os.Stdout.Stat()
 	stdoutTTY := err == nil && fi.Mode()&os.ModeCharDevice != 0
@@ -71,7 +66,6 @@ var currentTUIEnv = func() tuiEnv {
 	return tuiEnv{stdoutTTY: stdoutTTY, term: os.Getenv("TERM"), width: width}
 }
 
-// tuiBootError decides whether the interactive TUI can render into the host context: nil when it can, ErrTUINotInteractive when stdout is not a TTY, TERM is unset or a dumb terminfo (any case, incl. dumb-* variants), or the window is narrower than minTUIWidth.
 func tuiBootError(env tuiEnv) error {
 	switch {
 	case !env.stdoutTTY:
@@ -84,19 +78,13 @@ func tuiBootError(env tuiEnv) error {
 	return nil
 }
 
-// isDumbTerm reports whether TERM denotes a non-interactive termcap: unset, "dumb", or a dumb-* variant (e.g. dumb-16color), case-insensitively.
 func isDumbTerm(term string) bool {
 	lower := strings.ToLower(term)
 	return lower == "" || lower == "dumb" || strings.HasPrefix(lower, "dumb-")
 }
 
-// DefaultFormat is the batch-mode stdout format when none is given: the
-// byte-identical pre-feature behavior, a streamed final answer only.
 const DefaultFormat = "text"
 
-// ValidateFormat reports whether format is a supported batch output format.
-// The empty string is accepted as the default (text). Unknown values are
-// rejected before any provider boot or session creation.
 func ValidateFormat(format string) error {
 	if format != "" && format != "text" && format != "json" {
 		return fmt.Errorf("unknown --format %q (want: text, json)", format)
@@ -104,7 +92,6 @@ func ValidateFormat(format string) error {
 	return nil
 }
 
-// Options control a single Run invocation.
 type Options struct {
 	Version bool
 
@@ -161,7 +148,6 @@ var batchSecondSignal = func() (<-chan os.Signal, func()) {
 	return ch, func() { signal.Stop(ch) }
 }
 
-// Run performs the Eitri boot sequence and returns the first error it hits, so a caller can map it to an exit status.
 func Run(opts Options) error {
 	if opts.Version {
 		fmt.Println(Version)
@@ -365,8 +351,6 @@ type batchEnvelope struct {
 	Stopped bool   `json:"stopped"`
 }
 
-// writeBatchEnvelope marshals the run result into one JSON object and writes it
-// as the final stdout output.
 func writeBatchEnvelope(out io.Writer, sessionGUID string, res engine.Result) error {
 	// Marshal cannot fail for a struct of string/int/bool fields; only the write
 	// can.
@@ -403,15 +387,12 @@ func discoverSkills(dataDir, workspace string) *tools.Catalog {
 	return c
 }
 
-// stderrWarner reports discovery warnings to stderr.
 type stderrWarner struct{}
 
 func (stderrWarner) Warnf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "eitri: "+format+"\n", args...)
 }
 
-// reportTranscriptErrors surfaces, once at run end, that the human-readable
-// transcript trail is incomplete because writes failed during the run.
 func reportTranscriptErrors(failed int) {
 	fmt.Fprintf(os.Stderr, "eitri: warning: %d transcript write(s) failed; the session trail is incomplete\n", failed)
 }
@@ -496,7 +477,6 @@ func providerTools(defs []tools.Definition) []provider.Tool {
 	return provider.NewChatCompletionsDialect().Manifest(canonical).([]provider.Tool)
 }
 
-// ProviderKeyEnv is the environment variable holding the OpenCode Go API key.
 const ProviderKeyEnv = "OPENCODE_API_KEY"
 
 // ProviderURLEnv optionally overrides the Chat-Completions endpoint Eitri talks to, for local testing and custom OpenAI-compatible endpoints.
@@ -516,7 +496,6 @@ func buildProvider(cfg config.Config, cfgPath string, traceSink provider.HTTPTra
 	})
 }
 
-// resolveConfigPath selects the config file path: an explicit override, else EITRI_CONFIG, else <dataDir>/config.json.
 func resolveConfigPath(dataDir, explicit string) (string, error) {
 	if explicit != "" {
 		return explicit, nil
@@ -527,7 +506,6 @@ func resolveConfigPath(dataDir, explicit string) (string, error) {
 	return filepath.Join(dataDir, "config.json"), nil
 }
 
-// resolveDataDir selects the data directory: the explicit override, else EITRI_DIR, else ~/.eitri.
 func resolveDataDir(explicit string) (string, error) {
 	if explicit != "" {
 		return explicit, nil
@@ -542,7 +520,6 @@ func resolveDataDir(explicit string) (string, error) {
 	return filepath.Join(home, ".eitri"), nil
 }
 
-// ensureDataDir creates the data directory, tolerating its pre-existence.
 func ensureDataDir(dir string) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return errors.New("create data dir " + dir + ": " + err.Error())

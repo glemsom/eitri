@@ -8,6 +8,4 @@ var busySpinnerFrames = pulse.SpinnerFrames
 
 func motionEnabled() bool { return pulse.MotionEnabled() }
 
-// idleEmberWindow is re-exported so the ember contract tests read the window
-// through the same name the pulse enforces it with.
 const idleEmberWindow = pulse.EmberWindow

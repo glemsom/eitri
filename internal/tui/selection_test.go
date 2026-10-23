@@ -760,7 +760,6 @@ func TestDragSelect_dragOnToolCardStillCopies(t *testing.T) {
 	if headRow < 0 {
 		t.Fatalf("tool head row not found, got %q", rows)
 	}
-	// First click expands the card.
 	m = mustUpdate(t, m, dragMsg("press", 2, headRow))
 	m = mustUpdate(t, m, dragMsg("release", 2, headRow))
 	if !strings.Contains(view(m), "full output line one") {
@@ -784,7 +783,6 @@ func TestDragSelect_dragOnToolCardStillCopies(t *testing.T) {
 		t.Fatalf("result row not found after expand, got rows: %q", rowsAfter)
 	}
 
-	// Now drag-select inside the expanded result.
 	m = mustUpdate(t, m, dragMsg("press", resultCol, resultRow))
 	m = mustUpdate(t, m, dragMsg("motion", resultCol+len("full output line one")-1, resultRow))
 	m = mustUpdate(t, m, dragMsg("release", resultCol+len("full output line one")-1, resultRow))
@@ -837,7 +835,6 @@ func TestDragSelect_emojiSurvivesCopyFidelity(t *testing.T) {
 	m = mustUpdate(t, m, dragMsg("press", disp, rowY))
 	m = mustUpdate(t, m, dragMsg("motion", endDisp, rowY))
 
-	// Verify the highlight covers the exact text including two-cell emoji.
 	if spans := selectionSpans(view(m), defaultTheme.selectionBgSGR()); strings.Join(spans, "") != answer {
 		t.Errorf("during-drag highlight spans = %q, want %q", strings.Join(spans, ""), answer)
 	}

@@ -12,8 +12,6 @@ import (
 // (stderr/log) and boot continues without builtin skills.
 type Warnf func(format string, args ...any)
 
-// BuiltinRootName is the data-directory relative path the materialized builtin
-// skill packs land under: <dataDir>/skills-builtin.
 const BuiltinRootName = "skills-builtin"
 
 // Materialize writes the builtin skill packs embedded in fsys into
@@ -47,10 +45,8 @@ func Materialize(dataDir string, fsys fs.FS, warn Warnf) {
 	}
 }
 
-// materializePack writes one embedded pack (name) into its target directory.
-// The pack directory is created unconditionally (MkdirAll is a no-op when it
-// already exists); each file is rewritten only when its bytes differ from the
-// embedded content, leaving identical files and their timestamps untouched.
+// materializePack rewrites only the files whose bytes differ from the embedded
+// content, leaving identical files and their timestamps untouched.
 func materializePack(fsys fs.FS, name, target string) error {
 	if err := os.MkdirAll(target, 0o700); err != nil {
 		return err
@@ -73,7 +69,7 @@ func materializePack(fsys fs.FS, name, target string) error {
 		}
 		existing, readErr := os.ReadFile(dst)
 		if readErr == nil && bytes.Equal(existing, embedded) {
-			return nil // identical: leave the file (and its timestamp) alone
+			return nil
 		}
 		if readErr != nil && !os.IsNotExist(readErr) {
 			return readErr

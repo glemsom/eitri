@@ -213,8 +213,6 @@ func stubProviderServer(t *testing.T) *httptest.Server {
 	return srv
 }
 
-// batchRunEnv builds the environment a booted batch CLI run needs: a fresh
-// data dir and a stubbed provider endpoint.
 func batchRunEnv(t *testing.T, providerURL string) ([]string, string) {
 	t.Helper()
 	dataDir := filepath.Join(t.TempDir(), ".eitri")

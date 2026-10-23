@@ -18,7 +18,6 @@ type toolEntry struct {
 	doneAt       time.Time
 }
 
-// toolLog is the deep value type that owns the transcript's tool-call entries end to end.
 type toolLog struct {
 	entries   []toolEntry
 	curAnchor int
@@ -85,7 +84,6 @@ func (l toolLog) anchoredIndices(anchor int) []int {
 	return out
 }
 
-// SetStart re-anchors a completed entry's observed execution start time.
 func (l *toolLog) SetStart(i int, t time.Time) {
 	if i < 0 || i >= len(l.entries) {
 		return
@@ -167,8 +165,6 @@ func (l toolLog) expandedFor(i int, cfg expansionConfig) bool {
 	return l.expansion.expanded(blockTool, i, cfg)
 }
 
-// dropEntryCache discards the memoized render of entry i (and its dependents'
-// indexes if the entry list shrank, which Apply handles separately).
 func (l *toolLog) dropEntryCache(i int) {
 	if l.entryCache == nil {
 		return
@@ -176,8 +172,6 @@ func (l *toolLog) dropEntryCache(i int) {
 	delete(l.entryCache.m, i)
 }
 
-// cached returns the memoized render of completed entry i when it matches the
-// current surface parameters, and whether one exists.
 func (l *toolLog) cached(i, width int, expanded, focused bool) (string, bool) {
 	if l.entryCache == nil {
 		return "", false
@@ -192,8 +186,6 @@ func (l *toolLog) cached(i, width int, expanded, focused bool) (string, bool) {
 	return c.text, true
 }
 
-// storeCache records the memoized render of completed entry i for the given
-// surface parameters.
 func (l *toolLog) storeCache(i, width int, expanded, focused bool, text string) {
 	l.initCache()
 	l.entryCache.m[i] = cachedToolRender{width: width, expanded: expanded, focused: focused, text: text}

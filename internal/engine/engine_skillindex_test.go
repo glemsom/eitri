@@ -117,7 +117,6 @@ func TestRunAgentSkillIndexNotPersistedInSessionHistory(t *testing.T) {
 		t.Fatalf("captured %d requests, want 2", len(c.requests))
 	}
 	second := c.requests[1].Messages
-	// head, index, persisted [user, assistant], user
 	// Count system messages: exactly one non-head skill index.
 	var sysCount, indexCount int
 	for _, m := range second {

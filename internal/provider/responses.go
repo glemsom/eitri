@@ -187,7 +187,6 @@ func responsesReasoningControl(req Request) *responsesReasoning {
 	return &responsesReasoning{Effort: effort}
 }
 
-// responsesStream adapts OpenAI Responses SSE events into Eitri's provider stream seam.
 type responsesStream struct {
 	ev        *sse
 	acc       *responsesToolAccumulator

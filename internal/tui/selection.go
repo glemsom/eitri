@@ -147,7 +147,6 @@ func (m *Model) copySelection(drag PointerOutcome) {
 	m.feedback = successFeedback("copied")
 }
 
-// hyperlinkAt returns the OSC 8 destination enclosing the cell at col in line.
 func hyperlinkAt(line string, col int) (string, bool) {
 	const prefix = "\x1b]8;"
 	for i, cell, target := 0, 0, ""; i < len(line); {

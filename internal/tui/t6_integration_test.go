@@ -37,14 +37,12 @@ func TestT6ArrowsAcrossNew(t *testing.T) {
 		t.Fatalf("live key changed before `/new`, got %q", live.Get())
 	}
 
-	// `/new` immediately re-mints the session.
 	m = typeText(t, m, "/new")
 	m = keypress(t, m, "enter")
 	if live.Get() != "fresh-1" {
 		t.Fatalf("`/new` did not re-mint the live key, got %q", live.Get())
 	}
 
-	// Arrows must still recall the pre-`/new` prompts after the re-mint.
 	m = keypress(t, m, "up")
 	if got := m.composer.Value(); got != "beta" {
 		t.Fatalf("up after `/new` should recall newest prompt, got %q (history=%v)", got, m.history.Entries())
@@ -54,8 +52,6 @@ func TestT6ArrowsAcrossNew(t *testing.T) {
 		t.Fatalf("second up after `/new` should walk to the older prompt, got %q (history=%v)", got, m.history.Entries())
 	}
 
-	// A fresh prompt appended after `/new` becomes the newest recall entry. The
-	// recalled "alpha" draft is cleared first so the new draft types cleanly.
 	m.composer.Reset()
 	m = typeText(t, m, "gamma")
 	m = submitAndWait(t, m)
@@ -88,7 +84,6 @@ func TestT6PersistAcrossRestart(t *testing.T) {
 	m = typeText(t, m, "persisted prompt")
 	m = submitAndWait(t, m)
 
-	// "Restart": a fresh program on the same data dir loads the persisted ring.
 	reopened := mk(livekey.NewLiveSessionKey("old"))
 	if got := reopened.history.Entries(); !equalStrings(got, []string{"persisted prompt"}) {
 		t.Fatalf("restart-load history = %v, want [persisted prompt]", got)

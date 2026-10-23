@@ -68,7 +68,6 @@ func (cp *CopilotProvider) SupportedGenerationControls(context.Context) ([]Gener
 	return cp.chat.Capabilities(), nil
 }
 
-// bearer resolves the bearer token for a run.
 func (cp *CopilotProvider) bearer(ctx context.Context) (string, error) {
 	cp.mu.Lock()
 	defer cp.mu.Unlock()

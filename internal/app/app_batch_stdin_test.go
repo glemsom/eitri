@@ -24,9 +24,6 @@ func lastUserContent(req provider.Request) string {
 	return ""
 }
 
-// captureBatchPrompt runs one batch Run against a scripted provider and returns
-// the effective prompt it received, so tests can assert exactly what reached
-// the model without depending on the provider's reply.
 func captureBatchPrompt(t *testing.T, opts Options) (string, error) {
 	t.Helper()
 	var got string

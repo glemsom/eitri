@@ -78,7 +78,6 @@ func formatElapsed(d time.Duration) string {
 	return fmt.Sprintf("%dh %02dm", m/60, m%60)
 }
 
-// plural returns the English plural suffix for a count: "" for one, "s" otherwise ("1 line", "3 lines").
 func plural(n int) string {
 	if n == 1 {
 		return ""
@@ -120,9 +119,6 @@ func tokenEstimate(s string) int {
 	return len([]rune(s)) / 4
 }
 
-// idleWelcome is the empty-transcript welcome block: the gradient brand with
-// the optional idle-ember shimmer, framed by gradient rules and keybinding
-// hints.
 func idleWelcome(th Theme, width, emberFrame int) string {
 	return th.gradientRule(width) + "\n" +
 		brandWordmark(th, emberFrame) + th.statusStyle.Render(" — the smith of your shell") + "\n" +
@@ -130,7 +126,6 @@ func idleWelcome(th Theme, width, emberFrame int) string {
 		th.statusStyle.Render("  "+keyHint()+" /settings · /help for commands & keybindings") + "\n"
 }
 
-// promptView is the interactive max-turns continuation prompt.
 func promptView(th Theme) string {
 	return th.headerStyle.Render("run paused at the max-turns cap") + "\n\n" +
 		"  Continue the run with more turns?\n" +

@@ -20,11 +20,8 @@ type Output struct {
 	Dropped int
 }
 
-// RunSpec is a fully-resolved system call a backend wants to execute: the
-// program, its arguments, the working directory to run in, and any extra
-// environment variables (appended to the inherited environment). Both the
-// sandboxed (bwrap) and unsandboxed (direct bash) backends resolve to this
-// shape before touching the OS.
+// RunSpec is the resolved system call both the sandboxed (bwrap) and
+// unsandboxed (direct bash) backends hand to the OS.
 type RunSpec struct {
 	Name string
 	Args []string
@@ -37,11 +34,8 @@ type Runner interface {
 	Run(ctx context.Context, spec RunSpec) (*Output, error)
 }
 
-// RealRunner is the production command runner that actually spawns bwrap.
 var RealRunner Runner = defaultRunner{}
 
-// defaultRunner executes the RunSpec's program and captures combined output,
-// honoring the working directory and extra environment variables.
 type defaultRunner struct{}
 
 func (defaultRunner) Run(ctx context.Context, spec RunSpec) (*Output, error) {
@@ -90,14 +84,12 @@ func (b *boundedBuffer) String() string {
 	return string(b.buf)
 }
 
-// Dropped reports how many stream bytes the buffer rejected past its retention limit.
 func (b *boundedBuffer) Dropped() int {
 	return b.total - len(b.buf)
 }
 
 const sshConfigDirName = "etc-ssh-config.d"
 
-// Sandbox runs shell commands under a bubblewrap sandbox.
 type Sandbox struct {
 	workspace     string
 	tempHost      string
@@ -125,7 +117,6 @@ func NewSandbox(workspace, tempHost string, run Runner, extraWritable ...string)
 	return &Sandbox{workspace: filepath.Clean(workspace), tempHost: filepath.Clean(tempHost), extraWritable: cleanPaths(extraWritable), run: run}, nil
 }
 
-// Run executes the shell command cmd inside the bwrap sandbox and returns its output. cmd is a shell string executed by /bin/bash -c.
 func (s *Sandbox) Run(ctx context.Context, cmd string) (*Output, error) {
 	if err := os.MkdirAll(s.tempHost, 0o700); err != nil {
 		return nil, err

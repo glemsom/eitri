@@ -121,8 +121,6 @@ func isFolderCandidate(cand string) bool {
 	return strings.HasSuffix(cand, "/")
 }
 
-// mentionWalkMsg carries a freshly walked workspace manifest back from the
-// background worker into the UI loop.
 type mentionWalkMsg struct{ paths []string }
 
 // mentionWalkCmd reads the workspace tree off the main loop and delivers the
@@ -213,8 +211,6 @@ func filterIgnored(dir string, paths []string) []string {
 	return kept
 }
 
-// gitRoot returns the top-level worktree directory containing dir, or "" when
-// dir is not inside a git worktree.
 func gitRoot(dir string) string {
 	out, err := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel").Output()
 	if err != nil {
@@ -231,7 +227,6 @@ func gitRoot(dir string) string {
 func candidatesForPartial(manifest []string, partial string) []string {
 	dir, base := splitPath(partial)
 	out := map[string]bool{}
-	// match siblings under dir whose basename has the base prefix
 	collectUnder(manifest, dir, base, out)
 	// a partial that ends in a slash and names an existing directory surfaces its
 	// children; a bare partial keeps matching siblings only until the slash is typed.
@@ -272,8 +267,6 @@ func collectUnder(manifest []string, prefix, base string, out map[string]bool) {
 	}
 }
 
-// splitPath splits a partial into its leading directory (including a trailing
-// slash, or "" at the root) and the remaining basename prefix.
 func splitPath(partial string) (dir, base string) {
 	if i := strings.LastIndex(partial, "/"); i >= 0 {
 		return partial[:i+1], partial[i+1:]
@@ -281,7 +274,6 @@ func splitPath(partial string) (dir, base string) {
 	return "", partial
 }
 
-// firstSegment returns the first path segment of s and whether it is a directory.
 func firstSegment(s string) (string, bool) {
 	if i := strings.IndexByte(s, '/'); i >= 0 {
 		return s[:i], true
@@ -289,7 +281,6 @@ func firstSegment(s string) (string, bool) {
 	return s, false
 }
 
-// containsPath reports whether manifest holds the exact path entry.
 func containsPath(manifest []string, p string) bool {
 	for _, e := range manifest {
 		if e == p {
@@ -309,7 +300,6 @@ func atMentionAt(value string, cursor int) (start int, partial string, ok bool) 
 	if cursor <= 0 || cursor > len(value) {
 		return -1, "", false
 	}
-	// find the token head before the caret
 	i := cursor - 1
 	for i >= 0 {
 		r, _ := utf8.DecodeLastRuneInString(value[:i+1])
@@ -326,7 +316,6 @@ func atMentionAt(value string, cursor int) (start int, partial string, ok bool) 
 	if !ok {
 		return -1, "", false
 	}
-	// the @ must follow a boundary or the line start
 	if start > 0 {
 		r, _ := utf8.DecodeLastRuneInString(value[:start])
 		if !isMentionBoundaryRune(r) {

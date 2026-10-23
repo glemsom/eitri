@@ -119,8 +119,6 @@ func TestRenderFlow_committedReasoningSnapshotOnceAtTailWhenNoToolFollows(t *tes
 	if ri < 0 || ai < 0 {
 		t.Fatalf("no-tool committed flow missing reasoning/answer (r=%d a=%d):\n%s", ri, ai, plain)
 	}
-	// With no tool boundary, the reasoning snapshot renders at the tail, sitting
-	// directly before the final answer and never after it.
 	if !(ri < ai) {
 		t.Errorf("no-tool committed reasoning must sit at the tail before the answer, got r=%d a=%d:\n%s", ri, ai, plain)
 	}
@@ -168,12 +166,6 @@ func TestRenderFlow_liveInterleavesReasoningFragmentsInEmissionOrder(t *testing.
 	}
 }
 
-// TestRenderFlow_liveFlushesReasoningPerDeltaWithoutToolBoundary locks that a
-// pure chain-of-thought stretch — a live, streaming turn with no intervening
-// tool boundary — paints each reasoning delta as its own fragment as it
-// arrives, rather than hiding everything in one composite block until the
-// tail. Each delta renders separately (one header per fragment), and the whole
-// streamed span never appears as a single contiguous block.
 func TestRenderFlow_liveReasoningCoalescesContiguousDeltas(t *testing.T) {
 	in := renderFlowInput(
 		[]TimelineEvent{
@@ -493,8 +485,6 @@ func TestRenderToolEntry_expandedLongLineWrapsAtWidth(t *testing.T) {
 	}
 }
 
-// TestRenderToolEntry_expandedMultilineWrapsPreservingNewlines locks that
-// embedded newlines are preserved and each logical line is wrapped independently.
 func TestRenderToolEntry_expandedMultilineWrapsPreservingNewlines(t *testing.T) {
 	width := 40
 	line1 := strings.Repeat("b", 100)
@@ -536,14 +526,10 @@ func TestRenderToolEntry_expandedMultilineWrapsPreservingNewlines(t *testing.T) 
 		joined.WriteString(strings.TrimRight(content, " "))
 		joined.WriteString("\n")
 	}
-	// The wrapped output has more physical lines than the input, but all original
-	// bytes must survive. Counting character classes verifies no drops.
 	got := strings.TrimSuffix(joined.String(), "\n")
 	if strings.Count(got, "b") != 100 || strings.Count(got, "c") != 100 {
 		t.Errorf("wrapped content dropped bytes: got %d b's and %d c's, want 100 each", strings.Count(got, "b"), strings.Count(got, "c"))
 	}
-	// Verify the two logical blocks are still separated by at least one newline
-	// in the rendered output (original newline preserved by ansi.Wrap).
 	if !strings.Contains(got, "b\nc") {
 		t.Errorf("original newline between logical blocks was lost: got %q", got)
 	}

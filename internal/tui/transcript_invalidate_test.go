@@ -6,13 +6,11 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// These tests lock the "mutations invalidate" invariant for the remaining
-// the user-message appends for slash/skill/login activations each leave the
-// layout cache stale from the Transcript method alone, so no caller — the
-// Model included — ever writes the dirty flag by hand around them.
+// These tests lock the "mutations invalidate" invariant: the layout-mutating
+// Transcript methods — resize, settings, and the user-message appends for
+// slash/skill/login activations — each leave the layout cache stale from the
+// method alone, so no caller, the Model included, writes the dirty flag by hand.
 
-// TestSetSizeMarksLayoutDirty drives a resize through Transcript.SetSize and
-// asserts the layout cache comes out stale from the method alone.
 func TestSetSizeMarksLayoutDirty(t *testing.T) {
 	tx := newTestTx()
 	tx.layout.dirty = false // isolate SetSize: only the method may re-mark it
@@ -26,9 +24,6 @@ func TestSetSizeMarksLayoutDirty(t *testing.T) {
 	}
 }
 
-// TestApplySettingsMarksLayoutDirty drives a settings save through
-// Transcript.ApplySettings and asserts both the applied settings and the
-// self-invalidation.
 func TestApplySettingsMarksLayoutDirty(t *testing.T) {
 	tx := newTestTx()
 	tx.layout.dirty = false // isolate ApplySettings: only the method may re-mark it
@@ -46,8 +41,6 @@ func TestApplySettingsMarksLayoutDirty(t *testing.T) {
 	}
 }
 
-// TestAppendUserMsgMarksLayoutDirty drives a slash-activation-style user
-// append through Transcript.AppendUserMsg and asserts the same invariant.
 func TestAppendUserMsgMarksLayoutDirty(t *testing.T) {
 	tx := newTestTx()
 	n := len(tx.messages)

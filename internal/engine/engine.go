@@ -15,7 +15,6 @@ import (
 	"github.com/glemsom/eitri/internal/skillindex"
 )
 
-// ErrMaxTurns is returned when a tool-call loop exceeds the configured cap.
 var ErrMaxTurns = errors.New("maximum turn limit reached")
 
 // ErrStopped is the dedicated stop sentinel: it wraps context.Canceled so a caller distinguishes a user-stopped turn (esc in the TUI) from a failure with errors.Is(err, context.Canceled), while the wrapped cause keeps the sentinel from matching unrelated errors.
@@ -42,7 +41,6 @@ type RunEndSink interface {
 // least one write failed, so a broken trail is surfaced without per-write noise.
 type TranscriptErrorReporter func(failed int)
 
-// Engine is a run engine bound to a provider and a transcript sink.
 type Engine struct {
 	provider   provider.Provider
 	transcript TranscriptWriter
@@ -57,7 +55,6 @@ type Engine struct {
 	nextRun int
 }
 
-// New returns an Engine that talks to p and appends run records to tr.
 func New(p provider.Provider, tr TranscriptWriter) *Engine {
 	return &Engine{provider: p, transcript: tr, histories: make(map[string][]provider.Message)}
 }
@@ -66,13 +63,10 @@ func (e *Engine) SetTranscript(tr TranscriptWriter) {
 	e.transcript = tr
 }
 
-// SetRunEndSink registers the sink that records each run's terminal reason.
 func (e *Engine) SetRunEndSink(s RunEndSink) {
 	e.runEnd = s
 }
 
-// SetTranscriptErrorReporter registers the reporter notified at run end when one
-// or more transcript writes failed during that run.
 func (e *Engine) SetTranscriptErrorReporter(r TranscriptErrorReporter) {
 	e.onTrErr = r
 }
@@ -80,12 +74,10 @@ func (e *Engine) SetTranscriptErrorReporter(r TranscriptErrorReporter) {
 // Listener receives one typed Event per streamed observation from a live run, in order, synchronously from within the turn's drain loop.
 type Listener func(Event)
 
-// SetListener subscribes l to the engine's live event stream.
 func (e *Engine) SetListener(l Listener) {
 	e.listener = l
 }
 
-// emit pushes one Event to the subscriber, no-op when none is attached.
 func (e *Engine) emit(evt Event) {
 	if e.listener != nil {
 		e.listener(evt)
@@ -149,7 +141,6 @@ type RunRequest struct {
 	ProviderID provider.ProviderID
 }
 
-// Result is the outcome of one Run.
 type Result struct {
 	Answer    string
 	Reasoning string
@@ -255,7 +246,6 @@ func runEndReason(err error) string {
 	}
 }
 
-// ToolExecResult is one tool call's outcome as the engine sees it.
 type ToolExecResult struct {
 	Text       string
 	Compressed bool

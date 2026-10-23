@@ -6,9 +6,8 @@ import (
 	"time"
 )
 
-// renderViaFlow renders the log's anchored entries through the FlowRenderer —
-// the only tool-entry renderer since the legacy tool-log render path was
-// start event per anchored entry, expansion read through the ExpansionState
+// renderViaFlow renders the log's anchored entries through the FlowRenderer, one
+// start event per anchored entry, with expansion read through the ExpansionState
 // seam.
 func renderViaFlow(l toolLog, mode viewMode, defaultCollapsed bool, now time.Time, width, anchor int, pulse bool) (string, []toolRowRange) {
 	tools := make([]flowTool, 0)
@@ -62,10 +61,6 @@ func TestToolLog_ApplyPairsMostRecentIncompleteSameName(t *testing.T) {
 	}
 }
 
-// TestToolLog_ExpandForceCollapseBoundsChecks locks that the live per-entry
-// operations (the two ToggleToolEntry routes) bounds-check their index: an
-// in-range expansion/force-collapse pins the seam force, and out-of-range
-// indices are silent no-ops that never disturb an in-range entry.
 func TestToolLog_ExpandForceCollapseBoundsChecks(t *testing.T) {
 	t.Parallel()
 	var l toolLog
@@ -99,7 +94,6 @@ func TestToolLog_ExpansionSeamOwnsForces(t *testing.T) {
 	l.SetAnchor(0)
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: ""}})
 
-	// No force yet: the default (collapsed) decision and no pinned force on the seam.
 	if l.expandedFor(0, expansionConfig{mode: viewDefault, toolExpanded: !true}) {
 		t.Errorf("fresh entry must follow the collapsed default, got expanded")
 	}
@@ -107,7 +101,6 @@ func TestToolLog_ExpansionSeamOwnsForces(t *testing.T) {
 		t.Errorf("fresh entry must carry no seam force")
 	}
 
-	// Expand pins a force-expand on the seam that beats the collapsed default.
 	l.Expand(0)
 	if !l.expandedFor(0, expansionConfig{mode: viewDefault, toolExpanded: !true}) {
 		t.Errorf("Expand must leave the entry expanded under the collapsed default")
@@ -116,7 +109,6 @@ func TestToolLog_ExpansionSeamOwnsForces(t *testing.T) {
 		t.Errorf("Expand must pin an expand force on the seam, got ok=%v force=%v", ok, f)
 	}
 
-	// ForceCollapse pins the opposite force, beating even the expand-all mode.
 	l.ForceCollapse(0)
 	if l.expandedFor(0, expansionConfig{mode: viewExpandAll, toolExpanded: !true}) {
 		t.Errorf("ForceCollapse must win over expand-all mode, got expanded")
@@ -235,24 +227,18 @@ func TestToolLog_RenderOutcomeElapsedAndTruncation(t *testing.T) {
 	}
 }
 
-// TestToolLog_AtLineConsistentWithRender locks the hit-test fix: AtLine's
-// collapsed answer must come from the same config the render used, even when
-// the seam's stored mode is stale (constructed in default mode, rendered under
-// collapse-all).
 func TestToolLog_AtLineConsistentWithRender(t *testing.T) {
 	var l toolLog
 	l.SetAnchor(0)
 	l.Apply(ToolUpdate{Start: &ToolStart{Name: "bash", Args: ""}})
 	l.Apply(ToolUpdate{Result: &ToolResult{Name: "bash", Result: "a\nb\n", Lines: 2}})
 
-	// seam constructed/stored in default mode; render + hit-test in collapse-all.
 	cfg := expansionConfig{mode: viewCollapseAll}
 	_, rows := renderViaFlow(l, viewCollapseAll, true, time.Time{}, 80, 0, false)
 	if idx, collapsed, ok := l.AtLine(1, rows, cfg); !ok || idx != 0 || !collapsed {
 		t.Errorf("AtLine under collapse-all = %d/%v/%v, want entry 0 collapsed", idx, collapsed, ok)
 	}
 
-	// expand-all config: same row now reports expanded.
 	_, rowsAll := renderViaFlow(l, viewExpandAll, true, time.Time{}, 80, 0, false)
 	if idx, collapsed, ok := l.AtLine(1, rowsAll, expansionConfig{mode: viewExpandAll}); !ok || idx != 0 || collapsed {
 		t.Errorf("AtLine under expand-all = %d/%v/%v, want entry 0 expanded", idx, collapsed, ok)

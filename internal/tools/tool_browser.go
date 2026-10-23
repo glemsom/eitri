@@ -9,7 +9,7 @@ import (
 	"github.com/glemsom/eitri/internal/compress"
 )
 
-// openInBrowserTool is the open_in_browser tool: host-side, outside the bwrap sandbox.
+// openInBrowserTool runs host-side, outside the bwrap sandbox: only the host has a browser.
 type openInBrowserTool struct {
 	br BrowserLauncher
 }

@@ -8,9 +8,8 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// memoTestTx builds a render-ready transcript with settled committed turns so
-// the committed-history memo tests exercise the idle layout path (the path a
-// finished turn's frame takes) rather than the busy fast path.
+// memoTestTx is render-ready with settled committed turns, so the memo tests
+// exercise the idle layout path a finished frame takes, not the busy fast path.
 func memoTestTx() *Transcript {
 	th := themeFor(config.DefaultTheme)
 	return &Transcript{
@@ -24,9 +23,8 @@ func memoTestTx() *Transcript {
 	}
 }
 
-// commitTurn drives one full streaming+commit turn through the TurnSession
-// verbs and renders the settled transcript (idle) so the committed memo has to
-// materialize the new turn's units.
+// commitTurn drives one streaming+commit turn through the TurnSession verbs and
+// renders the settled transcript, forcing the memo to materialize its units.
 func commitTurn(t testing.TB, tx *Transcript, prompt, answer string) {
 	t.Helper()
 	s := NewTurnSession(stubTurn(answer, nil))
@@ -36,10 +34,9 @@ func commitTurn(t testing.TB, tx *Transcript, prompt, answer string) {
 	tx.ensureLayout()
 }
 
-// assertLayoutMatchesFreshFullRender locks AC3 and AC4: the incrementally
-// rendered transcript (served from the committed memo through recordLayout)
-// must equal a fresh full render byte-for-byte, and the row->message and
-// row->tool indexes it produced must match the fresh render's indexes.
+// assertLayoutMatchesFreshFullRender checks the memo-served layout against a
+// fresh full render byte-for-byte, including the row->message and row->tool
+// indexes: if those drift, scroll/selection/block-focus hit-tests break.
 func assertLayoutMatchesFreshFullRender(t *testing.T, tx *Transcript) {
 	t.Helper()
 	tx.ensureLayout()
@@ -60,10 +57,9 @@ func assertLayoutMatchesFreshFullRender(t *testing.T, tx *Transcript) {
 	}
 }
 
-// TestCommittedTurnRendersOnlyItsOwnUnits locks AC2 and the flat-cost
-// property: committing a new turn renders exactly that turn's messages into the
-// memo and serves the prior units from the memo, so per-turn commit cost is
-// bounded by the new turn rather than growing with the committed-history length.
+// TestCommittedTurnRendersOnlyItsOwnUnits: committing a new turn renders exactly
+// that turn's messages into the memo and serves the prior units from it, so
+// per-turn commit cost is bounded by the new turn, not by history length.
 func TestCommittedTurnRendersOnlyItsOwnUnits(t *testing.T) {
 	tx := memoTestTx()
 
@@ -73,23 +69,21 @@ func TestCommittedTurnRendersOnlyItsOwnUnits(t *testing.T) {
 		t.Fatalf("first turn must render 2 committed units (prompt + answer), got %d", base)
 	}
 
-	// A second turn renders only its own two units — the prior ones come from
-	// the memo, so the render count stays flat in history length.
+	// A second turn renders only its own two units; the prior ones come from the memo.
 	commitTurn(t, tx, "second", "answer two")
 	if got := tx.committedUnitRenders - base; got != 2 {
 		t.Fatalf("second commit re-rendered %d committed units, want exactly 2 (its own turn only): prior units were re-derived", got)
 	}
 
-	// A third turn is still exactly two more renders: no prior-history growth.
 	commitTurn(t, tx, "third", "answer three")
 	if got := tx.committedUnitRenders - base; got != 4 {
 		t.Fatalf("third commit re-rendered %d committed units, want exactly 4 (2 per turn): commit cost must stay flat in prior history", got)
 	}
 }
 
-// TestCommittedTurnRenderCountFlatInPriorHistory locks the same flat-cost
-// property across a wider sweep: each additional committed turn adds exactly
-// its own unit renders regardless of how many prior turns sit above it.
+// TestCommittedTurnRenderCountFlatInPriorHistory sweeps the flat-cost property:
+// each additional committed turn adds exactly its own unit renders regardless of
+// how many prior turns sit above it.
 func TestCommittedTurnRenderCountFlatInPriorHistory(t *testing.T) {
 	tx := memoTestTx()
 
@@ -103,10 +97,9 @@ func TestCommittedTurnRenderCountFlatInPriorHistory(t *testing.T) {
 	}
 }
 
-// TestIncrementalByteIdentityWithManyPriorTurns locks AC5: after a long series
-// of committed turns, the incrementally rendered transcript is still byte-
-// identical to a fresh full render, and the memo renders exactly one unit per
-// settled message regardless of history length.
+// TestIncrementalByteIdentityWithManyPriorTurns: after a long series of committed
+// turns the incremental transcript stays byte-identical to a fresh full render,
+// and the memo renders exactly one unit per settled message.
 func TestIncrementalByteIdentityWithManyPriorTurns(t *testing.T) {
 	tx := memoTestTx()
 
@@ -119,10 +112,9 @@ func TestIncrementalByteIdentityWithManyPriorTurns(t *testing.T) {
 	}
 }
 
-// shapeFixture builds a single transcript holding a variety of committed turn
-// shapes in sequence — plain answer, reasoning-only, tool-interleaved
-// reasoning/answer, stopped, error, and appended non-streaming notes — the set
-// the byte-identity acceptance criterion names.
+// shapeFixture holds every committed turn shape in sequence — plain answer,
+// reasoning-only, tool-interleaved reasoning/answer, stopped, error, and appended
+// non-streaming notes.
 func shapeFixture() *Transcript {
 	th := themeFor(config.DefaultTheme)
 	log := toolLog{}
@@ -175,18 +167,11 @@ func shapeFixture() *Transcript {
 	return tx
 }
 
-// TestIncrementalMatchesFullRenderAcrossTurnShapes locks AC3/AC4: a transcript
-// holding every named turn shape renders incrementally (via the memo) exactly
-// byte-identical to a fresh full render, and the row->message / row->tool
-// indexes match so scroll/selection/block-focus hit-tests cannot drift.
 func TestIncrementalMatchesFullRenderAcrossTurnShapes(t *testing.T) {
 	tx := shapeFixture()
 	assertLayoutMatchesFreshFullRender(t, tx)
 }
 
-// TestIncrementalMatchesFullRenderAfterCommits drives the varied shapes through
-// real commits (the path that exercises memo extension turn by turn) and checks
-// byte-identity and index identity after each.
 func TestIncrementalMatchesFullRenderAfterCommits(t *testing.T) {
 	tx := memoTestTx()
 
@@ -215,8 +200,6 @@ func TestIncrementalMatchesFullRenderAfterCommits(t *testing.T) {
 	assertLayoutMatchesFreshFullRender(t, tx)
 }
 
-// errBoom is a tiny always-error marker satisfying the error interface so the
-// fixture can drive a turn that fails without importing errors.New churn.
 type errBoom struct{}
 
 func (e *errBoom) Error() string { return "boom" }

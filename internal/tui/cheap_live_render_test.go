@@ -7,19 +7,6 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// Live-body tests lock the two deliberately-different streaming contracts:
-//
-//   - The streaming *answer* renders through the cheap ANSI word-wrap
-//     (renderCheapLiveBody): it must never leak raw markdown, must still read
-//     naturally (bold/italic/code/link emphasis), and must never produce an
-//     overlarge line on a long unbroken token.
-//   - The streaming *reasoning* body is a plain, style-free "background thought"
-//     (renderLiveThoughtBody): the pane dims it, so the body must carry no SGR of
-//     its own; the text — markdown syntax included — passes through verbatim and
-//     parses only at commit.
-//
-// Committed, error, and stopped panes always keep the full glamour render.
-
 func TestCheapLiveBody_InlineEmphasisAndStrip(t *testing.T) {
 	body := simplifyMarkdownEmphasis("pre **bold** and *em* and `code` [label](https://x) and ![img](y) post")
 	if !hasSGRBold(body) {
@@ -44,17 +31,13 @@ func TestCheapLiveBody_FencePreserved(t *testing.T) {
 	if strings.Contains(body, "```") {
 		t.Errorf("fence markers must be dropped, got %q", body)
 	}
-	// Inline code outside a fence is emphasized, not fenced.
 }
 
 func TestCheapLiveBody_WordWrapNoMidWordBreak(t *testing.T) {
 	width := 40
-	// Space-separated text must break at word boundaries, never mid-word.
 	body := renderCheapLiveBody("The client connection with the server", width)
 	for _, ln := range strings.Split(body, "\n") {
-		// No line should contain a fragment like "cl\nient" or "th\ne".
 		if strings.Contains(ln, "cl") && strings.Contains(ln, "ient") && len(ln) > width {
-			// The old Hardwrap path broke mid-word; Wordwrap should not.
 			t.Fatalf("word-wrap broke mid-word: %q", body)
 		}
 	}
@@ -77,9 +60,6 @@ func TestCheapLiveBody_HardWrapLongToken(t *testing.T) {
 	}
 }
 
-// TestLiveThoughtBody_PlainAndStyleFree locks the streaming reasoning contract:
-// the body is the raw text (markdown syntax included, not parsed) with no SGR of
-// any kind, so the reasoning pane's own dim/italic is never reset mid-line.
 func TestLiveThoughtBody_PlainAndStyleFree(t *testing.T) {
 	in := "pre **bold** and `code` and ## heading"
 	body := renderLiveThoughtBody(in, 200)
@@ -91,8 +71,6 @@ func TestLiveThoughtBody_PlainAndStyleFree(t *testing.T) {
 	}
 }
 
-// TestLiveThoughtBody_WordWrapNoMidWordBreak proves space-separated text wraps
-// at word boundaries, never mid-word.
 func TestLiveThoughtBody_WordWrapNoMidWordBreak(t *testing.T) {
 	width := 40
 	body := renderLiveThoughtBody("The client connection with the server", width)
@@ -106,8 +84,6 @@ func TestLiveThoughtBody_WordWrapNoMidWordBreak(t *testing.T) {
 	}
 }
 
-// TestLiveThoughtBody_HardWrapLongToken proves the plain path still bounds line
-// width on a long unbroken token (URL, code run) that would otherwise blow out.
 func TestLiveThoughtBody_HardWrapLongToken(t *testing.T) {
 	long := strings.Repeat("a", 500)
 	width := 40
@@ -126,8 +102,6 @@ func TestRendererSwitchesToCheapOnlyForStreamingPanes(t *testing.T) {
 	th := themeFor(config.DefaultTheme)
 	text := "**bold** bullet - item"
 
-	// The streaming reasoning pane is a plain dim thought: no emphasis SGR, the
-	// raw text (markdown included) passes through.
 	liveThought := renderPaneBodyFresh(text, 80, config.DefaultTheme, mdPaneStreamingThinking, th)
 	if hasSGRBold(liveThought) {
 		t.Errorf("streaming reasoning pane must not emit body emphasis SGR, got %q", ansiStrip(liveThought))
@@ -136,7 +110,6 @@ func TestRendererSwitchesToCheapOnlyForStreamingPanes(t *testing.T) {
 		t.Errorf("streaming reasoning pane must pass raw text through, got %q", ansiStrip(liveThought))
 	}
 
-	// The streaming answer pane still uses cheap emphasis: raw markdown is stripped.
 	cheapAnswer := renderPaneBodyFresh(text, 80, config.DefaultTheme, mdPaneStreaming, th)
 	if strings.Contains(ansiStrip(cheapAnswer), "**") {
 		t.Errorf("streaming answer pane leaked raw markdown: %q", ansiStrip(cheapAnswer))
@@ -145,8 +118,6 @@ func TestRendererSwitchesToCheapOnlyForStreamingPanes(t *testing.T) {
 		t.Errorf("streaming answer pane must keep cheap emphasis, got %q", ansiStrip(cheapAnswer))
 	}
 
-	// Committed reasoning pane must still pass through glamour: markdown emphasis
-	// (bold) and list bullets survive.
 	committed := renderPaneBodyFresh(text, 80, config.DefaultTheme, mdPaneThinking, th)
 	if !hasSGRBold(committed) {
 		t.Errorf("committed reasoning pane must keep glamour emphasis, got: %q", ansiStrip(committed))
@@ -156,9 +127,6 @@ func TestRendererSwitchesToCheapOnlyForStreamingPanes(t *testing.T) {
 	}
 }
 
-// TestStreamingCommittedNoLeadingBlankLine locks the issue-63 contract: the
-// committed pane body must not start with an empty bordered line (a `│` with
-// no text after it), and the live body must match in that respect.
 func TestStreamingCommittedNoLeadingBlankLine(t *testing.T) {
 	th := themeFor(config.DefaultTheme)
 	width := 40
@@ -185,14 +153,6 @@ func TestStreamingCommittedNoLeadingBlankLine(t *testing.T) {
 	}
 }
 
-// TestCommittedParityCheapRendererNeverLeaksIntoCommitted locks scratch issue
-// 03's byte-parity contract: a committed turn must render byte-identical to the
-// glamour path whether or not the cheap live renderers exist. The live panes are
-// registered for exactly the two streaming pane ids; every committed, error, and
-// stopped pane id must render through glamour (renderPaneBodyFresh's default
-// branch), so a committed answer with the same text must not differ from its own
-// direct glamour render. The comparison is byte-for-byte on the pane-wrapped
-// body, the same bytes the transcript paints.
 func TestCommittedParityCheapRendererNeverLeaksIntoCommitted(t *testing.T) {
 	th := themeFor(config.DefaultTheme)
 
@@ -204,11 +164,6 @@ func TestCommittedParityCheapRendererNeverLeaksIntoCommitted(t *testing.T) {
 		t.Fatalf("RenderMarkdown: %v", err)
 	}
 
-	// The committed pane must equal a direct glamour render exactly. The fresh
-	// render path is the same function the live renderer dispatches through, so
-	// this also pins that the cheap branches run ONLY for the streaming ids: every
-	// other pane goes through RenderMarkdown and must come out identical to full
-	// glamour, byte for byte.
 	for _, paneID := range []liveMarkdownPaneID{mdPaneThinking, mdPaneAgent, mdPaneError, mdPaneStopped} {
 		committed := renderPaneBodyFresh(sample, width, config.DefaultTheme, paneID, th)
 
@@ -218,9 +173,6 @@ func TestCommittedParityCheapRendererNeverLeaksIntoCommitted(t *testing.T) {
 		}
 	}
 
-	// Both streaming panes must NOT route through glamour: their bodies carry
-	// distinct bytes, so a regression that widens a cheap branch to a committed
-	// pane would fail the parity loop above.
 	liveThought := renderPaneBodyFresh(sample, width, config.DefaultTheme, mdPaneStreamingThinking, th)
 	glam := th.paneStyleFor(mdPaneStreamingThinking).Render(trimBody(md))
 	if liveThought == glam {

@@ -23,18 +23,14 @@ type HelpOverlay struct {
 	offset  int
 }
 
-// openHelpOverlay builds the overlay from the authoritative help reference,
-// borrowing the live chrome theme, the configured Markdown theme, and the
-// current viewport. The reference is rendered through the same Markdown
-// pipeline the transcript uses, so code spans and headers read identically
-// whether help came from `/help` or a message.
+// openHelpOverlay renders the reference through the same Markdown pipeline the
+// transcript uses, so code spans and headers read identically either way.
 func openHelpOverlay(theme Theme, mdTheme string, width, height int) *HelpOverlay {
 	h := &HelpOverlay{theme: theme, mdTheme: mdTheme, source: helpView(), width: width, height: height}
 	h.render()
 	return h
 }
 
-// render (re)computes the display lines from the source at the current width.
 func (h *HelpOverlay) render() {
 	text := h.source
 	if h.width > 0 {
@@ -60,7 +56,6 @@ func (h *HelpOverlay) maxOffset() int {
 	return 0
 }
 
-// scroll moves the viewport by delta lines and clamps it to the reference.
 func (h *HelpOverlay) scroll(delta int) {
 	h.offset += delta
 	if h.offset < 0 {
@@ -71,8 +66,8 @@ func (h *HelpOverlay) scroll(delta int) {
 	}
 }
 
-// Handle routes one message into the overlay and reports whether the user
-// dismissed it. Every key is handled (the overlay owns the keyboard while open).
+// Handle reports whether the user dismissed the overlay. The overlay owns the
+// keyboard while open, so every key is consumed.
 func (h *HelpOverlay) Handle(msg tea.Msg) (closed bool, handled bool) {
 	switch m := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -105,7 +100,6 @@ func (h *HelpOverlay) Handle(msg tea.Msg) (closed bool, handled bool) {
 	return false, false
 }
 
-// View renders the visible window of the reference plus the footer hint row.
 func (h *HelpOverlay) View() string {
 	if h.width <= 0 || h.height <= 0 {
 		return ""
@@ -120,8 +114,6 @@ func (h *HelpOverlay) View() string {
 	return strings.Join(rows, "\n") + "\n"
 }
 
-// footer renders the scroll/close hint with a position readout, shown only when
-// the reference overflows the viewport.
 func (h *HelpOverlay) footer() string {
 	sep := " · "
 	hint := "↑/↓ scroll" + sep + "pgup/pgdn page" + sep + "esc close"
@@ -132,7 +124,6 @@ func (h *HelpOverlay) footer() string {
 	return h.theme.statusStyle.Render(truncateWidth(hint, h.width))
 }
 
-// startHelp opens the `/help` reference as a dedicated scrollable overlay.
 func (m Model) startHelp() (tea.Model, tea.Cmd) {
 	g := m.tx.Geometry()
 	m.help = openHelpOverlay(m.tx.Theme(), m.tx.ConfigTheme(), g.Width, g.Height)

@@ -90,7 +90,7 @@ func TestModel_SettingsAdjustedValuePersists(t *testing.T) {
 	m = resize(t, m)
 	m = openSettingsForTest(t, m)
 	m = focusField(t, m, fieldModel)
-	m = keypress(t, m, "tab") // select grok-2
+	m = keypress(t, m, "tab")
 	m = focusField(t, m, fieldSave)
 	m = keypress(t, m, "enter")
 
@@ -135,9 +135,9 @@ func TestModel_SettingsSaveAppliesThinkingStateToLiveSession(t *testing.T) {
 	m = resize(t, m)
 	m = openSettingsForTest(t, m)
 	m = focusField(t, m, fieldThinking)
-	m = keypress(t, m, "tab") // thinking off
+	m = keypress(t, m, "tab")
 	m = focusField(t, m, fieldEffort)
-	m = keypress(t, m, "left") // high -> medium
+	m = keypress(t, m, "left")
 	m = focusField(t, m, fieldSave)
 	m = keypress(t, m, "enter")
 
@@ -163,14 +163,14 @@ func TestModel_SettingsSaveRefreshesRightRail(t *testing.T) {
 	m = resize(t, m)
 	m = openSettingsForTest(t, m)
 	m = focusField(t, m, fieldModel)
-	m = keypress(t, m, "tab") // deepseek-v4-flash -> grok-2
+	m = keypress(t, m, "tab")
 	m = focusField(t, m, fieldSave)
-	m = keypress(t, m, "enter") // Save
+	m = keypress(t, m, "enter")
 
 	if m.deps.Rail.provider != "opencode-go" || m.deps.Rail.model != "grok-2" {
 		t.Fatalf("rail = provider %q model %q after Settings save, want opencode-go / grok-2", m.deps.Rail.provider, m.deps.Rail.model)
 	}
-	m = keypress(t, m, "esc") // close Settings, rail visible again
+	m = keypress(t, m, "esc")
 	content := plain(view(m))
 	if !strings.Contains(content, "grok-2") {
 		t.Fatalf("right rail does not show the saved model:\n%s", content)
@@ -196,7 +196,7 @@ func TestModel_SettingsSaveFailureDoesNotApplyLiveConfig(t *testing.T) {
 	})
 	m = resize(t, m)
 	m = openSettingsForTest(t, m)
-	m = keypress(t, m, "tab") // provider opencode-go -> github-copilot
+	m = keypress(t, m, "tab")
 	m = focusField(t, m, fieldSave)
 	m = keypress(t, m, "enter")
 
@@ -254,9 +254,9 @@ func TestModel_SettingsCollapseTogglesPersistAndFlipDefaults(t *testing.T) {
 	m = resize(t, m)
 	m = openSettingsForTest(t, m)
 	m = focusField(t, m, fieldCoTCollapsed)
-	m = keypress(t, m, "tab") // CoT collapsed -> off
+	m = keypress(t, m, "tab")
 	m = focusField(t, m, fieldToolResultsCollapsed)
-	m = keypress(t, m, "tab") // tool results collapsed -> off
+	m = keypress(t, m, "tab")
 	m = focusField(t, m, fieldSave)
 	m = keypress(t, m, "enter")
 
@@ -315,11 +315,11 @@ func TestModel_SettingsCustomOpenAICredentialsPersist(t *testing.T) {
 	m = focusField(t, m, fieldCustomOpenAIBaseURL)
 	m = keypress(t, m, "enter")
 	m.settings.textInput.SetValue("https://example.com/v1")
-	m = keypress(t, m, "enter") // confirm, moves to API key
+	m = keypress(t, m, "enter")
 	m = focusField(t, m, fieldCustomOpenAIKey)
 	m = keypress(t, m, "enter")
 	m.settings.textInput.SetValue("my-secret-key")
-	m = keypress(t, m, "enter") // confirm, moves to Save
+	m = keypress(t, m, "enter")
 	m = focusField(t, m, fieldSave)
 	m = keypress(t, m, "enter")
 
@@ -349,7 +349,7 @@ func TestModel_SettingsOpenCodeKeyPersists(t *testing.T) {
 	m = focusField(t, m, fieldOpenCodeKey)
 	m = keypress(t, m, "enter")
 	m.settings.textInput.SetValue("opencode-api-key")
-	m = keypress(t, m, "enter") // confirm, moves to Save
+	m = keypress(t, m, "enter")
 	m = focusField(t, m, fieldSave)
 	m = keypress(t, m, "enter")
 
@@ -465,9 +465,7 @@ func keypress(t *testing.T, m Model, key string) Model {
 	return asModel(t, nm)
 }
 
-// focusField steps the settings form forward with Enter until the focused
-// field equals target, asserting arrival. It fails if the walk wraps past
-// Save/Cancel without hitting the target.
+// focusField fails if the walk wraps past Save/Cancel without reaching target.
 func focusField(t *testing.T, m Model, target int) Model {
 	t.Helper()
 	if m.settings == nil {
@@ -547,8 +545,8 @@ func TestModel_NeedsSetupOpensSettingsOnBoot(t *testing.T) {
 	if !strings.Contains(content, "Eitri Settings") {
 		t.Fatalf("settings content %q missing title", content)
 	}
-	// The welcome message is in the transcript, which is hidden behind the
-	// settings overlay; verify it was appended directly.
+	// The welcome message sits behind the settings overlay, so assert on the
+	// transcript rather than the rendered frame.
 	found := false
 	for _, msg := range m.tx.messages {
 		if strings.Contains(msg.content, "Welcome to Eitri!") {

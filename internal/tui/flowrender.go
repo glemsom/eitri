@@ -14,8 +14,6 @@ import (
 
 const collapsedToolCommandMaxLines = 5
 
-// prependToFirstLine prepends prefix to the first line of s, leaving other
-// lines untouched. If s is empty or prefix is empty, s is returned unchanged.
 func prependToFirstLine(s, prefix string) string {
 	if prefix == "" || s == "" {
 		return s
@@ -69,7 +67,6 @@ type flowTool struct {
 	expanded bool
 }
 
-// flowItemKind discriminates one block of a turn's merged flow.
 type flowItemKind int
 
 const (
@@ -105,8 +102,7 @@ type flowRenderer struct {
 	now           time.Time
 	tools         []flowTool
 	markdownCache *liveMarkdownCache
-	// toolLog, when non-nil, is the owning log whose completed-entry render
-	// cache memoizes committed tool cards across frames. See toolLog.renderEntry.
+	// nil means the renderer owns no committed-entry cache; see toolLog.renderEntry.
 	toolLog *toolLog
 }
 
@@ -377,9 +373,6 @@ func (r flowRenderer) render(items []flowItem, msg message, msgIdx int, isFocuse
 	return b.String(), rows
 }
 
-// reasoningBlock renders one reasoning fragment through the single shared
-// emitter: its header (with the focus marker when the fragment is focused),
-// then the body only when expanded — collapsed, the hint is the whole block.
 func (r flowRenderer) reasoningBlock(msg message, msgIdx int, it flowItem, isFocused func(blockKind, int, int, int) bool) string {
 	focused := isFocused != nil && isFocused(blockReasoning, msgIdx, 0, it.fragIdx)
 	return renderReasoningBlockCached(r.markdownCache, r.theme, r.config, r.width, r.effort, msg, msgIdx, it.fragIdx, it.text, it.expanded, focused)
@@ -439,9 +432,6 @@ func renderReasoningBlockCached(cache *liveMarkdownCache, theme Theme, config st
 	return b.String()
 }
 
-// answerBlock renders one answer fragment through the single shared emitter:
-// the pane chosen from the message's flags, and the stopped marker when it is
-// the turn's final block.
 func (r flowRenderer) answerBlock(msg message, msgIdx int, it flowItem) string {
 	return renderAnswerBlockCached(r.markdownCache, r.theme, r.config, r.width, msg, it.text, it.final, fmt.Sprintf("answer:%d:%d", msgIdx, it.fragIdx))
 }
@@ -482,13 +472,11 @@ func renderAnswerBlockCached(cache *liveMarkdownCache, theme Theme, config strin
 	return s
 }
 
-// toolEntryLabel renders the category-colored icon+tool label part of the entry head.
 func toolEntryLabel(te toolEntry) string {
 	icon := toolIcon(te.name)
 	return icon + " " + te.name
 }
 
-// toolEntryArgs renders the dimmed detail part of the entry head: the display args hint.
 func toolEntryArgs(te toolEntry) string {
 	s := ""
 	if arg := toolArgsHint(te.args); arg != "" {
@@ -497,12 +485,10 @@ func toolEntryArgs(te toolEntry) string {
 	return s
 }
 
-// toolEntryHead renders the compact one-line icon+tool args head shared by the transcript entry and the clipboard copy: the tool name and display args.
 func toolEntryHead(te toolEntry) string {
 	return toolEntryLabel(te) + toolEntryArgs(te)
 }
 
-// toolArgsHint extracts a short display hint from a tool call's raw JSON args: the `path` for file tools, the `command` for bash, else the raw string trimmed to a single line.
 func toolArgsHint(argsJSON string) string {
 	var args map[string]any
 	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
@@ -520,7 +506,6 @@ func toolArgsHint(argsJSON string) string {
 	return ""
 }
 
-// renderToolEntry renders one tool-call entry as a compact, glanceable line — icon+tool args — with the result collapsed by default to a summary, never a raw dump into the scroll. focused marks the entry as the currently focused block for the per-block expand interaction.
 func renderToolEntry(th Theme, te toolEntry, expanded bool, now time.Time, width int, pulse bool, focused bool) string {
 	te.name = sanitizeTerminalText(te.name)
 	te.args = sanitizeTerminalText(te.args)
@@ -642,9 +627,6 @@ func clampLines(s string, max int) string {
 	return strings.Join(lines[:max], "\n") + "…"
 }
 
-// cardFrame is the expanded tool card's frame: a left border in the entry's
-// category hue for successes, or the error hue for failures, shared by the
-// result-dump content.
 func cardFrame(th Theme, te toolEntry) lipgloss.Style {
 	var c color.Color
 	if isToolFailure(te.result) {
@@ -658,9 +640,6 @@ func cardFrame(th Theme, te toolEntry) lipgloss.Style {
 		BorderForeground(c)
 }
 
-// wrapToolResult wraps each line of a tool result to fit within width,
-// preserving embedded newlines. It uses word-aware wrapping with a hard-wrap
-// fallback for unbreakable tokens.
 func wrapToolResult(result string, width int) string {
 	if width < 1 {
 		return result
@@ -688,7 +667,6 @@ const (
 	catSkill
 )
 
-// toolCategoryOf maps a tool name to its transcript category.
 func toolCategoryOf(name string) toolCategory {
 	switch name {
 	case "bash":

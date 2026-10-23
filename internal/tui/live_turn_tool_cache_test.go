@@ -113,7 +113,6 @@ func TestLiveTurnToolCache_completionInvalidatesStartRetains(t *testing.T) {
 	if !strings.Contains(got, "2 line") || !strings.Contains(got, "✓") {
 		t.Fatalf("completed result must render its summary, got %q", got)
 	}
-	// A completed entry renders once and lands in the cache.
 	if _, ok := l.cached(0, 120, false, false); !ok {
 		t.Fatal("completed entry should now be cached")
 	}

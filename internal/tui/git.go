@@ -19,7 +19,7 @@ func GitBranch(workspace string) string {
 			if ref, ok := strings.CutPrefix(s, "ref: refs/heads/"); ok {
 				return ref
 			}
-			return "" // detached HEAD or bare repo: no branch name to show
+			return ""
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {

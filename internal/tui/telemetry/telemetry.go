@@ -4,7 +4,6 @@ import (
 	"time"
 )
 
-// TelemetryKind discriminates a live status-strip update: a turn boundary, per-turn token usage, or the one-shot context overflow recovery marker.
 type TelemetryKind int
 
 const (
@@ -13,7 +12,6 @@ const (
 	TelemetryCompacted
 )
 
-// TelemetryUpdate is one additive update for the status strip.
 type TelemetryUpdate struct {
 	Kind   TelemetryKind
 	Hit    int
@@ -41,7 +39,6 @@ type Telemetry struct {
 	updates chan TelemetryUpdate
 }
 
-// NewTelemetry builds the live session telemetry surface seeded with the run's static session state, returning the Telemetry ready to be handed to a Model via Dependencies.
 func NewTelemetry(model string, effort string, thinking bool, maxTurns int) *Telemetry {
 	return &Telemetry{
 		model:     model,
@@ -53,13 +50,10 @@ func NewTelemetry(model string, effort string, thinking bool, maxTurns int) *Tel
 	}
 }
 
-// UpdateChan exposes the live-update feed the app wires the engine listener to.
 func (t *Telemetry) UpdateChan() chan<- TelemetryUpdate { return t.updates }
 
-// Updates exposes the same feed for reading (tests/observation).
 func (t *Telemetry) Updates() <-chan TelemetryUpdate { return t.updates }
 
-// Apply folds one engine-derived update into the live counters.
 func (t *Telemetry) Apply(u TelemetryUpdate) {
 	switch u.Kind {
 	case TelemetryTurn:
@@ -113,8 +107,6 @@ type Stats struct {
 	MaxTurns  int
 }
 
-// Stats returns a snapshot of the current accumulated counters and the
-// elapsed wall-clock time since the session was started or last Reset.
 func (t *Telemetry) Stats() Stats {
 	return Stats{
 		Turns:     t.turns,

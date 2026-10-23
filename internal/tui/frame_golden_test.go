@@ -10,7 +10,6 @@ import (
 	"github.com/glemsom/eitri/internal/tui/telemetry"
 )
 
-// frameCase names a scenario whose rendered frame is pinned as golden bytes.
 type frameCase struct {
 	name  string
 	build func(t *testing.T) Model

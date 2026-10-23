@@ -125,7 +125,6 @@ func BashTimeout(args map[string]any) (time.Duration, error) {
 	return d, nil
 }
 
-// Combined returns stdout then stderr joined, prioritizing stdout for token efficiency while keeping stderr visible.
 func (o *Output) Combined() string {
 	switch {
 	case o.Stdout != "" && o.Stderr != "":

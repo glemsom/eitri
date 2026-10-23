@@ -7,7 +7,6 @@ import (
 	"testing"
 )
 
-// memSink collects message-log records in memory.
 type memSink struct {
 	reqs  []RequestLog
 	resps []ResponseLog
@@ -16,7 +15,6 @@ type memSink struct {
 func (m *memSink) LogRequest(r RequestLog)   { m.reqs = append(m.reqs, r) }
 func (m *memSink) LogResponse(r ResponseLog) { m.resps = append(m.resps, r) }
 
-// logFakeStream replays chunks then EOF.
 type logFakeStream struct {
 	chunks []Chunk
 	i      int
@@ -35,7 +33,6 @@ func (f *logFakeStream) Next() (Chunk, error) {
 	return Chunk{}, io.EOF
 }
 
-// fakeProvider returns the given stream or error.
 type fakeProvider struct {
 	stream Stream
 	err    error

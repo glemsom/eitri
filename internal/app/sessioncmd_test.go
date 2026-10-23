@@ -10,7 +10,6 @@ import (
 	"github.com/glemsom/eitri/internal/provider"
 )
 
-// writeMessagesFixture creates a session dir with a two-turn messages.jsonl.
 func writeMessagesFixture(t *testing.T, dataDir, guid string) {
 	t.Helper()
 	dir := filepath.Join(dataDir, "sessions", guid)
@@ -153,7 +152,6 @@ func TestRunSessionCmdDispatch(t *testing.T) {
 	}
 }
 
-// TestRunBatchWritesMessageTranscript is the end-to-end check: a real Run through the engine must leave a messages.jsonl with req+resp records in the new session dir.
 func TestRunBatchWritesMessageTranscript(t *testing.T) {
 	dir := t.TempDir()
 	dataDir := filepath.Join(dir, ".eitri")
@@ -183,7 +181,6 @@ func TestRunBatchWritesMessageTranscript(t *testing.T) {
 		}
 	}
 
-	// And the CLI reads it back.
 	var list bytes.Buffer
 	if err := RunSessionCmd([]string{"list"}, &list); err != nil {
 		t.Fatalf("session list: %v", err)
@@ -516,7 +513,6 @@ func TestRunSessionCmdTalkRejectsRemovedAllFlag(t *testing.T) {
 	}
 }
 
-// writeMessagesFixtureWithEnd appends a run-end record to the two-turn fixture.
 func writeMessagesFixtureWithEnd(t *testing.T, dataDir, guid, reason string) {
 	t.Helper()
 	writeMessagesFixture(t, dataDir, guid)

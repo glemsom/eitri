@@ -18,12 +18,10 @@ import (
 // errAuthorizationPending is the device-flow interim "user hasn't approved yet" signal; Poll returns it wrapped so callers retry on interval.
 var errAuthorizationPending = errors.New("device flow: authorization pending")
 
-// IsAuthorizationPending reports whether err is the "wait, keep polling" state of a device code not yet approved.
 func IsAuthorizationPending(err error) bool {
 	return errors.Is(err, errAuthorizationPending)
 }
 
-// Defaulted GitHub device-flow endpoints.
 const (
 	githubDeviceCodeURL  = "https://github.com/login/device/code"
 	githubAccessTokenURL = "https://github.com/login/oauth/access_token"
@@ -56,7 +54,6 @@ func NewDeviceFlow(httpc *http.Client, overrides map[string]string) *DeviceFlow 
 	return &DeviceFlow{http: httpc, endpoints: ep}
 }
 
-// Start begins a device-flow handshake, returning the code to display for in-UI approval.
 func (d *DeviceFlow) Start(ctx context.Context) (DeviceCode, error) {
 	form := url.Values{}
 	form.Set("client_id", githubOAuthClientID)
@@ -76,7 +73,6 @@ func (d *DeviceFlow) Start(ctx context.Context) (DeviceCode, error) {
 	return cd, nil
 }
 
-// Poll exchanges an approved device code for a fresh credential.
 func (d *DeviceFlow) Poll(ctx context.Context, deviceCode string) (config.CopilotConfig, error) {
 	form := url.Values{}
 	form.Set("grant_type", "urn:ietf:params:oauth:grant-type:device_code")
@@ -121,7 +117,6 @@ func (d *DeviceFlow) endpoint(key string) string {
 	return d.endpoints[key]
 }
 
-// doJSON POSTs req and decodes a JSON response.
 func (d *DeviceFlow) doJSON(req *http.Request, out any) error {
 	client := resolveClient(d.http)
 	resp, err := client.Do(req)
@@ -136,7 +131,6 @@ func (d *DeviceFlow) doJSON(req *http.Request, out any) error {
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
-// flowError is a mismatch-value device-flow error.
 type flowError struct{ msg string }
 
 func (e *flowError) Error() string { return e.msg }

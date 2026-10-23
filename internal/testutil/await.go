@@ -3,16 +3,13 @@ package testutil
 
 import "time"
 
-// DefaultTimeout bounds how long Await waits for a signal before failing the test.
 const DefaultTimeout = 3 * time.Second
 
-// Fataler is the slice of testing.TB that Await needs.
 type Fataler interface {
 	Fatalf(format string, args ...any)
 	Helper()
 }
 
-// Await blocks until sig fires, then returns.
 func Await(f Fataler, name string, sig <-chan struct{}) {
 	f.Helper()
 	await(f, name, sig, DefaultTimeout)

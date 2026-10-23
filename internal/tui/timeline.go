@@ -6,17 +6,12 @@ import "strings"
 type EventKind int
 
 const (
-	// EventReasoning is a streamed chain-of-thought delta.
 	EventReasoning EventKind = iota
-	// EventToolStart is a tool beginning execution.
 	EventToolStart
-	// EventToolResult is a tool's delivered result.
 	EventToolResult
-	// EventAnswer is a streamed answer-text delta.
 	EventAnswer
 )
 
-// String renders the event kind for logs and test failures.
 func (k EventKind) String() string {
 	switch k {
 	case EventReasoning:
@@ -60,7 +55,6 @@ func deriveSnapshots(events []TimelineEvent) (content, reasoning string) {
 	return cb.String(), rb.String()
 }
 
-// streamEventKind maps a stream channel to its timeline event kind.
 func streamEventKind(kind StreamKind) EventKind {
 	if kind == ReasoningStream {
 		return EventReasoning
@@ -68,7 +62,6 @@ func streamEventKind(kind StreamKind) EventKind {
 	return EventAnswer
 }
 
-// toolEventKind maps a tool update half to its timeline event kind.
 func toolEventKind(u ToolUpdate) (EventKind, bool) {
 	switch {
 	case u.Start != nil:

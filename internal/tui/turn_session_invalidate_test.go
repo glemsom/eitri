@@ -5,8 +5,6 @@ import "testing"
 // These tests lock the "mutations invalidate" invariant for Transcript.Project:
 // it marks the layout cache stale itself, so callers never do it by hand.
 
-// TestStartProjectionMarksLayoutDirty projects a user message and asserts the
-// layout cache is stale with no caller-side invalidation.
 func TestStartProjectionMarksLayoutDirty(t *testing.T) {
 	s := NewTurnSession(stubTurn("answer", nil))
 	tx := newTestTx()
@@ -18,8 +16,6 @@ func TestStartProjectionMarksLayoutDirty(t *testing.T) {
 	}
 }
 
-// TestCompletionProjectionMarksLayoutDirtyStreaming covers the streaming
-// completion path: projection reconciles the message and attaches its timeline.
 func TestCompletionProjectionMarksLayoutDirtyStreaming(t *testing.T) {
 	s := NewTurnSession(stubTurn("final answer", nil))
 	tx := newTestTx()
@@ -36,8 +32,6 @@ func TestCompletionProjectionMarksLayoutDirtyStreaming(t *testing.T) {
 	}
 }
 
-// TestCompletionProjectionMarksLayoutDirtyFreshAssistant covers a
-// non-streaming completion, which appends a fresh assistant message.
 func TestCompletionProjectionMarksLayoutDirtyFreshAssistant(t *testing.T) {
 	s := NewTurnSession(stubTurn("final answer", nil))
 	tx := newTestTx()
@@ -54,9 +48,6 @@ func TestCompletionProjectionMarksLayoutDirtyFreshAssistant(t *testing.T) {
 	}
 }
 
-// TestCompletionProjectionMarksLayoutDirtyStopped covers the stopped-turn completion path:
-// the partial streamed message is finalized in place and the cache must come
-// out stale from the projection.
 func TestCompletionProjectionMarksLayoutDirtyStopped(t *testing.T) {
 	s := NewTurnSession(stubTurn("partial", nil))
 	tx := newTestTx()

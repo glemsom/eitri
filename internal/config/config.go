@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 )
 
-// Defaults for session and provider behavior.
 const (
 	DefaultMaxTurns        = 250
 	DefaultReasoningEffort = "low"
@@ -37,15 +36,14 @@ type OpenAIConfig struct {
 	Key     string `json:"key,omitempty"`
 }
 
-// Config is the persisted Eitri configuration.
 type Config struct {
 	Provider        string `json:"provider"`
 	Model           string `json:"model"`
 	ReasoningEffort string `json:"reasoning_effort"`
 	ThinkingEnabled bool   `json:"thinking_enabled"`
-	// CoTCollapsedByDefault and ToolResultsCollapsedByDefault are the
-	// tool results render as hints/one-liners until expanded, so a large CoT
-	// never pushes tool calls out of view.
+	// CoTCollapsedByDefault and ToolResultsCollapsedByDefault render CoT and
+	// tool results as hints/one-liners until expanded, so a large CoT never
+	// pushes tool calls out of view.
 	CoTCollapsedByDefault         bool             `json:"cot_collapsed_by_default"`
 	ToolResultsCollapsedByDefault bool             `json:"tool_results_collapsed_by_default"`
 	MaxTurns                      int              `json:"max_turns"`
@@ -58,7 +56,6 @@ type Config struct {
 	CustomOpenAI                  OpenAIConfig     `json:"custom_openai,omitempty"`
 }
 
-// Default returns a config populated with Eitri's defaults.
 func Default() Config {
 	return Config{
 		Provider:                      DefaultProvider,
@@ -96,7 +93,6 @@ func Load(path string) (Config, error) {
 	return cfg, nil
 }
 
-// Save writes cfg to path as JSON, creating parent directories as needed.
 func Save(cfg Config, path string) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {

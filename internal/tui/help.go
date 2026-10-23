@@ -11,7 +11,6 @@ type helpRow struct {
 	desc string
 }
 
-// helpKeybindingCategory groups keybindings under a named heading.
 type helpKeybindingCategory struct {
 	name string
 	rows []helpRow
@@ -83,7 +82,7 @@ func writeHelpCategory(b *strings.Builder, name string, rows []helpRow) {
 	writeHelpRows(b, rows)
 }
 
-// writeHelpRows writes each row left-aligned under a shared column so every description starts at the same column: the left cell is padded to the visual width of the section's widest cell, then separated from the description by a two-space gap — keeping the `key description` shape while giving the section one vertical ruler.
+// writeHelpRows pads each key cell to the section's widest key, so every description lands on one vertical ruler.
 func writeHelpRows(b *strings.Builder, rows []helpRow) {
 	col := 0
 	for _, r := range rows {

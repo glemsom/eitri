@@ -104,7 +104,6 @@ func truncate(s string, n int) string {
 	return string(r[:n]) + "…"
 }
 
-// ListSessions prints one line per session dir: GUID, last activity, turn count.
 func ListSessions(dataDir string, out io.Writer) error {
 	var rendered strings.Builder
 	root := filepath.Join(dataDir, "sessions")
@@ -213,7 +212,6 @@ func ShowSession(dataDir, guid string, turn int, noReasoning bool, out io.Writer
 	return nil
 }
 
-// stripReasoning drops chain-of-thought text in place: response reasoning_content and per-message reasoning_content on every turn.
 func stripReasoning(turns []sessionTurn) {
 	for i := range turns {
 		if c := turns[i].Resp; c != nil {
@@ -238,7 +236,6 @@ func writeTurnJSON(c sessionTurn, out io.Writer) {
 	}
 }
 
-// TalkOptions controls what TalkSession renders.
 type TalkOptions struct {
 	FromTurn  int    // 1-based; 0 = from the start
 	ToTurn    int    // inclusive; 0 = through the last turn
@@ -246,7 +243,7 @@ type TalkOptions struct {
 	Reasoning bool   // include chain-of-thought blocks
 }
 
-// TalkSession prints a session's conversation as plain text, one block per message: `[N] role:` followed by the full untruncated content. Request history shared with the previous turn is skipped.
+// TalkSession prints a session's conversation as plain text, one block per message, skipping request history already shown in the previous turn.
 func TalkSession(dataDir, guid string, opts TalkOptions, out io.Writer) error {
 	if err := session.ValidateGUID(guid); err != nil {
 		return err
@@ -313,7 +310,6 @@ func lenSharedPrefix(prev, cur []provider.Message) int {
 	return len(prev)
 }
 
-// writeTalkMessage renders one request-side message if it passes the role filter.
 func writeTalkMessage(turn int, role string, m provider.Message, out io.Writer, roleFilter string) {
 	if roleFilter != "" && role != roleFilter {
 		return
@@ -411,7 +407,7 @@ func GrepSession(dataDir, pattern, guid string, full bool, out io.Writer) error 
 	return err
 }
 
-// snippet returns up to ~120 chars of s centered on the first occurrence of pattern, or "" when absent.
+// snippet returns up to ~120 chars of s centered on the first occurrence of pattern.
 func snippet(s, pattern string) string {
 	idx := strings.Index(s, pattern)
 	if idx < 0 {

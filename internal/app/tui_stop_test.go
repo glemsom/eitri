@@ -23,11 +23,11 @@ func (s *blockUntilCancel) Next() (provider.Chunk, error) {
 	return provider.Chunk{}, s.ctx.Err()
 }
 
-// TestRunEngineTurnCancelsStreamedTurn guards the regression where runAgent dropped the
-// caller's per-turn context and replaced it with context.Background(), so Ctrl+C while a
-// (TurnSession.Stop -> turnCmd) bottoms out at the TUI turn callback, which tests there
-// fake out; the context-drop lived in internal/app, so this test sits at the runEngineTurn callback
-// boundary where the turn's cancelable context is handed to the shared engine seam.
+// TestRunEngineTurnCancelsStreamedTurn guards the regression where runAgent replaced the
+// caller's per-turn context with context.Background(), so Ctrl+C during a stream no longer
+// cancelled it. The drop lived in internal/app and the TUI tests fake out the turn callback,
+// so this test sits at the runEngineTurn boundary where the cancelable context is handed to
+// the shared engine seam.
 func TestRunEngineTurnCancelsStreamedTurn(t *testing.T) {
 	streamStarted := make(chan struct{})
 	e := engine.New(provider.NewScripted(func(ctx context.Context, _ provider.Request) (provider.Stream, error) {

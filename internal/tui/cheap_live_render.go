@@ -35,14 +35,6 @@ var (
 	reCheapItalU = regexp.MustCompile(`_([^_\n]+)_`)
 )
 
-// renderCheapLiveBody renders a streaming *answer* body with the cheap ANSI
-// word-wrap. It preserves only the simplest inline emphasis (bold, italic,
-// inline code, link labels) and word-wraps at the pane content width, falling
-// back to a hard break only for a single token longer than the width, so a long
-// unbroken token (URL, code run) still cannot produce an overlarge line. The
-// output is trimmed of leading and trailing newlines to match the glamour path's
-// pane body.
-
 // restorePaneForeground keeps inline emphasis from clearing the color inherited
 // from the streaming pane. A full SGR reset also resets foreground color.
 func restorePaneForeground(body string, pane lipgloss.Style) string {
@@ -55,6 +47,9 @@ func restorePaneForeground(body string, pane lipgloss.Style) string {
 	return strings.ReplaceAll(body, "\x1b[0m", "\x1b[0m"+restore)
 }
 
+// renderCheapLiveBody renders a streaming answer body: simplified inline
+// emphasis plus one ANSI word-wrap (hard-breaking only a token longer than the
+// width, so a URL or code run still cannot produce an overlarge line).
 func renderCheapLiveBody(text string, width int) string {
 	return strings.Trim(ansi.Wrap(simplifyMarkdownEmphasis(text), width, ""), "\n")
 }
@@ -87,7 +82,7 @@ func simplifyMarkdownEmphasis(s string) string {
 			continue
 		}
 		if inFence {
-			b.WriteString(ln) // fenced code renders verbatim
+			b.WriteString(ln)
 			b.WriteByte('\n')
 			continue
 		}

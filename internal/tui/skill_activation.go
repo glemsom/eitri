@@ -8,7 +8,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// BuiltinSlashCmd is one built-in slash command offered by the TUI.
 type BuiltinSlashCmd struct {
 	Name string
 	Desc string
@@ -55,12 +54,10 @@ func (s *SkillActivation) skipBadge(th Theme) string {
 	return th.outcomeErrStyle.Render(lookup("warning") + " " + fmt.Sprintf("skipped %d unparseable skill(s): %s", len(s.skipped), names))
 }
 
-// Command reports whether prompt is a `/skillname` activation command for a detected skill.
 func (s *SkillActivation) Command(prompt string) (name, args string, ok bool) {
 	return slashCommand(prompt, s.skills)
 }
 
-// Reset clears tracked slash completion state, e.g. after submission.
 func (s *SkillActivation) Reset() {
 	s.Dismiss()
 	s.slashPrefix = ""
@@ -119,7 +116,6 @@ func (s *SkillActivation) TurnPrompt(name, args string) string {
 	return fmt.Sprintf("apply the %s skill", name)
 }
 
-// slashCommand reports whether prompt is a `/skillname` activation command for a detected skill.
 func slashCommand(prompt string, skills []SkillItem) (name, args string, ok bool) {
 	if len(skills) == 0 || !strings.HasPrefix(prompt, "/") {
 		return "", "", false

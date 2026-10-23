@@ -59,7 +59,6 @@ func TestRoleMarks_notInCopyablePayload(t *testing.T) {
 	if top != 0 {
 		t.Fatalf("test assumes offset 0, got %d", top)
 	}
-	// Select the entire first line of the assistant answer.
 	row, rowY := "", 0
 	for i, r := range rows {
 		if strings.Contains(r, "plain") {

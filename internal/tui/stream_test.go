@@ -164,7 +164,6 @@ func TestModel_thinkingExpandedStreams(t *testing.T) {
 		t.Fatalf("live reasoning should render expanded before any tab, got: %q", view(m))
 	}
 
-	// Tab focuses the live reasoning block, Enter toggles it collapsed and back.
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
 	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if strings.Contains(ansiStrip(view(m)), "first ") {

@@ -10,11 +10,8 @@ import (
 	"github.com/glemsom/eitri/internal/config"
 )
 
-// livePerDeltaTranscript builds a busy transcript whose live turn has streamed
-// the given contiguous chain-of-thought deltas and nothing else: a live turn's
-// flow coalesces every contiguous reasoning delta into one block per run (so
-// token-size SSE deltas never paint a card per token), so this fixture is the
-// minimal shape a coalescing test needs.
+// livePerDeltaTranscript is the minimal coalescing fixture: one live turn that
+// has streamed only the given contiguous reasoning deltas.
 func livePerDeltaTranscript(deltas []string) *Transcript {
 	th := themeFor(config.DefaultTheme)
 	tx := &Transcript{
@@ -40,11 +37,9 @@ func livePerDeltaTranscript(deltas []string) *Transcript {
 	return tx
 }
 
-// livePerDeltaWithToolTranscript builds a busy live turn whose contiguous
-// reasoning deltas straddle a tool entry: two deltas stream before the tool
-// start, one after the tool result — the shape AC1 names ("fragments on both
-// sides of a tool entry") rendered as one flat flow, coalesced into a pre-tool
-// run and a post-tool run.
+// livePerDeltaWithToolTranscript straddles reasoning deltas across a tool entry:
+// two before the tool start, one after the result, so the flat flow coalesces
+// into a pre-tool run and a post-tool run.
 func livePerDeltaWithToolTranscript() *Transcript {
 	th := themeFor(config.DefaultTheme)
 	var log toolLog
@@ -78,10 +73,9 @@ func livePerDeltaWithToolTranscript() *Transcript {
 	return tx
 }
 
-// TestTranscript_collapsibleBlocksCoalescesContiguousDeltas locks the
-// regression behind a card-per-token: a live turn's flow coalesces every
-// contiguous reasoning delta into ONE focusable block per tool-delimited run
-// (so token-size SSE deltas never enumerate a block per token).
+// TestTranscript_collapsibleBlocksCoalescesContiguousDeltas guards the
+// card-per-token regression: each tool-delimited run of contiguous reasoning
+// deltas is ONE focusable block.
 func TestTranscript_collapsibleBlocksCoalescesContiguousDeltas(t *testing.T) {
 	tx := livePerDeltaTranscript([]string{"alpha1", "beta2", "gamma3"})
 
@@ -95,17 +89,14 @@ func TestTranscript_collapsibleBlocksCoalescesContiguousDeltas(t *testing.T) {
 	}
 }
 
-// TestTranscript_perDeltaFocusCyclesFragmentsOnBothSidesOfTool locks AC1's
-// render-order traversal under coalescing: reasoning coalesces per tool-delimited
-// run, so fragments streamed before AND after a tool entry enumerate as separate
-// focusable blocks in emission order (the tool sits visually between them), and
-// Tab cycles through every one, wrapping back to the first.
+// TestTranscript_perDeltaFocusCyclesFragmentsOnBothSidesOfTool: fragments
+// streamed before AND after a tool entry enumerate as separate focusable blocks in
+// emission order (the tool sits visually between them); Tab wraps back to the
+// first.
 func TestTranscript_perDeltaFocusCyclesFragmentsOnBothSidesOfTool(t *testing.T) {
-	tx := livePerDeltaWithToolTranscript() // fragA+fragB, tool read, fragC
+	tx := livePerDeltaWithToolTranscript()
 
 	blocks := tx.collapsibleBlocks()
-	// fragA+fragB coalesce into one pre-tool run, fragC is the post-tool run,
-	// plus the tool entry.
 	if len(blocks) != 3 {
 		t.Fatalf("collapsibleBlocks() = %d, want 3 (pre-tool run + post-tool run + one tool):\n%+v", len(blocks), blocks)
 	}
@@ -119,7 +110,6 @@ func TestTranscript_perDeltaFocusCyclesFragmentsOnBothSidesOfTool(t *testing.T) 
 		t.Fatalf("block 2 = %+v, want the tool entry", b)
 	}
 
-	// Tab cycles forward in emission order: pre-tool run, post-tool run, then the tool.
 	for _, want := range []collapsibleBlock{
 		{kind: blockReasoning, msgIdx: 1, fragIdx: 0},
 		{kind: blockReasoning, msgIdx: 1, fragIdx: 1},
@@ -130,17 +120,14 @@ func TestTranscript_perDeltaFocusCyclesFragmentsOnBothSidesOfTool(t *testing.T) 
 			t.Fatalf("after Tab focused = %+v ok=%v, want %+v", got, ok, want)
 		}
 	}
-	// One more Tab wraps back to the first pre-tool fragment.
 	tx.FocusNext()
 	if got, ok := tx.focused(); !ok || got != (collapsibleBlock{kind: blockReasoning, msgIdx: 1, fragIdx: 0}) {
 		t.Fatalf("wrap-around Tab focused = %+v ok=%v, want reasoning run 0", got, ok)
 	}
 
-	// The cursor resolves exactly the pre-tool run on the seam used by the
-	// renderer's focus marker.
 	tx = livePerDeltaWithToolTranscript()
-	tx.FocusNext() // pre-tool run
-	tx.FocusNext() // post-tool run
+	tx.FocusNext()
+	tx.FocusNext()
 	if !tx.focusedBlockIs(blockReasoning, 1, 0, 1) {
 		t.Fatalf("cursor must point at post-tool run 1, got focused=%+v", mustFocused(tx))
 	}
@@ -157,14 +144,14 @@ func mustFocused(tx *Transcript) collapsibleBlock {
 	return blk
 }
 
-// TestTranscript_enterTogglesSingleInterleavedRunIndependently keeps AC2 of
-// a focused interleaved reasoning run collapses exactly that run's body and
-// leaves its streamed siblings expanded; Enter again re-expands only it.
+// TestTranscript_enterTogglesSingleInterleavedRunIndependently: Enter collapses
+// only the focused interleaved run's body, leaving its streamed siblings
+// expanded; Enter again re-expands only it.
 func TestTranscript_enterTogglesSingleInterleavedRunIndependently(t *testing.T) {
-	tx := livePerDeltaWithToolTranscript() // pre-tool run (fragA fragB), tool, post-tool run (fragC)
+	tx := livePerDeltaWithToolTranscript()
 
-	tx.FocusNext() // pre-tool run (fragIdx 0)
-	tx.FocusNext() // post-tool run (fragIdx 1)
+	tx.FocusNext()
+	tx.FocusNext()
 	if blk, ok := tx.focused(); !ok || blk.fragIdx != 1 {
 		t.Fatalf("focused = %+v ok=%v, want reasoning run 1", blk, ok)
 	}
@@ -199,11 +186,10 @@ func TestTranscript_enterTogglesSingleInterleavedRunIndependently(t *testing.T) 
 	}
 }
 
-// TestModel_liveReasoningPinsWholeCoalescedBlockThroughBurst keeps AC2's
-// persistence leg at the coalescing granularity: collapsing the single live
-// reasoning block pins it, and since the burst coalesces into that same block,
-// the user's collapse survives the continuing stream (it stays collapsed rather
-// than per-token cards re-appearing).
+// TestModel_liveReasoningPinsWholeCoalescedBlockThroughBurst: collapsing the
+// single live reasoning block pins it, and because the burst coalesces into that
+// same block the user's collapse survives the continuing stream — no per-token
+// cards re-appear.
 func TestModel_liveReasoningPinsWholeCoalescedBlockThroughBurst(t *testing.T) {
 	m := newStreamingModel()
 	m = resize(t, m)
@@ -211,11 +197,9 @@ func TestModel_liveReasoningPinsWholeCoalescedBlockThroughBurst(t *testing.T) {
 	m, _ = submitBusy(t, m)
 
 	m = applyReasoningDelta(t, m, "alpha1")
-	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyTab})   // focus the reasoning block
-	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyEnter}) // collapse it
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
+	m = mustUpdate(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 
-	// The burst keeps streaming: coalesced deltas grow the same collapsed block,
-	// never per-token cards re-appearing.
 	m = applyReasoningDelta(t, m, "beta2")
 	m = applyReasoningDelta(t, m, "gamma3")
 	plain := ansiStrip(view(m))
@@ -227,9 +211,8 @@ func TestModel_liveReasoningPinsWholeCoalescedBlockThroughBurst(t *testing.T) {
 	}
 }
 
-// burst of per-delta reasoning fragments — many small blocks arriving in quick
-// succession — never drops follow: the viewport stays pinned to the newest
-// output while the burst streams.
+// TestModel_followStaysEngagedThroughPerDeltaBurst: a burst of many small
+// reasoning fragments arriving in quick succession never drops follow.
 func TestModel_followStaysEngagedThroughPerDeltaBurst(t *testing.T) {
 	m := newStreamingModel()
 	m = resizeTo(t, m, 60, 10)
@@ -255,12 +238,11 @@ func TestModel_followStaysEngagedThroughPerDeltaBurst(t *testing.T) {
 	}
 }
 
-// TestTranscript_gatedLiveTurnEnumeratesNoReasoningBlocks locks AC1's
-// thinking-gate leg: a live turn that never asked for reasoning renders no
-// reasoning fragments, so the block focus must not enumerate phantom blocks for
-// them — only the turn's tool entries stay focusable.
+// TestTranscript_gatedLiveTurnEnumeratesNoReasoningBlocks: a live turn that never
+// asked for reasoning renders no fragments, so block focus must not enumerate
+// phantom blocks — only the turn's tool entries stay focusable.
 func TestTranscript_gatedLiveTurnEnumeratesNoReasoningBlocks(t *testing.T) {
-	tx := liveReasoningInterleaveTranscript() // 2 reasoning fragments + 2 tools
+	tx := liveReasoningInterleaveTranscript()
 	tx.messages[1].thinkingRequested = false
 
 	blocks := tx.collapsibleBlocks()
@@ -274,9 +256,9 @@ func TestTranscript_gatedLiveTurnEnumeratesNoReasoningBlocks(t *testing.T) {
 	}
 }
 
-// TestModel_collapseAllAndExpandAllCoverCoalescedReasoning locks AC3 of
-// live reasoning block — ctrl+e collapse-all hides its body, Enter on the focused
-// block re-expands it against the mode, and ctrl+e again shows it all.
+// TestModel_collapseAllAndExpandAllCoverCoalescedReasoning: ctrl+e collapse-all
+// hides the body, Enter on the focused block re-expands it against the mode, and
+// ctrl+e again shows it all.
 func TestModel_collapseAllAndExpandAllCoverCoalescedReasoning(t *testing.T) {
 	m := newStreamingModel()
 	m = resize(t, m)
@@ -288,7 +270,6 @@ func TestModel_collapseAllAndExpandAllCoverCoalescedReasoning(t *testing.T) {
 		t.Fatalf("precondition: one coalesced reasoning block expanded, got %d headers:\n%s", n, view(m))
 	}
 
-	// ctrl+e enters expanded mode; ctrl+e again collapses all, leaving one hint.
 	m = keypress(t, m, "ctrl+e")
 	m = keypress(t, m, "ctrl+e")
 	plain := ansiStrip(view(m))
@@ -299,7 +280,6 @@ func TestModel_collapseAllAndExpandAllCoverCoalescedReasoning(t *testing.T) {
 		t.Errorf("collapse-all must keep the one reasoning hint, got %d:\n%s", n, plain)
 	}
 
-	// Tab to the reasoning block; Enter re-expands it against the mode.
 	m = keypress(t, m, "tab")
 	m = keypress(t, m, "enter")
 	plain = ansiStrip(view(m))
@@ -307,7 +287,6 @@ func TestModel_collapseAllAndExpandAllCoverCoalescedReasoning(t *testing.T) {
 		t.Errorf("Enter on the focused reasoning block must re-expand it in collapse-all, got:\n%s", plain)
 	}
 
-	// ctrl+e again: expand-all shows the reasoning again.
 	m = keypress(t, m, "ctrl+e")
 	plain = ansiStrip(view(m))
 	if !strings.Contains(plain, "alpha1 beta2 gamma3") {

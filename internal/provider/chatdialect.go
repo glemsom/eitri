@@ -14,20 +14,13 @@ import (
 // through this interface instead of building bodies, mapping tools, or
 // composing stream parsers inline.
 type Dialect interface {
-	// Build shapes req into the dialect's serialized wire request body.
 	Build(req Request) ([]byte, error)
 	// Capabilities reports the generation controls this dialect honors on the wire.
 	Capabilities() []GenerationControl
-	// Manifest re-expresses canonical tool definitions into this dialect's tool wire form.
 	Manifest(defs []DialectDefinition) any
-	// Stream wraps an SSE body stream, parsing it into provider chunks.
 	Stream(r io.Reader) Stream
 }
 
-// ChatCompletionsDialect is the Dialect implementation for the OpenAI
-// Chat-Completions wire: it builds the /chat/completions request body, maps
-// canonical tools to its function manifest, and reassembles streamed tool-call
-// fragments.
 type ChatCompletionsDialect struct {
 	copilotRequestPolicy bool
 }
@@ -143,8 +136,6 @@ func maxOutputTokens(req Request) int {
 	return req.MaxOutputTokens
 }
 
-// chatToolManifest re-expresses canonical tool definitions into the
-// Chat-Completions function manifest.
 func chatToolManifest(defs []DialectDefinition) []Tool {
 	out := make([]Tool, 0, len(defs))
 	for _, def := range defs {
@@ -259,7 +250,6 @@ func newToolAccumulator() *toolAccumulator {
 	return &toolAccumulator{calls: map[int]*ToolCall{}}
 }
 
-// add folds one fragmented delta into the per-index ToolCall.
 func (a *toolAccumulator) add(d wireToolCallDelta) {
 	idx := 0
 	if d.Index != nil {
@@ -296,7 +286,6 @@ func (a *toolAccumulator) finish() []ToolCall {
 	return out
 }
 
-// parseEvent turns one SSE data payload into a Chunk, folding streamed tool_call fragments into acc.
 func parseEvent(data string, acc *toolAccumulator) (Chunk, error) {
 	if data == "[DONE]" {
 		if acc != nil {

@@ -311,8 +311,6 @@ func TestDefaultRunnerReapsDescendantsOnCancel(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Wait for the pid file (meaning the shell has forked the background
-	// child and written its PID), then cancel the context.
 	go func() {
 		for {
 			if _, err := os.Stat(pidFile); err == nil {

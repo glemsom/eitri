@@ -43,7 +43,6 @@ func TestAnthropicBuildShapesMessagesBody(t *testing.T) {
 	if body["stream"] != true {
 		t.Errorf("stream = %v, want true", body["stream"])
 	}
-	// thinking disabled because the turn has thinking off
 	if tk, ok := body["thinking"].(map[string]any); !ok || tk["type"] != "disabled" {
 		t.Errorf("thinking = %v, want {type:disabled}", body["thinking"])
 	}
@@ -90,7 +89,6 @@ func TestAnthropicBuildShapesMessagesBody(t *testing.T) {
 	if tb["type"] != "tool_result" || tb["tool_use_id"] != "toolu_1" || tb["content"] != "file: abc" {
 		t.Errorf("tool_result = %v", tb)
 	}
-	// tools manifest
 	tools := body["tools"].([]any)
 	if len(tools) != 1 {
 		t.Fatalf("tools len = %d, want 1", len(tools))
@@ -351,7 +349,6 @@ func TestAnthropicStopReason(t *testing.T) {
 	}
 }
 
-// buildAnthropicBody builds the Messages wire body for req.
 func buildAnthropicBody(t *testing.T, req Request) string {
 	t.Helper()
 	body, err := NewAnthropicDialect().Build(req)
