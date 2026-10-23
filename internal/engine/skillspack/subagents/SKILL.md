@@ -1,6 +1,6 @@
 ---
 name: subagents
-description: "Offload, delegate, or parallelize: run bulky or independent work in fresh eitri subagents."
+description: "Offload or fan out bulky, independent work to fresh eitri subagents: self-contained briefs, bounded answers."
 model-invocable: true
 ---
 
@@ -8,11 +8,13 @@ model-invocable: true
 
 A subagent starts with an empty context: it cannot see this conversation, ask you anything, or recover from a vague brief.
 
-- **Write a self-contained prompt**: absolute paths, the goal, and the exact shape of the answer you want (table, JSON, one line per match). Ask for the deliverable, never the process.
-- **Bound the answer**: "answer in under 400 words". When the full result is bulky, ask for it in a scratch file the repo ignores (`.scratch/`), plus a short summary and that path — then grep the file instead of reading it whole.
-- **Stay inline** when one command answers the question: a subagent costs seconds and tokens to save neither.
+- **Write a self-contained brief**: absolute paths, the goal, and the exact shape of the answer you want (table, JSON, one line per match). Ask for the deliverable, never the process.
+- **Bound the answer**: "answer in under 400 words". When the full result is bulky, have it written to a scratch file the repo ignores (`.scratch/`) and ask for the path plus a short summary — then grep the file instead of reading it whole.
+- **Stay inline** when one command answers the question: a subagent costs a fresh prompt and a minute of waiting to save neither.
 
 ### Launch and collect
+
+Launch from the repo: the launching call's working directory becomes the subagent's workspace, so start that call with `cd <repo> &&`. Anywhere else, every relative path and every write the child attempts lands outside the tree you meant.
 
 Each `eitri -b` needs its own `EITRI_DIR`, and the parent config must be captured **before** you override it. Launch every task in the background, then wait and read all of them in the same bash call — that call's end kills its children in the sandbox (`--die-with-parent`), though not when running unsandboxed — so raise the call's `timeout` past the slowest expected subagent, and redirect stdin from `/dev/null` so no child drains a pipe meant for someone else.
 
@@ -24,7 +26,6 @@ tasks=(
   "<task 2>"
 )
 for i in "${!tasks[@]}"; do
-  mkdir -p "$sa/$i"
   EITRI_DIR="$sa/$i" EITRI_CONFIG="$parent_config" \
     eitri -b "${tasks[$i]}" --format json >"$sa/$i.json" 2>"$sa/$i.err" </dev/null &
   pids[$i]=$!
@@ -42,4 +43,4 @@ done
 
 One task, one array element. `--format json` prints a single envelope whose `.answer` is the deliverable; a failed run exits non-zero and prints none, which the status and `jq -e` checks catch. A failure means the run never finished: read `.err`, retry once, then do that slice inline. Your own stdout is compressed downstream, so a long answer loses its tail.
 
-For data rather than a prompt, pipe it: `git diff | eitri -b "<task>" --format json` appends the stream as input context, capped at 1 MiB. The child's `$TMPDIR` is not yours — files you share go in the workspace.
+For data rather than a prompt, pipe it: `git show HEAD | eitri -b "<task>" --format json` appends the stream as input context, capped at 1 MiB. A piped launch drops the recipe's `</dev/null`, which would silently starve the child of that stream. The child's `$TMPDIR` is not yours — files you share go in the workspace.
